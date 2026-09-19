@@ -31,7 +31,7 @@ jobs:
           # Space-separated GitHub usernames allowed to push straight to master. EMPTY = strict
           # for everyone: every commit to master must arrive via a PR. Add usernames here to
           # exempt specific maintainers from the guard.
-          ALLOWLIST: "VishnuRV2004"
+          ALLOWLIST: "amalnathkp13-boop"
         run: |
           set -u
           for u in $ALLOWLIST; do
