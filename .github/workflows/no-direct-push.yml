@@ -29,9 +29,9 @@ jobs:
           SHA: ${{ github.sha }}
           ACTOR: ${{ github.actor }}
           # Space-separated GitHub usernames allowed to push straight to master. EMPTY = strict
-          # for everyone, including the owner: every commit to master must arrive via a PR.
-          # Add usernames here only if you want to exempt specific maintainers.
-          ALLOWLIST: ""
+          # for everyone: every commit to master must arrive via a PR. Add usernames here to
+          # exempt specific maintainers from the guard.
+          ALLOWLIST: "VishnuRV2004"
         run: |
           set -u
           for u in $ALLOWLIST; do
