@@ -28,10 +28,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ github.sha }}
           ACTOR: ${{ github.actor }}
-          # Space-separated GitHub usernames allowed to push straight to master (owner /
-          # maintainers who run hotfixes and the deploy pipeline). Edit this list to taste —
-          # clear it to make the guard strict for everyone, including the owner.
-          ALLOWLIST: "amalnathkp13-boop"
+          # Space-separated GitHub usernames allowed to push straight to master. EMPTY = strict
+          # for everyone, including the owner: every commit to master must arrive via a PR.
+          # Add usernames here only if you want to exempt specific maintainers.
+          ALLOWLIST: ""
         run: |
           set -u
           for u in $ALLOWLIST; do
