@@ -28,7 +28,6 @@ const PATHS = [
   '/qapps/zenith',
   '/qapps/zenith/Contacts/ContactsDashboard',
   '/qapps/zenith/Contacts/FindContact',
-  '/apps/zenith/__staging_selftest_expect_404__',  // TEMP self-test: forces a FAIL to verify the PR comment; remove to go green
 ];
 
 const ERR_SIG = /(java\.lang\.|groovy\.lang\.|org\.moqui\.\w+Exception|freemarker\.core|ScreenRenderException|Error rendering|500 Internal Server Error|HTTP Status 500)/i;
