@@ -8,7 +8,7 @@ if not git:
     raise RuntimeError('Git must be on PATH')
 # PR #27's functional baseline, before adding the reference UI follow-up.
 # The separate POS runtime suite validates the deliberately changed service/guard code.
-base = os.environ.get('POS_REFERENCE_BASE_REF', '4dd5f348fc70c69100caf94001a532876fd5b976')
+base = os.environ.get('POS_REFERENCE_BASE_REF', 'fix/pos-functional-and-ui')
 runtime = Path(os.environ['POS_REFERENCE_RUNTIME_ROOT']).resolve()
 output = Path(os.environ['POS_REFERENCE_OUTPUT']).resolve()
 output.mkdir(parents=True, exist_ok=True)

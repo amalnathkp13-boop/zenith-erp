@@ -263,7 +263,7 @@
         ]]></script>
         <script><![CDATA[
             if (html_stylesheets == null) html_stylesheets = []
-            html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=278')
+            html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=279')
             html_stylesheets.add('/zenithstatic/css/my-subscription-reference.css?v=1')
             html_stylesheets.add('/zenithstatic/css/product-catalog.css?v=1')
             html_stylesheets.add('/zenithstatic/css/receiving-stock.css?v=14')
@@ -1168,7 +1168,7 @@
             <link rel="preconnect" href="https://fonts.googleapis.com"/>
             <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"/>
             <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
-            <link rel="stylesheet" href="/zenithstatic/css/zenith-theme-v4.css?v=278"/>
+            <link rel="stylesheet" href="/zenithstatic/css/zenith-theme-v4.css?v=279"/>
             <link rel="stylesheet" href="/zenithstatic/css/my-subscription-reference.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/product-catalog.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/barcode-module.css?v=1"/>
