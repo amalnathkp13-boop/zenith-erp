@@ -1,3320 +1,413 @@
 {
   "checks": [
-    {
-      "name": "Disposable login succeeds",
-      "pass": true,
-      "detail": {
-        "status": 302
-      }
-    },
-    {
-      "name": "Authenticated CSRF token exists",
-      "pass": true
-    },
-    {
-      "name": "Fresh fixture initialized",
-      "pass": true
-    },
-    {
-      "name": "Captured terminal exists before tests",
-      "pass": true
-    },
-    {
-      "name": "Independent billing probe includes POS and accounting",
-      "pass": true,
-      "detail": [
-        "ACCTG_TRANS",
-        "ACCTG_TRANS_ENTRY",
-        "INVOICE",
-        "INVOICE_ITEM",
-        "ORDER_HEADER",
-        "ORDER_ITEM",
-        "ORDER_PART",
-        "PAYMENT",
-        "POS_PAYMENT",
-        "POS_SESSION",
-        "POS_TRANSACTION",
-        "POS_TRANSACTION_ITEM"
-      ]
-    },
-    {
-      "name": "qapps: new stylesheet loaded",
-      "pass": true
-    },
-    {
-      "name": "Latest master shared label reservation reproduced",
-      "pass": true,
-      "detail": {
-        "padding": 152
-      }
-    },
-    {
-      "name": "Cash label reservation removed",
-      "pass": true
-    },
-    {
-      "name": "qapps: help initially collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps: help expands by keyboard",
-      "pass": true
-    },
-    {
-      "name": "qapps: help collapses by keyboard",
-      "pass": true
-    },
-    {
-      "name": "qapps: CashInForm submit receives pointer",
-      "pass": true
-    },
-    {
-      "name": "qapps: native CashIn commits exactly one correct row",
-      "pass": true,
-      "detail": [
-        {
-          "amount": "13.2500",
-          "entry_type": "CashIn"
-        }
-      ]
-    },
-    {
-      "name": "qapps: CashOutForm submit receives pointer",
-      "pass": true
-    },
-    {
-      "name": "qapps: native CashOut commits exactly one correct row",
-      "pass": true,
-      "detail": [
-        {
-          "amount": "7.5000",
-          "entry_type": "CashOut"
-        }
-      ]
-    },
-    {
-      "name": "qapps: native search filters persisted rows",
-      "pass": true
-    },
-    {
-      "name": "qapps: Reset is reachable",
-      "pass": true
-    },
-    {
-      "name": "qapps: Reset restores saved rows",
-      "pass": true
-    },
-    {
-      "name": "qapps: invalid Cash In creates no row",
-      "pass": true
-    },
-    {
-      "name": "qapps: unsupported table actions removed",
-      "pass": true
-    },
-    {
-      "name": "qapps: list status filter matches DB",
-      "pass": true
-    },
-    {
-      "name": "qapps: floor status filter agrees",
-      "pass": true
-    },
-    {
-      "name": "qapps: selected Delete enabled",
-      "pass": true
-    },
-    {
-      "name": "qapps: filtering clears hidden selection",
-      "pass": true
-    },
-    {
-      "name": "qapps: real Add Table modal opens",
-      "pass": true
-    },
-    {
-      "name": "qapps: Add Table persists independently",
-      "pass": true
-    },
-    {
-      "name": "qapps: table status persists",
-      "pass": true
-    },
-    {
-      "name": "qapps: Close Table persists",
-      "pass": true
-    },
-    {
-      "name": "qapps: Delete removes captured disposable table",
-      "pass": true
-    },
-    {
-      "name": "qapps: dashboard title stays visible",
-      "pass": true
-    },
-    {
-      "name": "qapps: custom dates open",
-      "pass": true
-    },
-    {
-      "name": "qapps: custom Apply receives pointer",
-      "pass": true
-    },
-    {
-      "name": "qapps: custom Apply submits real date range",
-      "pass": true
-    },
-    {
-      "name": "qapps Dashboard 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps Dashboard 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 244,
-        "right": 1420,
-        "height": 36,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "qapps 1440: custom Apply not covered",
-      "pass": true
-    },
-    {
-      "name": "qapps Dashboard 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps Dashboard 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 20,
-        "right": 744,
-        "height": 36,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "qapps 768: custom Apply not covered",
-      "pass": true
-    },
-    {
-      "name": "qapps Dashboard 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps Dashboard 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 14,
-        "right": 374,
-        "height": 54,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "qapps 390: custom Apply not covered",
-      "pass": true
-    },
-    {
-      "name": "qapps PosTransactions 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps PosTransactions 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 244,
-        "right": 1420,
-        "height": 36,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "qapps PosTransactions 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps PosTransactions 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 20,
-        "right": 744,
-        "height": 36,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "qapps PosTransactions 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps PosTransactions 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 14,
-        "right": 374,
-        "height": 36,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "qapps PosSessions 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps PosSessions 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 244,
-        "right": 1420,
-        "height": 36,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "qapps PosSessions 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps PosSessions 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 20,
-        "right": 744,
-        "height": 36,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "qapps PosSessions 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps PosSessions 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 14,
-        "right": 374,
-        "height": 36,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "qapps PosTerminals 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps PosTerminals 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 244,
-        "right": 1420,
-        "height": 36,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "qapps PosTerminals 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps PosTerminals 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 20,
-        "right": 744,
-        "height": 36,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "qapps PosTerminals 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps PosTerminals 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 14,
-        "right": 374,
-        "height": 36,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "qapps CreditBills 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps CreditBills 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 251,
-        "right": 1413,
-        "height": 35.140625,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "qapps CreditBills 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps CreditBills 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 741,
-        "height": 35.140625,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "qapps CreditBills 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps CreditBills 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 363,
-        "height": 35.140625,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "qapps CashEntry 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps CashEntry 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 244,
-        "right": 1420,
-        "height": 36,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "qapps CashFilter 1440: inputs remain usable",
-      "pass": true,
-      "detail": [
-        {
-          "width": 175.859375,
-          "left": 307,
-          "right": 482.859375
-        },
-        {
-          "width": 175.859375,
-          "left": 548.859375,
-          "right": 724.71875
-        },
-        {
-          "width": 179.859375,
-          "left": 760.71875,
-          "right": 940.578125
-        },
-        {
-          "width": 205.859375,
-          "left": 1002.578125,
-          "right": 1208.4375
-        }
-      ]
-    },
-    {
-      "name": "qapps CashInForm 1440: inputs remain usable",
-      "pass": true,
-      "detail": [
-        {
-          "width": 476,
-          "left": 289,
-          "right": 765
-        },
-        {
-          "width": 171,
-          "left": 319,
-          "right": 490
-        },
-        {
-          "width": 231,
-          "left": 560,
-          "right": 791
-        },
-        {
-          "width": 205,
-          "left": 289,
-          "right": 494
-        },
-        {
-          "width": 231,
-          "left": 289,
-          "right": 520
-        },
-        {
-          "width": 231,
-          "left": 560,
-          "right": 791
-        }
-      ]
-    },
-    {
-      "name": "qapps CashOutForm 1440: inputs remain usable",
-      "pass": true,
-      "detail": [
-        {
-          "width": 476,
-          "left": 873,
-          "right": 1349
-        },
-        {
-          "width": 171,
-          "left": 903,
-          "right": 1074
-        },
-        {
-          "width": 231,
-          "left": 1144,
-          "right": 1375
-        },
-        {
-          "width": 103.1875,
-          "left": 974.8125,
-          "right": 1078
-        },
-        {
-          "width": 231,
-          "left": 873,
-          "right": 1104
-        },
-        {
-          "width": 231,
-          "left": 1144,
-          "right": 1375
-        }
-      ]
-    },
-    {
-      "name": "qapps 1440: filter labels do not collide with inputs",
-      "pass": true
-    },
-    {
-      "name": "qapps 1440: Cash In submit remains clickable",
-      "pass": true
-    },
-    {
-      "name": "qapps 1440: Cash Out submit remains clickable",
-      "pass": true
-    },
-    {
-      "name": "qapps CashEntry 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps CashEntry 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 20,
-        "right": 744,
-        "height": 36,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "qapps CashFilter 768: inputs remain usable",
-      "pass": true,
-      "detail": [
-        {
-          "width": 281,
-          "left": 83,
-          "right": 364
-        },
-        {
-          "width": 281,
-          "left": 430,
-          "right": 711
-        },
-        {
-          "width": 285,
-          "left": 53,
-          "right": 338
-        },
-        {
-          "width": 311,
-          "left": 400,
-          "right": 711
-        }
-      ]
-    },
-    {
-      "name": "qapps CashInForm 768: inputs remain usable",
-      "pass": true,
-      "detail": [
-        {
-          "width": 608,
-          "left": 65,
-          "right": 673
-        },
-        {
-          "width": 237,
-          "left": 95,
-          "right": 332
-        },
-        {
-          "width": 297,
-          "left": 402,
-          "right": 699
-        },
-        {
-          "width": 94.65625,
-          "left": 241.34375,
-          "right": 336
-        },
-        {
-          "width": 297,
-          "left": 65,
-          "right": 362
-        },
-        {
-          "width": 297,
-          "left": 402,
-          "right": 699
-        }
-      ]
-    },
-    {
-      "name": "qapps CashOutForm 768: inputs remain usable",
-      "pass": true,
-      "detail": [
-        {
-          "width": 608,
-          "left": 65,
-          "right": 673
-        },
-        {
-          "width": 237,
-          "left": 95,
-          "right": 332
-        },
-        {
-          "width": 297,
-          "left": 402,
-          "right": 699
-        },
-        {
-          "width": 169.1875,
-          "left": 166.8125,
-          "right": 336
-        },
-        {
-          "width": 297,
-          "left": 65,
-          "right": 362
-        },
-        {
-          "width": 297,
-          "left": 402,
-          "right": 699
-        }
-      ]
-    },
-    {
-      "name": "qapps 768: filter labels do not collide with inputs",
-      "pass": true
-    },
-    {
-      "name": "qapps 768: Cash In submit remains clickable",
-      "pass": true
-    },
-    {
-      "name": "qapps 768: Cash Out submit remains clickable",
-      "pass": true
-    },
-    {
-      "name": "qapps CashEntry 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps CashEntry 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 14,
-        "right": 374,
-        "height": 36,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "qapps CashFilter 390: inputs remain usable",
-      "pass": true,
-      "detail": [
-        {
-          "width": 260,
-          "left": 79,
-          "right": 339
-        },
-        {
-          "width": 260,
-          "left": 79,
-          "right": 339
-        },
-        {
-          "width": 264,
-          "left": 49,
-          "right": 313
-        },
-        {
-          "width": 290,
-          "left": 49,
-          "right": 339
-        }
-      ]
-    },
-    {
-      "name": "qapps CashInForm 390: inputs remain usable",
-      "pass": true,
-      "detail": [
-        {
-          "width": 256,
-          "left": 53,
-          "right": 309
-        },
-        {
-          "width": 222,
-          "left": 83,
-          "right": 305
-        },
-        {
-          "width": 282,
-          "left": 53,
-          "right": 335
-        },
-        {
-          "width": 79.65625,
-          "left": 229.34375,
-          "right": 309
-        },
-        {
-          "width": 282,
-          "left": 53,
-          "right": 335
-        },
-        {
-          "width": 282,
-          "left": 53,
-          "right": 335
-        }
-      ]
-    },
-    {
-      "name": "qapps CashOutForm 390: inputs remain usable",
-      "pass": true,
-      "detail": [
-        {
-          "width": 256,
-          "left": 53,
-          "right": 309
-        },
-        {
-          "width": 222,
-          "left": 83,
-          "right": 305
-        },
-        {
-          "width": 282,
-          "left": 53,
-          "right": 335
-        },
-        {
-          "width": 154.1875,
-          "left": 154.8125,
-          "right": 309
-        },
-        {
-          "width": 282,
-          "left": 53,
-          "right": 335
-        },
-        {
-          "width": 282,
-          "left": 53,
-          "right": 335
-        }
-      ]
-    },
-    {
-      "name": "qapps 390: filter labels do not collide with inputs",
-      "pass": true
-    },
-    {
-      "name": "qapps 390: Cash In submit remains clickable",
-      "pass": true
-    },
-    {
-      "name": "qapps 390: Cash Out submit remains clickable",
-      "pass": true
-    },
-    {
-      "name": "qapps DailySummary 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps DailySummary 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 244,
-        "right": 1420,
-        "height": 36,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "qapps DailySummary 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps DailySummary 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 20,
-        "right": 744,
-        "height": 36,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "qapps DailySummary 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps DailySummary 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 14,
-        "right": 374,
-        "height": 36,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "qapps Expenses 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps Expenses 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 244,
-        "right": 1420,
-        "height": 36,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "qapps Expenses 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps Expenses 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 20,
-        "right": 744,
-        "height": 36,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "qapps Expenses 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps Expenses 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 14,
-        "right": 374,
-        "height": 36,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "qapps Wastage 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps 1440: Wastage loads real empty results rather than a dead loading panel",
-      "pass": true
-    },
-    {
-      "name": "qapps Wastage 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 244,
-        "right": 1420,
-        "height": 36,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "qapps Wastage 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps 768: Wastage loads real empty results rather than a dead loading panel",
-      "pass": true
-    },
-    {
-      "name": "qapps Wastage 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 20,
-        "right": 744,
-        "height": 36,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "qapps Wastage 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps 390: Wastage loads real empty results rather than a dead loading panel",
-      "pass": true
-    },
-    {
-      "name": "qapps Wastage 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 14,
-        "right": 374,
-        "height": 36,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "qapps Stock 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps Stock 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 244,
-        "right": 1420,
-        "height": 36,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "qapps Stock 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps Stock 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 20,
-        "right": 744,
-        "height": 36,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "qapps Stock 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps Stock 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 14,
-        "right": 374,
-        "height": 36,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "qapps Reports 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps Reports 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 244,
-        "right": 1420,
-        "height": 36,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "qapps Reports 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps Reports 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 20,
-        "right": 744,
-        "height": 36,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "qapps Reports 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps Reports 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 14,
-        "right": 374,
-        "height": 36,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "qapps BillAuditReport 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps BillAuditReport 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 244,
-        "right": 1420,
-        "height": 36,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "qapps BillAuditReport 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps BillAuditReport 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 20,
-        "right": 744,
-        "height": 36,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "qapps BillAuditReport 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps BillAuditReport 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 14,
-        "right": 374,
-        "height": 36,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "qapps ReceiptConfig 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps ReceiptConfig 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 244,
-        "right": 1420,
-        "height": 36,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "qapps ReceiptConfig 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps ReceiptConfig 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 20,
-        "right": 744,
-        "height": 36,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "qapps ReceiptConfig 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps ReceiptConfig 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 14,
-        "right": 374,
-        "height": 36,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "qapps Kitchen/Tables 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps Kitchen/Tables 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 244,
-        "right": 1420,
-        "height": 36,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "qapps Kitchen/Tables 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps Kitchen/Tables 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 20,
-        "right": 744,
-        "height": 36,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "qapps Kitchen/Tables 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "qapps Kitchen/Tables 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 14,
-        "right": 374,
-        "height": 36,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "qapps POS 1440: shared topbar remains visible while scrolling",
-      "pass": true,
-      "detail": {
-        "before": {
-          "top": 0,
-          "height": 45
-        },
-        "after": {
-          "top": 0,
-          "height": 45,
-          "scrollY": 997
-        }
-      }
-    },
-    {
-      "name": "qapps POS 1440: shared topbar returns without a layout jump",
-      "pass": true
-    },
-    {
-      "name": "qapps POS 390: shared topbar remains visible while scrolling",
-      "pass": true,
-      "detail": {
-        "before": {
-          "top": 0,
-          "height": 49
-        },
-        "after": {
-          "top": 0,
-          "height": 49,
-          "scrollY": 2403
-        }
-      }
-    },
-    {
-      "name": "qapps POS 390: shared topbar returns without a layout jump",
-      "pass": true
-    },
-    {
-      "name": "qapps Contacts 1440: shared topbar remains visible while scrolling",
-      "pass": true,
-      "detail": {
-        "before": {
-          "top": 0,
-          "height": 45
-        },
-        "after": {
-          "top": 0,
-          "height": 45,
-          "scrollY": 266
-        }
-      }
-    },
-    {
-      "name": "qapps Contacts 1440: shared topbar returns without a layout jump",
-      "pass": true
-    },
-    {
-      "name": "qapps Contacts 390: shared topbar remains visible while scrolling",
-      "pass": true,
-      "detail": {
-        "before": {
-          "top": 0,
-          "height": 131
-        },
-        "after": {
-          "top": 0,
-          "height": 131,
-          "scrollY": 523
-        }
-      }
-    },
-    {
-      "name": "qapps Contacts 390: shared topbar returns without a layout jump",
-      "pass": true
-    },
-    {
-      "name": "qapps Sales 1440: shared topbar remains visible while scrolling",
-      "pass": true,
-      "detail": {
-        "before": {
-          "top": 0,
-          "height": 45
-        },
-        "after": {
-          "top": 0,
-          "height": 45,
-          "scrollY": 1051
-        }
-      }
-    },
-    {
-      "name": "qapps Sales 1440: shared topbar returns without a layout jump",
-      "pass": true
-    },
-    {
-      "name": "qapps Sales 390: shared topbar remains visible while scrolling",
-      "pass": true,
-      "detail": {
-        "before": {
-          "top": 0,
-          "height": 131
-        },
-        "after": {
-          "top": 0,
-          "height": 131,
-          "scrollY": 2059
-        }
-      }
-    },
-    {
-      "name": "qapps Sales 390: shared topbar returns without a layout jump",
-      "pass": true
-    },
-    {
-      "name": "qapps Purchase 1440: shared topbar remains visible while scrolling",
-      "pass": true,
-      "detail": {
-        "before": {
-          "top": 0,
-          "height": 45
-        },
-        "after": {
-          "top": 0,
-          "height": 45,
-          "scrollY": 241
-        }
-      }
-    },
-    {
-      "name": "qapps Purchase 1440: shared topbar returns without a layout jump",
-      "pass": true
-    },
-    {
-      "name": "qapps Purchase 390: shared topbar remains visible while scrolling",
-      "pass": true,
-      "detail": {
-        "before": {
-          "top": 0,
-          "height": 49
-        },
-        "after": {
-          "top": 0,
-          "height": 49,
-          "scrollY": 823
-        }
-      }
-    },
-    {
-      "name": "qapps Purchase 390: shared topbar returns without a layout jump",
-      "pass": true
-    },
-    {
-      "name": "apps: new stylesheet loaded",
-      "pass": true
-    },
-    {
-      "name": "apps: help initially collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps: help expands by keyboard",
-      "pass": true
-    },
-    {
-      "name": "apps: help collapses by keyboard",
-      "pass": true
-    },
-    {
-      "name": "apps: CashInForm submit receives pointer",
-      "pass": true
-    },
-    {
-      "name": "apps: native CashIn commits exactly one correct row",
-      "pass": true,
-      "detail": [
-        {
-          "amount": "13.2500",
-          "entry_type": "CashIn"
-        }
-      ]
-    },
-    {
-      "name": "apps: CashOutForm submit receives pointer",
-      "pass": true
-    },
-    {
-      "name": "apps: native CashOut commits exactly one correct row",
-      "pass": true,
-      "detail": [
-        {
-          "amount": "7.5000",
-          "entry_type": "CashOut"
-        }
-      ]
-    },
-    {
-      "name": "apps: native search filters persisted rows",
-      "pass": true
-    },
-    {
-      "name": "apps: Reset is reachable",
-      "pass": true
-    },
-    {
-      "name": "apps: Reset restores saved rows",
-      "pass": true
-    },
-    {
-      "name": "apps: invalid Cash In creates no row",
-      "pass": true
-    },
-    {
-      "name": "apps: unsupported table actions removed",
-      "pass": true
-    },
-    {
-      "name": "apps: list status filter matches DB",
-      "pass": true
-    },
-    {
-      "name": "apps: floor status filter agrees",
-      "pass": true
-    },
-    {
-      "name": "apps: selected Delete enabled",
-      "pass": true
-    },
-    {
-      "name": "apps: filtering clears hidden selection",
-      "pass": true
-    },
-    {
-      "name": "apps: real Add Table modal opens",
-      "pass": true
-    },
-    {
-      "name": "apps: Add Table persists independently",
-      "pass": true
-    },
-    {
-      "name": "apps: table status persists",
-      "pass": true
-    },
-    {
-      "name": "apps: Close Table persists",
-      "pass": true
-    },
-    {
-      "name": "apps: Delete removes captured disposable table",
-      "pass": true
-    },
-    {
-      "name": "apps: dashboard title stays visible",
-      "pass": true
-    },
-    {
-      "name": "apps: custom dates open",
-      "pass": true
-    },
-    {
-      "name": "apps: custom Apply receives pointer",
-      "pass": true
-    },
-    {
-      "name": "apps: custom Apply submits real date range",
-      "pass": true
-    },
-    {
-      "name": "apps Dashboard 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps Dashboard 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 251,
-        "right": 1413,
-        "height": 35.140625,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "apps 1440: custom Apply not covered",
-      "pass": true
-    },
-    {
-      "name": "apps Dashboard 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps Dashboard 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 741,
-        "height": 35.140625,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "apps 768: custom Apply not covered",
-      "pass": true
-    },
-    {
-      "name": "apps Dashboard 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps Dashboard 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 363,
-        "height": 52.28125,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "apps 390: custom Apply not covered",
-      "pass": true
-    },
-    {
-      "name": "apps PosTransactions 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps PosTransactions 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 251,
-        "right": 1413,
-        "height": 35.140625,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "apps PosTransactions 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps PosTransactions 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 741,
-        "height": 35.140625,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "apps PosTransactions 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps PosTransactions 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 363,
-        "height": 35.140625,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "apps PosSessions 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps PosSessions 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 251,
-        "right": 1413,
-        "height": 35.140625,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "apps PosSessions 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps PosSessions 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 741,
-        "height": 35.140625,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "apps PosSessions 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps PosSessions 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 363,
-        "height": 35.140625,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "apps PosTerminals 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps PosTerminals 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 251,
-        "right": 1413,
-        "height": 35.140625,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "apps PosTerminals 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps PosTerminals 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 741,
-        "height": 35.140625,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "apps PosTerminals 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps PosTerminals 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 363,
-        "height": 35.140625,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "apps CreditBills 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps CreditBills 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 251,
-        "right": 1413,
-        "height": 35.140625,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "apps CreditBills 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps CreditBills 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 741,
-        "height": 35.140625,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "apps CreditBills 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps CreditBills 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 363,
-        "height": 35.140625,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "apps CashEntry 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps CashEntry 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 251,
-        "right": 1413,
-        "height": 35.140625,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "apps CashFilter 1440: inputs remain usable",
-      "pass": true,
-      "detail": [
-        {
-          "width": 188.875,
-          "left": 472.875,
-          "right": 661.75
-        },
-        {
-          "width": 188.875,
-          "left": 673.75,
-          "right": 862.625
-        },
-        {
-          "width": 233,
-          "left": 1075.515625,
-          "right": 1308.515625
-        }
-      ]
-    },
-    {
-      "name": "apps CashInForm 1440: inputs remain usable",
-      "pass": true,
-      "detail": [
-        {
-          "width": 223,
-          "left": 257,
-          "right": 480
-        },
-        {
-          "width": 279,
-          "left": 536,
-          "right": 815
-        },
-        {
-          "width": 279,
-          "left": 257,
-          "right": 536
-        },
-        {
-          "width": 279,
-          "left": 536,
-          "right": 815
-        }
-      ]
-    },
-    {
-      "name": "apps CashOutForm 1440: inputs remain usable",
-      "pass": true,
-      "detail": [
-        {
-          "width": 223,
-          "left": 849,
-          "right": 1072
-        },
-        {
-          "width": 279,
-          "left": 1128,
-          "right": 1407
-        },
-        {
-          "width": 279,
-          "left": 849,
-          "right": 1128
-        },
-        {
-          "width": 279,
-          "left": 1128,
-          "right": 1407
-        }
-      ]
-    },
-    {
-      "name": "apps 1440: Cash In submit remains clickable",
-      "pass": true
-    },
-    {
-      "name": "apps 1440: Cash Out submit remains clickable",
-      "pass": true
-    },
-    {
-      "name": "apps CashEntry 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps CashEntry 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 741,
-        "height": 35.140625,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "apps CashFilter 768: inputs remain usable",
-      "pass": true,
-      "detail": [
-        {
-          "width": 330,
-          "left": 390,
-          "right": 720
-        },
-        {
-          "width": 330,
-          "left": 48,
-          "right": 378
-        },
-        {
-          "width": 330,
-          "left": 48,
-          "right": 378
-        }
-      ]
-    },
-    {
-      "name": "apps CashInForm 768: inputs remain usable",
-      "pass": true,
-      "detail": [
-        {
-          "width": 243,
-          "left": 33,
-          "right": 276
-        },
-        {
-          "width": 351,
-          "left": 384,
-          "right": 735
-        },
-        {
-          "width": 351,
-          "left": 33,
-          "right": 384
-        },
-        {
-          "width": 351,
-          "left": 384,
-          "right": 735
-        }
-      ]
-    },
-    {
-      "name": "apps CashOutForm 768: inputs remain usable",
-      "pass": true,
-      "detail": [
-        {
-          "width": 243,
-          "left": 33,
-          "right": 276
-        },
-        {
-          "width": 351,
-          "left": 384,
-          "right": 735
-        },
-        {
-          "width": 351,
-          "left": 33,
-          "right": 384
-        },
-        {
-          "width": 351,
-          "left": 384,
-          "right": 735
-        }
-      ]
-    },
-    {
-      "name": "apps 768: Cash In submit remains clickable",
-      "pass": true
-    },
-    {
-      "name": "apps 768: Cash Out submit remains clickable",
-      "pass": true
-    },
-    {
-      "name": "apps CashEntry 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps CashEntry 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 363,
-        "height": 35.140625,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "apps CashFilter 390: inputs remain usable",
-      "pass": true,
-      "detail": [
-        {
-          "width": 294,
-          "left": 48,
-          "right": 342
-        },
-        {
-          "width": 294,
-          "left": 48,
-          "right": 342
-        },
-        {
-          "width": 294,
-          "left": 48,
-          "right": 342
-        }
-      ]
-    },
-    {
-      "name": "apps CashInForm 390: inputs remain usable",
-      "pass": true,
-      "detail": [
-        {
-          "width": 243,
-          "left": 33,
-          "right": 276
-        },
-        {
-          "width": 324,
-          "left": 33,
-          "right": 357
-        },
-        {
-          "width": 324,
-          "left": 33,
-          "right": 357
-        },
-        {
-          "width": 324,
-          "left": 33,
-          "right": 357
-        }
-      ]
-    },
-    {
-      "name": "apps CashOutForm 390: inputs remain usable",
-      "pass": true,
-      "detail": [
-        {
-          "width": 243,
-          "left": 33,
-          "right": 276
-        },
-        {
-          "width": 324,
-          "left": 33,
-          "right": 357
-        },
-        {
-          "width": 324,
-          "left": 33,
-          "right": 357
-        },
-        {
-          "width": 324,
-          "left": 33,
-          "right": 357
-        }
-      ]
-    },
-    {
-      "name": "apps 390: Cash In submit remains clickable",
-      "pass": true
-    },
-    {
-      "name": "apps 390: Cash Out submit remains clickable",
-      "pass": true
-    },
-    {
-      "name": "apps DailySummary 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps DailySummary 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 251,
-        "right": 1413,
-        "height": 35.140625,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "apps DailySummary 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps DailySummary 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 741,
-        "height": 35.140625,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "apps DailySummary 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps DailySummary 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 363,
-        "height": 35.140625,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "apps Expenses 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps Expenses 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 251,
-        "right": 1413,
-        "height": 35.140625,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "apps Expenses 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps Expenses 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 741,
-        "height": 35.140625,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "apps Expenses 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps Expenses 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 363,
-        "height": 35.140625,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "apps Wastage 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps 1440: Wastage loads real empty results rather than a dead loading panel",
-      "pass": true
-    },
-    {
-      "name": "apps Wastage 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 251,
-        "right": 1413,
-        "height": 35.140625,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "apps Wastage 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps 768: Wastage loads real empty results rather than a dead loading panel",
-      "pass": true
-    },
-    {
-      "name": "apps Wastage 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 741,
-        "height": 35.140625,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "apps Wastage 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps 390: Wastage loads real empty results rather than a dead loading panel",
-      "pass": true
-    },
-    {
-      "name": "apps Wastage 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 363,
-        "height": 35.140625,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "apps Stock 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps Stock 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 251,
-        "right": 1413,
-        "height": 35.140625,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "apps Stock 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps Stock 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 741,
-        "height": 35.140625,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "apps Stock 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps Stock 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 363,
-        "height": 35.140625,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "apps Reports 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps Reports 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 251,
-        "right": 1413,
-        "height": 35.140625,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "apps Reports 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps Reports 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 741,
-        "height": 35.140625,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "apps Reports 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps Reports 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 363,
-        "height": 35.140625,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "apps BillAuditReport 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps BillAuditReport 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 251,
-        "right": 1413,
-        "height": 35.140625,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "apps BillAuditReport 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps BillAuditReport 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 741,
-        "height": 35.140625,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "apps BillAuditReport 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps BillAuditReport 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 363,
-        "height": 35.140625,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "apps ReceiptConfig 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps ReceiptConfig 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 251,
-        "right": 1413,
-        "height": 35.140625,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "apps ReceiptConfig 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps ReceiptConfig 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 741,
-        "height": 35.140625,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "apps ReceiptConfig 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps ReceiptConfig 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 363,
-        "height": 35.140625,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "apps Kitchen/Tables 1440: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps Kitchen/Tables 1440: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 251,
-        "right": 1413,
-        "height": 35.140625,
-        "viewport": 1440
-      }
-    },
-    {
-      "name": "apps Kitchen/Tables 768: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps Kitchen/Tables 768: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 741,
-        "height": 35.140625,
-        "viewport": 768
-      }
-    },
-    {
-      "name": "apps Kitchen/Tables 390: retained help renders collapsed",
-      "pass": true
-    },
-    {
-      "name": "apps Kitchen/Tables 390: compact help inside viewport",
-      "pass": true,
-      "detail": {
-        "left": 27,
-        "right": 363,
-        "height": 35.140625,
-        "viewport": 390
-      }
-    },
-    {
-      "name": "apps POS 1440: shared topbar remains visible while scrolling",
-      "pass": true,
-      "detail": {
-        "before": {
-          "top": 0,
-          "height": 51
-        },
-        "after": {
-          "top": 0,
-          "height": 51,
-          "scrollY": 1192
-        }
-      }
-    },
-    {
-      "name": "apps POS 1440: shared topbar returns without a layout jump",
-      "pass": true
-    },
-    {
-      "name": "apps POS 390: shared topbar remains visible while scrolling",
-      "pass": true,
-      "detail": {
-        "before": {
-          "top": 0,
-          "height": 51
-        },
-        "after": {
-          "top": 0,
-          "height": 51,
-          "scrollY": 2700
-        }
-      }
-    },
-    {
-      "name": "apps POS 390: shared topbar returns without a layout jump",
-      "pass": true
-    },
-    {
-      "name": "POS: mobile navigation receives pointer above the sticky topbar",
-      "pass": true
-    },
-    {
-      "name": "POS: mobile sidebar opens",
-      "pass": true
-    },
-    {
-      "name": "POS: mobile sidebar closes",
-      "pass": true
-    },
-    {
-      "name": "apps Contacts 1440: shared topbar remains visible while scrolling",
-      "pass": true,
-      "detail": {
-        "before": {
-          "top": 0,
-          "height": 51
-        },
-        "after": {
-          "top": 0,
-          "height": 51,
-          "scrollY": 405
-        }
-      }
-    },
-    {
-      "name": "apps Contacts 1440: shared topbar returns without a layout jump",
-      "pass": true
-    },
-    {
-      "name": "apps Contacts 390: shared topbar remains visible while scrolling",
-      "pass": true,
-      "detail": {
-        "before": {
-          "top": 0,
-          "height": 51
-        },
-        "after": {
-          "top": 0,
-          "height": 51,
-          "scrollY": 626
-        }
-      }
-    },
-    {
-      "name": "apps Contacts 390: shared topbar returns without a layout jump",
-      "pass": true
-    },
-    {
-      "name": "Contacts: mobile navigation receives pointer above the sticky topbar",
-      "pass": true
-    },
-    {
-      "name": "Contacts: mobile sidebar opens",
-      "pass": true
-    },
-    {
-      "name": "Contacts: mobile sidebar closes",
-      "pass": true
-    },
-    {
-      "name": "apps Sales 1440: shared topbar remains visible while scrolling",
-      "pass": true,
-      "detail": {
-        "before": {
-          "top": 0,
-          "height": 51
-        },
-        "after": {
-          "top": 0,
-          "height": 51,
-          "scrollY": 1576
-        }
-      }
-    },
-    {
-      "name": "apps Sales 1440: shared topbar returns without a layout jump",
-      "pass": true
-    },
-    {
-      "name": "apps Sales 390: shared topbar remains visible while scrolling",
-      "pass": true,
-      "detail": {
-        "before": {
-          "top": 0,
-          "height": 51
-        },
-        "after": {
-          "top": 0,
-          "height": 51,
-          "scrollY": 2391
-        }
-      }
-    },
-    {
-      "name": "apps Sales 390: shared topbar returns without a layout jump",
-      "pass": true
-    },
-    {
-      "name": "Sales: mobile navigation receives pointer above the sticky topbar",
-      "pass": true
-    },
-    {
-      "name": "Sales: mobile sidebar opens",
-      "pass": true
-    },
-    {
-      "name": "Sales: mobile sidebar closes",
-      "pass": true
-    },
-    {
-      "name": "apps Purchase 1440: shared topbar remains visible while scrolling",
-      "pass": true,
-      "detail": {
-        "before": {
-          "top": 0,
-          "height": 51
-        },
-        "after": {
-          "top": 0,
-          "height": 51,
-          "scrollY": 385
-        }
-      }
-    },
-    {
-      "name": "apps Purchase 1440: shared topbar returns without a layout jump",
-      "pass": true
-    },
-    {
-      "name": "apps Purchase 390: shared topbar remains visible while scrolling",
-      "pass": true,
-      "detail": {
-        "before": {
-          "top": 0,
-          "height": 51
-        },
-        "after": {
-          "top": 0,
-          "height": 51,
-          "scrollY": 974
-        }
-      }
-    },
-    {
-      "name": "apps Purchase 390: shared topbar returns without a layout jump",
-      "pass": true
-    },
-    {
-      "name": "Purchase: mobile navigation receives pointer above the sticky topbar",
-      "pass": true
-    },
-    {
-      "name": "Purchase: mobile sidebar opens",
-      "pass": true
-    },
-    {
-      "name": "Purchase: mobile sidebar closes",
-      "pass": true
-    },
-    {
-      "name": "Independent billing probe includes POS and accounting",
-      "pass": true,
-      "detail": [
-        "ACCTG_TRANS",
-        "ACCTG_TRANS_ENTRY",
-        "INVOICE",
-        "INVOICE_ITEM",
-        "ORDER_HEADER",
-        "ORDER_ITEM",
-        "ORDER_PART",
-        "PAYMENT",
-        "POS_PAYMENT",
-        "POS_SESSION",
-        "POS_TRANSACTION",
-        "POS_TRANSACTION_ITEM"
-      ]
-    },
-    {
-      "name": "Billing/session/issued invoice state unchanged by UI checks",
-      "pass": true
-    },
-    {
-      "name": "No browser exceptions",
-      "pass": true,
-      "detail": []
-    }
+    {"name": "Disposable login succeeds","pass": true,"detail": {"status": 302}},
+    {"name": "Authenticated CSRF token exists","pass": true},
+    {"name": "Fresh fixture initialized","pass": true},
+    {"name": "Captured terminal exists before tests","pass": true},
+    {"name": "Independent billing probe includes POS and accounting","pass": true,"detail": ["ACCTG_TRANS","ACCTG_TRANS_ENTRY","INVOICE","INVOICE_ITEM","ORDER_HEADER","ORDER_ITEM","ORDER_PART","PAYMENT","POS_PAYMENT","POS_SESSION","POS_TRANSACTION","POS_TRANSACTION_ITEM"]},
+    {"name": "qapps: new stylesheet loaded","pass": true},
+    {"name": "Latest master shared label reservation reproduced","pass": true,"detail": {"padding": 152}},
+    {"name": "Cash label reservation removed","pass": true},
+    {"name": "qapps: help initially collapsed","pass": true},
+    {"name": "qapps: help expands by keyboard","pass": true},
+    {"name": "qapps: help collapses by keyboard","pass": true},
+    {"name": "qapps: CashInForm submit receives pointer","pass": true},
+    {"name": "qapps: native CashIn commits exactly one correct row","pass": true,"detail": [{"amount": "13.2500","entry_type": "CashIn"}]},
+    {"name": "qapps: CashOutForm submit receives pointer","pass": true},
+    {"name": "qapps: native CashOut commits exactly one correct row","pass": true,"detail": [{"amount": "7.5000","entry_type": "CashOut"}]},
+    {"name": "qapps: native search filters persisted rows","pass": true},
+    {"name": "qapps: Reset is reachable","pass": true},
+    {"name": "qapps: Reset restores saved rows","pass": true},
+    {"name": "qapps: invalid Cash In creates no row","pass": true},
+    {"name": "qapps: unsupported table actions removed","pass": true},
+    {"name": "qapps: list status filter matches DB","pass": true},
+    {"name": "qapps: floor status filter agrees","pass": true},
+    {"name": "qapps: selected Delete enabled","pass": true},
+    {"name": "qapps: filtering clears hidden selection","pass": true},
+    {"name": "qapps: real Add Table modal opens","pass": true},
+    {"name": "qapps: Add Table persists independently","pass": true},
+    {"name": "qapps: table status persists","pass": true},
+    {"name": "qapps: Close Table persists","pass": true},
+    {"name": "qapps: Delete removes captured disposable table","pass": true},
+    {"name": "qapps: dashboard title stays visible","pass": true},
+    {"name": "qapps: custom dates open","pass": true},
+    {"name": "qapps: custom Apply receives pointer","pass": true},
+    {"name": "qapps: custom Apply submits real date range","pass": true},
+    {"name": "qapps Dashboard 1440: retained help renders collapsed","pass": true},
+    {"name": "qapps Dashboard 1440: compact help inside viewport","pass": true,"detail": {"left": 244,"right": 1420,"height": 36,"viewport": 1440}},
+    {"name": "qapps 1440: custom Apply not covered","pass": true},
+    {"name": "qapps Dashboard 768: retained help renders collapsed","pass": true},
+    {"name": "qapps Dashboard 768: compact help inside viewport","pass": true,"detail": {"left": 20,"right": 744,"height": 36,"viewport": 768}},
+    {"name": "qapps 768: custom Apply not covered","pass": true},
+    {"name": "qapps Dashboard 390: retained help renders collapsed","pass": true},
+    {"name": "qapps Dashboard 390: compact help inside viewport","pass": true,"detail": {"left": 14,"right": 374,"height": 54,"viewport": 390}},
+    {"name": "qapps 390: custom Apply not covered","pass": true},
+    {"name": "qapps PosTransactions 1440: retained help renders collapsed","pass": true},
+    {"name": "qapps PosTransactions 1440: compact help inside viewport","pass": true,"detail": {"left": 244,"right": 1420,"height": 36,"viewport": 1440}},
+    {"name": "qapps PosTransactions 768: retained help renders collapsed","pass": true},
+    {"name": "qapps PosTransactions 768: compact help inside viewport","pass": true,"detail": {"left": 20,"right": 744,"height": 36,"viewport": 768}},
+    {"name": "qapps PosTransactions 390: retained help renders collapsed","pass": true},
+    {"name": "qapps PosTransactions 390: compact help inside viewport","pass": true,"detail": {"left": 14,"right": 374,"height": 36,"viewport": 390}},
+    {"name": "qapps PosSessions 1440: retained help renders collapsed","pass": true},
+    {"name": "qapps PosSessions 1440: compact help inside viewport","pass": true,"detail": {"left": 244,"right": 1420,"height": 36,"viewport": 1440}},
+    {"name": "qapps PosSessions 768: retained help renders collapsed","pass": true},
+    {"name": "qapps PosSessions 768: compact help inside viewport","pass": true,"detail": {"left": 20,"right": 744,"height": 36,"viewport": 768}},
+    {"name": "qapps PosSessions 390: retained help renders collapsed","pass": true},
+    {"name": "qapps PosSessions 390: compact help inside viewport","pass": true,"detail": {"left": 14,"right": 374,"height": 36,"viewport": 390}},
+    {"name": "qapps PosTerminals 1440: retained help renders collapsed","pass": true},
+    {"name": "qapps PosTerminals 1440: compact help inside viewport","pass": true,"detail": {"left": 244,"right": 1420,"height": 36,"viewport": 1440}},
+    {"name": "qapps PosTerminals 768: retained help renders collapsed","pass": true},
+    {"name": "qapps PosTerminals 768: compact help inside viewport","pass": true,"detail": {"left": 20,"right": 744,"height": 36,"viewport": 768}},
+    {"name": "qapps PosTerminals 390: retained help renders collapsed","pass": true},
+    {"name": "qapps PosTerminals 390: compact help inside viewport","pass": true,"detail": {"left": 14,"right": 374,"height": 36,"viewport": 390}},
+    {"name": "qapps CreditBills 1440: retained help renders collapsed","pass": true},
+    {"name": "qapps CreditBills 1440: compact help inside viewport","pass": true,"detail": {"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440}},
+    {"name": "qapps CreditBills 768: retained help renders collapsed","pass": true},
+    {"name": "qapps CreditBills 768: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 741,"height": 35.140625,"viewport": 768}},
+    {"name": "qapps CreditBills 390: retained help renders collapsed","pass": true},
+    {"name": "qapps CreditBills 390: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 363,"height": 35.140625,"viewport": 390}},
+    {"name": "qapps CashEntry 1440: retained help renders collapsed","pass": true},
+    {"name": "qapps CashEntry 1440: compact help inside viewport","pass": true,"detail": {"left": 244,"right": 1420,"height": 36,"viewport": 1440}},
+    {"name": "qapps CashFilter 1440: inputs remain usable","pass": true,"detail": [{"width": 175.859375,"left": 307,"right": 482.859375},{"width": 175.859375,"left": 548.859375,"right": 724.71875},{"width": 179.859375,"left": 760.71875,"right": 940.578125},{"width": 205.859375,"left": 1002.578125,"right": 1208.4375}]},
+    {"name": "qapps CashInForm 1440: inputs remain usable","pass": true,"detail": [{"width": 476,"left": 289,"right": 765},{"width": 171,"left": 319,"right": 490},{"width": 231,"left": 560,"right": 791},{"width": 205,"left": 289,"right": 494},{"width": 231,"left": 289,"right": 520},{"width": 231,"left": 560,"right": 791}]},
+    {"name": "qapps CashOutForm 1440: inputs remain usable","pass": true,"detail": [{"width": 476,"left": 873,"right": 1349},{"width": 171,"left": 903,"right": 1074},{"width": 231,"left": 1144,"right": 1375},{"width": 103.1875,"left": 974.8125,"right": 1078},{"width": 231,"left": 873,"right": 1104},{"width": 231,"left": 1144,"right": 1375}]},
+    {"name": "qapps 1440: filter labels do not collide with inputs","pass": true},
+    {"name": "qapps 1440: Cash In submit remains clickable","pass": true},
+    {"name": "qapps 1440: Cash Out submit remains clickable","pass": true},
+    {"name": "qapps CashEntry 768: retained help renders collapsed","pass": true},
+    {"name": "qapps CashEntry 768: compact help inside viewport","pass": true,"detail": {"left": 20,"right": 744,"height": 36,"viewport": 768}},
+    {"name": "qapps CashFilter 768: inputs remain usable","pass": true,"detail": [{"width": 281,"left": 83,"right": 364},{"width": 281,"left": 430,"right": 711},{"width": 285,"left": 53,"right": 338},{"width": 311,"left": 400,"right": 711}]},
+    {"name": "qapps CashInForm 768: inputs remain usable","pass": true,"detail": [{"width": 608,"left": 65,"right": 673},{"width": 237,"left": 95,"right": 332},{"width": 297,"left": 402,"right": 699},{"width": 94.65625,"left": 241.34375,"right": 336},{"width": 297,"left": 65,"right": 362},{"width": 297,"left": 402,"right": 699}]},
+    {"name": "qapps CashOutForm 768: inputs remain usable","pass": true,"detail": [{"width": 608,"left": 65,"right": 673},{"width": 237,"left": 95,"right": 332},{"width": 297,"left": 402,"right": 699},{"width": 169.1875,"left": 166.8125,"right": 336},{"width": 297,"left": 65,"right": 362},{"width": 297,"left": 402,"right": 699}]},
+    {"name": "qapps 768: filter labels do not collide with inputs","pass": true},
+    {"name": "qapps 768: Cash In submit remains clickable","pass": true},
+    {"name": "qapps 768: Cash Out submit remains clickable","pass": true},
+    {"name": "qapps CashEntry 390: retained help renders collapsed","pass": true},
+    {"name": "qapps CashEntry 390: compact help inside viewport","pass": true,"detail": {"left": 14,"right": 374,"height": 36,"viewport": 390}},
+    {"name": "qapps CashFilter 390: inputs remain usable","pass": true,"detail": [{"width": 260,"left": 79,"right": 339},{"width": 260,"left": 79,"right": 339},{"width": 264,"left": 49,"right": 313},{"width": 290,"left": 49,"right": 339}]},
+    {"name": "qapps CashInForm 390: inputs remain usable","pass": true,"detail": [{"width": 256,"left": 53,"right": 309},{"width": 222,"left": 83,"right": 305},{"width": 282,"left": 53,"right": 335},{"width": 79.65625,"left": 229.34375,"right": 309},{"width": 282,"left": 53,"right": 335},{"width": 282,"left": 53,"right": 335}]},
+    {"name": "qapps CashOutForm 390: inputs remain usable","pass": true,"detail": [{"width": 256,"left": 53,"right": 309},{"width": 222,"left": 83,"right": 305},{"width": 282,"left": 53,"right": 335},{"width": 154.1875,"left": 154.8125,"right": 309},{"width": 282,"left": 53,"right": 335},{"width": 282,"left": 53,"right": 335}]},
+    {"name": "qapps 390: filter labels do not collide with inputs","pass": true},
+    {"name": "qapps 390: Cash In submit remains clickable","pass": true},
+    {"name": "qapps 390: Cash Out submit remains clickable","pass": true},
+    {"name": "qapps DailySummary 1440: retained help renders collapsed","pass": true},
+    {"name": "qapps DailySummary 1440: compact help inside viewport","pass": true,"detail": {"left": 244,"right": 1420,"height": 36,"viewport": 1440}},
+    {"name": "qapps DailySummary 768: retained help renders collapsed","pass": true},
+    {"name": "qapps DailySummary 768: compact help inside viewport","pass": true,"detail": {"left": 20,"right": 744,"height": 36,"viewport": 768}},
+    {"name": "qapps DailySummary 390: retained help renders collapsed","pass": true},
+    {"name": "qapps DailySummary 390: compact help inside viewport","pass": true,"detail": {"left": 14,"right": 374,"height": 36,"viewport": 390}},
+    {"name": "qapps Expenses 1440: retained help renders collapsed","pass": true},
+    {"name": "qapps Expenses 1440: compact help inside viewport","pass": true,"detail": {"left": 244,"right": 1420,"height": 36,"viewport": 1440}},
+    {"name": "qapps Expenses 768: retained help renders collapsed","pass": true},
+    {"name": "qapps Expenses 768: compact help inside viewport","pass": true,"detail": {"left": 20,"right": 744,"height": 36,"viewport": 768}},
+    {"name": "qapps Expenses 390: retained help renders collapsed","pass": true},
+    {"name": "qapps Expenses 390: compact help inside viewport","pass": true,"detail": {"left": 14,"right": 374,"height": 36,"viewport": 390}},
+    {"name": "qapps Wastage 1440: retained help renders collapsed","pass": true},
+    {"name": "qapps 1440: Wastage loads real empty results rather than a dead loading panel","pass": true},
+    {"name": "qapps Wastage 1440: compact help inside viewport","pass": true,"detail": {"left": 244,"right": 1420,"height": 36,"viewport": 1440}},
+    {"name": "qapps Wastage 768: retained help renders collapsed","pass": true},
+    {"name": "qapps 768: Wastage loads real empty results rather than a dead loading panel","pass": true},
+    {"name": "qapps Wastage 768: compact help inside viewport","pass": true,"detail": {"left": 20,"right": 744,"height": 36,"viewport": 768}},
+    {"name": "qapps Wastage 390: retained help renders collapsed","pass": true},
+    {"name": "qapps 390: Wastage loads real empty results rather than a dead loading panel","pass": true},
+    {"name": "qapps Wastage 390: compact help inside viewport","pass": true,"detail": {"left": 14,"right": 374,"height": 36,"viewport": 390}},
+    {"name": "qapps Stock 1440: retained help renders collapsed","pass": true},
+    {"name": "qapps Stock 1440: compact help inside viewport","pass": true,"detail": {"left": 244,"right": 1420,"height": 36,"viewport": 1440}},
+    {"name": "qapps Stock 768: retained help renders collapsed","pass": true},
+    {"name": "qapps Stock 768: compact help inside viewport","pass": true,"detail": {"left": 20,"right": 744,"height": 36,"viewport": 768}},
+    {"name": "qapps Stock 390: retained help renders collapsed","pass": true},
+    {"name": "qapps Stock 390: compact help inside viewport","pass": true,"detail": {"left": 14,"right": 374,"height": 36,"viewport": 390}},
+    {"name": "qapps Reports 1440: retained help renders collapsed","pass": true},
+    {"name": "qapps Reports 1440: compact help inside viewport","pass": true,"detail": {"left": 244,"right": 1420,"height": 36,"viewport": 1440}},
+    {"name": "qapps Reports 768: retained help renders collapsed","pass": true},
+    {"name": "qapps Reports 768: compact help inside viewport","pass": true,"detail": {"left": 20,"right": 744,"height": 36,"viewport": 768}},
+    {"name": "qapps Reports 390: retained help renders collapsed","pass": true},
+    {"name": "qapps Reports 390: compact help inside viewport","pass": true,"detail": {"left": 14,"right": 374,"height": 36,"viewport": 390}},
+    {"name": "qapps BillAuditReport 1440: retained help renders collapsed","pass": true},
+    {"name": "qapps BillAuditReport 1440: compact help inside viewport","pass": true,"detail": {"left": 244,"right": 1420,"height": 36,"viewport": 1440}},
+    {"name": "qapps BillAuditReport 768: retained help renders collapsed","pass": true},
+    {"name": "qapps BillAuditReport 768: compact help inside viewport","pass": true,"detail": {"left": 20,"right": 744,"height": 36,"viewport": 768}},
+    {"name": "qapps BillAuditReport 390: retained help renders collapsed","pass": true},
+    {"name": "qapps BillAuditReport 390: compact help inside viewport","pass": true,"detail": {"left": 14,"right": 374,"height": 36,"viewport": 390}},
+    {"name": "qapps ReceiptConfig 1440: retained help renders collapsed","pass": true},
+    {"name": "qapps ReceiptConfig 1440: compact help inside viewport","pass": true,"detail": {"left": 244,"right": 1420,"height": 36,"viewport": 1440}},
+    {"name": "qapps ReceiptConfig 768: retained help renders collapsed","pass": true},
+    {"name": "qapps ReceiptConfig 768: compact help inside viewport","pass": true,"detail": {"left": 20,"right": 744,"height": 36,"viewport": 768}},
+    {"name": "qapps ReceiptConfig 390: retained help renders collapsed","pass": true},
+    {"name": "qapps ReceiptConfig 390: compact help inside viewport","pass": true,"detail": {"left": 14,"right": 374,"height": 36,"viewport": 390}},
+    {"name": "qapps Kitchen/Tables 1440: retained help renders collapsed","pass": true},
+    {"name": "qapps Kitchen/Tables 1440: compact help inside viewport","pass": true,"detail": {"left": 244,"right": 1420,"height": 36,"viewport": 1440}},
+    {"name": "qapps Kitchen/Tables 768: retained help renders collapsed","pass": true},
+    {"name": "qapps Kitchen/Tables 768: compact help inside viewport","pass": true,"detail": {"left": 20,"right": 744,"height": 36,"viewport": 768}},
+    {"name": "qapps Kitchen/Tables 390: retained help renders collapsed","pass": true},
+    {"name": "qapps Kitchen/Tables 390: compact help inside viewport","pass": true,"detail": {"left": 14,"right": 374,"height": 36,"viewport": 390}},
+    {"name": "qapps POS 1440: shared topbar remains visible while scrolling","pass": true,"detail": {"before": {"top": 0,"height": 45},"after": {"top": 0,"height": 45,"scrollY": 997}}},
+    {"name": "qapps POS 1440: shared topbar returns without a layout jump","pass": true},
+    {"name": "qapps POS 390: shared topbar remains visible while scrolling","pass": true,"detail": {"before": {"top": 0,"height": 49},"after": {"top": 0,"height": 49,"scrollY": 2403}}},
+    {"name": "qapps POS 390: shared topbar returns without a layout jump","pass": true},
+    {"name": "qapps Contacts 1440: shared topbar remains visible while scrolling","pass": true,"detail": {"before": {"top": 0,"height": 45},"after": {"top": 0,"height": 45,"scrollY": 266}}},
+    {"name": "qapps Contacts 1440: shared topbar returns without a layout jump","pass": true},
+    {"name": "qapps Contacts 390: shared topbar remains visible while scrolling","pass": true,"detail": {"before": {"top": 0,"height": 131},"after": {"top": 0,"height": 131,"scrollY": 523}}},
+    {"name": "qapps Contacts 390: shared topbar returns without a layout jump","pass": true},
+    {"name": "qapps Sales 1440: shared topbar remains visible while scrolling","pass": true,"detail": {"before": {"top": 0,"height": 45},"after": {"top": 0,"height": 45,"scrollY": 1051}}},
+    {"name": "qapps Sales 1440: shared topbar returns without a layout jump","pass": true},
+    {"name": "qapps Sales 390: shared topbar remains visible while scrolling","pass": true,"detail": {"before": {"top": 0,"height": 131},"after": {"top": 0,"height": 131,"scrollY": 2059}}},
+    {"name": "qapps Sales 390: shared topbar returns without a layout jump","pass": true},
+    {"name": "qapps Purchase 1440: shared topbar remains visible while scrolling","pass": true,"detail": {"before": {"top": 0,"height": 45},"after": {"top": 0,"height": 45,"scrollY": 241}}},
+    {"name": "qapps Purchase 1440: shared topbar returns without a layout jump","pass": true},
+    {"name": "qapps Purchase 390: shared topbar remains visible while scrolling","pass": true,"detail": {"before": {"top": 0,"height": 49},"after": {"top": 0,"height": 49,"scrollY": 823}}},
+    {"name": "qapps Purchase 390: shared topbar returns without a layout jump","pass": true},
+    {"name": "apps: new stylesheet loaded","pass": true},
+    {"name": "apps: help initially collapsed","pass": true},
+    {"name": "apps: help expands by keyboard","pass": true},
+    {"name": "apps: help collapses by keyboard","pass": true},
+    {"name": "apps: CashInForm submit receives pointer","pass": true},
+    {"name": "apps: native CashIn commits exactly one correct row","pass": true,"detail": [{"amount": "13.2500","entry_type": "CashIn"}]},
+    {"name": "apps: CashOutForm submit receives pointer","pass": true},
+    {"name": "apps: native CashOut commits exactly one correct row","pass": true,"detail": [{"amount": "7.5000","entry_type": "CashOut"}]},
+    {"name": "apps: native search filters persisted rows","pass": true},
+    {"name": "apps: Reset is reachable","pass": true},
+    {"name": "apps: Reset restores saved rows","pass": true},
+    {"name": "apps: invalid Cash In creates no row","pass": true},
+    {"name": "apps: unsupported table actions removed","pass": true},
+    {"name": "apps: list status filter matches DB","pass": true},
+    {"name": "apps: floor status filter agrees","pass": true},
+    {"name": "apps: selected Delete enabled","pass": true},
+    {"name": "apps: filtering clears hidden selection","pass": true},
+    {"name": "apps: real Add Table modal opens","pass": true},
+    {"name": "apps: Add Table persists independently","pass": true},
+    {"name": "apps: table status persists","pass": true},
+    {"name": "apps: Close Table persists","pass": true},
+    {"name": "apps: Delete removes captured disposable table","pass": true},
+    {"name": "apps: dashboard title stays visible","pass": true},
+    {"name": "apps: custom dates open","pass": true},
+    {"name": "apps: custom Apply receives pointer","pass": true},
+    {"name": "apps: custom Apply submits real date range","pass": true},
+    {"name": "apps Dashboard 1440: retained help renders collapsed","pass": true},
+    {"name": "apps Dashboard 1440: compact help inside viewport","pass": true,"detail": {"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440}},
+    {"name": "apps 1440: custom Apply not covered","pass": true},
+    {"name": "apps Dashboard 768: retained help renders collapsed","pass": true},
+    {"name": "apps Dashboard 768: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 741,"height": 35.140625,"viewport": 768}},
+    {"name": "apps 768: custom Apply not covered","pass": true},
+    {"name": "apps Dashboard 390: retained help renders collapsed","pass": true},
+    {"name": "apps Dashboard 390: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 363,"height": 52.28125,"viewport": 390}},
+    {"name": "apps 390: custom Apply not covered","pass": true},
+    {"name": "apps PosTransactions 1440: retained help renders collapsed","pass": true},
+    {"name": "apps PosTransactions 1440: compact help inside viewport","pass": true,"detail": {"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440}},
+    {"name": "apps PosTransactions 768: retained help renders collapsed","pass": true},
+    {"name": "apps PosTransactions 768: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 741,"height": 35.140625,"viewport": 768}},
+    {"name": "apps PosTransactions 390: retained help renders collapsed","pass": true},
+    {"name": "apps PosTransactions 390: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 363,"height": 35.140625,"viewport": 390}},
+    {"name": "apps PosSessions 1440: retained help renders collapsed","pass": true},
+    {"name": "apps PosSessions 1440: compact help inside viewport","pass": true,"detail": {"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440}},
+    {"name": "apps PosSessions 768: retained help renders collapsed","pass": true},
+    {"name": "apps PosSessions 768: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 741,"height": 35.140625,"viewport": 768}},
+    {"name": "apps PosSessions 390: retained help renders collapsed","pass": true},
+    {"name": "apps PosSessions 390: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 363,"height": 35.140625,"viewport": 390}},
+    {"name": "apps PosTerminals 1440: retained help renders collapsed","pass": true},
+    {"name": "apps PosTerminals 1440: compact help inside viewport","pass": true,"detail": {"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440}},
+    {"name": "apps PosTerminals 768: retained help renders collapsed","pass": true},
+    {"name": "apps PosTerminals 768: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 741,"height": 35.140625,"viewport": 768}},
+    {"name": "apps PosTerminals 390: retained help renders collapsed","pass": true},
+    {"name": "apps PosTerminals 390: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 363,"height": 35.140625,"viewport": 390}},
+    {"name": "apps CreditBills 1440: retained help renders collapsed","pass": true},
+    {"name": "apps CreditBills 1440: compact help inside viewport","pass": true,"detail": {"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440}},
+    {"name": "apps CreditBills 768: retained help renders collapsed","pass": true},
+    {"name": "apps CreditBills 768: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 741,"height": 35.140625,"viewport": 768}},
+    {"name": "apps CreditBills 390: retained help renders collapsed","pass": true},
+    {"name": "apps CreditBills 390: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 363,"height": 35.140625,"viewport": 390}},
+    {"name": "apps CashEntry 1440: retained help renders collapsed","pass": true},
+    {"name": "apps CashEntry 1440: compact help inside viewport","pass": true,"detail": {"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440}},
+    {"name": "apps CashFilter 1440: inputs remain usable","pass": true,"detail": [{"width": 188.875,"left": 472.875,"right": 661.75},{"width": 188.875,"left": 673.75,"right": 862.625},{"width": 233,"left": 1075.515625,"right": 1308.515625}]},
+    {"name": "apps CashInForm 1440: inputs remain usable","pass": true,"detail": [{"width": 223,"left": 257,"right": 480},{"width": 279,"left": 536,"right": 815},{"width": 279,"left": 257,"right": 536},{"width": 279,"left": 536,"right": 815}]},
+    {"name": "apps CashOutForm 1440: inputs remain usable","pass": true,"detail": [{"width": 223,"left": 849,"right": 1072},{"width": 279,"left": 1128,"right": 1407},{"width": 279,"left": 849,"right": 1128},{"width": 279,"left": 1128,"right": 1407}]},
+    {"name": "apps 1440: Cash In submit remains clickable","pass": true},
+    {"name": "apps 1440: Cash Out submit remains clickable","pass": true},
+    {"name": "apps CashEntry 768: retained help renders collapsed","pass": true},
+    {"name": "apps CashEntry 768: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 741,"height": 35.140625,"viewport": 768}},
+    {"name": "apps CashFilter 768: inputs remain usable","pass": true,"detail": [{"width": 330,"left": 390,"right": 720},{"width": 330,"left": 48,"right": 378},{"width": 330,"left": 48,"right": 378}]},
+    {"name": "apps CashInForm 768: inputs remain usable","pass": true,"detail": [{"width": 243,"left": 33,"right": 276},{"width": 351,"left": 384,"right": 735},{"width": 351,"left": 33,"right": 384},{"width": 351,"left": 384,"right": 735}]},
+    {"name": "apps CashOutForm 768: inputs remain usable","pass": true,"detail": [{"width": 243,"left": 33,"right": 276},{"width": 351,"left": 384,"right": 735},{"width": 351,"left": 33,"right": 384},{"width": 351,"left": 384,"right": 735}]},
+    {"name": "apps 768: Cash In submit remains clickable","pass": true},
+    {"name": "apps 768: Cash Out submit remains clickable","pass": true},
+    {"name": "apps CashEntry 390: retained help renders collapsed","pass": true},
+    {"name": "apps CashEntry 390: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 363,"height": 35.140625,"viewport": 390}},
+    {"name": "apps CashFilter 390: inputs remain usable","pass": true,"detail": [{"width": 294,"left": 48,"right": 342},{"width": 294,"left": 48,"right": 342},{"width": 294,"left": 48,"right": 342}]},
+    {"name": "apps CashInForm 390: inputs remain usable","pass": true,"detail": [{"width": 243,"left": 33,"right": 276},{"width": 324,"left": 33,"right": 357},{"width": 324,"left": 33,"right": 357},{"width": 324,"left": 33,"right": 357}]},
+    {"name": "apps CashOutForm 390: inputs remain usable","pass": true,"detail": [{"width": 243,"left": 33,"right": 276},{"width": 324,"left": 33,"right": 357},{"width": 324,"left": 33,"right": 357},{"width": 324,"left": 33,"right": 357}]},
+    {"name": "apps 390: Cash In submit remains clickable","pass": true},
+    {"name": "apps 390: Cash Out submit remains clickable","pass": true},
+    {"name": "apps DailySummary 1440: retained help renders collapsed","pass": true},
+    {"name": "apps DailySummary 1440: compact help inside viewport","pass": true,"detail": {"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440}},
+    {"name": "apps DailySummary 768: retained help renders collapsed","pass": true},
+    {"name": "apps DailySummary 768: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 741,"height": 35.140625,"viewport": 768}},
+    {"name": "apps DailySummary 390: retained help renders collapsed","pass": true},
+    {"name": "apps DailySummary 390: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 363,"height": 35.140625,"viewport": 390}},
+    {"name": "apps Expenses 1440: retained help renders collapsed","pass": true},
+    {"name": "apps Expenses 1440: compact help inside viewport","pass": true,"detail": {"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440}},
+    {"name": "apps Expenses 768: retained help renders collapsed","pass": true},
+    {"name": "apps Expenses 768: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 741,"height": 35.140625,"viewport": 768}},
+    {"name": "apps Expenses 390: retained help renders collapsed","pass": true},
+    {"name": "apps Expenses 390: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 363,"height": 35.140625,"viewport": 390}},
+    {"name": "apps Wastage 1440: retained help renders collapsed","pass": true},
+    {"name": "apps 1440: Wastage loads real empty results rather than a dead loading panel","pass": true},
+    {"name": "apps Wastage 1440: compact help inside viewport","pass": true,"detail": {"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440}},
+    {"name": "apps Wastage 768: retained help renders collapsed","pass": true},
+    {"name": "apps 768: Wastage loads real empty results rather than a dead loading panel","pass": true},
+    {"name": "apps Wastage 768: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 741,"height": 35.140625,"viewport": 768}},
+    {"name": "apps Wastage 390: retained help renders collapsed","pass": true},
+    {"name": "apps 390: Wastage loads real empty results rather than a dead loading panel","pass": true},
+    {"name": "apps Wastage 390: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 363,"height": 35.140625,"viewport": 390}},
+    {"name": "apps Stock 1440: retained help renders collapsed","pass": true},
+    {"name": "apps Stock 1440: compact help inside viewport","pass": true,"detail": {"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440}},
+    {"name": "apps Stock 768: retained help renders collapsed","pass": true},
+    {"name": "apps Stock 768: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 741,"height": 35.140625,"viewport": 768}},
+    {"name": "apps Stock 390: retained help renders collapsed","pass": true},
+    {"name": "apps Stock 390: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 363,"height": 35.140625,"viewport": 390}},
+    {"name": "apps Reports 1440: retained help renders collapsed","pass": true},
+    {"name": "apps Reports 1440: compact help inside viewport","pass": true,"detail": {"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440}},
+    {"name": "apps Reports 768: retained help renders collapsed","pass": true},
+    {"name": "apps Reports 768: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 741,"height": 35.140625,"viewport": 768}},
+    {"name": "apps Reports 390: retained help renders collapsed","pass": true},
+    {"name": "apps Reports 390: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 363,"height": 35.140625,"viewport": 390}},
+    {"name": "apps BillAuditReport 1440: retained help renders collapsed","pass": true},
+    {"name": "apps BillAuditReport 1440: compact help inside viewport","pass": true,"detail": {"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440}},
+    {"name": "apps BillAuditReport 768: retained help renders collapsed","pass": true},
+    {"name": "apps BillAuditReport 768: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 741,"height": 35.140625,"viewport": 768}},
+    {"name": "apps BillAuditReport 390: retained help renders collapsed","pass": true},
+    {"name": "apps BillAuditReport 390: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 363,"height": 35.140625,"viewport": 390}},
+    {"name": "apps ReceiptConfig 1440: retained help renders collapsed","pass": true},
+    {"name": "apps ReceiptConfig 1440: compact help inside viewport","pass": true,"detail": {"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440}},
+    {"name": "apps ReceiptConfig 768: retained help renders collapsed","pass": true},
+    {"name": "apps ReceiptConfig 768: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 741,"height": 35.140625,"viewport": 768}},
+    {"name": "apps ReceiptConfig 390: retained help renders collapsed","pass": true},
+    {"name": "apps ReceiptConfig 390: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 363,"height": 35.140625,"viewport": 390}},
+    {"name": "apps Kitchen/Tables 1440: retained help renders collapsed","pass": true},
+    {"name": "apps Kitchen/Tables 1440: compact help inside viewport","pass": true,"detail": {"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440}},
+    {"name": "apps Kitchen/Tables 768: retained help renders collapsed","pass": true},
+    {"name": "apps Kitchen/Tables 768: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 741,"height": 35.140625,"viewport": 768}},
+    {"name": "apps Kitchen/Tables 390: retained help renders collapsed","pass": true},
+    {"name": "apps Kitchen/Tables 390: compact help inside viewport","pass": true,"detail": {"left": 27,"right": 363,"height": 35.140625,"viewport": 390}},
+    {"name": "apps POS 1440: shared topbar remains visible while scrolling","pass": true,"detail": {"before": {"top": 0,"height": 51},"after": {"top": 0,"height": 51,"scrollY": 1192}}},
+    {"name": "apps POS 1440: shared topbar returns without a layout jump","pass": true},
+    {"name": "apps POS 390: shared topbar remains visible while scrolling","pass": true,"detail": {"before": {"top": 0,"height": 51},"after": {"top": 0,"height": 51,"scrollY": 2700}}},
+    {"name": "apps POS 390: shared topbar returns without a layout jump","pass": true},
+    {"name": "POS: mobile navigation receives pointer above the sticky topbar","pass": true},
+    {"name": "POS: mobile sidebar opens","pass": true},
+    {"name": "POS: mobile sidebar closes","pass": true},
+    {"name": "apps Contacts 1440: shared topbar remains visible while scrolling","pass": true,"detail": {"before": {"top": 0,"height": 51},"after": {"top": 0,"height": 51,"scrollY": 405}}},
+    {"name": "apps Contacts 1440: shared topbar returns without a layout jump","pass": true},
+    {"name": "apps Contacts 390: shared topbar remains visible while scrolling","pass": true,"detail": {"before": {"top": 0,"height": 51},"after": {"top": 0,"height": 51,"scrollY": 626}}},
+    {"name": "apps Contacts 390: shared topbar returns without a layout jump","pass": true},
+    {"name": "Contacts: mobile navigation receives pointer above the sticky topbar","pass": true},
+    {"name": "Contacts: mobile sidebar opens","pass": true},
+    {"name": "Contacts: mobile sidebar closes","pass": true},
+    {"name": "apps Sales 1440: shared topbar remains visible while scrolling","pass": true,"detail": {"before": {"top": 0,"height": 51},"after": {"top": 0,"height": 51,"scrollY": 1576}}},
+    {"name": "apps Sales 1440: shared topbar returns without a layout jump","pass": true},
+    {"name": "apps Sales 390: shared topbar remains visible while scrolling","pass": true,"detail": {"before": {"top": 0,"height": 51},"after": {"top": 0,"height": 51,"scrollY": 2391}}},
+    {"name": "apps Sales 390: shared topbar returns without a layout jump","pass": true},
+    {"name": "Sales: mobile navigation receives pointer above the sticky topbar","pass": true},
+    {"name": "Sales: mobile sidebar opens","pass": true},
+    {"name": "Sales: mobile sidebar closes","pass": true},
+    {"name": "apps Purchase 1440: shared topbar remains visible while scrolling","pass": true,"detail": {"before": {"top": 0,"height": 51},"after": {"top": 0,"height": 51,"scrollY": 385}}},
+    {"name": "apps Purchase 1440: shared topbar returns without a layout jump","pass": true},
+    {"name": "apps Purchase 390: shared topbar remains visible while scrolling","pass": true,"detail": {"before": {"top": 0,"height": 51},"after": {"top": 0,"height": 51,"scrollY": 974}}},
+    {"name": "apps Purchase 390: shared topbar returns without a layout jump","pass": true},
+    {"name": "Purchase: mobile navigation receives pointer above the sticky topbar","pass": true},
+    {"name": "Purchase: mobile sidebar opens","pass": true},
+    {"name": "Purchase: mobile sidebar closes","pass": true},
+    {"name": "Independent billing probe includes POS and accounting","pass": true,"detail": ["ACCTG_TRANS","ACCTG_TRANS_ENTRY","INVOICE","INVOICE_ITEM","ORDER_HEADER","ORDER_ITEM","ORDER_PART","PAYMENT","POS_PAYMENT","POS_SESSION","POS_TRANSACTION","POS_TRANSACTION_ITEM"]},
+    {"name": "Billing/session/issued invoice state unchanged by UI checks","pass": true},
+    {"name": "No browser exceptions","pass": true,"detail": []}
   ],
   "layouts": [
-    {
-      "shell": "qapps",
-      "screen": "Dashboard",
-      "width": 1440,
-      "left": 244,
-      "right": 1420,
-      "height": 36,
-      "viewport": 1440
-    },
-    {
-      "shell": "qapps",
-      "screen": "Dashboard",
-      "width": 768,
-      "left": 20,
-      "right": 744,
-      "height": 36,
-      "viewport": 768
-    },
-    {
-      "shell": "qapps",
-      "screen": "Dashboard",
-      "width": 390,
-      "left": 14,
-      "right": 374,
-      "height": 54,
-      "viewport": 390
-    },
-    {
-      "shell": "qapps",
-      "screen": "PosTransactions",
-      "width": 1440,
-      "left": 244,
-      "right": 1420,
-      "height": 36,
-      "viewport": 1440
-    },
-    {
-      "shell": "qapps",
-      "screen": "PosTransactions",
-      "width": 768,
-      "left": 20,
-      "right": 744,
-      "height": 36,
-      "viewport": 768
-    },
-    {
-      "shell": "qapps",
-      "screen": "PosTransactions",
-      "width": 390,
-      "left": 14,
-      "right": 374,
-      "height": 36,
-      "viewport": 390
-    },
-    {
-      "shell": "qapps",
-      "screen": "PosSessions",
-      "width": 1440,
-      "left": 244,
-      "right": 1420,
-      "height": 36,
-      "viewport": 1440
-    },
-    {
-      "shell": "qapps",
-      "screen": "PosSessions",
-      "width": 768,
-      "left": 20,
-      "right": 744,
-      "height": 36,
-      "viewport": 768
-    },
-    {
-      "shell": "qapps",
-      "screen": "PosSessions",
-      "width": 390,
-      "left": 14,
-      "right": 374,
-      "height": 36,
-      "viewport": 390
-    },
-    {
-      "shell": "qapps",
-      "screen": "PosTerminals",
-      "width": 1440,
-      "left": 244,
-      "right": 1420,
-      "height": 36,
-      "viewport": 1440
-    },
-    {
-      "shell": "qapps",
-      "screen": "PosTerminals",
-      "width": 768,
-      "left": 20,
-      "right": 744,
-      "height": 36,
-      "viewport": 768
-    },
-    {
-      "shell": "qapps",
-      "screen": "PosTerminals",
-      "width": 390,
-      "left": 14,
-      "right": 374,
-      "height": 36,
-      "viewport": 390
-    },
-    {
-      "shell": "qapps",
-      "screen": "CreditBills",
-      "width": 1440,
-      "left": 251,
-      "right": 1413,
-      "height": 35.140625,
-      "viewport": 1440
-    },
-    {
-      "shell": "qapps",
-      "screen": "CreditBills",
-      "width": 768,
-      "left": 27,
-      "right": 741,
-      "height": 35.140625,
-      "viewport": 768
-    },
-    {
-      "shell": "qapps",
-      "screen": "CreditBills",
-      "width": 390,
-      "left": 27,
-      "right": 363,
-      "height": 35.140625,
-      "viewport": 390
-    },
-    {
-      "shell": "qapps",
-      "screen": "CashEntry",
-      "width": 1440,
-      "left": 244,
-      "right": 1420,
-      "height": 36,
-      "viewport": 1440
-    },
-    {
-      "shell": "qapps",
-      "screen": "CashEntry",
-      "width": 768,
-      "left": 20,
-      "right": 744,
-      "height": 36,
-      "viewport": 768
-    },
-    {
-      "shell": "qapps",
-      "screen": "CashEntry",
-      "width": 390,
-      "left": 14,
-      "right": 374,
-      "height": 36,
-      "viewport": 390
-    },
-    {
-      "shell": "qapps",
-      "screen": "DailySummary",
-      "width": 1440,
-      "left": 244,
-      "right": 1420,
-      "height": 36,
-      "viewport": 1440
-    },
-    {
-      "shell": "qapps",
-      "screen": "DailySummary",
-      "width": 768,
-      "left": 20,
-      "right": 744,
-      "height": 36,
-      "viewport": 768
-    },
-    {
-      "shell": "qapps",
-      "screen": "DailySummary",
-      "width": 390,
-      "left": 14,
-      "right": 374,
-      "height": 36,
-      "viewport": 390
-    },
-    {
-      "shell": "qapps",
-      "screen": "Expenses",
-      "width": 1440,
-      "left": 244,
-      "right": 1420,
-      "height": 36,
-      "viewport": 1440
-    },
-    {
-      "shell": "qapps",
-      "screen": "Expenses",
-      "width": 768,
-      "left": 20,
-      "right": 744,
-      "height": 36,
-      "viewport": 768
-    },
-    {
-      "shell": "qapps",
-      "screen": "Expenses",
-      "width": 390,
-      "left": 14,
-      "right": 374,
-      "height": 36,
-      "viewport": 390
-    },
-    {
-      "shell": "qapps",
-      "screen": "Wastage",
-      "width": 1440,
-      "left": 244,
-      "right": 1420,
-      "height": 36,
-      "viewport": 1440
-    },
-    {
-      "shell": "qapps",
-      "screen": "Wastage",
-      "width": 768,
-      "left": 20,
-      "right": 744,
-      "height": 36,
-      "viewport": 768
-    },
-    {
-      "shell": "qapps",
-      "screen": "Wastage",
-      "width": 390,
-      "left": 14,
-      "right": 374,
-      "height": 36,
-      "viewport": 390
-    },
-    {
-      "shell": "qapps",
-      "screen": "Stock",
-      "width": 1440,
-      "left": 244,
-      "right": 1420,
-      "height": 36,
-      "viewport": 1440
-    },
-    {
-      "shell": "qapps",
-      "screen": "Stock",
-      "width": 768,
-      "left": 20,
-      "right": 744,
-      "height": 36,
-      "viewport": 768
-    },
-    {
-      "shell": "qapps",
-      "screen": "Stock",
-      "width": 390,
-      "left": 14,
-      "right": 374,
-      "height": 36,
-      "viewport": 390
-    },
-    {
-      "shell": "qapps",
-      "screen": "Reports",
-      "width": 1440,
-      "left": 244,
-      "right": 1420,
-      "height": 36,
-      "viewport": 1440
-    },
-    {
-      "shell": "qapps",
-      "screen": "Reports",
-      "width": 768,
-      "left": 20,
-      "right": 744,
-      "height": 36,
-      "viewport": 768
-    },
-    {
-      "shell": "qapps",
-      "screen": "Reports",
-      "width": 390,
-      "left": 14,
-      "right": 374,
-      "height": 36,
-      "viewport": 390
-    },
-    {
-      "shell": "qapps",
-      "screen": "BillAuditReport",
-      "width": 1440,
-      "left": 244,
-      "right": 1420,
-      "height": 36,
-      "viewport": 1440
-    },
-    {
-      "shell": "qapps",
-      "screen": "BillAuditReport",
-      "width": 768,
-      "left": 20,
-      "right": 744,
-      "height": 36,
-      "viewport": 768
-    },
-    {
-      "shell": "qapps",
-      "screen": "BillAuditReport",
-      "width": 390,
-      "left": 14,
-      "right": 374,
-      "height": 36,
-      "viewport": 390
-    },
-    {
-      "shell": "qapps",
-      "screen": "ReceiptConfig",
-      "width": 1440,
-      "left": 244,
-      "right": 1420,
-      "height": 36,
-      "viewport": 1440
-    },
-    {
-      "shell": "qapps",
-      "screen": "ReceiptConfig",
-      "width": 768,
-      "left": 20,
-      "right": 744,
-      "height": 36,
-      "viewport": 768
-    },
-    {
-      "shell": "qapps",
-      "screen": "ReceiptConfig",
-      "width": 390,
-      "left": 14,
-      "right": 374,
-      "height": 36,
-      "viewport": 390
-    },
-    {
-      "shell": "qapps",
-      "screen": "Kitchen/Tables",
-      "width": 1440,
-      "left": 244,
-      "right": 1420,
-      "height": 36,
-      "viewport": 1440
-    },
-    {
-      "shell": "qapps",
-      "screen": "Kitchen/Tables",
-      "width": 768,
-      "left": 20,
-      "right": 744,
-      "height": 36,
-      "viewport": 768
-    },
-    {
-      "shell": "qapps",
-      "screen": "Kitchen/Tables",
-      "width": 390,
-      "left": 14,
-      "right": 374,
-      "height": 36,
-      "viewport": 390
-    },
-    {
-      "shell": "apps",
-      "screen": "Dashboard",
-      "width": 1440,
-      "left": 251,
-      "right": 1413,
-      "height": 35.140625,
-      "viewport": 1440
-    },
-    {
-      "shell": "apps",
-      "screen": "Dashboard",
-      "width": 768,
-      "left": 27,
-      "right": 741,
-      "height": 35.140625,
-      "viewport": 768
-    },
-    {
-      "shell": "apps",
-      "screen": "Dashboard",
-      "width": 390,
-      "left": 27,
-      "right": 363,
-      "height": 52.28125,
-      "viewport": 390
-    },
-    {
-      "shell": "apps",
-      "screen": "PosTransactions",
-      "width": 1440,
-      "left": 251,
-      "right": 1413,
-      "height": 35.140625,
-      "viewport": 1440
-    },
-    {
-      "shell": "apps",
-      "screen": "PosTransactions",
-      "width": 768,
-      "left": 27,
-      "right": 741,
-      "height": 35.140625,
-      "viewport": 768
-    },
-    {
-      "shell": "apps",
-      "screen": "PosTransactions",
-      "width": 390,
-      "left": 27,
-      "right": 363,
-      "height": 35.140625,
-      "viewport": 390
-    },
-    {
-      "shell": "apps",
-      "screen": "PosSessions",
-      "width": 1440,
-      "left": 251,
-      "right": 1413,
-      "height": 35.140625,
-      "viewport": 1440
-    },
-    {
-      "shell": "apps",
-      "screen": "PosSessions",
-      "width": 768,
-      "left": 27,
-      "right": 741,
-      "height": 35.140625,
-      "viewport": 768
-    },
-    {
-      "shell": "apps",
-      "screen": "PosSessions",
-      "width": 390,
-      "left": 27,
-      "right": 363,
-      "height": 35.140625,
-      "viewport": 390
-    },
-    {
-      "shell": "apps",
-      "screen": "PosTerminals",
-      "width": 1440,
-      "left": 251,
-      "right": 1413,
-      "height": 35.140625,
-      "viewport": 1440
-    },
-    {
-      "shell": "apps",
-      "screen": "PosTerminals",
-      "width": 768,
-      "left": 27,
-      "right": 741,
-      "height": 35.140625,
-      "viewport": 768
-    },
-    {
-      "shell": "apps",
-      "screen": "PosTerminals",
-      "width": 390,
-      "left": 27,
-      "right": 363,
-      "height": 35.140625,
-      "viewport": 390
-    },
-    {
-      "shell": "apps",
-      "screen": "CreditBills",
-      "width": 1440,
-      "left": 251,
-      "right": 1413,
-      "height": 35.140625,
-      "viewport": 1440
-    },
-    {
-      "shell": "apps",
-      "screen": "CreditBills",
-      "width": 768,
-      "left": 27,
-      "right": 741,
-      "height": 35.140625,
-      "viewport": 768
-    },
-    {
-      "shell": "apps",
-      "screen": "CreditBills",
-      "width": 390,
-      "left": 27,
-      "right": 363,
-      "height": 35.140625,
-      "viewport": 390
-    },
-    {
-      "shell": "apps",
-      "screen": "CashEntry",
-      "width": 1440,
-      "left": 251,
-      "right": 1413,
-      "height": 35.140625,
-      "viewport": 1440
-    },
-    {
-      "shell": "apps",
-      "screen": "CashEntry",
-      "width": 768,
-      "left": 27,
-      "right": 741,
-      "height": 35.140625,
-      "viewport": 768
-    },
-    {
-      "shell": "apps",
-      "screen": "CashEntry",
-      "width": 390,
-      "left": 27,
-      "right": 363,
-      "height": 35.140625,
-      "viewport": 390
-    },
-    {
-      "shell": "apps",
-      "screen": "DailySummary",
-      "width": 1440,
-      "left": 251,
-      "right": 1413,
-      "height": 35.140625,
-      "viewport": 1440
-    },
-    {
-      "shell": "apps",
-      "screen": "DailySummary",
-      "width": 768,
-      "left": 27,
-      "right": 741,
-      "height": 35.140625,
-      "viewport": 768
-    },
-    {
-      "shell": "apps",
-      "screen": "DailySummary",
-      "width": 390,
-      "left": 27,
-      "right": 363,
-      "height": 35.140625,
-      "viewport": 390
-    },
-    {
-      "shell": "apps",
-      "screen": "Expenses",
-      "width": 1440,
-      "left": 251,
-      "right": 1413,
-      "height": 35.140625,
-      "viewport": 1440
-    },
-    {
-      "shell": "apps",
-      "screen": "Expenses",
-      "width": 768,
-      "left": 27,
-      "right": 741,
-      "height": 35.140625,
-      "viewport": 768
-    },
-    {
-      "shell": "apps",
-      "screen": "Expenses",
-      "width": 390,
-      "left": 27,
-      "right": 363,
-      "height": 35.140625,
-      "viewport": 390
-    },
-    {
-      "shell": "apps",
-      "screen": "Wastage",
-      "width": 1440,
-      "left": 251,
-      "right": 1413,
-      "height": 35.140625,
-      "viewport": 1440
-    },
-    {
-      "shell": "apps",
-      "screen": "Wastage",
-      "width": 768,
-      "left": 27,
-      "right": 741,
-      "height": 35.140625,
-      "viewport": 768
-    },
-    {
-      "shell": "apps",
-      "screen": "Wastage",
-      "width": 390,
-      "left": 27,
-      "right": 363,
-      "height": 35.140625,
-      "viewport": 390
-    },
-    {
-      "shell": "apps",
-      "screen": "Stock",
-      "width": 1440,
-      "left": 251,
-      "right": 1413,
-      "height": 35.140625,
-      "viewport": 1440
-    },
-    {
-      "shell": "apps",
-      "screen": "Stock",
-      "width": 768,
-      "left": 27,
-      "right": 741,
-      "height": 35.140625,
-      "viewport": 768
-    },
-    {
-      "shell": "apps",
-      "screen": "Stock",
-      "width": 390,
-      "left": 27,
-      "right": 363,
-      "height": 35.140625,
-      "viewport": 390
-    },
-    {
-      "shell": "apps",
-      "screen": "Reports",
-      "width": 1440,
-      "left": 251,
-      "right": 1413,
-      "height": 35.140625,
-      "viewport": 1440
-    },
-    {
-      "shell": "apps",
-      "screen": "Reports",
-      "width": 768,
-      "left": 27,
-      "right": 741,
-      "height": 35.140625,
-      "viewport": 768
-    },
-    {
-      "shell": "apps",
-      "screen": "Reports",
-      "width": 390,
-      "left": 27,
-      "right": 363,
-      "height": 35.140625,
-      "viewport": 390
-    },
-    {
-      "shell": "apps",
-      "screen": "BillAuditReport",
-      "width": 1440,
-      "left": 251,
-      "right": 1413,
-      "height": 35.140625,
-      "viewport": 1440
-    },
-    {
-      "shell": "apps",
-      "screen": "BillAuditReport",
-      "width": 768,
-      "left": 27,
-      "right": 741,
-      "height": 35.140625,
-      "viewport": 768
-    },
-    {
-      "shell": "apps",
-      "screen": "BillAuditReport",
-      "width": 390,
-      "left": 27,
-      "right": 363,
-      "height": 35.140625,
-      "viewport": 390
-    },
-    {
-      "shell": "apps",
-      "screen": "ReceiptConfig",
-      "width": 1440,
-      "left": 251,
-      "right": 1413,
-      "height": 35.140625,
-      "viewport": 1440
-    },
-    {
-      "shell": "apps",
-      "screen": "ReceiptConfig",
-      "width": 768,
-      "left": 27,
-      "right": 741,
-      "height": 35.140625,
-      "viewport": 768
-    },
-    {
-      "shell": "apps",
-      "screen": "ReceiptConfig",
-      "width": 390,
-      "left": 27,
-      "right": 363,
-      "height": 35.140625,
-      "viewport": 390
-    },
-    {
-      "shell": "apps",
-      "screen": "Kitchen/Tables",
-      "width": 1440,
-      "left": 251,
-      "right": 1413,
-      "height": 35.140625,
-      "viewport": 1440
-    },
-    {
-      "shell": "apps",
-      "screen": "Kitchen/Tables",
-      "width": 768,
-      "left": 27,
-      "right": 741,
-      "height": 35.140625,
-      "viewport": 768
-    },
-    {
-      "shell": "apps",
-      "screen": "Kitchen/Tables",
-      "width": 390,
-      "left": 27,
-      "right": 363,
-      "height": 35.140625,
-      "viewport": 390
-    }
+    {"shell": "qapps","screen": "Dashboard","width": 1440,"left": 244,"right": 1420,"height": 36,"viewport": 1440},
+    {"shell": "qapps","screen": "Dashboard","width": 768,"left": 20,"right": 744,"height": 36,"viewport": 768},
+    {"shell": "qapps","screen": "Dashboard","width": 390,"left": 14,"right": 374,"height": 54,"viewport": 390},
+    {"shell": "qapps","screen": "PosTransactions","width": 1440,"left": 244,"right": 1420,"height": 36,"viewport": 1440},
+    {"shell": "qapps","screen": "PosTransactions","width": 768,"left": 20,"right": 744,"height": 36,"viewport": 768},
+    {"shell": "qapps","screen": "PosTransactions","width": 390,"left": 14,"right": 374,"height": 36,"viewport": 390},
+    {"shell": "qapps","screen": "PosSessions","width": 1440,"left": 244,"right": 1420,"height": 36,"viewport": 1440},
+    {"shell": "qapps","screen": "PosSessions","width": 768,"left": 20,"right": 744,"height": 36,"viewport": 768},
+    {"shell": "qapps","screen": "PosSessions","width": 390,"left": 14,"right": 374,"height": 36,"viewport": 390},
+    {"shell": "qapps","screen": "PosTerminals","width": 1440,"left": 244,"right": 1420,"height": 36,"viewport": 1440},
+    {"shell": "qapps","screen": "PosTerminals","width": 768,"left": 20,"right": 744,"height": 36,"viewport": 768},
+    {"shell": "qapps","screen": "PosTerminals","width": 390,"left": 14,"right": 374,"height": 36,"viewport": 390},
+    {"shell": "qapps","screen": "CreditBills","width": 1440,"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440},
+    {"shell": "qapps","screen": "CreditBills","width": 768,"left": 27,"right": 741,"height": 35.140625,"viewport": 768},
+    {"shell": "qapps","screen": "CreditBills","width": 390,"left": 27,"right": 363,"height": 35.140625,"viewport": 390},
+    {"shell": "qapps","screen": "CashEntry","width": 1440,"left": 244,"right": 1420,"height": 36,"viewport": 1440},
+    {"shell": "qapps","screen": "CashEntry","width": 768,"left": 20,"right": 744,"height": 36,"viewport": 768},
+    {"shell": "qapps","screen": "CashEntry","width": 390,"left": 14,"right": 374,"height": 36,"viewport": 390},
+    {"shell": "qapps","screen": "DailySummary","width": 1440,"left": 244,"right": 1420,"height": 36,"viewport": 1440},
+    {"shell": "qapps","screen": "DailySummary","width": 768,"left": 20,"right": 744,"height": 36,"viewport": 768},
+    {"shell": "qapps","screen": "DailySummary","width": 390,"left": 14,"right": 374,"height": 36,"viewport": 390},
+    {"shell": "qapps","screen": "Expenses","width": 1440,"left": 244,"right": 1420,"height": 36,"viewport": 1440},
+    {"shell": "qapps","screen": "Expenses","width": 768,"left": 20,"right": 744,"height": 36,"viewport": 768},
+    {"shell": "qapps","screen": "Expenses","width": 390,"left": 14,"right": 374,"height": 36,"viewport": 390},
+    {"shell": "qapps","screen": "Wastage","width": 1440,"left": 244,"right": 1420,"height": 36,"viewport": 1440},
+    {"shell": "qapps","screen": "Wastage","width": 768,"left": 20,"right": 744,"height": 36,"viewport": 768},
+    {"shell": "qapps","screen": "Wastage","width": 390,"left": 14,"right": 374,"height": 36,"viewport": 390},
+    {"shell": "qapps","screen": "Stock","width": 1440,"left": 244,"right": 1420,"height": 36,"viewport": 1440},
+    {"shell": "qapps","screen": "Stock","width": 768,"left": 20,"right": 744,"height": 36,"viewport": 768},
+    {"shell": "qapps","screen": "Stock","width": 390,"left": 14,"right": 374,"height": 36,"viewport": 390},
+    {"shell": "qapps","screen": "Reports","width": 1440,"left": 244,"right": 1420,"height": 36,"viewport": 1440},
+    {"shell": "qapps","screen": "Reports","width": 768,"left": 20,"right": 744,"height": 36,"viewport": 768},
+    {"shell": "qapps","screen": "Reports","width": 390,"left": 14,"right": 374,"height": 36,"viewport": 390},
+    {"shell": "qapps","screen": "BillAuditReport","width": 1440,"left": 244,"right": 1420,"height": 36,"viewport": 1440},
+    {"shell": "qapps","screen": "BillAuditReport","width": 768,"left": 20,"right": 744,"height": 36,"viewport": 768},
+    {"shell": "qapps","screen": "BillAuditReport","width": 390,"left": 14,"right": 374,"height": 36,"viewport": 390},
+    {"shell": "qapps","screen": "ReceiptConfig","width": 1440,"left": 244,"right": 1420,"height": 36,"viewport": 1440},
+    {"shell": "qapps","screen": "ReceiptConfig","width": 768,"left": 20,"right": 744,"height": 36,"viewport": 768},
+    {"shell": "qapps","screen": "ReceiptConfig","width": 390,"left": 14,"right": 374,"height": 36,"viewport": 390},
+    {"shell": "qapps","screen": "Kitchen/Tables","width": 1440,"left": 244,"right": 1420,"height": 36,"viewport": 1440},
+    {"shell": "qapps","screen": "Kitchen/Tables","width": 768,"left": 20,"right": 744,"height": 36,"viewport": 768},
+    {"shell": "qapps","screen": "Kitchen/Tables","width": 390,"left": 14,"right": 374,"height": 36,"viewport": 390},
+    {"shell": "apps","screen": "Dashboard","width": 1440,"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440},
+    {"shell": "apps","screen": "Dashboard","width": 768,"left": 27,"right": 741,"height": 35.140625,"viewport": 768},
+    {"shell": "apps","screen": "Dashboard","width": 390,"left": 27,"right": 363,"height": 52.28125,"viewport": 390},
+    {"shell": "apps","screen": "PosTransactions","width": 1440,"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440},
+    {"shell": "apps","screen": "PosTransactions","width": 768,"left": 27,"right": 741,"height": 35.140625,"viewport": 768},
+    {"shell": "apps","screen": "PosTransactions","width": 390,"left": 27,"right": 363,"height": 35.140625,"viewport": 390},
+    {"shell": "apps","screen": "PosSessions","width": 1440,"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440},
+    {"shell": "apps","screen": "PosSessions","width": 768,"left": 27,"right": 741,"height": 35.140625,"viewport": 768},
+    {"shell": "apps","screen": "PosSessions","width": 390,"left": 27,"right": 363,"height": 35.140625,"viewport": 390},
+    {"shell": "apps","screen": "PosTerminals","width": 1440,"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440},
+    {"shell": "apps","screen": "PosTerminals","width": 768,"left": 27,"right": 741,"height": 35.140625,"viewport": 768},
+    {"shell": "apps","screen": "PosTerminals","width": 390,"left": 27,"right": 363,"height": 35.140625,"viewport": 390},
+    {"shell": "apps","screen": "CreditBills","width": 1440,"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440},
+    {"shell": "apps","screen": "CreditBills","width": 768,"left": 27,"right": 741,"height": 35.140625,"viewport": 768},
+    {"shell": "apps","screen": "CreditBills","width": 390,"left": 27,"right": 363,"height": 35.140625,"viewport": 390},
+    {"shell": "apps","screen": "CashEntry","width": 1440,"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440},
+    {"shell": "apps","screen": "CashEntry","width": 768,"left": 27,"right": 741,"height": 35.140625,"viewport": 768},
+    {"shell": "apps","screen": "CashEntry","width": 390,"left": 27,"right": 363,"height": 35.140625,"viewport": 390},
+    {"shell": "apps","screen": "DailySummary","width": 1440,"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440},
+    {"shell": "apps","screen": "DailySummary","width": 768,"left": 27,"right": 741,"height": 35.140625,"viewport": 768},
+    {"shell": "apps","screen": "DailySummary","width": 390,"left": 27,"right": 363,"height": 35.140625,"viewport": 390},
+    {"shell": "apps","screen": "Expenses","width": 1440,"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440},
+    {"shell": "apps","screen": "Expenses","width": 768,"left": 27,"right": 741,"height": 35.140625,"viewport": 768},
+    {"shell": "apps","screen": "Expenses","width": 390,"left": 27,"right": 363,"height": 35.140625,"viewport": 390},
+    {"shell": "apps","screen": "Wastage","width": 1440,"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440},
+    {"shell": "apps","screen": "Wastage","width": 768,"left": 27,"right": 741,"height": 35.140625,"viewport": 768},
+    {"shell": "apps","screen": "Wastage","width": 390,"left": 27,"right": 363,"height": 35.140625,"viewport": 390},
+    {"shell": "apps","screen": "Stock","width": 1440,"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440},
+    {"shell": "apps","screen": "Stock","width": 768,"left": 27,"right": 741,"height": 35.140625,"viewport": 768},
+    {"shell": "apps","screen": "Stock","width": 390,"left": 27,"right": 363,"height": 35.140625,"viewport": 390},
+    {"shell": "apps","screen": "Reports","width": 1440,"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440},
+    {"shell": "apps","screen": "Reports","width": 768,"left": 27,"right": 741,"height": 35.140625,"viewport": 768},
+    {"shell": "apps","screen": "Reports","width": 390,"left": 27,"right": 363,"height": 35.140625,"viewport": 390},
+    {"shell": "apps","screen": "BillAuditReport","width": 1440,"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440},
+    {"shell": "apps","screen": "BillAuditReport","width": 768,"left": 27,"right": 741,"height": 35.140625,"viewport": 768},
+    {"shell": "apps","screen": "BillAuditReport","width": 390,"left": 27,"right": 363,"height": 35.140625,"viewport": 390},
+    {"shell": "apps","screen": "ReceiptConfig","width": 1440,"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440},
+    {"shell": "apps","screen": "ReceiptConfig","width": 768,"left": 27,"right": 741,"height": 35.140625,"viewport": 768},
+    {"shell": "apps","screen": "ReceiptConfig","width": 390,"left": 27,"right": 363,"height": 35.140625,"viewport": 390},
+    {"shell": "apps","screen": "Kitchen/Tables","width": 1440,"left": 251,"right": 1413,"height": 35.140625,"viewport": 1440},
+    {"shell": "apps","screen": "Kitchen/Tables","width": 768,"left": 27,"right": 741,"height": 35.140625,"viewport": 768},
+    {"shell": "apps","screen": "Kitchen/Tables","width": 390,"left": 27,"right": 363,"height": 35.140625,"viewport": 390}
   ],
   "pageErrors": [],
   "productionAccess": false,
-  "billingBefore": {
-    "ACCTG_TRANS": {
-      "count": 0,
-      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-    },
-    "ACCTG_TRANS_ENTRY": {
-      "count": 0,
-      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-    },
-    "INVOICE": {
-      "count": 0,
-      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-    },
-    "INVOICE_ITEM": {
-      "count": 0,
-      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-    },
-    "ORDER_HEADER": {
-      "count": 3,
-      "sha256": "9cf1988d1b6c2d8bc3e87dcd9c06ca3e4742ccf79f034edbf4e66223714ad92f"
-    },
-    "ORDER_ITEM": {
-      "count": 3,
-      "sha256": "895e64cc5c396049fa805faebf38e741b51188a3b109d7a453c24ca788b7afe5"
-    },
-    "ORDER_PART": {
-      "count": 3,
-      "sha256": "b966dc4ba619ca54bd027bda0d954702e8de3fc6354b2fff3ac8b58a59353317"
-    },
-    "PAYMENT": {
-      "count": 0,
-      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-    },
-    "POS_PAYMENT": {
-      "count": 0,
-      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-    },
-    "POS_SESSION": {
-      "count": 0,
-      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-    },
-    "POS_TRANSACTION": {
-      "count": 0,
-      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-    },
-    "POS_TRANSACTION_ITEM": {
-      "count": 0,
-      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-    }
-  },
-  "billingAfter": {
-    "ACCTG_TRANS": {
-      "count": 0,
-      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-    },
-    "ACCTG_TRANS_ENTRY": {
-      "count": 0,
-      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-    },
-    "INVOICE": {
-      "count": 0,
-      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-    },
-    "INVOICE_ITEM": {
-      "count": 0,
-      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-    },
-    "ORDER_HEADER": {
-      "count": 3,
-      "sha256": "9cf1988d1b6c2d8bc3e87dcd9c06ca3e4742ccf79f034edbf4e66223714ad92f"
-    },
-    "ORDER_ITEM": {
-      "count": 3,
-      "sha256": "895e64cc5c396049fa805faebf38e741b51188a3b109d7a453c24ca788b7afe5"
-    },
-    "ORDER_PART": {
-      "count": 3,
-      "sha256": "b966dc4ba619ca54bd027bda0d954702e8de3fc6354b2fff3ac8b58a59353317"
-    },
-    "PAYMENT": {
-      "count": 0,
-      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-    },
-    "POS_PAYMENT": {
-      "count": 0,
-      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-    },
-    "POS_SESSION": {
-      "count": 0,
-      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-    },
-    "POS_TRANSACTION": {
-      "count": 0,
-      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-    },
-    "POS_TRANSACTION_ITEM": {
-      "count": 0,
-      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-    }
-  }
+  "billingBefore": {"ACCTG_TRANS": {"count": 0, "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"}, "ACCTG_TRANS_ENTRY": {"count": 0, "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"}, "INVOICE": {"count": 0, "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"}, "INVOICE_ITEM": {"count": 0, "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"}, "ORDER_HEADER": {"count": 3, "sha256": "9cf1988d1b6c2d8bc3e87dcd9c06ca3e4742ccf79f034edbf4e66223714ad92f"}, "ORDER_ITEM": {"count": 3, "sha256": "895e64cc5c396049fa805faebf38e741b51188a3b109d7a453c24ca788b7afe5"}, "ORDER_PART": {"count": 3, "sha256": "b966dc4ba619ca54bd027bda0d954702e8de3fc6354b2fff3ac8b58a59353317"}, "PAYMENT": {"count": 0, "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"}, "POS_PAYMENT": {"count": 0, "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"}, "POS_SESSION": {"count": 0, "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"}, "POS_TRANSACTION": {"count": 0, "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"}, "POS_TRANSACTION_ITEM": {"count": 0, "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"}},
+  "billingAfter": {"ACCTG_TRANS": {"count": 0, "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"}, "ACCTG_TRANS_ENTRY": {"count": 0, "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"}, "INVOICE": {"count": 0, "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"}, "INVOICE_ITEM": {"count": 0, "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"}, "ORDER_HEADER": {"count": 3, "sha256": "9cf1988d1b6c2d8bc3e87dcd9c06ca3e4742ccf79f034edbf4e66223714ad92f"}, "ORDER_ITEM": {"count": 3, "sha256": "895e64cc5c396049fa805faebf38e741b51188a3b109d7a453c24ca788b7afe5"}, "ORDER_PART": {"count": 3, "sha256": "b966dc4ba619ca54bd027bda0d954702e8de3fc6354b2fff3ac8b58a59353317"}, "PAYMENT": {"count": 0, "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"}, "POS_PAYMENT": {"count": 0, "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"}, "POS_SESSION": {"count": 0, "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"}, "POS_TRANSACTION": {"count": 0, "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"}, "POS_TRANSACTION_ITEM": {"count": 0, "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"}}
 }

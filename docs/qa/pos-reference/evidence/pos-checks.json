@@ -1,1953 +1,492 @@
 {
   "checks": [
-    {
-      "name": "isolated fixtures initialized",
-      "passed": true
-    },
-    {
-      "name": "pos.qa authenticated POS access",
-      "passed": true
-    },
-    {
-      "name": "pos.b.qa authenticated POS access",
-      "passed": true
-    },
-    {
-      "name": "open succeeded",
-      "passed": true
-    },
-    {
-      "name": "opened session is committed with the authorized terminal and organization",
-      "passed": true
-    },
-    {
-      "name": "open rejected",
-      "passed": true
-    },
-    {
-      "name": "open rejected",
-      "passed": true
-    },
-    {
-      "name": "cart succeeded",
-      "passed": true
-    },
-    {
-      "name": "unpaid cart consumes no bill number",
-      "passed": true
-    },
-    {
-      "name": "complete rejected",
-      "passed": true
-    },
-    {
-      "name": "credit rejected",
-      "passed": true
-    },
-    {
-      "name": "add rejected",
-      "passed": true
-    },
-    {
-      "name": "add rejected",
-      "passed": true
-    },
-    {
-      "name": "add rejected",
-      "passed": true
-    },
-    {
-      "name": "add rejected",
-      "passed": true
-    },
-    {
-      "name": "add rejected",
-      "passed": true
-    },
-    {
-      "name": "add rejected",
-      "passed": true
-    },
-    {
-      "name": "add succeeded",
-      "passed": true
-    },
-    {
-      "name": "retail intra GST exact golden",
-      "passed": true
-    },
-    {
-      "name": "pay rejected",
-      "passed": true
-    },
-    {
-      "name": "pay rejected",
-      "passed": true
-    },
-    {
-      "name": "pay rejected",
-      "passed": true
-    },
-    {
-      "name": "invalid tenders create no payment rows",
-      "passed": true
-    },
-    {
-      "name": "pay succeeded",
-      "passed": true
-    },
-    {
-      "name": "complete succeeded",
-      "passed": true
-    },
-    {
-      "name": "cash change exact golden",
-      "passed": true
-    },
-    {
-      "name": "pay rejected",
-      "passed": true
-    },
-    {
-      "name": "complete rejected",
-      "passed": true
-    },
-    {
-      "name": "duplicate checkout writes one tender",
-      "passed": true
-    },
-    {
-      "name": "cart succeeded",
-      "passed": true
-    },
-    {
-      "name": "add succeeded",
-      "passed": true
-    },
-    {
-      "name": "pay succeeded",
-      "passed": true
-    },
-    {
-      "name": "complete succeeded",
-      "passed": true
-    },
-    {
-      "name": "sync succeeded",
-      "passed": true
-    },
-    {
-      "name": "discounted POS invoice mirrors 1062 inclusive total: 900 taxable + 162 GST",
-      "passed": true
-    },
-    {
-      "name": "sync succeeded",
-      "passed": true
-    },
-    {
-      "name": "invoice sync idempotent",
-      "passed": true
-    },
-    {
-      "name": "discounted synced invoice PDF renders",
-      "passed": true
-    },
-    {
-      "name": "POS receipt PDF renders",
-      "passed": true
-    },
-    {
-      "name": "cart succeeded",
-      "passed": true
-    },
-    {
-      "name": "add succeeded",
-      "passed": true
-    },
-    {
-      "name": "pay succeeded",
-      "passed": true
-    },
-    {
-      "name": "pay succeeded",
-      "passed": true
-    },
-    {
-      "name": "complete succeeded",
-      "passed": true
-    },
-    {
-      "name": "split tender exactly reconciles",
-      "passed": true
-    },
-    {
-      "name": "cart succeeded",
-      "passed": true
-    },
-    {
-      "name": "add succeeded",
-      "passed": true
-    },
-    {
-      "name": "credit succeeded",
-      "passed": true
-    },
-    {
-      "name": "settle succeeded",
-      "passed": true
-    },
-    {
-      "name": "partial credit retains 68 due",
-      "passed": true
-    },
-    {
-      "name": "settle succeeded",
-      "passed": true
-    },
-    {
-      "name": "full credit settles once",
-      "passed": true
-    },
-    {
-      "name": "settle rejected",
-      "passed": true
-    },
-    {
-      "name": "cart succeeded",
-      "passed": true
-    },
-    {
-      "name": "add succeeded",
-      "passed": true
-    },
-    {
-      "name": "wholesale fixed price golden",
-      "passed": true
-    },
-    {
-      "name": "add rejected",
-      "passed": true
-    },
-    {
-      "name": "void succeeded",
-      "passed": true
-    },
-    {
-      "name": "void does not consume bill number",
-      "passed": true
-    },
-    {
-      "name": "cart succeeded",
-      "passed": true
-    },
-    {
-      "name": "add succeeded",
-      "passed": true
-    },
-    {
-      "name": "hold succeeded",
-      "passed": true
-    },
-    {
-      "name": "recall succeeded",
-      "passed": true
-    },
-    {
-      "name": "recall restores one line",
-      "passed": true
-    },
-    {
-      "name": "recall rejected",
-      "passed": true
-    },
-    {
-      "name": "void succeeded",
-      "passed": true
-    },
-    {
-      "name": "open succeeded",
-      "passed": true
-    },
-    {
-      "name": "cart succeeded",
-      "passed": true
-    },
-    {
-      "name": "add succeeded",
-      "passed": true
-    },
-    {
-      "name": "pay rejected",
-      "passed": true
-    },
-    {
-      "name": "complete rejected",
-      "passed": true
-    },
-    {
-      "name": "receipt rejected",
-      "passed": true
-    },
-    {
-      "name": "hold rejected",
-      "passed": true
-    },
-    {
-      "name": "void rejected",
-      "passed": true
-    },
-    {
-      "name": "sync rejected",
-      "passed": true
-    },
-    {
-      "name": "foreign transaction unchanged",
-      "passed": true
-    },
-    {
-      "name": "apps foreign detail denied",
-      "passed": true
-    },
-    {
-      "name": "apps foreign detail denied",
-      "passed": true
-    },
-    {
-      "name": "qapps foreign detail denied",
-      "passed": true
-    },
-    {
-      "name": "qapps foreign detail denied",
-      "passed": true
-    },
-    {
-      "name": "standalone receipt PDF denies foreign bill",
-      "passed": true
-    },
-    {
-      "name": "missing CSRF rejected",
-      "passed": true
-    },
-    {
-      "name": "cart succeeded",
-      "passed": true
-    },
-    {
-      "name": "add succeeded",
-      "passed": true
-    },
-    {
-      "name": "gift rejected",
-      "passed": true
-    },
-    {
-      "name": "points rejected",
-      "passed": true
-    },
-    {
-      "name": "gift succeeded",
-      "passed": true
-    },
-    {
-      "name": "gift tender equals actual 50 redemption, not requested 100",
-      "passed": true
-    },
-    {
-      "name": "pay succeeded",
-      "passed": true
-    },
-    {
-      "name": "complete succeeded",
-      "passed": true
-    },
-    {
-      "name": "handover rejected",
-      "passed": true
-    },
-    {
-      "name": "foreign shift handover writes nothing",
-      "passed": true
-    },
-    {
-      "name": "cart succeeded",
-      "passed": true
-    },
-    {
-      "name": "add succeeded",
-      "passed": true
-    },
-    {
-      "name": "add succeeded",
-      "passed": true
-    },
-    {
-      "name": "mixed GST exact golden: 100 at 18 plus 200 at 5",
-      "passed": true
-    },
-    {
-      "name": "void succeeded",
-      "passed": true
-    },
-    {
-      "name": "cart succeeded",
-      "passed": true
-    },
-    {
-      "name": "add succeeded",
-      "passed": true
-    },
-    {
-      "name": "whole-rupee round-off reconciles payable",
-      "passed": true
-    },
-    {
-      "name": "void succeeded",
-      "passed": true
-    },
-    {
-      "name": "cart succeeded",
-      "passed": true
-    },
-    {
-      "name": "add succeeded",
-      "passed": true
-    },
-    {
-      "name": "configured quantity break selects wholesale",
-      "passed": true
-    },
-    {
-      "name": "void succeeded",
-      "passed": true
-    },
-    {
-      "name": "cart succeeded",
-      "passed": true
-    },
-    {
-      "name": "add succeeded",
-      "passed": true
-    },
-    {
-      "name": "manual price is exempt from quantity break",
-      "passed": true
-    },
-    {
-      "name": "void succeeded",
-      "passed": true
-    },
-    {
-      "name": "cart succeeded",
-      "passed": true
-    },
-    {
-      "name": "add succeeded",
-      "passed": true
-    },
-    {
-      "name": "pay succeeded",
-      "passed": true
-    },
-    {
-      "name": "complete succeeded",
-      "passed": true
-    },
-    {
-      "name": "sync succeeded",
-      "passed": true
-    },
-    {
-      "name": "tracked stock depleted exactly once at invoice sync",
-      "passed": true
-    },
-    {
-      "name": "amendment applies only tracked-stock delta",
-      "passed": true
-    },
-    {
-      "name": "cart succeeded",
-      "passed": true
-    },
-    {
-      "name": "add succeeded",
-      "passed": true
-    },
-    {
-      "name": "pay succeeded",
-      "passed": true
-    },
-    {
-      "name": "complete succeeded",
-      "passed": true
-    },
-    {
-      "name": "free bill completes with a line and no payment",
-      "passed": true
-    },
-    {
-      "name": "cart succeeded",
-      "passed": true
-    },
-    {
-      "name": "add succeeded",
-      "passed": true
-    },
-    {
-      "name": "out-of-state customer attached",
-      "passed": true
-    },
-    {
-      "name": "customer sets IGST destination without repricing",
-      "passed": true
-    },
-    {
-      "name": "customer cleared",
-      "passed": true
-    },
-    {
-      "name": "clearing restores intra-state GST",
-      "passed": true
-    },
-    {
-      "name": "void succeeded",
-      "passed": true
-    },
-    {
-      "name": "cart succeeded",
-      "passed": true
-    },
-    {
-      "name": "add succeeded",
-      "passed": true
-    },
-    {
-      "name": "hold succeeded",
-      "passed": true
-    },
-    {
-      "name": "recall succeeded",
-      "passed": true
-    },
-    {
-      "name": "hold recall preserves original cart, manual price, mode, customer and tax-off",
-      "passed": true
-    },
-    {
-      "name": "void succeeded",
-      "passed": true
-    },
-    {
-      "name": "open succeeded",
-      "passed": true
-    },
-    {
-      "name": "cart succeeded",
-      "passed": true
-    },
-    {
-      "name": "add succeeded",
-      "passed": true
-    },
-    {
-      "name": "pay succeeded",
-      "passed": true
-    },
-    {
-      "name": "open rejected",
-      "passed": true
-    },
-    {
-      "name": "close rejected",
-      "passed": true
-    },
-    {
-      "name": "void rejected",
-      "passed": true
-    },
-    {
-      "name": "session boundaries retain recorded partial tender",
-      "passed": true
-    },
-    {
-      "name": "pay rejected",
-      "passed": true
-    },
-    {
-      "name": "noncash over-tender rejected before insert",
-      "passed": true
-    },
-    {
-      "name": "pay succeeded",
-      "passed": true
-    },
-    {
-      "name": "complete succeeded",
-      "passed": true
-    },
-    {
-      "name": "close succeeded",
-      "passed": true
-    },
-    {
-      "name": "cart succeeded",
-      "passed": true
-    },
-    {
-      "name": "add succeeded",
-      "passed": true
-    },
-    {
-      "name": "offline succeeded",
-      "passed": true
-    },
-    {
-      "name": "offline batch commits valid sale independently and acknowledges only that id",
-      "passed": true
-    },
-    {
-      "name": "offline replay never appends to or completes interactive cart",
-      "passed": true
-    },
-    {
-      "name": "offline succeeded",
-      "passed": true
-    },
-    {
-      "name": "offline retry acknowledges without another bill",
-      "passed": true
-    },
-    {
-      "name": "offline succeeded",
-      "passed": true
-    },
-    {
-      "name": "mismatched money and foreign payload stay unacknowledged and roll back",
-      "passed": true
-    },
-    {
-      "name": "void succeeded",
-      "passed": true
-    },
-    {
-      "name": "open succeeded",
-      "passed": true
-    },
-    {
-      "name": "cart succeeded",
-      "passed": true
-    },
-    {
-      "name": "cart succeeded",
-      "passed": true
-    },
-    {
-      "name": "add succeeded",
-      "passed": true
-    },
-    {
-      "name": "add succeeded",
-      "passed": true
-    },
-    {
-      "name": "pay succeeded",
-      "passed": true
-    },
-    {
-      "name": "pay succeeded",
-      "passed": true
-    },
-    {
-      "name": "complete succeeded",
-      "passed": true
-    },
-    {
-      "name": "complete succeeded",
-      "passed": true
-    },
-    {
-      "name": "concurrent completions mint distinct consecutive numbers",
-      "passed": true
-    },
-    {
-      "name": "close succeeded",
-      "passed": true
-    },
-    {
-      "name": "sync succeeded",
-      "passed": true
-    },
-    {
-      "name": "negative amendment price rejected without altering issued test bill",
-      "passed": true
-    },
-    {
-      "name": "amendment preserves number and updates linked invoice total plus historical GST detail",
-      "passed": true
-    },
-    {
-      "name": "importProduct succeeded",
-      "passed": true
-    },
-    {
-      "name": "importProduct succeeded",
-      "passed": true
-    },
-    {
-      "name": "product import upserts within tenant with metric unit",
-      "passed": true
-    },
-    {
-      "name": "importProduct rejected",
-      "passed": true
-    },
-    {
-      "name": "negative imported price leaves existing item unchanged",
-      "passed": true
-    },
-    {
-      "name": "scale succeeded",
-      "passed": true
-    },
-    {
-      "name": "scale config returns persisted identifier",
-      "passed": true
-    },
-    {
-      "name": "scale rejected",
-      "passed": true
-    },
-    {
-      "name": "Cash Entry transition accepts valid CashIn",
-      "passed": true
-    },
-    {
-      "name": "Cash Entry transition accepts valid CashOut",
-      "passed": true
-    },
-    {
-      "name": "cash entry rows link to drawer",
-      "passed": true
-    },
-    {
-      "name": "cash succeeded",
-      "passed": true
-    },
-    {
-      "name": "cash succeeded",
-      "passed": true
-    },
-    {
-      "name": "cash succeeded",
-      "passed": true
-    },
-    {
-      "name": "cash rejected",
-      "passed": true
-    },
-    {
-      "name": "cash rejected",
-      "passed": true
-    },
-    {
-      "name": "close succeeded",
-      "passed": true
-    },
-    {
-      "name": "cash movements and actual cash-only tenders reconcile",
-      "passed": true
-    },
-    {
-      "name": "close succeeded",
-      "passed": true
-    },
-    {
-      "name": "pay succeeded",
-      "passed": true
-    },
-    {
-      "name": "complete succeeded",
-      "passed": true
-    },
-    {
-      "name": "receipt succeeded",
-      "passed": true
-    },
-    {
-      "name": "missing-own-template receipt never uses another tenant branding",
-      "passed": true
-    },
-    {
-      "name": "terminal post-sale receipt snapshot never falls back to another tenant template",
-      "passed": true
-    },
-    {
-      "name": "close succeeded",
-      "passed": true
-    },
-    {
-      "name": "open succeeded",
-      "passed": true
-    },
-    {
-      "name": "cart succeeded",
-      "passed": true
-    },
-    {
-      "name": "active terminal renders product grid, cart and one cart engine",
-      "passed": true
-    },
-    {
-      "name": "search/Enter adds exactly one line at quantity one",
-      "passed": true
-    },
-    {
-      "name": "search-added cart displays product name",
-      "passed": true
-    },
-    {
-      "name": "side Bill Summary follows AJAX cart add",
-      "passed": true
-    },
-    {
-      "name": "active normal billing 1920px retains cart and wrapped header",
-      "passed": true
-    },
-    {
-      "name": "active normal cart 1920px reachable",
-      "passed": true
-    },
-    {
-      "name": "active normal cash control 1920px reachable",
-      "passed": true
-    },
-    {
-      "name": "active normal billing 1366px retains cart and wrapped header",
-      "passed": true
-    },
-    {
-      "name": "active normal cart 1366px reachable",
-      "passed": true
-    },
-    {
-      "name": "active normal cash control 1366px reachable",
-      "passed": true
-    },
-    {
-      "name": "active normal billing 800px retains cart and wrapped header",
-      "passed": true
-    },
-    {
-      "name": "active normal cart 800px reachable",
-      "passed": true
-    },
-    {
-      "name": "active normal cash control 800px reachable",
-      "passed": true
-    },
-    {
-      "name": "active normal billing 390px retains cart and wrapped header",
-      "passed": true
-    },
-    {
-      "name": "active normal cart 390px reachable",
-      "passed": true
-    },
-    {
-      "name": "active normal cash control 390px reachable",
-      "passed": true
-    },
-    {
-      "name": "active normal billing 320px retains cart and wrapped header",
-      "passed": true
-    },
-    {
-      "name": "active normal cart 320px reachable",
-      "passed": true
-    },
-    {
-      "name": "active normal cash control 320px reachable",
-      "passed": true
-    },
-    {
-      "name": "active advanced billing 1920px retains cart and wrapped header",
-      "passed": true
-    },
-    {
-      "name": "active advanced cart 1920px reachable",
-      "passed": true
-    },
-    {
-      "name": "active advanced cash control 1920px reachable",
-      "passed": true
-    },
-    {
-      "name": "active advanced billing 1366px retains cart and wrapped header",
-      "passed": true
-    },
-    {
-      "name": "active advanced cart 1366px reachable",
-      "passed": true
-    },
-    {
-      "name": "active advanced cash control 1366px reachable",
-      "passed": true
-    },
-    {
-      "name": "active advanced billing 800px retains cart and wrapped header",
-      "passed": true
-    },
-    {
-      "name": "active advanced cart 800px reachable",
-      "passed": true
-    },
-    {
-      "name": "active advanced cash control 800px reachable",
-      "passed": true
-    },
-    {
-      "name": "active advanced billing 390px retains cart and wrapped header",
-      "passed": true
-    },
-    {
-      "name": "active advanced cart 390px reachable",
-      "passed": true
-    },
-    {
-      "name": "active advanced cash control 390px reachable",
-      "passed": true
-    },
-    {
-      "name": "advanced mobile 390px payment labels have readable width",
-      "passed": true
-    },
-    {
-      "name": "active advanced billing 320px retains cart and wrapped header",
-      "passed": true
-    },
-    {
-      "name": "active advanced cart 320px reachable",
-      "passed": true
-    },
-    {
-      "name": "active advanced cash control 320px reachable",
-      "passed": true
-    },
-    {
-      "name": "advanced mobile 320px payment labels have readable width",
-      "passed": true
-    },
-    {
-      "name": "fullscreen icon uses portable SVG",
-      "passed": true
-    },
-    {
-      "name": "active AJAX cart renders product markup literally",
-      "passed": true
-    },
-    {
-      "name": "side Bill Summary follows AJAX remove",
-      "passed": true
-    },
-    {
-      "name": "receipt succeeded",
-      "passed": true
-    },
-    {
-      "name": "browser receipt names stay text and discounted taxable label is unambiguous",
-      "passed": true
-    },
-    {
-      "name": "offline catalog carries exact GST rate",
-      "passed": true
-    },
-    {
-      "name": "offline name rendered as literal text",
-      "passed": true
-    },
-    {
-      "name": "invalid offline quantity retains line at one",
-      "passed": true
-    },
-    {
-      "name": "offline captured GST payable is 118",
-      "passed": true
-    },
-    {
-      "name": "offline receipt does not execute product markup",
-      "passed": true
-    },
-    {
-      "name": "client removes only acknowledged offline id",
-      "passed": true
-    },
-    {
-      "name": "old response without ids retains pending sale",
-      "passed": true
-    },
-    {
-      "name": "failed offline sync retains pending sale",
-      "passed": true
-    },
-    {
-      "name": "offline database uses active organization",
-      "passed": true
-    },
-    {
-      "name": "invalid qty edit retains line: \"0\"",
-      "passed": true
-    },
-    {
-      "name": "invalid qty edit retains line: \"-1\"",
-      "passed": true
-    },
-    {
-      "name": "invalid qty edit retains line: \"\"",
-      "passed": true
-    },
-    {
-      "name": "invalid qty edit retains line: \"abc\"",
-      "passed": true
-    },
-    {
-      "name": "negative cart price edit rejected",
-      "passed": true
-    },
-    {
-      "name": "issued bill cannot be silently edited through cart endpoint",
-      "passed": true
-    },
-    {
-      "name": "apps Reports/ItemWise child renders",
-      "passed": true
-    },
-    {
-      "name": "apps Reports/ItemWise stored name does not execute",
-      "passed": true
-    },
-    {
-      "name": "apps Reports/PaymentWise child renders",
-      "passed": true
-    },
-    {
-      "name": "apps Reports/PaymentWise stored name does not execute",
-      "passed": true
-    },
-    {
-      "name": "apps Reports/UserWise child renders",
-      "passed": true
-    },
-    {
-      "name": "apps Reports/UserWise stored name does not execute",
-      "passed": true
-    },
-    {
-      "name": "apps Reports/CancelledBills child renders",
-      "passed": true
-    },
-    {
-      "name": "apps Reports/CancelledBills stored name does not execute",
-      "passed": true
-    },
-    {
-      "name": "apps Reports/EditedBills child renders",
-      "passed": true
-    },
-    {
-      "name": "apps Reports/EditedBills stored name does not execute",
-      "passed": true
-    },
-    {
-      "name": "apps Stock/StockAlerts child renders",
-      "passed": true
-    },
-    {
-      "name": "apps Stock/StockAlerts stored name does not execute",
-      "passed": true
-    },
-    {
-      "name": "apps Kitchen/KotDashboard child renders",
-      "passed": true
-    },
-    {
-      "name": "apps Kitchen/KotDashboard stored name does not execute",
-      "passed": true
-    },
-    {
-      "name": "apps Kitchen/KotBilling child renders",
-      "passed": true
-    },
-    {
-      "name": "apps Kitchen/KotBilling stored name does not execute",
-      "passed": true
-    },
-    {
-      "name": "apps Kitchen/Tables child renders",
-      "passed": true
-    },
-    {
-      "name": "apps Kitchen/Tables stored name does not execute",
-      "passed": true
-    },
-    {
-      "name": "apps Kitchen/KotHistory child renders",
-      "passed": true
-    },
-    {
-      "name": "apps Kitchen/KotHistory stored name does not execute",
-      "passed": true
-    },
-    {
-      "name": "apps Kitchen/WaiterManagement child renders",
-      "passed": true
-    },
-    {
-      "name": "apps Kitchen/WaiterManagement stored name does not execute",
-      "passed": true
-    },
-    {
-      "name": "apps ReceiptConfig/Templates child renders",
-      "passed": true
-    },
-    {
-      "name": "apps ReceiptConfig/Templates stored name does not execute",
-      "passed": true
-    },
-    {
-      "name": "qapps Reports/ItemWise child renders",
-      "passed": true
-    },
-    {
-      "name": "qapps Reports/ItemWise stored name does not execute",
-      "passed": true
-    },
-    {
-      "name": "qapps Reports/PaymentWise child renders",
-      "passed": true
-    },
-    {
-      "name": "qapps Reports/PaymentWise stored name does not execute",
-      "passed": true
-    },
-    {
-      "name": "qapps Reports/UserWise child renders",
-      "passed": true
-    },
-    {
-      "name": "qapps Reports/UserWise stored name does not execute",
-      "passed": true
-    },
-    {
-      "name": "qapps Reports/CancelledBills child renders",
-      "passed": true
-    },
-    {
-      "name": "qapps Reports/CancelledBills stored name does not execute",
-      "passed": true
-    },
-    {
-      "name": "qapps Reports/EditedBills child renders",
-      "passed": true
-    },
-    {
-      "name": "qapps Reports/EditedBills stored name does not execute",
-      "passed": true
-    },
-    {
-      "name": "qapps Stock/StockAlerts child renders",
-      "passed": true
-    },
-    {
-      "name": "qapps Stock/StockAlerts stored name does not execute",
-      "passed": true
-    },
-    {
-      "name": "qapps Kitchen/KotDashboard child renders",
-      "passed": true
-    },
-    {
-      "name": "qapps Kitchen/KotDashboard stored name does not execute",
-      "passed": true
-    },
-    {
-      "name": "qapps Kitchen/KotBilling child renders",
-      "passed": true
-    },
-    {
-      "name": "qapps Kitchen/KotBilling stored name does not execute",
-      "passed": true
-    },
-    {
-      "name": "qapps Kitchen/Tables child renders",
-      "passed": true
-    },
-    {
-      "name": "qapps Kitchen/Tables stored name does not execute",
-      "passed": true
-    },
-    {
-      "name": "qapps Kitchen/KotHistory child renders",
-      "passed": true
-    },
-    {
-      "name": "qapps Kitchen/KotHistory stored name does not execute",
-      "passed": true
-    },
-    {
-      "name": "qapps Kitchen/WaiterManagement child renders",
-      "passed": true
-    },
-    {
-      "name": "qapps Kitchen/WaiterManagement stored name does not execute",
-      "passed": true
-    },
-    {
-      "name": "qapps ReceiptConfig/Templates child renders",
-      "passed": true
-    },
-    {
-      "name": "qapps ReceiptConfig/Templates stored name does not execute",
-      "passed": true
-    },
-    {
-      "name": "void succeeded",
-      "passed": true
-    },
-    {
-      "name": "close succeeded",
-      "passed": true
-    },
-    {
-      "name": "pos.cashier.qa authenticated POS access",
-      "passed": true
-    },
-    {
-      "name": "cashier reaches terminal",
-      "passed": true
-    },
-    {
-      "name": "cashier reaches authorized inventory",
-      "passed": true
-    },
-    {
-      "name": "cashier cannot access accounting",
-      "passed": true
-    },
-    {
-      "name": "open succeeded",
-      "passed": true
-    },
-    {
-      "name": "cart succeeded",
-      "passed": true
-    },
-    {
-      "name": "add succeeded",
-      "passed": true
-    },
-    {
-      "name": "pay succeeded",
-      "passed": true
-    },
-    {
-      "name": "credit succeeded",
-      "passed": true
-    },
-    {
-      "name": "close succeeded",
-      "passed": true
-    },
-    {
-      "name": "settle rejected",
-      "passed": true
-    },
-    {
-      "name": "open succeeded",
-      "passed": true
-    },
-    {
-      "name": "settle succeeded",
-      "passed": true
-    },
-    {
-      "name": "late credit cash belongs to collecting drawer and preview",
-      "passed": true
-    },
-    {
-      "name": "close succeeded",
-      "passed": true
-    },
-    {
-      "name": "old closed drawer unchanged and new drawer reconciles",
-      "passed": true
-    },
-    {
-      "name": "apps payment CSV reconciles retained cash and distinct bills",
-      "passed": true
-    },
-    {
-      "name": "qapps payment CSV reconciles retained cash and distinct bills",
-      "passed": true
-    },
-    {
-      "name": "net payment report PDF renders",
-      "passed": true
-    },
-    {
-      "name": "invalid expense writes no row: \"\"",
-      "passed": true
-    },
-    {
-      "name": "invalid expense writes no row: \"0\"",
-      "passed": true
-    },
-    {
-      "name": "invalid expense writes no row: \"-1\"",
-      "passed": true
-    },
-    {
-      "name": "invalid expense writes no row: \"abc\"",
-      "passed": true
-    },
-    {
-      "name": "expired stock rejects invalid quantity/cost",
-      "passed": true
-    },
-    {
-      "name": "expired stock rejects invalid quantity/cost",
-      "passed": true
-    },
-    {
-      "name": "expired stock rejects invalid quantity/cost",
-      "passed": true
-    },
-    {
-      "name": "apps Dashboard renders",
-      "passed": true
-    },
-    {
-      "name": "apps OwnerDashboard renders",
-      "passed": true
-    },
-    {
-      "name": "apps Terminal renders",
-      "passed": true
-    },
-    {
-      "name": "apps PosTransactions renders",
-      "passed": true
-    },
-    {
-      "name": "apps DailySummary renders",
-      "passed": true
-    },
-    {
-      "name": "apps PosSessions renders",
-      "passed": true
-    },
-    {
-      "name": "apps PosTerminals renders",
-      "passed": true
-    },
-    {
-      "name": "apps CreditBills renders",
-      "passed": true
-    },
-    {
-      "name": "apps CashEntry renders",
-      "passed": true
-    },
-    {
-      "name": "apps Expenses renders",
-      "passed": true
-    },
-    {
-      "name": "apps Wastage renders",
-      "passed": true
-    },
-    {
-      "name": "apps Stock renders",
-      "passed": true
-    },
-    {
-      "name": "apps Reports renders",
-      "passed": true
-    },
-    {
-      "name": "apps BillAuditReport renders",
-      "passed": true
-    },
-    {
-      "name": "apps ProductPricing renders",
-      "passed": true
-    },
-    {
-      "name": "apps PriceOverrides renders",
-      "passed": true
-    },
-    {
-      "name": "apps DiscountSettings renders",
-      "passed": true
-    },
-    {
-      "name": "apps SalesMode renders",
-      "passed": true
-    },
-    {
-      "name": "apps Barcodes renders",
-      "passed": true
-    },
-    {
-      "name": "apps BarcodeLabels renders",
-      "passed": true
-    },
-    {
-      "name": "apps ProductImport renders",
-      "passed": true
-    },
-    {
-      "name": "apps ReceiptConfig renders",
-      "passed": true
-    },
-    {
-      "name": "apps PrinterConfig renders",
-      "passed": true
-    },
-    {
-      "name": "apps Kitchen renders",
-      "passed": true
-    },
-    {
-      "name": "apps BillNumberRegister renders",
-      "passed": true
-    },
-    {
-      "name": "apps OfflineMode renders",
-      "passed": true
-    },
-    {
-      "name": "apps EditTransaction?transactionId=100000 renders",
-      "passed": true
-    },
-    {
-      "name": "apps EditSession?sessionId=100000 renders",
-      "passed": true
-    },
-    {
-      "name": "qapps Dashboard renders",
-      "passed": true
-    },
-    {
-      "name": "qapps OwnerDashboard renders",
-      "passed": true
-    },
-    {
-      "name": "qapps Terminal renders",
-      "passed": true
-    },
-    {
-      "name": "qapps PosTransactions renders",
-      "passed": true
-    },
-    {
-      "name": "qapps DailySummary renders",
-      "passed": true
-    },
-    {
-      "name": "qapps PosSessions renders",
-      "passed": true
-    },
-    {
-      "name": "qapps PosTerminals renders",
-      "passed": true
-    },
-    {
-      "name": "qapps CreditBills renders",
-      "passed": true
-    },
-    {
-      "name": "qapps CashEntry renders",
-      "passed": true
-    },
-    {
-      "name": "qapps Expenses renders",
-      "passed": true
-    },
-    {
-      "name": "qapps Wastage renders",
-      "passed": true
-    },
-    {
-      "name": "qapps Stock renders",
-      "passed": true
-    },
-    {
-      "name": "qapps Reports renders",
-      "passed": true
-    },
-    {
-      "name": "qapps BillAuditReport renders",
-      "passed": true
-    },
-    {
-      "name": "qapps ProductPricing renders",
-      "passed": true
-    },
-    {
-      "name": "qapps PriceOverrides renders",
-      "passed": true
-    },
-    {
-      "name": "qapps DiscountSettings renders",
-      "passed": true
-    },
-    {
-      "name": "qapps SalesMode renders",
-      "passed": true
-    },
-    {
-      "name": "qapps Barcodes renders",
-      "passed": true
-    },
-    {
-      "name": "qapps BarcodeLabels renders",
-      "passed": true
-    },
-    {
-      "name": "qapps ProductImport renders",
-      "passed": true
-    },
-    {
-      "name": "qapps ReceiptConfig renders",
-      "passed": true
-    },
-    {
-      "name": "qapps PrinterConfig renders",
-      "passed": true
-    },
-    {
-      "name": "qapps Kitchen renders",
-      "passed": true
-    },
-    {
-      "name": "qapps BillNumberRegister renders",
-      "passed": true
-    },
-    {
-      "name": "qapps OfflineMode renders",
-      "passed": true
-    },
-    {
-      "name": "qapps EditTransaction?transactionId=100000 renders",
-      "passed": true
-    },
-    {
-      "name": "qapps EditSession?sessionId=100000 renders",
-      "passed": true
-    },
-    {
-      "name": "apps Terminal 1920px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps PosTransactions 1920px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps CreditBills 1920px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps PosSessions 1920px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps PosTerminals 1920px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps CashEntry 1920px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps SalesMode 1920px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps ProductPricing 1920px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps ReceiptConfig 1920px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps Reports 1920px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps Terminal 1920px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps PosTransactions 1920px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps CreditBills 1920px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps PosSessions 1920px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps PosTerminals 1920px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps CashEntry 1920px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps SalesMode 1920px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps ProductPricing 1920px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps ReceiptConfig 1920px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps Reports 1920px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps Terminal 1366px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps PosTransactions 1366px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps CreditBills 1366px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps PosSessions 1366px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps PosTerminals 1366px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps CashEntry 1366px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps SalesMode 1366px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps ProductPricing 1366px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps ReceiptConfig 1366px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps Reports 1366px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps Terminal 1366px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps PosTransactions 1366px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps CreditBills 1366px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps PosSessions 1366px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps PosTerminals 1366px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps CashEntry 1366px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps SalesMode 1366px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps ProductPricing 1366px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps ReceiptConfig 1366px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps Reports 1366px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps Terminal 800px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps PosTransactions 800px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps CreditBills 800px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps PosSessions 800px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps PosTerminals 800px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps CashEntry 800px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps SalesMode 800px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps ProductPricing 800px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps ReceiptConfig 800px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps Reports 800px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps Terminal 800px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps PosTransactions 800px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps CreditBills 800px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps PosSessions 800px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps PosTerminals 800px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps CashEntry 800px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps SalesMode 800px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps ProductPricing 800px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps ReceiptConfig 800px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps Reports 800px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps Terminal 390px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps PosTransactions 390px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps CreditBills 390px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps PosSessions 390px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps PosTerminals 390px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps CashEntry 390px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps SalesMode 390px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps ProductPricing 390px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps ReceiptConfig 390px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps Reports 390px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps Terminal 390px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps PosTransactions 390px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps CreditBills 390px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps PosSessions 390px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps PosTerminals 390px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps CashEntry 390px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps SalesMode 390px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps ProductPricing 390px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps ReceiptConfig 390px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps Reports 390px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps Terminal 320px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps PosTransactions 320px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps CreditBills 320px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps PosSessions 320px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps PosTerminals 320px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps CashEntry 320px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps SalesMode 320px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps ProductPricing 320px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps ReceiptConfig 320px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "apps Reports 320px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps Terminal 320px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps PosTransactions 320px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps CreditBills 320px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps PosSessions 320px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps PosTerminals 320px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps CashEntry 320px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps SalesMode 320px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps ProductPricing 320px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps ReceiptConfig 320px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "qapps Reports 320px fits viewport",
-      "passed": true
-    },
-    {
-      "name": "POS pages have no JavaScript exceptions",
-      "passed": true
-    }
+    {"name": "isolated fixtures initialized","passed": true},
+    {"name": "pos.qa authenticated POS access","passed": true},
+    {"name": "pos.b.qa authenticated POS access","passed": true},
+    {"name": "open succeeded","passed": true},
+    {"name": "opened session is committed with the authorized terminal and organization","passed": true},
+    {"name": "open rejected","passed": true},
+    {"name": "open rejected","passed": true},
+    {"name": "cart succeeded","passed": true},
+    {"name": "unpaid cart consumes no bill number","passed": true},
+    {"name": "complete rejected","passed": true},
+    {"name": "credit rejected","passed": true},
+    {"name": "add rejected","passed": true},
+    {"name": "add rejected","passed": true},
+    {"name": "add rejected","passed": true},
+    {"name": "add rejected","passed": true},
+    {"name": "add rejected","passed": true},
+    {"name": "add rejected","passed": true},
+    {"name": "add succeeded","passed": true},
+    {"name": "retail intra GST exact golden","passed": true},
+    {"name": "pay rejected","passed": true},
+    {"name": "pay rejected","passed": true},
+    {"name": "pay rejected","passed": true},
+    {"name": "invalid tenders create no payment rows","passed": true},
+    {"name": "pay succeeded","passed": true},
+    {"name": "complete succeeded","passed": true},
+    {"name": "cash change exact golden","passed": true},
+    {"name": "pay rejected","passed": true},
+    {"name": "complete rejected","passed": true},
+    {"name": "duplicate checkout writes one tender","passed": true},
+    {"name": "cart succeeded","passed": true},
+    {"name": "add succeeded","passed": true},
+    {"name": "pay succeeded","passed": true},
+    {"name": "complete succeeded","passed": true},
+    {"name": "sync succeeded","passed": true},
+    {"name": "discounted POS invoice mirrors 1062 inclusive total: 900 taxable + 162 GST","passed": true},
+    {"name": "sync succeeded","passed": true},
+    {"name": "invoice sync idempotent","passed": true},
+    {"name": "discounted synced invoice PDF renders","passed": true},
+    {"name": "POS receipt PDF renders","passed": true},
+    {"name": "cart succeeded","passed": true},
+    {"name": "add succeeded","passed": true},
+    {"name": "pay succeeded","passed": true},
+    {"name": "pay succeeded","passed": true},
+    {"name": "complete succeeded","passed": true},
+    {"name": "split tender exactly reconciles","passed": true},
+    {"name": "cart succeeded","passed": true},
+    {"name": "add succeeded","passed": true},
+    {"name": "credit succeeded","passed": true},
+    {"name": "settle succeeded","passed": true},
+    {"name": "partial credit retains 68 due","passed": true},
+    {"name": "settle succeeded","passed": true},
+    {"name": "full credit settles once","passed": true},
+    {"name": "settle rejected","passed": true},
+    {"name": "cart succeeded","passed": true},
+    {"name": "add succeeded","passed": true},
+    {"name": "wholesale fixed price golden","passed": true},
+    {"name": "add rejected","passed": true},
+    {"name": "void succeeded","passed": true},
+    {"name": "void does not consume bill number","passed": true},
+    {"name": "cart succeeded","passed": true},
+    {"name": "add succeeded","passed": true},
+    {"name": "hold succeeded","passed": true},
+    {"name": "recall succeeded","passed": true},
+    {"name": "recall restores one line","passed": true},
+    {"name": "recall rejected","passed": true},
+    {"name": "void succeeded","passed": true},
+    {"name": "open succeeded","passed": true},
+    {"name": "cart succeeded","passed": true},
+    {"name": "add succeeded","passed": true},
+    {"name": "pay rejected","passed": true},
+    {"name": "complete rejected","passed": true},
+    {"name": "receipt rejected","passed": true},
+    {"name": "hold rejected","passed": true},
+    {"name": "void rejected","passed": true},
+    {"name": "sync rejected","passed": true},
+    {"name": "foreign transaction unchanged","passed": true},
+    {"name": "apps foreign detail denied","passed": true},
+    {"name": "apps foreign detail denied","passed": true},
+    {"name": "qapps foreign detail denied","passed": true},
+    {"name": "qapps foreign detail denied","passed": true},
+    {"name": "standalone receipt PDF denies foreign bill","passed": true},
+    {"name": "missing CSRF rejected","passed": true},
+    {"name": "cart succeeded","passed": true},
+    {"name": "add succeeded","passed": true},
+    {"name": "gift rejected","passed": true},
+    {"name": "points rejected","passed": true},
+    {"name": "gift succeeded","passed": true},
+    {"name": "gift tender equals actual 50 redemption, not requested 100","passed": true},
+    {"name": "pay succeeded","passed": true},
+    {"name": "complete succeeded","passed": true},
+    {"name": "handover rejected","passed": true},
+    {"name": "foreign shift handover writes nothing","passed": true},
+    {"name": "cart succeeded","passed": true},
+    {"name": "add succeeded","passed": true},
+    {"name": "add succeeded","passed": true},
+    {"name": "mixed GST exact golden: 100 at 18 plus 200 at 5","passed": true},
+    {"name": "void succeeded","passed": true},
+    {"name": "cart succeeded","passed": true},
+    {"name": "add succeeded","passed": true},
+    {"name": "whole-rupee round-off reconciles payable","passed": true},
+    {"name": "void succeeded","passed": true},
+    {"name": "cart succeeded","passed": true},
+    {"name": "add succeeded","passed": true},
+    {"name": "configured quantity break selects wholesale","passed": true},
+    {"name": "void succeeded","passed": true},
+    {"name": "cart succeeded","passed": true},
+    {"name": "add succeeded","passed": true},
+    {"name": "manual price is exempt from quantity break","passed": true},
+    {"name": "void succeeded","passed": true},
+    {"name": "cart succeeded","passed": true},
+    {"name": "add succeeded","passed": true},
+    {"name": "pay succeeded","passed": true},
+    {"name": "complete succeeded","passed": true},
+    {"name": "sync succeeded","passed": true},
+    {"name": "tracked stock depleted exactly once at invoice sync","passed": true},
+    {"name": "amendment applies only tracked-stock delta","passed": true},
+    {"name": "cart succeeded","passed": true},
+    {"name": "add succeeded","passed": true},
+    {"name": "pay succeeded","passed": true},
+    {"name": "complete succeeded","passed": true},
+    {"name": "free bill completes with a line and no payment","passed": true},
+    {"name": "cart succeeded","passed": true},
+    {"name": "add succeeded","passed": true},
+    {"name": "out-of-state customer attached","passed": true},
+    {"name": "customer sets IGST destination without repricing","passed": true},
+    {"name": "customer cleared","passed": true},
+    {"name": "clearing restores intra-state GST","passed": true},
+    {"name": "void succeeded","passed": true},
+    {"name": "cart succeeded","passed": true},
+    {"name": "add succeeded","passed": true},
+    {"name": "hold succeeded","passed": true},
+    {"name": "recall succeeded","passed": true},
+    {"name": "hold recall preserves original cart, manual price, mode, customer and tax-off","passed": true},
+    {"name": "void succeeded","passed": true},
+    {"name": "open succeeded","passed": true},
+    {"name": "cart succeeded","passed": true},
+    {"name": "add succeeded","passed": true},
+    {"name": "pay succeeded","passed": true},
+    {"name": "open rejected","passed": true},
+    {"name": "close rejected","passed": true},
+    {"name": "void rejected","passed": true},
+    {"name": "session boundaries retain recorded partial tender","passed": true},
+    {"name": "pay rejected","passed": true},
+    {"name": "noncash over-tender rejected before insert","passed": true},
+    {"name": "pay succeeded","passed": true},
+    {"name": "complete succeeded","passed": true},
+    {"name": "close succeeded","passed": true},
+    {"name": "cart succeeded","passed": true},
+    {"name": "add succeeded","passed": true},
+    {"name": "offline succeeded","passed": true},
+    {"name": "offline batch commits valid sale independently and acknowledges only that id","passed": true},
+    {"name": "offline replay never appends to or completes interactive cart","passed": true},
+    {"name": "offline succeeded","passed": true},
+    {"name": "offline retry acknowledges without another bill","passed": true},
+    {"name": "offline succeeded","passed": true},
+    {"name": "mismatched money and foreign payload stay unacknowledged and roll back","passed": true},
+    {"name": "void succeeded","passed": true},
+    {"name": "open succeeded","passed": true},
+    {"name": "cart succeeded","passed": true},
+    {"name": "cart succeeded","passed": true},
+    {"name": "add succeeded","passed": true},
+    {"name": "add succeeded","passed": true},
+    {"name": "pay succeeded","passed": true},
+    {"name": "pay succeeded","passed": true},
+    {"name": "complete succeeded","passed": true},
+    {"name": "complete succeeded","passed": true},
+    {"name": "concurrent completions mint distinct consecutive numbers","passed": true},
+    {"name": "close succeeded","passed": true},
+    {"name": "sync succeeded","passed": true},
+    {"name": "negative amendment price rejected without altering issued test bill","passed": true},
+    {"name": "amendment preserves number and updates linked invoice total plus historical GST detail","passed": true},
+    {"name": "importProduct succeeded","passed": true},
+    {"name": "importProduct succeeded","passed": true},
+    {"name": "product import upserts within tenant with metric unit","passed": true},
+    {"name": "importProduct rejected","passed": true},
+    {"name": "negative imported price leaves existing item unchanged","passed": true},
+    {"name": "scale succeeded","passed": true},
+    {"name": "scale config returns persisted identifier","passed": true},
+    {"name": "scale rejected","passed": true},
+    {"name": "Cash Entry transition accepts valid CashIn","passed": true},
+    {"name": "Cash Entry transition accepts valid CashOut","passed": true},
+    {"name": "cash entry rows link to drawer","passed": true},
+    {"name": "cash succeeded","passed": true},
+    {"name": "cash succeeded","passed": true},
+    {"name": "cash succeeded","passed": true},
+    {"name": "cash rejected","passed": true},
+    {"name": "cash rejected","passed": true},
+    {"name": "close succeeded","passed": true},
+    {"name": "cash movements and actual cash-only tenders reconcile","passed": true},
+    {"name": "close succeeded","passed": true},
+    {"name": "pay succeeded","passed": true},
+    {"name": "complete succeeded","passed": true},
+    {"name": "receipt succeeded","passed": true},
+    {"name": "missing-own-template receipt never uses another tenant branding","passed": true},
+    {"name": "terminal post-sale receipt snapshot never falls back to another tenant template","passed": true},
+    {"name": "close succeeded","passed": true},
+    {"name": "open succeeded","passed": true},
+    {"name": "cart succeeded","passed": true},
+    {"name": "active terminal renders product grid, cart and one cart engine","passed": true},
+    {"name": "search/Enter adds exactly one line at quantity one","passed": true},
+    {"name": "search-added cart displays product name","passed": true},
+    {"name": "side Bill Summary follows AJAX cart add","passed": true},
+    {"name": "active normal billing 1920px retains cart and wrapped header","passed": true},
+    {"name": "active normal cart 1920px reachable","passed": true},
+    {"name": "active normal cash control 1920px reachable","passed": true},
+    {"name": "active normal billing 1366px retains cart and wrapped header","passed": true},
+    {"name": "active normal cart 1366px reachable","passed": true},
+    {"name": "active normal cash control 1366px reachable","passed": true},
+    {"name": "active normal billing 800px retains cart and wrapped header","passed": true},
+    {"name": "active normal cart 800px reachable","passed": true},
+    {"name": "active normal cash control 800px reachable","passed": true},
+    {"name": "active normal billing 390px retains cart and wrapped header","passed": true},
+    {"name": "active normal cart 390px reachable","passed": true},
+    {"name": "active normal cash control 390px reachable","passed": true},
+    {"name": "active normal billing 320px retains cart and wrapped header","passed": true},
+    {"name": "active normal cart 320px reachable","passed": true},
+    {"name": "active normal cash control 320px reachable","passed": true},
+    {"name": "active advanced billing 1920px retains cart and wrapped header","passed": true},
+    {"name": "active advanced cart 1920px reachable","passed": true},
+    {"name": "active advanced cash control 1920px reachable","passed": true},
+    {"name": "active advanced billing 1366px retains cart and wrapped header","passed": true},
+    {"name": "active advanced cart 1366px reachable","passed": true},
+    {"name": "active advanced cash control 1366px reachable","passed": true},
+    {"name": "active advanced billing 800px retains cart and wrapped header","passed": true},
+    {"name": "active advanced cart 800px reachable","passed": true},
+    {"name": "active advanced cash control 800px reachable","passed": true},
+    {"name": "active advanced billing 390px retains cart and wrapped header","passed": true},
+    {"name": "active advanced cart 390px reachable","passed": true},
+    {"name": "active advanced cash control 390px reachable","passed": true},
+    {"name": "advanced mobile 390px payment labels have readable width","passed": true},
+    {"name": "active advanced billing 320px retains cart and wrapped header","passed": true},
+    {"name": "active advanced cart 320px reachable","passed": true},
+    {"name": "active advanced cash control 320px reachable","passed": true},
+    {"name": "advanced mobile 320px payment labels have readable width","passed": true},
+    {"name": "fullscreen icon uses portable SVG","passed": true},
+    {"name": "active AJAX cart renders product markup literally","passed": true},
+    {"name": "side Bill Summary follows AJAX remove","passed": true},
+    {"name": "receipt succeeded","passed": true},
+    {"name": "browser receipt names stay text and discounted taxable label is unambiguous","passed": true},
+    {"name": "offline catalog carries exact GST rate","passed": true},
+    {"name": "offline name rendered as literal text","passed": true},
+    {"name": "invalid offline quantity retains line at one","passed": true},
+    {"name": "offline captured GST payable is 118","passed": true},
+    {"name": "offline receipt does not execute product markup","passed": true},
+    {"name": "client removes only acknowledged offline id","passed": true},
+    {"name": "old response without ids retains pending sale","passed": true},
+    {"name": "failed offline sync retains pending sale","passed": true},
+    {"name": "offline database uses active organization","passed": true},
+    {"name": "invalid qty edit retains line: \"0\"","passed": true},
+    {"name": "invalid qty edit retains line: \"-1\"","passed": true},
+    {"name": "invalid qty edit retains line: \"\"","passed": true},
+    {"name": "invalid qty edit retains line: \"abc\"","passed": true},
+    {"name": "negative cart price edit rejected","passed": true},
+    {"name": "issued bill cannot be silently edited through cart endpoint","passed": true},
+    {"name": "apps Reports/ItemWise child renders","passed": true},
+    {"name": "apps Reports/ItemWise stored name does not execute","passed": true},
+    {"name": "apps Reports/PaymentWise child renders","passed": true},
+    {"name": "apps Reports/PaymentWise stored name does not execute","passed": true},
+    {"name": "apps Reports/UserWise child renders","passed": true},
+    {"name": "apps Reports/UserWise stored name does not execute","passed": true},
+    {"name": "apps Reports/CancelledBills child renders","passed": true},
+    {"name": "apps Reports/CancelledBills stored name does not execute","passed": true},
+    {"name": "apps Reports/EditedBills child renders","passed": true},
+    {"name": "apps Reports/EditedBills stored name does not execute","passed": true},
+    {"name": "apps Stock/StockAlerts child renders","passed": true},
+    {"name": "apps Stock/StockAlerts stored name does not execute","passed": true},
+    {"name": "apps Kitchen/KotDashboard child renders","passed": true},
+    {"name": "apps Kitchen/KotDashboard stored name does not execute","passed": true},
+    {"name": "apps Kitchen/KotBilling child renders","passed": true},
+    {"name": "apps Kitchen/KotBilling stored name does not execute","passed": true},
+    {"name": "apps Kitchen/Tables child renders","passed": true},
+    {"name": "apps Kitchen/Tables stored name does not execute","passed": true},
+    {"name": "apps Kitchen/KotHistory child renders","passed": true},
+    {"name": "apps Kitchen/KotHistory stored name does not execute","passed": true},
+    {"name": "apps Kitchen/WaiterManagement child renders","passed": true},
+    {"name": "apps Kitchen/WaiterManagement stored name does not execute","passed": true},
+    {"name": "apps ReceiptConfig/Templates child renders","passed": true},
+    {"name": "apps ReceiptConfig/Templates stored name does not execute","passed": true},
+    {"name": "qapps Reports/ItemWise child renders","passed": true},
+    {"name": "qapps Reports/ItemWise stored name does not execute","passed": true},
+    {"name": "qapps Reports/PaymentWise child renders","passed": true},
+    {"name": "qapps Reports/PaymentWise stored name does not execute","passed": true},
+    {"name": "qapps Reports/UserWise child renders","passed": true},
+    {"name": "qapps Reports/UserWise stored name does not execute","passed": true},
+    {"name": "qapps Reports/CancelledBills child renders","passed": true},
+    {"name": "qapps Reports/CancelledBills stored name does not execute","passed": true},
+    {"name": "qapps Reports/EditedBills child renders","passed": true},
+    {"name": "qapps Reports/EditedBills stored name does not execute","passed": true},
+    {"name": "qapps Stock/StockAlerts child renders","passed": true},
+    {"name": "qapps Stock/StockAlerts stored name does not execute","passed": true},
+    {"name": "qapps Kitchen/KotDashboard child renders","passed": true},
+    {"name": "qapps Kitchen/KotDashboard stored name does not execute","passed": true},
+    {"name": "qapps Kitchen/KotBilling child renders","passed": true},
+    {"name": "qapps Kitchen/KotBilling stored name does not execute","passed": true},
+    {"name": "qapps Kitchen/Tables child renders","passed": true},
+    {"name": "qapps Kitchen/Tables stored name does not execute","passed": true},
+    {"name": "qapps Kitchen/KotHistory child renders","passed": true},
+    {"name": "qapps Kitchen/KotHistory stored name does not execute","passed": true},
+    {"name": "qapps Kitchen/WaiterManagement child renders","passed": true},
+    {"name": "qapps Kitchen/WaiterManagement stored name does not execute","passed": true},
+    {"name": "qapps ReceiptConfig/Templates child renders","passed": true},
+    {"name": "qapps ReceiptConfig/Templates stored name does not execute","passed": true},
+    {"name": "void succeeded","passed": true},
+    {"name": "close succeeded","passed": true},
+    {"name": "pos.cashier.qa authenticated POS access","passed": true},
+    {"name": "cashier reaches terminal","passed": true},
+    {"name": "cashier reaches authorized inventory","passed": true},
+    {"name": "cashier cannot access accounting","passed": true},
+    {"name": "open succeeded","passed": true},
+    {"name": "cart succeeded","passed": true},
+    {"name": "add succeeded","passed": true},
+    {"name": "pay succeeded","passed": true},
+    {"name": "credit succeeded","passed": true},
+    {"name": "close succeeded","passed": true},
+    {"name": "settle rejected","passed": true},
+    {"name": "open succeeded","passed": true},
+    {"name": "settle succeeded","passed": true},
+    {"name": "late credit cash belongs to collecting drawer and preview","passed": true},
+    {"name": "close succeeded","passed": true},
+    {"name": "old closed drawer unchanged and new drawer reconciles","passed": true},
+    {"name": "apps payment CSV reconciles retained cash and distinct bills","passed": true},
+    {"name": "qapps payment CSV reconciles retained cash and distinct bills","passed": true},
+    {"name": "net payment report PDF renders","passed": true},
+    {"name": "invalid expense writes no row: \"\"","passed": true},
+    {"name": "invalid expense writes no row: \"0\"","passed": true},
+    {"name": "invalid expense writes no row: \"-1\"","passed": true},
+    {"name": "invalid expense writes no row: \"abc\"","passed": true},
+    {"name": "expired stock rejects invalid quantity/cost","passed": true},
+    {"name": "expired stock rejects invalid quantity/cost","passed": true},
+    {"name": "expired stock rejects invalid quantity/cost","passed": true},
+    {"name": "apps Dashboard renders","passed": true},
+    {"name": "apps OwnerDashboard renders","passed": true},
+    {"name": "apps Terminal renders","passed": true},
+    {"name": "apps PosTransactions renders","passed": true},
+    {"name": "apps DailySummary renders","passed": true},
+    {"name": "apps PosSessions renders","passed": true},
+    {"name": "apps PosTerminals renders","passed": true},
+    {"name": "apps CreditBills renders","passed": true},
+    {"name": "apps CashEntry renders","passed": true},
+    {"name": "apps Expenses renders","passed": true},
+    {"name": "apps Wastage renders","passed": true},
+    {"name": "apps Stock renders","passed": true},
+    {"name": "apps Reports renders","passed": true},
+    {"name": "apps BillAuditReport renders","passed": true},
+    {"name": "apps ProductPricing renders","passed": true},
+    {"name": "apps PriceOverrides renders","passed": true},
+    {"name": "apps DiscountSettings renders","passed": true},
+    {"name": "apps SalesMode renders","passed": true},
+    {"name": "apps Barcodes renders","passed": true},
+    {"name": "apps BarcodeLabels renders","passed": true},
+    {"name": "apps ProductImport renders","passed": true},
+    {"name": "apps ReceiptConfig renders","passed": true},
+    {"name": "apps PrinterConfig renders","passed": true},
+    {"name": "apps Kitchen renders","passed": true},
+    {"name": "apps BillNumberRegister renders","passed": true},
+    {"name": "apps OfflineMode renders","passed": true},
+    {"name": "apps EditTransaction?transactionId=100000 renders","passed": true},
+    {"name": "apps EditSession?sessionId=100000 renders","passed": true},
+    {"name": "qapps Dashboard renders","passed": true},
+    {"name": "qapps OwnerDashboard renders","passed": true},
+    {"name": "qapps Terminal renders","passed": true},
+    {"name": "qapps PosTransactions renders","passed": true},
+    {"name": "qapps DailySummary renders","passed": true},
+    {"name": "qapps PosSessions renders","passed": true},
+    {"name": "qapps PosTerminals renders","passed": true},
+    {"name": "qapps CreditBills renders","passed": true},
+    {"name": "qapps CashEntry renders","passed": true},
+    {"name": "qapps Expenses renders","passed": true},
+    {"name": "qapps Wastage renders","passed": true},
+    {"name": "qapps Stock renders","passed": true},
+    {"name": "qapps Reports renders","passed": true},
+    {"name": "qapps BillAuditReport renders","passed": true},
+    {"name": "qapps ProductPricing renders","passed": true},
+    {"name": "qapps PriceOverrides renders","passed": true},
+    {"name": "qapps DiscountSettings renders","passed": true},
+    {"name": "qapps SalesMode renders","passed": true},
+    {"name": "qapps Barcodes renders","passed": true},
+    {"name": "qapps BarcodeLabels renders","passed": true},
+    {"name": "qapps ProductImport renders","passed": true},
+    {"name": "qapps ReceiptConfig renders","passed": true},
+    {"name": "qapps PrinterConfig renders","passed": true},
+    {"name": "qapps Kitchen renders","passed": true},
+    {"name": "qapps BillNumberRegister renders","passed": true},
+    {"name": "qapps OfflineMode renders","passed": true},
+    {"name": "qapps EditTransaction?transactionId=100000 renders","passed": true},
+    {"name": "qapps EditSession?sessionId=100000 renders","passed": true},
+    {"name": "apps Terminal 1920px fits viewport","passed": true},
+    {"name": "apps PosTransactions 1920px fits viewport","passed": true},
+    {"name": "apps CreditBills 1920px fits viewport","passed": true},
+    {"name": "apps PosSessions 1920px fits viewport","passed": true},
+    {"name": "apps PosTerminals 1920px fits viewport","passed": true},
+    {"name": "apps CashEntry 1920px fits viewport","passed": true},
+    {"name": "apps SalesMode 1920px fits viewport","passed": true},
+    {"name": "apps ProductPricing 1920px fits viewport","passed": true},
+    {"name": "apps ReceiptConfig 1920px fits viewport","passed": true},
+    {"name": "apps Reports 1920px fits viewport","passed": true},
+    {"name": "qapps Terminal 1920px fits viewport","passed": true},
+    {"name": "qapps PosTransactions 1920px fits viewport","passed": true},
+    {"name": "qapps CreditBills 1920px fits viewport","passed": true},
+    {"name": "qapps PosSessions 1920px fits viewport","passed": true},
+    {"name": "qapps PosTerminals 1920px fits viewport","passed": true},
+    {"name": "qapps CashEntry 1920px fits viewport","passed": true},
+    {"name": "qapps SalesMode 1920px fits viewport","passed": true},
+    {"name": "qapps ProductPricing 1920px fits viewport","passed": true},
+    {"name": "qapps ReceiptConfig 1920px fits viewport","passed": true},
+    {"name": "qapps Reports 1920px fits viewport","passed": true},
+    {"name": "apps Terminal 1366px fits viewport","passed": true},
+    {"name": "apps PosTransactions 1366px fits viewport","passed": true},
+    {"name": "apps CreditBills 1366px fits viewport","passed": true},
+    {"name": "apps PosSessions 1366px fits viewport","passed": true},
+    {"name": "apps PosTerminals 1366px fits viewport","passed": true},
+    {"name": "apps CashEntry 1366px fits viewport","passed": true},
+    {"name": "apps SalesMode 1366px fits viewport","passed": true},
+    {"name": "apps ProductPricing 1366px fits viewport","passed": true},
+    {"name": "apps ReceiptConfig 1366px fits viewport","passed": true},
+    {"name": "apps Reports 1366px fits viewport","passed": true},
+    {"name": "qapps Terminal 1366px fits viewport","passed": true},
+    {"name": "qapps PosTransactions 1366px fits viewport","passed": true},
+    {"name": "qapps CreditBills 1366px fits viewport","passed": true},
+    {"name": "qapps PosSessions 1366px fits viewport","passed": true},
+    {"name": "qapps PosTerminals 1366px fits viewport","passed": true},
+    {"name": "qapps CashEntry 1366px fits viewport","passed": true},
+    {"name": "qapps SalesMode 1366px fits viewport","passed": true},
+    {"name": "qapps ProductPricing 1366px fits viewport","passed": true},
+    {"name": "qapps ReceiptConfig 1366px fits viewport","passed": true},
+    {"name": "qapps Reports 1366px fits viewport","passed": true},
+    {"name": "apps Terminal 800px fits viewport","passed": true},
+    {"name": "apps PosTransactions 800px fits viewport","passed": true},
+    {"name": "apps CreditBills 800px fits viewport","passed": true},
+    {"name": "apps PosSessions 800px fits viewport","passed": true},
+    {"name": "apps PosTerminals 800px fits viewport","passed": true},
+    {"name": "apps CashEntry 800px fits viewport","passed": true},
+    {"name": "apps SalesMode 800px fits viewport","passed": true},
+    {"name": "apps ProductPricing 800px fits viewport","passed": true},
+    {"name": "apps ReceiptConfig 800px fits viewport","passed": true},
+    {"name": "apps Reports 800px fits viewport","passed": true},
+    {"name": "qapps Terminal 800px fits viewport","passed": true},
+    {"name": "qapps PosTransactions 800px fits viewport","passed": true},
+    {"name": "qapps CreditBills 800px fits viewport","passed": true},
+    {"name": "qapps PosSessions 800px fits viewport","passed": true},
+    {"name": "qapps PosTerminals 800px fits viewport","passed": true},
+    {"name": "qapps CashEntry 800px fits viewport","passed": true},
+    {"name": "qapps SalesMode 800px fits viewport","passed": true},
+    {"name": "qapps ProductPricing 800px fits viewport","passed": true},
+    {"name": "qapps ReceiptConfig 800px fits viewport","passed": true},
+    {"name": "qapps Reports 800px fits viewport","passed": true},
+    {"name": "apps Terminal 390px fits viewport","passed": true},
+    {"name": "apps PosTransactions 390px fits viewport","passed": true},
+    {"name": "apps CreditBills 390px fits viewport","passed": true},
+    {"name": "apps PosSessions 390px fits viewport","passed": true},
+    {"name": "apps PosTerminals 390px fits viewport","passed": true},
+    {"name": "apps CashEntry 390px fits viewport","passed": true},
+    {"name": "apps SalesMode 390px fits viewport","passed": true},
+    {"name": "apps ProductPricing 390px fits viewport","passed": true},
+    {"name": "apps ReceiptConfig 390px fits viewport","passed": true},
+    {"name": "apps Reports 390px fits viewport","passed": true},
+    {"name": "qapps Terminal 390px fits viewport","passed": true},
+    {"name": "qapps PosTransactions 390px fits viewport","passed": true},
+    {"name": "qapps CreditBills 390px fits viewport","passed": true},
+    {"name": "qapps PosSessions 390px fits viewport","passed": true},
+    {"name": "qapps PosTerminals 390px fits viewport","passed": true},
+    {"name": "qapps CashEntry 390px fits viewport","passed": true},
+    {"name": "qapps SalesMode 390px fits viewport","passed": true},
+    {"name": "qapps ProductPricing 390px fits viewport","passed": true},
+    {"name": "qapps ReceiptConfig 390px fits viewport","passed": true},
+    {"name": "qapps Reports 390px fits viewport","passed": true},
+    {"name": "apps Terminal 320px fits viewport","passed": true},
+    {"name": "apps PosTransactions 320px fits viewport","passed": true},
+    {"name": "apps CreditBills 320px fits viewport","passed": true},
+    {"name": "apps PosSessions 320px fits viewport","passed": true},
+    {"name": "apps PosTerminals 320px fits viewport","passed": true},
+    {"name": "apps CashEntry 320px fits viewport","passed": true},
+    {"name": "apps SalesMode 320px fits viewport","passed": true},
+    {"name": "apps ProductPricing 320px fits viewport","passed": true},
+    {"name": "apps ReceiptConfig 320px fits viewport","passed": true},
+    {"name": "apps Reports 320px fits viewport","passed": true},
+    {"name": "qapps Terminal 320px fits viewport","passed": true},
+    {"name": "qapps PosTransactions 320px fits viewport","passed": true},
+    {"name": "qapps CreditBills 320px fits viewport","passed": true},
+    {"name": "qapps PosSessions 320px fits viewport","passed": true},
+    {"name": "qapps PosTerminals 320px fits viewport","passed": true},
+    {"name": "qapps CashEntry 320px fits viewport","passed": true},
+    {"name": "qapps SalesMode 320px fits viewport","passed": true},
+    {"name": "qapps ProductPricing 320px fits viewport","passed": true},
+    {"name": "qapps ReceiptConfig 320px fits viewport","passed": true},
+    {"name": "qapps Reports 320px fits viewport","passed": true},
+    {"name": "POS pages have no JavaScript exceptions","passed": true}
   ],
   "productionAccess": false,
   "passed": true

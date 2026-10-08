@@ -110,5 +110,3 @@ async function hit(locator){await locator.scrollIntoViewIfNeeded();return locato
  }
  report.billingAfter=billing();check('Billing/session/issued invoice state unchanged by UI checks',JSON.stringify(report.billingBefore)===JSON.stringify(report.billingAfter));check('No browser exceptions',report.pageErrors.length===0,report.pageErrors);
 }catch(e){report.error=e.message;process.exitCode=1;}finally{if(browser)await browser.close();fs.writeFileSync(path.join(out,'checks.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({checks:report.checks.length,layouts:report.layouts.length,failures:report.checks.filter(c=>!c.pass).length,error:report.error}));}})();
-
-
