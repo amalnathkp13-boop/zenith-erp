@@ -1,6 +1,6 @@
 # POS reference UI and working controls
 
-Scope: remaining POS presentation gaps and misleading/dead controls, based on latest `master` (`ba5143a3d1d5e97d2182ff7ba535f36862690a2f`). These UI corrections are integrated into existing POS PR #27; maintainer merges and deploys separately.
+Scope: remaining POS presentation gaps and dead controls. This separate UI follow-up is stacked on the reviewed billing PR #27, whose master baseline is `8054b6af4389cb564ac5db16045193a0093417db`. Maintainer merges and deploys separately.
 
 ## Reproduction and corrections
 
@@ -42,4 +42,4 @@ Shared-header scroll regressions also exercise POS, Contacts, Sales and Purchase
 4. Run `node docs/qa/pos-reference/verify-runtime.cjs`. The helper rejects repeat initialization, unexpected ports, non-loopback requests, missing disposable flag and non-administrators. The DB probe accepts one SELECT and only the named memory URL. Any failed assertion exits nonzero.
 5. Perform teardown and archive only sanitized passing results. Scanners, printers, cash drawers and payment-provider transactions require owner hardware acceptance; this PR does not change those paths or claim hardware coverage.
 
-Current review split: rebase onto the tested #27 billing head and rerun the UI/source/no-op suite before publishing. Historical combined reports do not close the new candidate gates.
+Current review: the exact split candidate passed 319 native assertions, 84 responsive layouts and 15 screen execution comparisons; all 971 component files matched the runtime. Independent snapshots of 12 financial/session tables stayed unchanged. Both listeners closed and a fresh IFEXISTS reconnect failed. See review-reverification.json. GitHub acceptance is still pending because the account billing limit prevents jobs starting; billing-base owner gates remain open.

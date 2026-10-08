@@ -1,0 +1,38 @@
+{
+  "testedApplicationHead": "178c5f4099336d40af8649d14e8dcfd03fd34676",
+  "billingBase": "d792ea2a322263455eb2e9e2403762e32cbbe734",
+  "checks": 319,
+  "responsiveLayouts": 84,
+  "browserExceptions": 0,
+  "componentFiles": 971,
+  "normalizedApplicationSha256": "f33f62338b1f8bc1e6c3afad507ebeb1330d6661c3425f9123e689b237d43620",
+  "financialTablesUnchanged": [
+    "ACCTG_TRANS",
+    "ACCTG_TRANS_ENTRY",
+    "INVOICE",
+    "INVOICE_ITEM",
+    "ORDER_HEADER",
+    "ORDER_ITEM",
+    "ORDER_PART",
+    "PAYMENT",
+    "POS_PAYMENT",
+    "POS_SESSION",
+    "POS_TRANSACTION",
+    "POS_TRANSACTION_ITEM"
+  ],
+  "executionDefinitionsUnchangedScreens": 15,
+  "productionAccess": false,
+  "teardown": {
+    "ifExistsReconnectRejected": true,
+    "listenersClosed": [
+      18085,
+      19097
+    ],
+    "productionAccess": false,
+    "runtime": "purchase-pricing-native-qa"
+  },
+  "pending": [
+    "GitHub required checks blocked by account billing/spending limit",
+    "billing base #27 owner acceptance"
+  ]
+}
