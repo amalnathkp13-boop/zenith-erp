@@ -1,11 +1,14 @@
 {
-  "testedApplicationHead": "178c5f4099336d40af8649d14e8dcfd03fd34676",
-  "billingBase": "d792ea2a322263455eb2e9e2403762e32cbbe734",
+  "masterBaseline": "bd35795bf31594502acbe59fb8ad3289bd9a73e1",
+  "testedApplicationHead": "192c84b05ed320583bc72239d90c089185ee735f",
+  "componentTree": "29f25b373ea00a01687ebc2c2a7d9f0bd03b9554",
+  "billingBase": "57f9c8b0a5568f74dd09bd096f8a572a89964887",
   "checks": 319,
   "responsiveLayouts": 84,
   "browserExceptions": 0,
-  "componentFiles": 971,
-  "normalizedApplicationSha256": "f33f62338b1f8bc1e6c3afad507ebeb1330d6661c3425f9123e689b237d43620",
+  "componentFiles": 984,
+  "normalizedApplicationSha256": "71bbed002d9bd924f2536175d73c3f96f0bfbe5df7cba39a01192a7b6093acdc",
+  "reportSha256": "afa72ae72ba25527b061246434da2c52d89713018a317ac40f1615f8e0baba38",
   "financialTablesUnchanged": [
     "ACCTG_TRANS",
     "ACCTG_TRANS_ENTRY",
@@ -23,16 +26,15 @@
   "executionDefinitionsUnchangedScreens": 15,
   "productionAccess": false,
   "teardown": {
-    "ifExistsReconnectRejected": true,
-    "listenersClosed": [
-      18085,
-      19097
-    ],
+    "tcpPort": 19097,
+    "independentIfExistsReconnectFailed": true,
+    "stoppedProcess": 27824,
     "productionAccess": false,
-    "runtime": "purchase-pricing-native-qa"
+    "httpPort": 18085,
+    "listenersRemaining": 0
   },
   "pending": [
-    "GitHub required checks blocked by account billing/spending limit",
-    "billing base #27 owner acceptance"
+    "Required GitHub checks blocked before start by account billing/spending limit",
+    "Billing parent #27 owner MARUTHI and runtime acceptance"
   ]
 }

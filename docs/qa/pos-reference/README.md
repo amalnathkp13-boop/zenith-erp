@@ -43,3 +43,9 @@ Shared-header scroll regressions also exercise POS, Contacts, Sales and Purchase
 5. Perform teardown and archive only sanitized passing results. Scanners, printers, cash drawers and payment-provider transactions require owner hardware acceptance; this PR does not change those paths or claim hardware coverage.
 
 Current review: the exact split candidate passed 319 native assertions, 84 responsive layouts and 15 screen execution comparisons; all 971 component files matched the runtime. Independent snapshots of 12 financial/session tables stayed unchanged. Both listeners closed and a fresh IFEXISTS reconnect failed. See review-reverification.json. GitHub acceptance is still pending because the account billing limit prevents jobs starting; billing-base owner gates remain open.
+
+The latest-master rebase's exact source/report hashes, current billing parent and
+component inventory supersede the historical counts in `review-reverification.json`.
+Its own UI diff preserves the billing parent's Payment Wise timezone correction;
+that intentional report behavior is verified and reviewed in #27. Required CI and
+owner billing/device acceptance remain separate deployment gates.
