@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Install only in a new loopback memory runtime; never deploy this helper. -->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd" default-menu-include="false">
+    <always-actions><script><![CDATA[
+        if (System.getProperty('purchase.pricing.qa.disposable') != 'true' ||
+            ec.web.request.serverPort != 18085 ||
+            !['127.0.0.1','0:0:0:0:0:0:0:1','::1'].contains(ec.web.request.remoteAddr) ||
+            !ec.user.isInGroup('ADMIN')) throw new org.moqui.context.ArtifactAuthorizationException('Disposable administrator only')
+    ]]></script></always-actions>
+    <transition name="initialize"><actions><script><![CDATA[
+        if (ec.entity.find('mantle.party.Party').condition('partyId','POS_UI_QA').disableAuthz().count()) {
+            ec.web.response.setStatus(409); ec.web.sendJsonResponse([initialized:false]); return
+        }
+        ec.entity.makeDataLoader().location('component://zenith-erp-pos/PosUiQaFixture.xml').load()
+        ec.user.setPreference('ACTIVE_ORGANIZATION','POS_UI_QA')
+        ec.web.sendJsonResponse([initialized:!ec.message.hasError()])
+    ]]></script></actions><default-response type="none"/></transition>
+    <widgets>
+        <label text="Disposable POS UI verification" type="h1"/>
+        <form-single name="PosUiQaInit" transition="initialize">
+            <field name="submitBtn"><default-field><submit text="Initialize disposable fixtures"/></default-field></field>
+        </form-single>
+    </widgets>
+</screen>

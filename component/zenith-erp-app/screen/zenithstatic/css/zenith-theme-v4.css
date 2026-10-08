@@ -3797,9 +3797,11 @@ body.zq-nav.q-body--prevent-scroll:has(#zq-subnav.show[data-mod="sales"]):has(.q
 .zc-contacts-list-page .q-card__actions>h5{flex:1 0 100%;margin:0;line-height:1.4}
 .zc-contacts-list-page .q-card__actions>.q-space{display:none}
 
+/* Keep the shared Quasar header joined to the fixed module tabs while scrolling. */
+body.zq-nav .q-header{transform:none!important}
+/* Bootstrap's header stays in document flow and sticks above all ERP module content. */
+body:has(> #z-sidebar):not(.z-side-off) #top{position:sticky;top:0;z-index:2600}
 /* Contacts keeps the existing ERP controls while reserving their measured height. */
-/* Keep Quasar's reveal-on-scroll header joined to the fixed Contacts tabs. */
-body.zq-nav:has(#zq-subnav.show[data-mod="Contacts"]) .q-header{transform:none!important}
 #zq-subnav.show[data-mod="Contacts"]{top:var(--zq-contacts-header-height,51px)!important}
 body.zq-nav:has(#zq-subnav.show[data-mod="Contacts"]) .q-page-container{padding-top:calc(var(--zq-contacts-header-height,51px) + 40px)!important}
 @media (max-width:1200px){

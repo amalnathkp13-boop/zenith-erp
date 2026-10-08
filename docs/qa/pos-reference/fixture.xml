@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<entity-facade-xml type="demo">
+    <mantle.party.Party partyId="POS_UI_QA" partyTypeEnumId="PtyOrganization"/>
+    <mantle.party.Organization partyId="POS_UI_QA" organizationName="Disposable POS UI"/>
+    <mantle.party.PartyRole partyId="POS_UI_QA" roleTypeId="OrgInternal"/>
+    <mantle.facility.Facility facilityId="POS_UI_QA_FAC" ownerPartyId="POS_UI_QA" facilityTypeEnumId="FcTpRetailStore" facilityName="Disposable POS UI facility"/>
+    <zenith.erp.pos.PosTerminal terminalId="POS_UI_QA_TERM" organizationPartyId="POS_UI_QA" terminalName="Disposable POS UI terminal" countryGeoId="IND" facilityId="POS_UI_QA_FAC" isActive="Y"/>
+    <zenith.erp.pos.RestaurantTable tableId="POS_UI_QA_AVAILABLE" facilityId="POS_UI_QA_FAC" tableNumber="QA-A" seatingCapacity="4" sectionName="QA" statusId="TblAvailable"/>
+    <zenith.erp.pos.RestaurantTable tableId="POS_UI_QA_RESERVED" facilityId="POS_UI_QA_FAC" tableNumber="QA-R" seatingCapacity="4" sectionName="QA" statusId="TblReserved"/>
+</entity-facade-xml>

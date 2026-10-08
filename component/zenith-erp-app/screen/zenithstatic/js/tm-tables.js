@@ -50,7 +50,7 @@
     });
     var e = document.getElementById('tm-panel-empty'); if (e) e.style.display = 'none';
     var w = document.getElementById('tm-wrap'); if (w) w.setAttribute('data-selected', id);
-    var d = document.getElementById('tm-ebtn-delete'); if (d) d.classList.remove('is-disabled');
+    var d = document.getElementById('tm-ebtn-delete'); if (d) { d.classList.remove('is-disabled'); d.disabled = false; }
   };
 
   window.tmClosePanel = function () {
@@ -58,14 +58,16 @@
     qsa('.tm-panel').forEach(function (p) { p.style.display = 'none'; });
     var e = document.getElementById('tm-panel-empty'); if (e) e.style.display = 'block';
     var w = document.getElementById('tm-wrap'); if (w) w.removeAttribute('data-selected');
-    var d = document.getElementById('tm-ebtn-delete'); if (d) d.classList.add('is-disabled');
+    var d = document.getElementById('tm-ebtn-delete'); if (d) { d.classList.add('is-disabled'); d.disabled = true; }
   };
 
   window.tmFilter = function (f, el) {
     qsa('.tm-fpill').forEach(function (p) { p.classList.toggle('is-active', p === el); });
-    qsa('.tm-card').forEach(function (c) {
+    qsa('.tm-card, .tm-table tbody tr[data-status]').forEach(function (c) {
       c.style.display = (f === 'all' || c.getAttribute('data-status') === f) ? '' : 'none';
     });
+    // A filtered-out table must not leave its write actions selected.
+    window.tmClosePanel();
   };
 
   window.tmView = function (mode, el) {
@@ -90,14 +92,6 @@
     var id = w.getAttribute('data-selected'); if (!id) return;
     if (!confirm('Delete this table?')) return;
     window.tmPost('deleteTable', { tableId: id });
-  };
-
-  window.tmSoon = function (id, name) {
-    var m = document.getElementById('tm-soon-' + id);
-    if (m) {
-      m.textContent = name + ' is a planned feature and is not wired yet in this build.';
-      m.style.display = 'block';
-    }
   };
 
   window.tmModal = function (open) {
