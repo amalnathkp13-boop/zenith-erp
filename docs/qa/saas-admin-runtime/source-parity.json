@@ -1,7 +1,7 @@
 [
   {
     "path": "component/zenith-erp-app/screen/zenith/ZenithApp.xml",
-    "sha256": "81c4acbbdb2cf68360996180d2dcebfa2d78d3db84c2b88887d58280196939c4",
+    "sha256": "4d962070aa1b6f7a2f48ee2e4ae0644e9b56744f5e3ab66b8c0c3697ddec3506",
     "matches": true
   },
   {
@@ -51,7 +51,7 @@
   },
   {
     "path": "component/zenith-erp-app/screen/zenithstatic/css/saas-admin.css",
-    "sha256": "d43bd5ac83fb7c3973c31b6d8dee4c9724d8b79dcba7373cfe16800174b4632d",
+    "sha256": "272f714b4044e862c9d920b991e36998412e1d911378c740fcd784122efb60f1",
     "matches": true
   },
   {

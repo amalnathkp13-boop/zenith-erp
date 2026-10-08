@@ -24,6 +24,8 @@
 body:not(.body--dark):has(.saas-plan-page) #top,body:not(.body--dark):has(.saas-plan-page) #top nav{background:#fff!important;color:#6b6380}
 body:not(.zq-nav):has(.saas-plan-page) #top,body:not(.zq-nav):has(.saas-plan-page) #top nav{height:auto!important}
 body.zq-nav:has(.saas-plan-page) .q-layout .q-page-container{padding-left:224px!important;padding-top:var(--sap-header-height,51px)!important}
+/* This long page must put the shared footer after its content, not over the form at the viewport edge. */
+body.zq-nav:has(.saas-plan-page) .q-layout>.q-footer{position:static!important;transform:none!important}
 body.zq-nav.zq-side-collapsed:has(.saas-plan-page) .q-layout .q-page-container{padding-left:62px!important}
 body.zq-nav:has(.saas-plan-page) .q-drawer__backdrop{display:none!important}
 body.zq-nav.q-body--prevent-scroll:has(.saas-plan-page):has(.q-drawer--mobile):not(:has(.q-dialog)){position:static!important;overflow:auto!important}

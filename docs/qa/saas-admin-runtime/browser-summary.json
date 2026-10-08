@@ -96,5 +96,20 @@
     "selection": "selected tenant B shows automatic management"
   },
   "classicTabletHeader": "101px with content below at scrollY=0",
-  "scope": "Synthetic disposable stack; no live writes"
+  "scope": "Synthetic disposable stack; no live writes",
+  "footerFollowUp": {
+    "surface": "qapps Tenant Plans",
+    "before": "fixed at viewport y=694 over page content",
+    "after": "static at document end",
+    "checkedWidths": [
+      320,
+      375,
+      768,
+      1440
+    ],
+    "copyrightVisible": true,
+    "siteMapVisible": true,
+    "documentHorizontalOverflow": false,
+    "classicAppsFooter": "relative at document end; unchanged"
+  }
 }
