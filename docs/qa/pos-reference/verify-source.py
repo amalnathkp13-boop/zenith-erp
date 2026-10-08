@@ -6,7 +6,9 @@ repo = Path(__file__).resolve().parents[3]
 git = shutil.which('git')
 if not git:
     raise RuntimeError('Git must be on PATH')
-base = os.environ.get('POS_REFERENCE_BASE_REF', 'ba5143a3d1d5e97d2182ff7ba535f36862690a2f')
+# PR #27's functional baseline, before adding the reference UI follow-up.
+# The separate POS runtime suite validates the deliberately changed service/guard code.
+base = os.environ.get('POS_REFERENCE_BASE_REF', '4dd5f348fc70c69100caf94001a532876fd5b976')
 runtime = Path(os.environ['POS_REFERENCE_RUNTIME_ROOT']).resolve()
 output = Path(os.environ['POS_REFERENCE_OUTPUT']).resolve()
 output.mkdir(parents=True, exist_ok=True)
@@ -15,9 +17,11 @@ def git_read(*args):
     return subprocess.check_output([git, '-C', str(repo), *args])
 
 screens = []
-for rel in git_read('diff', '--name-only', base, '--', 'component').decode().splitlines():
-    if not rel.endswith('.xml') or rel.endswith('/ZenithApp.xml'):
-        continue
+ui_screens = ('BillAuditReport', 'CashEntry', 'CreditBills', 'DailySummary',
+              'Dashboard', 'Expenses', 'Kitchen', 'Kitchen/Tables', 'PosSessions',
+              'PosTerminals', 'PosTransactions', 'ReceiptConfig', 'Reports', 'Stock', 'Wastage')
+for screen in ui_screens:
+    rel = 'component/zenith-erp-pos/screen/zenith/pos/Pos/' + screen + '.xml'
     old = ET.fromstring(git_read('show', base + ':' + rel))
     new = ET.parse(repo / rel).getroot()
     def execution(root):
@@ -46,7 +50,7 @@ for rel in sorted(set(paths)):
     normalized = data.replace(b'\r\n', b'\n')
     digest.update(rel.encode() + b'\0' + hashlib.sha256(normalized).digest())
 assert not mismatches, 'Runtime overlay differs: ' + ', '.join(mismatches)
-result = {'baseCommit': base, 'screens': screens, 'componentFiles': len(set(paths)),
+result = {'uiBaselineCommit': base, 'screens': screens, 'componentFiles': len(set(paths)),
           'normalizedApplicationSha256': digest.hexdigest(), 'runtimeMismatches': mismatches,
           'productionAccess': False}
 (output / 'source-checks.json').write_text(json.dumps(result, indent=2), encoding='utf-8')

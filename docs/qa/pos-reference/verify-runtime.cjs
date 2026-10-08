@@ -15,9 +15,10 @@ async function hit(locator){await locator.scrollIntoViewIfNeeded();return locato
 (async()=>{try{
  browser=await chromium.launch({headless:true,executablePath:process.env.POS_REFERENCE_CHROME||undefined});
  const context=await browser.newContext({viewport:{width:1440,height:900}});const page=await context.newPage();page.on('pageerror',e=>{report.pageErrors.push({message:e.message,url:new URL(page.url()).pathname,stack:e.stack});console.log(JSON.stringify(report.pageErrors.at(-1)));});
- await context.request.post(base+'/Login/login',{form:{username:process.env.POS_REFERENCE_USERNAME,password:process.env.POS_REFERENCE_PASSWORD}});
- await open(page,'apps','PosUiQa');const csrf=await token(page);check('Authenticated CSRF token exists',!!csrf);
- const init=await context.request.post(base+'/apps/zenith/pos/PosUiQa/initialize',{form:{moquiSessionToken:csrf}});check('Fresh fixture initialized',init.status()===200&&(await init.json()).initialized===true);
+ const login=await context.request.post(base+'/Login/login',{form:{username:process.env.POS_REFERENCE_USERNAME,password:process.env.POS_REFERENCE_PASSWORD},maxRedirects:0,timeout:60000});
+ check('Disposable login succeeds',login.status()===302,{status:login.status()});
+ await page.goto(base+'/apps/zenith/Contacts/PosUiQa',{waitUntil:'networkidle'});const csrf=await token(page);check('Authenticated CSRF token exists',!!csrf);
+ const init=await context.request.post(base+'/apps/zenith/Contacts/PosUiQa/initialize',{form:{moquiSessionToken:csrf}});check('Fresh fixture initialized',init.status()===200&&(await init.json()).initialized===true);
  check('Captured terminal exists before tests',query("SELECT TERMINAL_ID FROM POS_TERMINAL WHERE ORGANIZATION_PARTY_ID='POS_UI_QA'").length===1);
  report.billingBefore=billing();
  for(const shell of ['qapps','apps']){
@@ -67,6 +68,10 @@ async function hit(locator){await locator.scrollIntoViewIfNeeded();return locato
      for(const width of [1440,768,390]){
        await page.setViewportSize({width,height:900});await open(page,shell,screen);
        const h=page.locator('.pos-reference-help').first();check(`${shell} ${screen} ${width}: retained help renders collapsed`,await h.count()===1&&!await h.evaluate(e=>e.open));
+       if(screen==='Wastage'){
+         await page.waitForFunction(()=>document.getElementById('wastage-expiring-root')?.textContent.includes('No perishable products with expiry dates.'),{timeout:15000});
+         check(`${shell} ${width}: Wastage loads real empty results rather than a dead loading panel`,(await page.locator('#wastage-expiring-root').innerText()).includes('No perishable products with expiry dates.'));
+       }
        const geometry=await h.evaluate(e=>{const r=e.getBoundingClientRect();return{left:r.left,right:r.right,height:r.height,viewport:innerWidth};});check(`${shell} ${screen} ${width}: compact help inside viewport`,geometry.left>=-1&&geometry.right<=width+1&&geometry.height<85,geometry);report.layouts.push({shell,screen,width,...geometry});
        if(screen==='Dashboard'){await page.locator('.pos-reference-dates .zdash-dr summary').click();check(`${shell} ${width}: custom Apply not covered`,await hit(page.locator('.zdash-dr-apply')));await page.locator('.pos-reference-dates .zdash-dr summary').click();}
        if(screen==='CashEntry'){
@@ -91,6 +96,14 @@ async function hit(locator){await locator.scrollIntoViewIfNeeded();return locato
        await page.keyboard.press('Control+End');await page.waitForTimeout(350);
        const after=await page.locator('#top').evaluate(e=>({top:e.getBoundingClientRect().top,height:e.getBoundingClientRect().height,scrollY}));
        check(`${shell} ${module} ${width}: shared topbar remains visible while scrolling`,Math.abs(after.top-before.top)<2&&after.top>=-1&&after.height>0,{before,after});
+       await page.keyboard.press('Control+Home');await page.waitForTimeout(200);
+       check(`${shell} ${module} ${width}: shared topbar returns without a layout jump`,Math.abs((await page.locator('#top').boundingBox()).y-before.top)<2);
+       if(shell==='apps'&&width===390){
+         const burger=page.locator('#z-side-burger');check(`${module}: mobile navigation receives pointer above the sticky topbar`,await hit(burger));
+         await burger.click();check(`${module}: mobile sidebar opens`,await page.locator('body').evaluate(e=>e.classList.contains('z-side-open')));
+         await page.locator('#z-side-backdrop').click({position:{x:380,y:200}});
+         check(`${module}: mobile sidebar closes`,!await page.locator('body').evaluate(e=>e.classList.contains('z-side-open')));
+       }
      }
    }
    await page.setViewportSize({width:1440,height:900});

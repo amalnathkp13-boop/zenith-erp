@@ -1,0 +1,22 @@
+[
+  {
+    "storage": "Fresh memory H2; destroyed with its JVM",
+    "namedProcessStopped": true,
+    "productionAccess": false,
+    "databaseListenersRemaining": 0,
+    "httpListenersRemaining": 0,
+    "runtime": "pos-native-qa",
+    "ifExistsReconnectFailed": true,
+    "databaseProbeExitCode": 1
+  },
+  {
+    "storage": "Fresh memory H2; destroyed with its JVM",
+    "namedProcessStopped": true,
+    "productionAccess": false,
+    "databaseListenersRemaining": 0,
+    "httpListenersRemaining": 0,
+    "runtime": "purchase-pricing-native-qa",
+    "ifExistsReconnectFailed": true,
+    "databaseProbeExitCode": 1
+  }
+]
