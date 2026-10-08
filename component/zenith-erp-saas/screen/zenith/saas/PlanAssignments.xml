@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd" default-menu-title="Tenant Plans" require-authentication="true">
+    <parameter name="tenantId"/>
+    <parameter name="tenantSearch"/>
+    <transition name="find" read-only="true"><default-response url="."/></transition>
+    <transition name="assignManualPlan" method="get">
+        <actions><script><![CDATA[
+            ec.web.response.setStatus(405); ec.web.response.setHeader('Allow','POST')
+            ec.web.sendJsonResponse('{"errors":"POST required"}')
+        ]]></script></actions><default-response type="none"/>
+    </transition>
+    <transition name="assignManualPlan" method="post">
+        <service-call name="zenith.saas.SaasAdminServices.assign#ManualPlan" in-map="[tenantId:tenantId,newPlanId:newPlanId,accessUntil:accessUntil,reason:reason]"/>
+        <default-response url="." parameter-map="[tenantId:tenantId]"/>
+    </transition>
+    <actions>
+        <script><![CDATA[
+            if (!ec.user.isInGroup('ADMIN')) { ec.web.sendError(403,'Forbidden',null); return }
+            def today = ec.user.nowTimestamp.toLocalDateTime().toLocalDate()
+            todayString = today.toString()
+            def tenants = ec.entity.find('zenith.erp.saas.SaasTenant').orderBy('tenantName').orderBy('tenantId').list()
+            def search = (tenantSearch ?: '').toString().trim().toLowerCase(java.util.Locale.ROOT)
+            tenantOptions = tenants
+            tenantRows = tenants.findAll { t -> !search || [t.tenantName,t.tenantId,t.organizationPartyId,t.planId].any { (it ?: '').toLowerCase(java.util.Locale.ROOT).contains(search) } }
+            def plans = ec.entity.find('zenith.erp.saas.SaasPlan').orderBy('sortOrder').list()
+            planNames = plans.collectEntries { [(it.planId):it.planName] }
+            availablePlans = plans.findAll { it.isActive == 'Y' }
+            grants = ec.entity.find('zenith.erp.saas.SaasTenantConfig').condition('configKey','MANUAL_PLAN_SUBSCRIPTION').list().collectEntries { [(it.tenantId):it.configValue] }
+            def subscriptions = ec.entity.find('zenith.erp.saas.SaasSubscription').orderBy('-startDate').orderBy('-lastUpdatedStamp').orderBy('-subscriptionId').list()
+            currentSubs = [:]
+            tenants.each { t -> currentSubs[t.tenantId] = grants[t.tenantId] ? subscriptions.find { it.tenantId == t.tenantId && it.subscriptionId == grants[t.tenantId] } : subscriptions.find { it.tenantId == t.tenantId && it.statusId in ['SubActive','SubTrial','SubPastDue','SubPaused'] } }
+            selectedTenant = tenantId ? tenants.find { it.tenantId == tenantId } : null
+            selectedSub = selectedTenant ? currentSubs[selectedTenant.tenantId] : null
+            selectedPlan = selectedTenant ? plans.find { it.planId == selectedTenant.planId } : null
+            selectedModules = selectedTenant ? ec.entity.find('zenith.erp.saas.SaasPlanModule').condition('planId',selectedTenant.planId).orderBy('moduleId').list().collect { it.moduleId } : []
+            selectedStatus = selectedTenant ? ec.entity.find('moqui.basic.StatusItem').condition('statusId',selectedTenant.statusId).useCache(true).one()?.description : ''
+            elapsedDays = { sub ->
+                if (!sub?.startDate) return 0L
+                def start = new java.sql.Date(sub.startDate.time).toLocalDate()
+                def end = sub.endDate ? new java.sql.Date(sub.endDate.time).toLocalDate() : today
+                Math.max(0L,java.time.temporal.ChronoUnit.DAYS.between(start,end < today ? end : today)+1L)
+            }
+            daysRemaining = { sub -> sub?.endDate ? Math.max(0L,java.time.temporal.ChronoUnit.DAYS.between(today,new java.sql.Date(sub.endDate.time).toLocalDate())+1L) : null }
+            manualCount = tenants.count { it.statusId == 'SaasTenantActive' && grants[it.tenantId] && currentSubs[it.tenantId]?.statusId == 'SubActive' && (daysRemaining(currentSubs[it.tenantId]) ?: 0) > 0 }
+            endingCount = tenants.count { it.statusId == 'SaasTenantActive' && grants[it.tenantId] && currentSubs[it.tenantId]?.statusId == 'SubActive' && (daysRemaining(currentSubs[it.tenantId]) ?: 0) in 1..7 }
+            assignForm = [tenantId:selectedTenant?.tenantId,newPlanId:selectedTenant?.planId,accessUntil:grants[selectedTenant?.tenantId] && (daysRemaining(selectedSub) ?: 0) > 0 ? selectedSub.endDate.toString() : '']
+        ]]></script>
+    </actions>
+    <widgets>
+        <container style="saas-plan-page">
+            <label text="Tenant plan assignments" type="h1"/>
+            <label text="Choose a tenant, assign a plan and set its access end date. Online payment is not required." type="p" style="sap-subtitle"/>
+            <container style="sap-stats">
+                <container style="sap-card"><label text="${tenantOptions.size()}" type="strong"/><label text="Total tenants" type="p"/></container>
+                <container style="sap-card"><label text="${manualCount}" type="strong"/><label text="Manual assignments in date" type="p"/></container>
+                <container style="sap-card"><label text="${endingCount}" type="strong"/><label text="Ending within 7 days" type="p"/></container>
+            </container>
+            <container style="sap-card sap-select">
+                <label text="1. Choose a tenant" type="h2"/>
+                <form-single name="SelectTenantPlanForm" transition="find">
+                    <field name="tenantId"><default-field title="Tenant"><drop-down allow-empty="true"><list-options list="tenantOptions" key="${tenantId}" text="${tenantName} · ${organizationPartyId} (${tenantId})"/></drop-down></default-field></field>
+                    <field name="reviewBtn"><default-field title=""><submit text="Review Tenant"/></default-field></field>
+                </form-single>
+            </container>
+            <section name="MissingTenant" condition="tenantId &amp;&amp; !selectedTenant"><widgets><label text="Tenant not found. Choose a tenant from the list." type="p" style="sap-notice"/></widgets></section>
+            <section name="SelectedTenant" condition="selectedTenant != null"><widgets>
+                <container style="sap-assignment-grid">
+                    <container style="sap-card">
+                        <label text="${selectedTenant.tenantName}" type="h2"/>
+                        <label text="Organization: ${selectedTenant.organizationPartyId} · Tenant: ${selectedTenant.tenantId}" type="p" style="sap-subtitle"/>
+                        <label text="Current plan: ${selectedPlan?.planName ?: selectedTenant.planId}" type="p"/>
+                        <label text="Account: ${selectedStatus ?: selectedTenant.statusId}" type="p"/>
+                        <label text="Management: ${grants[selectedTenant.tenantId] ? 'Manual assignment' : 'Automatic billing / trial'}" type="p"/>
+                        <label text="Access starts: ${selectedSub?.startDate ? ec.l10n.format(selectedSub.startDate,'dd-MMM-yyyy') : '—'}" type="p"/>
+                        <label text="${grants[selectedTenant.tenantId] ? 'Access through: '+(selectedSub?.endDate ? ec.l10n.format(selectedSub.endDate,'dd-MMM-yyyy') : 'Date unavailable')+' · '+(daysRemaining(selectedSub) ?: 0)+' days remaining' : 'Trial / renewal: '+(selectedSub?.trialEndDate ?: selectedSub?.renewalDate ?: '—')}" type="p" style="sap-notice"/>
+                        <label text="${grants[selectedTenant.tenantId] &amp;&amp; selectedSub?.startDate ? 'Elapsed access days (calendar): '+elapsedDays(selectedSub) : ''}" type="p"/>
+                        <label text="Included modules" type="h3"/><label text="${selectedModules.contains('ALL') ? 'All modules' : selectedModules.join(', ')}" type="p"/>
+                        <label text="Limits: ${selectedPlan?.maxUsers ?: 'Unlimited'} users · ${selectedPlan?.maxStores ?: 'Unlimited'} stores · ${selectedPlan?.maxPosTerminals ?: 'Unlimited'} POS terminals" type="p"/>
+                        <link url="../TenantDetail" text="Tenant details and activity" parameter-map="[tenantId:selectedTenant.tenantId]"/>
+                    </container>
+                    <container style="sap-card">
+                        <label text="2. Assign or extend access" type="h2"/>
+                        <label text="A new assignment begins today; extending the same active plan retains its start date. Access includes the entire end date. Assigning a plan activates this account. Existing invoices remain unchanged." type="p" style="sap-subtitle"/>
+                        <form-single name="ManualPlanAssignmentForm" transition="assignManualPlan" map="assignForm">
+                            <field name="tenantId"><default-field><hidden/></default-field></field>
+                            <field name="newPlanId"><default-field title="Plan"><drop-down><list-options list="availablePlans" key="${planId}" text="${planName}"/></drop-down></default-field></field>
+                            <field name="accessUntil"><default-field title="Access end date (inclusive)"><text-line input-type="date" required="true"/></default-field></field>
+                            <field name="reason"><default-field title="Assignment reason"><text-area rows="3" cols="35" required="true"/></default-field></field>
+                            <field name="assignBtn"><default-field title=""><submit text="Assign Manual Plan"/></default-field></field>
+                        </form-single>
+                        <label text="No invoice, payment or automatic renewal is created. The selected plan's usage limits still apply." type="p" style="sap-note"/>
+                    </container>
+                </container>
+            </widgets></section>
+            <container style="sap-card">
+                <label text="All tenant plans" type="h2"/>
+                <form-single name="TenantPlanSearchForm" transition="find">
+                    <field name="tenantSearch"><default-field title="Search tenant, organization or plan"><text-line/></default-field></field>
+                    <field name="searchBtn"><default-field title=""><submit text="Search"/></default-field></field>
+                </form-single>
+                <label text="${tenantRows.size()} tenants" type="p" style="sap-note"/>
+                <container style="sap-table-scroll">
+                    <form-list name="TenantPlanAssignmentsList" list="tenantRows" skip-form="true">
+                        <field name="tenantName"><default-field title="Tenant"><link url="." text="${tenantName}" parameter-map="[tenantId:tenantId]"/></default-field></field>
+                        <field name="organizationPartyId"><default-field title="Organization"><display/></default-field></field>
+                        <field name="planId"><default-field title="Plan"><display text="${planNames[planId] ?: planId}"/></default-field></field>
+                        <field name="statusId"><default-field title="Account"><display-entity entity-name="moqui.basic.StatusItem"/></default-field></field>
+                        <field name="management"><default-field title="Management"><display text="${grants[tenantId] ? 'Manual' : 'Automatic / Trial'}"/></default-field></field>
+                        <field name="accessEnd"><default-field title="Access through"><display text="${grants[tenantId] &amp;&amp; currentSubs[tenantId]?.endDate ? ec.l10n.format(currentSubs[tenantId].endDate,'dd-MMM-yyyy') : '—'}"/></default-field></field>
+                        <field name="daysLeft"><default-field title="Days left"><display text="${grants[tenantId] ? (daysRemaining(currentSubs[tenantId]) ?: 0) : '—'}"/></default-field></field>
+                    </form-list>
+                </container>
+            </container>
+            <render-mode><text type="html,qvt"><![CDATA[<img alt="" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" style="display:none" onload="if(window.syncSaasAdminHeader){window.syncSaasAdminHeader()}else if(!document.getElementById('saas-admin-ui-script')){var s=document.createElement('script');s.id='saas-admin-ui-script';s.src='/zenithstatic/js/saas-admin-ui.js?v=1';document.body.appendChild(s)}"/>]]></text></render-mode>
+        </container>
+    </widgets>
+</screen>

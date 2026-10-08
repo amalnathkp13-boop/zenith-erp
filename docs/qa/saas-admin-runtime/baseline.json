@@ -1,0 +1,17 @@
+{
+  "liveReadOnly": {
+    "surface": "apps",
+    "changePlanFields": [
+      "tenantId",
+      "newPlanId",
+      "billingCycle"
+    ],
+    "accessEndDateControl": false
+  },
+  "disposableReproduction": {
+    "changePlanErrors": [],
+    "suspendedTenantAfterPlanChange": "SaasTenantSuspended",
+    "afterReactivationAndOverdueJob": "SaasTenantSuspended"
+  },
+  "productionWrites": 0
+}

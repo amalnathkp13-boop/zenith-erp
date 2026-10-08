@@ -1,0 +1,44 @@
+name: zenith-saas-admin-qa
+# Dedicated disposable SaaS Admin QA. Overlay and seed with run.sh before HTTP starts.
+# Uses the approved clean-staging runtime release; no customer database or named volume.
+# Local port 18087 is bound to loopback only; run.sh asserts project labels before cleanup.
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: moqui
+      POSTGRES_USER: moqui
+      POSTGRES_PASSWORD: staging_only   # throwaway; must match entity_ds_password below
+      TZ: Asia/Kolkata
+    # no named volume: the container's own layer is fine for a disposable stack
+    tmpfs:
+      - /var/lib/postgresql/data        # RAM-backed → fast + nothing to clean up
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moqui -d moqui"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  moqui:
+    platform: linux/amd64
+    image: zetaerp-moqui:clean-staging         # clean runtime loaded by the workflow
+    command: ["sh", "-c", "until [ -f /tmp/ci-start-moqui ]; do sleep 1; done; exec /opt/java/openjdk/bin/java -cp . MoquiStart port=8080 no-run-es"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - TZ=Asia/Kolkata
+      - entity_ds_db_conf=postgres
+      - entity_ds_host=db
+      - entity_ds_port=5432
+      - entity_ds_database=moqui
+      - entity_ds_user=moqui
+      - entity_ds_password=staging_only  # must match db POSTGRES_PASSWORD
+      # CI does not provision OpenSearch. Disable its client explicitly for the loader and HTTP JVM;
+      # search-backed screens stay outside the render-smoke scope.
+      - elasticsearch_url=
+      - JAVA_TOOL_OPTIONS=-Xms256m -Xmx1536m -XX:ActiveProcessorCount=2 -XX:TieredStopAtLevel=1 -Dsaasadmin.qa.disposable=true -Dbitronix.tm.serverId=zetaerp-staging -Duser.timezone=Asia/Kolkata -Ddefault_time_zone=Asia/Kolkata
+    ports:
+      - "127.0.0.1:18087:8080"
+    mem_limit: 2560m

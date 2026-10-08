@@ -265,6 +265,7 @@
             if (html_stylesheets == null) html_stylesheets = []
             html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=277')
             html_stylesheets.add('/zenithstatic/css/my-subscription-reference.css?v=1')
+            html_stylesheets.add('/zenithstatic/css/saas-admin.css?v=3')
             html_stylesheets.add('/zenithstatic/css/product-catalog.css?v=1')
             html_stylesheets.add('/zenithstatic/css/receiving-stock.css?v=14')
             html_stylesheets.add('/zenithstatic/css/gate-passes.css?v=12')
@@ -432,6 +433,14 @@
                     if (tenantList) {
                         context.isSaasTenant = true
                         def tenant = tenantList[0]
+                        def manualGrant = ec.entity.find('zenith.erp.saas.SaasTenantConfig').condition('tenantId',tenant.tenantId)
+                            .condition('configKey','MANUAL_PLAN_SUBSCRIPTION').one()
+                        if (manualGrant?.configValue) {
+                            def grantedSub = ec.entity.find('zenith.erp.saas.SaasSubscription')
+                                .condition('subscriptionId',manualGrant.configValue).condition('tenantId',tenant.tenantId).one()
+                            def today = java.sql.Date.valueOf(ec.user.nowTimestamp.toLocalDateTime().toLocalDate())
+                            context.isSaasSuspended = !grantedSub || grantedSub.statusId != 'SubActive' || !grantedSub.endDate || grantedSub.endDate < today
+                        }
                         def plan = ec.entity.find("zenith.erp.saas.SaasPlan")
                             .condition("planId", tenant.planId).one()
                         context.saasPlanName = plan?.planName ?: tenant.planId
@@ -1169,6 +1178,7 @@
             <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
             <link rel="stylesheet" href="/zenithstatic/css/zenith-theme-v4.css?v=277"/>
             <link rel="stylesheet" href="/zenithstatic/css/my-subscription-reference.css?v=1"/>
+            <link rel="stylesheet" href="/zenithstatic/css/saas-admin.css?v=3"/>
             <link rel="stylesheet" href="/zenithstatic/css/product-catalog.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/barcode-module.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/barcode-reference.css?v=1"/>

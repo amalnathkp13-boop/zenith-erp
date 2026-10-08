@@ -1,0 +1,11 @@
+{
+  "project": "zenith-saas-admin-qa",
+  "remaining": {
+    "containers": [],
+    "networks": [],
+    "volumes": []
+  },
+  "database": "tmpfs removed with container",
+  "journals": "removed with Moqui container",
+  "productionWrites": 0
+}

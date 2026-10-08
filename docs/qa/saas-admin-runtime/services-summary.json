@@ -1,0 +1,276 @@
+{
+  "checks": [
+    {
+      "case": "fresh fixture initialized",
+      "passed": true
+    },
+    {
+      "case": "apps real admin screen renders",
+      "passed": true
+    },
+    {
+      "case": "apps selected tenant and required date form render",
+      "passed": true
+    },
+    {
+      "case": "apps assignment requires POST",
+      "passed": true
+    },
+    {
+      "case": "apps assignment requires CSRF",
+      "passed": true
+    },
+    {
+      "case": "qapps real admin screen renders",
+      "passed": true
+    },
+    {
+      "case": "qapps selected tenant and required date form render",
+      "passed": true
+    },
+    {
+      "case": "qapps assignment requires POST",
+      "passed": true
+    },
+    {
+      "case": "qapps assignment requires CSRF",
+      "passed": true
+    },
+    {
+      "case": "tenant admin cannot grant own access",
+      "passed": true
+    },
+    {
+      "case": "tenant admin cannot grant foreign access",
+      "passed": true
+    },
+    {
+      "case": "tenant admin cannot run expiry",
+      "passed": true
+    },
+    {
+      "case": "tenant admin cannot read platform list",
+      "passed": true
+    },
+    {
+      "case": "tenant admin cannot bypass screen transition",
+      "passed": true
+    },
+    {
+      "case": "HTML reason rejected",
+      "passed": true
+    },
+    {
+      "case": "invalid date",
+      "passed": true
+    },
+    {
+      "case": "missing date",
+      "passed": true
+    },
+    {
+      "case": "past date",
+      "passed": true
+    },
+    {
+      "case": "invalid plan",
+      "passed": true
+    },
+    {
+      "case": "missing tenant",
+      "passed": true
+    },
+    {
+      "case": "blank reason",
+      "passed": true
+    },
+    {
+      "case": "long reason",
+      "passed": true
+    },
+    {
+      "case": "inactive plan rejected",
+      "passed": true
+    },
+    {
+      "case": "cancelled tenant requires review",
+      "passed": true
+    },
+    {
+      "case": "admin dated assignment transition",
+      "passed": true
+    },
+    {
+      "case": "assignment activates suspended tenant",
+      "passed": true
+    },
+    {
+      "case": "one manual active subscription, no gateway billing dates",
+      "passed": true
+    },
+    {
+      "case": "manual pointer targets correct tenant",
+      "passed": true
+    },
+    {
+      "case": "old active subscription retired",
+      "passed": true
+    },
+    {
+      "case": "audit stores actor, reason and dates",
+      "passed": true
+    },
+    {
+      "case": "same assignment replay",
+      "passed": true
+    },
+    {
+      "case": "same assignment creates no duplicates or audit",
+      "passed": true
+    },
+    {
+      "case": "extend same plan",
+      "passed": true
+    },
+    {
+      "case": "same-plan extension preserves start and subscription id",
+      "passed": true
+    },
+    {
+      "case": "assignment preserves all platform invoices",
+      "passed": true
+    },
+    {
+      "case": "assignment creates no payment",
+      "passed": true
+    },
+    {
+      "case": "manual plan cannot use legacy cancellation",
+      "passed": true
+    },
+    {
+      "case": "manual plan cannot use legacy trial extension",
+      "passed": true
+    },
+    {
+      "case": "manual plan cannot create gateway order",
+      "passed": true
+    },
+    {
+      "case": "stale trial expiry cannot suspend grant",
+      "passed": true
+    },
+    {
+      "case": "scheduled trial and manual expiry check",
+      "passed": true
+    },
+    {
+      "case": "overdue invoice job",
+      "passed": true
+    },
+    {
+      "case": "renewal job",
+      "passed": true
+    },
+    {
+      "case": "manual grant survives all three jobs before end date",
+      "passed": true
+    },
+    {
+      "case": "old invoice remains overdue, not paid or cancelled",
+      "passed": true
+    },
+    {
+      "case": "manual grant never creates renewal invoice",
+      "passed": true
+    },
+    {
+      "case": "assign trial tenant",
+      "passed": true
+    },
+    {
+      "case": "trial tenant becomes active",
+      "passed": true
+    },
+    {
+      "case": "old trial is retired",
+      "passed": true
+    },
+    {
+      "case": "assignment respects lower plan usage",
+      "passed": true
+    },
+    {
+      "case": "assign owner tenant",
+      "passed": true
+    },
+    {
+      "case": "tenant sees manual dates and no checkout",
+      "passed": true
+    },
+    {
+      "case": "self plan change cannot undo dated assignment",
+      "passed": true
+    },
+    {
+      "case": "normal tenant login and included module still render",
+      "passed": true
+    },
+    {
+      "case": "inclusive end date expiry check",
+      "passed": true
+    },
+    {
+      "case": "access remains active on selected end date",
+      "passed": true
+    },
+    {
+      "case": "past-dated manual grant blocks module render before cron",
+      "passed": true
+    },
+    {
+      "case": "expire ended manual access",
+      "passed": true
+    },
+    {
+      "case": "ended grant and tenant expire together",
+      "passed": true
+    },
+    {
+      "case": "expiry replay",
+      "passed": true
+    },
+    {
+      "case": "expiry replay is a no-op",
+      "passed": true
+    },
+    {
+      "case": "legacy payment cannot revive manual expiry",
+      "passed": true
+    },
+    {
+      "case": "expired manual account remains suspended after legacy payment callback",
+      "passed": true
+    },
+    {
+      "case": "extend expired access via new assignment",
+      "passed": true
+    },
+    {
+      "case": "expired tenant restored with exactly one active grant",
+      "passed": true
+    },
+    {
+      "case": "user accounts and credentials unchanged after synthetic fixture toggle restore",
+      "passed": true
+    },
+    {
+      "case": "financial ERP invoices unchanged",
+      "passed": true
+    },
+    {
+      "case": "unselected tenant subscriptions unchanged",
+      "passed": true
+    }
+  ]
+}

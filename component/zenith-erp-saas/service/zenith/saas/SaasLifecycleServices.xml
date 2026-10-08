@@ -26,6 +26,11 @@
                         ec.service.sync().name('zenith.saas.SaasLifecycleServices.expire#CancelledSubscription')
                             .parameters([subscriptionId:cancelled.subscriptionId]).disableAuthz().call()
                     }
+                ec.entity.find('zenith.erp.saas.SaasTenantConfig').condition('configKey','MANUAL_PLAN_SUBSCRIPTION')
+                    .disableAuthz().list().each { grant ->
+                        ec.service.sync().name('zenith.saas.SaasAdminServices.expire#ManualPlan')
+                            .parameters([tenantId:grant.tenantId]).disableAuthz().call()
+                    }
                 int expiredCount = 0
                 expiredSubs.each { sub ->
                     def res = ec.service.sync().name("zenith.saas.SaasLifecycleServices.expire#TrialSubscription")
@@ -51,6 +56,13 @@
         <out-parameters><parameter name="suspended" type="Boolean"/></out-parameters>
         <actions>
             <set field="suspended" from="false"/>
+            <set field="lockedTenant" from="ec.entity.find('zenith.erp.saas.SaasTenant').condition('tenantId',tenantId).forUpdate(true).one()"/>
+            <set field="actualTrial" from="ec.entity.find('zenith.erp.saas.SaasSubscription').condition('subscriptionId',subscriptionId).condition('tenantId',tenantId).forUpdate(true).one()"/>
+            <if condition="!actualTrial || actualTrial.statusId != 'SubTrial' || !actualTrial.trialEndDate || actualTrial.trialEndDate &gt;= java.sql.Date.valueOf(ec.user.nowTimestamp.toLocalDateTime().toLocalDate())"><return/></if>
+            <entity-find-one entity-name="zenith.erp.saas.SaasTenantConfig" value-field="manualGrant">
+                <field-map field-name="tenantId"/><field-map field-name="configKey" value="MANUAL_PLAN_SUBSCRIPTION"/>
+            </entity-find-one>
+            <if condition="manualGrant?.configValue"><return/></if>
             <service-call name="update#zenith.erp.saas.SaasSubscription"
                 in-map="[subscriptionId:subscriptionId, statusId:'SubExpired', endDate:ec.user.nowTimestamp]"/>
             <service-call name="update#zenith.erp.saas.SaasTenant"
@@ -103,10 +115,12 @@
                 int renewedCount = 0
                 dueSubs.each { sub ->
                     def tenant = ec.entity.find("zenith.erp.saas.SaasTenant")
-                        .condition("tenantId", sub.tenantId).one()
+                        .condition("tenantId", sub.tenantId).forUpdate(true).one()
                     def plan = ec.entity.find("zenith.erp.saas.SaasPlan")
                         .condition("planId", sub.planId).one()
                     if (!tenant || !plan) return
+                    if (ec.entity.find('zenith.erp.saas.SaasTenantConfig').condition('tenantId',sub.tenantId)
+                            .condition('configKey','MANUAL_PLAN_SUBSCRIPTION').one()?.configValue) return
 
                     // IDEMPOTENCY: skip if an invoice already exists for this subscription + renewal period,
                     // so a re-run / overlapping cron can't double-bill the tenant for one cycle.
@@ -261,6 +275,8 @@
                     def tenant = ec.entity.find("zenith.erp.saas.SaasTenant")
                         .condition("tenantId", sub.tenantId).one()
                     if (!tenant || !tenant.adminEmail) return
+                    if (ec.entity.find('zenith.erp.saas.SaasTenantConfig').condition('tenantId',sub.tenantId)
+                            .condition('configKey','MANUAL_PLAN_SUBSCRIPTION').one()?.configValue) return
                     def plan = ec.entity.find("zenith.erp.saas.SaasPlan")
                         .condition("planId", sub.planId).one()
 
@@ -377,9 +393,12 @@ ${fromName}"""
                 int suspended = 0
                 tenantsToSuspend.each { tenantId ->
                     def tenant = ec.entity.find("zenith.erp.saas.SaasTenant")
-                        .condition("tenantId", tenantId).one()
+                        .condition("tenantId", tenantId).forUpdate(true).one()
                     if (!tenant || tenant.statusId != 'SaasTenantActive') return
 
+                    // Manual access is controlled by its end date; old invoices remain outstanding.
+                    if (ec.entity.find('zenith.erp.saas.SaasTenantConfig').condition('tenantId',tenantId)
+                            .condition('configKey','MANUAL_PLAN_SUBSCRIPTION').one()?.configValue) return
                     // Suspend tenant
                     ec.service.sync().name("update#zenith.erp.saas.SaasTenant")
                         .parameter("tenantId", tenantId)
@@ -422,7 +441,7 @@ ${fromName}"""
             <parameter name="paymentId"/>
         </in-parameters>
         <actions>
-            <entity-find-one entity-name="zenith.erp.saas.SaasTenant" value-field="tenant"/>
+            <set field="tenant" from="ec.entity.find('zenith.erp.saas.SaasTenant').condition('tenantId',tenantId).forUpdate(true).one()"/>
             <if condition="tenant.statusId != 'SaasTenantSuspended'">
                 <return message="Tenant is not suspended."/>
             </if>
@@ -439,6 +458,10 @@ ${fromName}"""
             </entity-find-count>
             <if condition="remainingOverdue &gt; 0"><return message="Payment recorded. Other overdue invoices still need to be settled."/></if>
 
+            <entity-find-one entity-name="zenith.erp.saas.SaasTenantConfig" value-field="manualGrant">
+                <field-map field-name="tenantId"/><field-map field-name="configKey" value="MANUAL_PLAN_SUBSCRIPTION"/>
+            </entity-find-one>
+            <if condition="manualGrant?.configValue"><return message="Payment recorded; manual access is controlled by the platform administrator."/></if>
             <!-- Reactivate tenant -->
             <service-call name="update#zenith.erp.saas.SaasTenant"
                 in-map="[tenantId:tenantId, statusId:'SaasTenantActive']"/>

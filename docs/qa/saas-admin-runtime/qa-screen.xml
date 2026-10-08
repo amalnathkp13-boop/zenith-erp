@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Install only in a new disposable container; never deploy this screen. -->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd" default-menu-include="false">
+ <transition name="token" read-only="true"><actions><script><![CDATA[
+  if(System.getProperty('saasadmin.qa.disposable')!='true' || !(ec.user.username in ['saasadmin.owner','saasadmin.view','saasadmin.none','john.doe'])) {ec.web.response.setStatus(403);return}
+  ec.web.sendJsonResponse([token:ec.web.sessionToken])
+ ]]></script></actions><default-response type="none"/></transition>
+ <transition name="initialize" method="post"><actions><script><![CDATA[
+  if(System.getProperty('saasadmin.qa.disposable')!='true' || !ec.user.isInGroup('ADMIN')) {ec.web.response.setStatus(403);return}
+  def demo=ec.entity.find('moqui.security.UserAccount').condition('userId','EX_JOHN_DOE').one()
+  ['SAASADMIN_QA_OWNER','SAASADMIN_QA_VIEW','SAASADMIN_QA_NONE'].each { id ->
+   def qa=ec.entity.find('moqui.security.UserAccount').condition('userId',id).one()
+   if(!qa || qa.disabled!='Y') throw new IllegalStateException('Fresh synthetic fixture required')
+   ['currentPassword','passwordSalt','passwordHashType','passwordBase64'].each {qa.set(it,demo.get(it))};qa.disabled='N';qa.update()
+  }
+  ec.web.sendJsonResponse([initialized:true])
+ ]]></script></actions><default-response type="none"/></transition>
+ <transition name="invoke" method="post"><actions><script><![CDATA[
+  if(System.getProperty('saasadmin.qa.disposable')!='true' || !(ec.user.username in ['saasadmin.owner','saasadmin.view','saasadmin.none','john.doe'])) {ec.web.response.setStatus(403);return}
+  def op=ec.web.parameters.op
+  if(op in ['resetScope','forgeScope','clearScope','suspendedScope']) {ec.user.setPreference('ACTIVE_ORGANIZATION',op=='resetScope'?'SAASADMIN_QA_A':(op=='forgeScope'?'SAASADMIN_QA_B':(op=='suspendedScope'?'SAASADMIN_QA_S':'')));ec.web.sendJsonResponse([changed:true]);return}
+  def calls=[change:'SaasServices.change#Plan',assign:'SaasAdminServices.assign#ManualPlan',expire:'SaasAdminServices.expire#ManualPlan',trials:'SaasLifecycleServices.check#TrialExpiry',trial:'SaasLifecycleServices.expire#TrialSubscription',overdue:'SaasLifecycleServices.suspend#OverdueTenants',renew:'SaasLifecycleServices.check#SubscriptionRenewal',limits:'SaasServices.check#UsageLimits',cancel:'SaasServices.cancel#Subscription',extend:'SaasServices.extend#Trial',order:'SaasPaymentServices.create#RazorpayOrder',reactivate:'SaasLifecycleServices.reactivate#AfterPayment']
+  if(!calls[op]) {ec.web.response.setStatus(400);return}
+  def params=new groovy.json.JsonSlurper().parseText(ec.web.parameters.input ?: '{}')
+  if(params.tenantId && !params.tenantId.startsWith('SAASADMIN_QA_')) throw new IllegalArgumentException('Synthetic tenant only')
+  if(params.subscriptionId && !params.subscriptionId.startsWith('SAASADMIN_QA_')) throw new IllegalArgumentException('Synthetic subscription only')
+  if(params.saasInvoiceId && !params.saasInvoiceId.startsWith('SAASADMIN_QA_')) throw new IllegalArgumentException('Synthetic invoice only')
+  def result=ec.service.sync().name('zenith.saas.'+calls[op]).parameters(params).call()
+  def errorText=ec.message.getErrorsString();def errors=errorText ? [errorText] : [];ec.message.clearErrors()
+  ec.web.sendJsonResponse([result:result,errors:errors])
+ ]]></script></actions><default-response type="none"/></transition>
+ <widgets><render-mode><text type="html" template="true"><![CDATA[<input type="hidden" name="moquiSessionToken" value="${(ec.web.sessionToken!'')?html}"/>]]></text></render-mode></widgets>
+</screen>

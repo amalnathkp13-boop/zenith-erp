@@ -14,6 +14,10 @@
                 if (!ec.user.isInGroup("ADMIN")) { ec.message.addError("Access denied."); return }
                 def s = ec.entity.find("zenith.erp.saas.SaasSubscription").condition("subscriptionId", subscriptionId).one()
                 if (s == null) { ec.message.addError("Subscription not found."); return }
+                if (ec.entity.find('zenith.erp.saas.SaasTenantConfig').condition('tenantId',s.tenantId)
+                        .condition('configKey','MANUAL_PLAN_SUBSCRIPTION').one()?.configValue) {
+                    ec.message.addError('Use Tenant Plans to manage this manual assignment.'); return
+                }
                 def cur = s.statusId
                 def tenant = ec.entity.find("zenith.erp.saas.SaasTenant").condition("tenantId", s.tenantId).one()
                 boolean flagship = (tenant?.organizationPartyId == '100000')

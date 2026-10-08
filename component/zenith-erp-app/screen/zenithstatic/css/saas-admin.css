@@ -1,0 +1,57 @@
+/* Dated manual tenant plans; only this administration page uses these classes. */
+.saas-plan-page{max-width:1440px;margin:0 auto;padding:24px;color:#1f2937;font-size:14px}
+.saas-plan-page h1{font-size:28px;font-weight:700;margin:0 0 8px;color:#5b21b6}
+.saas-plan-page h2{font-size:19px;font-weight:650;margin:0 0 16px}
+.saas-plan-page h3{font-size:15px;font-weight:650;margin:20px 0 8px}
+.saas-plan-page p{margin:8px 0;line-height:1.6;overflow-wrap:anywhere}
+.saas-plan-page .sap-subtitle,.saas-plan-page .sap-note{color:#6b7280}
+.saas-plan-page .sap-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:24px 0}
+.saas-plan-page .sap-stats strong{font-size:28px;color:#7c3aed}
+.saas-plan-page .sap-card{background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:24px;margin-bottom:20px;min-width:0;box-shadow:0 2px 6px #1f293708}
+.saas-plan-page .sap-stats .sap-card{margin:0}
+.saas-plan-page .sap-assignment-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px}
+.saas-plan-page .sap-notice{padding:12px;background:#f5f3ff;border-radius:8px;color:#5b21b6}
+.saas-plan-page input,.saas-plan-page select,.saas-plan-page textarea{max-width:100%;box-sizing:border-box}
+.saas-plan-page textarea{width:100%}
+.saas-plan-page button[type=submit],.saas-plan-page input[type=submit]{background:#7c3aed!important;color:#fff!important;border-radius:8px!important;border:0}
+.saas-plan-page .sap-table-scroll{overflow-x:auto;max-width:100%}
+.saas-plan-page .sap-table-scroll table{min-width:780px}
+.saas-plan-page .sap-table-scroll th,.saas-plan-page .sap-table-scroll td{padding:12px;vertical-align:middle}
+.saas-plan-page .form-horizontal .control-label{text-align:left}
+.saas-plan-page .sap-select form{max-width:800px}
+.saas-plan-page form{min-width:0}
+.saas-plan-page .q-field{min-width:0}
+body:not(.body--dark):has(.saas-plan-page) #top,body:not(.body--dark):has(.saas-plan-page) #top nav{background:#fff!important;color:#6b6380}
+body:not(.zq-nav):has(.saas-plan-page) #top,body:not(.zq-nav):has(.saas-plan-page) #top nav{height:auto!important}
+body.zq-nav:has(.saas-plan-page) .q-layout .q-page-container{padding-left:224px!important;padding-top:var(--sap-header-height,51px)!important}
+body.zq-nav.zq-side-collapsed:has(.saas-plan-page) .q-layout .q-page-container{padding-left:62px!important}
+body.zq-nav:has(.saas-plan-page) .q-drawer__backdrop{display:none!important}
+body.zq-nav.q-body--prevent-scroll:has(.saas-plan-page):has(.q-drawer--mobile):not(:has(.q-dialog)){position:static!important;overflow:auto!important}
+body.body--dark .saas-plan-page{color:#e5e7eb}
+body.body--dark .saas-plan-page .sap-card{background:#20212d;border-color:#414254}
+body.body--dark .saas-plan-page .sap-notice{background:#30224f;color:#ddd6fe}
+@media(max-width:1200px){
+ body.zq-nav:has(.saas-plan-page) .q-header .q-toolbar{display:grid!important;grid-template-columns:40px minmax(0,1fr) auto;gap:6px;padding:6px}
+ body.zq-nav:has(.saas-plan-page) #zq-topextra{display:contents!important}
+ body.zq-nav:has(.saas-plan-page) .q-header .q-toolbar>button:first-child{grid-column:1;grid-row:1}
+ body.zq-nav:has(.saas-plan-page) #zq-ownerview{grid-column:2;grid-row:1;min-width:0;max-width:100%;width:fit-content;margin:0}
+ body.zq-nav:has(.saas-plan-page) .zqov-org{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ body.zq-nav:has(.saas-plan-page) .q-header .q-toolbar>button:not(:first-child){grid-column:3;max-width:96px}
+ body.zq-nav:has(.saas-plan-page) .q-header .q-toolbar>button .block{overflow:hidden;text-overflow:ellipsis}
+ body.zq-nav:has(.saas-plan-page) #zq-search{grid-column:1/-1;grid-row:2;min-width:0;width:100%;margin:0!important}
+ body.zq-nav:has(.saas-plan-page) #zq-toolbtns{grid-column:1/-1;grid-row:3;justify-content:flex-end;flex-wrap:wrap;margin:0!important}
+ body.zq-nav:has(.saas-plan-page) .zqtb-quad{display:inline-flex!important}
+ body.zq-nav:has(.saas-plan-page) .q-header .q-space{display:none!important}
+}
+@media(max-width:900px){
+ .saas-plan-page{padding:16px}
+ .saas-plan-page .sap-assignment-grid{grid-template-columns:minmax(0,1fr)}
+ body.zq-nav:has(.saas-plan-page) .q-layout .q-page-container,body.zq-nav.zq-side-collapsed:has(.saas-plan-page) .q-layout .q-page-container{padding-left:0!important}
+}
+@media(max-width:480px){
+ .saas-plan-page h1{font-size:24px}
+ .saas-plan-page .sap-stats{grid-template-columns:minmax(0,1fr);gap:8px}
+ .saas-plan-page .sap-stats .sap-card{padding:12px 16px}
+ .saas-plan-page .sap-stats strong{font-size:22px}
+ .saas-plan-page .sap-card{padding:16px}
+}

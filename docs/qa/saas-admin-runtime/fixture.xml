@@ -1,0 +1,72 @@
+<?xml version="1.0"?><entity-facade-xml type="demo">
+<mantle.party.Party partyId="SAASADMIN_QA_A" partyTypeEnumId="PtyOrganization"/>
+<mantle.party.Organization partyId="SAASADMIN_QA_A" organizationName="Disposable SaaS Admin A"/>
+<mantle.party.PartyIdentification partyId="SAASADMIN_QA_A" partyIdTypeEnumId="PtidOrgCode" idValue="SAASADMINQAA"/>
+<mantle.party.PartyRole partyId="SAASADMIN_QA_A" roleTypeId="OrgInternal"/>
+<zenith.erp.saas.SaasTenant tenantId="SAASADMIN_QA_A" organizationPartyId="SAASADMIN_QA_A" tenantName="Disposable SaaS Admin A" subdomain="saasadminqaa" adminUserId="SAASADMIN_QA_OWNER" planId="GROWTH" statusId="SaasTenantActive" currencyUomId="INR"/>
+<zenith.erp.saas.SaasSubscription subscriptionId="SAASADMIN_QA_A" tenantId="SAASADMIN_QA_A" planId="GROWTH" statusId="SubActive" billingCycle="Monthly" startDate="2026-10-01" renewalDate="2026-11-01" amount="999" currencyUomId="INR" autoRenew="Y"/>
+<zenith.erp.saas.SaasInvoice saasInvoiceId="SAASADMIN_QA_A" tenantId="SAASADMIN_QA_A" subscriptionId="SAASADMIN_QA_A" invoiceNumber="SAASADMIN_QA_A" invoiceDate="2026-10-01" dueDate="2026-10-15" subtotal="999" taxAmount="179.82" totalAmount="1178.82" currencyUomId="INR" statusId="SiSent"/>
+<moqui.security.UserGroup userGroupId="TENANT_SAASADMINQAA" description="Disposable tenant A"/>
+<mantle.party.Party partyId="SAASADMIN_QA_B" partyTypeEnumId="PtyOrganization"/>
+<mantle.party.Organization partyId="SAASADMIN_QA_B" organizationName="Disposable SaaS Admin B"/>
+<mantle.party.PartyRole partyId="SAASADMIN_QA_B" roleTypeId="OrgInternal"/>
+<zenith.erp.saas.SaasTenant tenantId="SAASADMIN_QA_B" organizationPartyId="SAASADMIN_QA_B" tenantName="Disposable SaaS Admin B" subdomain="saasadminqab" adminUserId="SAASADMIN_QA_OWNER" planId="GROWTH" statusId="SaasTenantActive" currencyUomId="INR"/>
+<zenith.erp.saas.SaasSubscription subscriptionId="SAASADMIN_QA_B" tenantId="SAASADMIN_QA_B" planId="GROWTH" statusId="SubActive" billingCycle="Monthly" startDate="2026-10-01" renewalDate="2026-11-01" amount="999" currencyUomId="INR" autoRenew="Y"/>
+<zenith.erp.saas.SaasInvoice saasInvoiceId="SAASADMIN_QA_B" tenantId="SAASADMIN_QA_B" subscriptionId="SAASADMIN_QA_B" invoiceNumber="SAASADMIN_QA_B" invoiceDate="2026-10-01" dueDate="2026-10-15" subtotal="999" taxAmount="179.82" totalAmount="1178.82" currencyUomId="INR" statusId="SiSent"/>
+<moqui.security.UserGroup userGroupId="TENANT_SAASADMINQAB" description="Disposable tenant B"/>
+<mantle.party.Party partyId="SAASADMIN_QA_T" partyTypeEnumId="PtyOrganization"/>
+<mantle.party.Organization partyId="SAASADMIN_QA_T" organizationName="Disposable SaaS Admin T"/>
+<mantle.party.PartyRole partyId="SAASADMIN_QA_T" roleTypeId="OrgInternal"/>
+<zenith.erp.saas.SaasTenant tenantId="SAASADMIN_QA_T" organizationPartyId="SAASADMIN_QA_T" tenantName="Disposable SaaS Admin T" subdomain="saasadminqat" adminUserId="SAASADMIN_QA_OWNER" planId="GROWTH" statusId="SaasTenantTrial" currencyUomId="INR"/>
+<zenith.erp.saas.SaasSubscription subscriptionId="SAASADMIN_QA_T" tenantId="SAASADMIN_QA_T" planId="GROWTH" statusId="SubTrial" billingCycle="Monthly" startDate="2026-10-01" renewalDate="2026-11-01" amount="999" currencyUomId="INR" autoRenew="Y"/>
+<zenith.erp.saas.SaasInvoice saasInvoiceId="SAASADMIN_QA_T" tenantId="SAASADMIN_QA_T" subscriptionId="SAASADMIN_QA_T" invoiceNumber="SAASADMIN_QA_T" invoiceDate="2026-10-01" dueDate="2026-10-15" subtotal="999" taxAmount="179.82" totalAmount="1178.82" currencyUomId="INR" statusId="SiSent"/>
+<moqui.security.UserGroup userGroupId="TENANT_SAASADMINQAT" description="Disposable tenant T"/>
+<mantle.party.Party partyId="SAASADMIN_QA_S" partyTypeEnumId="PtyOrganization"/>
+<mantle.party.Organization partyId="SAASADMIN_QA_S" organizationName="Disposable SaaS Admin S"/>
+<mantle.party.PartyRole partyId="SAASADMIN_QA_S" roleTypeId="OrgInternal"/>
+<zenith.erp.saas.SaasTenant tenantId="SAASADMIN_QA_S" organizationPartyId="SAASADMIN_QA_S" tenantName="Disposable SaaS Admin S" subdomain="saasadminqas" adminUserId="SAASADMIN_QA_OWNER" planId="GROWTH" statusId="SaasTenantSuspended" currencyUomId="INR"/>
+<zenith.erp.saas.SaasSubscription subscriptionId="SAASADMIN_QA_S" tenantId="SAASADMIN_QA_S" planId="GROWTH" statusId="SubActive" billingCycle="Monthly" startDate="2026-10-01" renewalDate="2026-11-01" amount="999" currencyUomId="INR" autoRenew="Y"/>
+<zenith.erp.saas.SaasInvoice saasInvoiceId="SAASADMIN_QA_S" tenantId="SAASADMIN_QA_S" subscriptionId="SAASADMIN_QA_S" invoiceNumber="SAASADMIN_QA_S" invoiceDate="2026-10-01" dueDate="2026-10-15" subtotal="999" taxAmount="179.82" totalAmount="1178.82" currencyUomId="INR" statusId="SiSent"/>
+<moqui.security.UserGroup userGroupId="TENANT_SAASADMINQAS" description="Disposable tenant S"/>
+<mantle.party.Party partyId="SAASADMIN_QA_OWNER" partyTypeEnumId="PtyPerson"/>
+<mantle.party.Person partyId="SAASADMIN_QA_OWNER" firstName="Disposable" lastName="OWNER"/>
+<moqui.security.UserAccount userId="SAASADMIN_QA_OWNER" username="saasadmin.owner" partyId="SAASADMIN_QA_OWNER" disabled="Y" requirePasswordChange="N"/>
+<moqui.security.UserGroupMember userId="SAASADMIN_QA_OWNER" userGroupId="ZENITH_ALL" fromDate="2020-01-01T00:00:00"/>
+<mantle.party.PartyRelationship partyRelationshipId="SAASADMIN_QA_OWNER" fromPartyId="SAASADMIN_QA_OWNER" toPartyId="SAASADMIN_QA_A" relationshipTypeEnumId="PrtAgent" toRoleTypeId="OrgInternal" fromDate="2020-01-01T00:00:00"/>
+<moqui.security.UserGroupMember userId="SAASADMIN_QA_OWNER" userGroupId="TENANT_SAASADMINQAA" fromDate="2020-01-01T00:00:00"/>
+<moqui.security.UserPreference userId="SAASADMIN_QA_OWNER" preferenceKey="ACTIVE_ORGANIZATION" preferenceValue="SAASADMIN_QA_A"/>
+<mantle.party.Party partyId="SAASADMIN_QA_VIEW" partyTypeEnumId="PtyPerson"/>
+<mantle.party.Person partyId="SAASADMIN_QA_VIEW" firstName="Disposable" lastName="VIEW"/>
+<moqui.security.UserAccount userId="SAASADMIN_QA_VIEW" username="saasadmin.view" partyId="SAASADMIN_QA_VIEW" disabled="Y" requirePasswordChange="N"/>
+<moqui.security.UserGroupMember userId="SAASADMIN_QA_VIEW" userGroupId="ZENITH_ALL" fromDate="2020-01-01T00:00:00"/>
+<mantle.party.PartyRelationship partyRelationshipId="SAASADMIN_QA_VIEW" fromPartyId="SAASADMIN_QA_VIEW" toPartyId="SAASADMIN_QA_A" relationshipTypeEnumId="PrtAgent" toRoleTypeId="OrgInternal" fromDate="2020-01-01T00:00:00"/>
+<moqui.security.UserGroupMember userId="SAASADMIN_QA_VIEW" userGroupId="TENANT_SAASADMINQAA" fromDate="2020-01-01T00:00:00"/>
+<moqui.security.UserPreference userId="SAASADMIN_QA_VIEW" preferenceKey="ACTIVE_ORGANIZATION" preferenceValue="SAASADMIN_QA_A"/>
+<mantle.party.Party partyId="SAASADMIN_QA_NONE" partyTypeEnumId="PtyPerson"/>
+<mantle.party.Person partyId="SAASADMIN_QA_NONE" firstName="Disposable" lastName="NONE"/>
+<moqui.security.UserAccount userId="SAASADMIN_QA_NONE" username="saasadmin.none" partyId="SAASADMIN_QA_NONE" disabled="Y" requirePasswordChange="N"/>
+<moqui.security.UserGroupMember userId="SAASADMIN_QA_NONE" userGroupId="ZENITH_ALL" fromDate="2020-01-01T00:00:00"/>
+<moqui.security.UserPreference userId="SAASADMIN_QA_NONE" preferenceKey="ACTIVE_ORGANIZATION" preferenceValue="SAASADMIN_QA_A"/>
+<mantle.party.Party partyId="SAASADMIN_QA_DISABLED" partyTypeEnumId="PtyPerson"/>
+<mantle.party.Person partyId="SAASADMIN_QA_DISABLED" firstName="Disposable" lastName="DISABLED"/>
+<moqui.security.UserAccount userId="SAASADMIN_QA_DISABLED" username="saasadmin.disabled" partyId="SAASADMIN_QA_DISABLED" disabled="Y" requirePasswordChange="N"/>
+<moqui.security.UserGroupMember userId="SAASADMIN_QA_DISABLED" userGroupId="ZENITH_ALL" fromDate="2020-01-01T00:00:00"/>
+<mantle.party.PartyRelationship partyRelationshipId="SAASADMIN_QA_DISABLED" fromPartyId="SAASADMIN_QA_DISABLED" toPartyId="SAASADMIN_QA_A" relationshipTypeEnumId="PrtAgent" toRoleTypeId="OrgInternal" fromDate="2020-01-01T00:00:00"/>
+<moqui.security.UserGroupMember userId="SAASADMIN_QA_DISABLED" userGroupId="TENANT_SAASADMINQAA" fromDate="2020-01-01T00:00:00"/>
+<moqui.security.UserPreference userId="SAASADMIN_QA_DISABLED" preferenceKey="ACTIVE_ORGANIZATION" preferenceValue="SAASADMIN_QA_A"/>
+<moqui.security.UserGroupMember userId="SAASADMIN_QA_OWNER" userGroupId="ZENITH_ADMIN" fromDate="2020-01-01T00:00:00"/>
+<moqui.security.UserGroupMember userId="SAASADMIN_QA_OWNER" userGroupId="TENANT_SAASADMINQAB" fromDate="2020-01-01T00:00:00"/>
+<moqui.security.UserGroupMember userId="SAASADMIN_QA_VIEW" userGroupId="TENANT_SAASADMINQAA" fromDate="2019-01-01T00:00:00" thruDate="2020-01-01T00:00:00"/>
+<zenith.erp.pos.PosTerminal terminalId="SAASADMIN_QA_ACTIVE" organizationPartyId="SAASADMIN_QA_A" isActive="Y"/>
+<zenith.erp.pos.PosTerminal terminalId="SAASADMIN_QA_INACTIVE" organizationPartyId="SAASADMIN_QA_A" isActive="N"/>
+<zenith.erp.stores.Store storeId="SAASADMIN_QA_NULL" organizationPartyId="SAASADMIN_QA_A" storeName="Synthetic null-status store"/>
+<zenith.erp.saas.SaasInvoice saasInvoiceId="SAASADMIN_QA_CANCEL" tenantId="SAASADMIN_QA_A" totalAmount="1178.82" statusId="SiCancelled"/>
+<moqui.security.ArtifactGroup artifactGroupId="SAASADMIN_QA_HELPER"/>
+<moqui.security.ArtifactGroupMember artifactGroupId="SAASADMIN_QA_HELPER" artifactName="component://zenith-erp-app/screen/zenith/SaasAdminQa.xml" artifactTypeEnumId="AT_XML_SCREEN" inheritAuthz="Y"/>
+<moqui.security.ArtifactAuthz artifactAuthzId="SAASADMIN_QA_HELPER" userGroupId="ZENITH_ALL" artifactGroupId="SAASADMIN_QA_HELPER" authzTypeEnumId="AUTHZT_ALWAYS" authzActionEnumId="AUTHZA_ALL"/>
+<mantle.party.PartyRelationship partyRelationshipId="SAASADMIN_QA_OWNER_S" fromPartyId="SAASADMIN_QA_OWNER" toPartyId="SAASADMIN_QA_S" relationshipTypeEnumId="PrtAgent" toRoleTypeId="OrgInternal" fromDate="2020-01-01T00:00:00"/>
+<moqui.security.UserGroupMember userId="SAASADMIN_QA_OWNER" userGroupId="TENANT_SAASADMINQAS" fromDate="2020-01-01T00:00:00"/>
+<!-- Fixed platform settings key required by Razorpay services; synthetic, empty operator in this fresh DB. -->
+<mantle.party.Party partyId="ZETAERP" partyTypeEnumId="PtyOrganization"/>
+<mantle.party.Organization partyId="ZETAERP" organizationName="Disposable QA platform settings"/>
+</entity-facade-xml>

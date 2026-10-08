@@ -1,0 +1,1 @@
+<component name="ci-saasadmin-fixtures" version="1.0.0"><depends-on name="zenith-erp-saas"/><depends-on name="zenith-erp-subscriptions"/><depends-on name="zenith-erp-stores"/></component>

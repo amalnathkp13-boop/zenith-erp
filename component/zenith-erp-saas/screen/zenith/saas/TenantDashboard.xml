@@ -133,6 +133,7 @@
     <actions>
         <script><![CDATA[
             context.isSaasManaged = false
+            context.isManualPlan = false
             context.canManageSubscription = false
             def access = ec.service.sync().name('zenith.saas.SaasAccessServices.get#TenantAccess').disableAuthz().call()
             def authorizedTenant = access?.tenant
@@ -170,6 +171,11 @@
                                 .orderBy("-startDate").orderBy("-lastUpdatedStamp").orderBy("-subscriptionId").limit(1).list()
                         }
                         context.subscription = subList ? subList[0] : null
+                        def manualGrant = ec.entity.find('zenith.erp.saas.SaasTenantConfig').condition('tenantId',tenant.tenantId)
+                            .condition('configKey','MANUAL_PLAN_SUBSCRIPTION').one()
+                        context.isManualPlan = manualGrant?.configValue != null
+                        if (context.isManualPlan) context.subscription = ec.entity.find('zenith.erp.saas.SaasSubscription')
+                            .condition('subscriptionId',manualGrant.configValue).condition('tenantId',tenant.tenantId).one()
 
                         // Load allowed modules
                         def planModules = ec.entity.find("zenith.erp.saas.SaasPlanModule")
@@ -301,7 +307,7 @@
                     <render-mode><text type="html,qvt"><![CDATA[
 <div><h1 class="mysub-h1">My Subscription</h1><p class="mysub-subtitle">View your plan, usage and manage your subscription.</p></div>
                     ]]></text></render-mode>
-                    <section name="CancelHeaderSection" condition="canManageSubscription &amp;&amp; subscription?.statusId in ['SubActive','SubTrial','SubPastDue']">
+                    <section name="CancelHeaderSection" condition="!isManualPlan &amp;&amp; canManageSubscription &amp;&amp; subscription?.statusId in ['SubActive','SubTrial','SubPastDue']">
                         <widgets>
                             <container>
                                 <container-dialog id="MySubscriptionCancelDialog" button-text="Cancel Subscription" type="danger">
@@ -321,6 +327,9 @@
                     </section>
                 </container>
 
+                <section name="ManualAccessNotice" condition="isManualPlan"><widgets>
+                    <label text="This plan is assigned by the platform administrator. Access through ${subscription?.endDate ? ec.l10n.format(subscription.endDate,'dd-MMM-yyyy') : 'date unavailable'} (inclusive). Contact support to change or extend it; online payment is disabled." type="p" style="mysub-subtitle"/>
+                </widgets></section>
                 <!-- Current plan summary card -->
                 <render-mode><text type="html,qvt"><![CDATA[${currentPlanHtml}]]></text></render-mode>
 
@@ -364,7 +373,7 @@
                                             <container style="mysub-feat"><label text="check_circle" type="span" style="material-icons mysub-check"/><label text="${p.maxLoyaltyMembers == 0 ? 'Unlimited loyalty members' : zinr.inr(ec.l10n.format(p.maxLoyaltyMembers, '#,##0')) + ' loyalty members'}" type="span"/></container>
                                             <container style="mysub-feat"><label text="check_circle" type="span" style="material-icons mysub-check"/><label text="${p.maxPromotions == 0 ? 'Unlimited promotions' : p.maxPromotions + ' promotions'}" type="span"/></container>
                                         </container>
-                                        <section name="UpgradeBtn_${p_index}" condition="canChangePlan &amp;&amp; p.sortOrder > currentPlanSortOrder">
+                                        <section name="UpgradeBtn_${p_index}" condition="!isManualPlan &amp;&amp; canChangePlan &amp;&amp; p.sortOrder > currentPlanSortOrder">
                                             <widgets>
                                                 <container-dialog id="MySubscriptionUpgradeDialog_${p_index}" button-text="Upgrade" type="primary">
                                                     <label text="Upgrade to ${p.planName}?" type="h6"/>
@@ -377,7 +386,7 @@
                                                 </container-dialog>
                                             </widgets>
                                         </section>
-                                        <section name="DowngradeBtn_${p_index}" condition="canChangePlan &amp;&amp; p.sortOrder &lt; currentPlanSortOrder &amp;&amp; p.planId != plan?.planId">
+                                        <section name="DowngradeBtn_${p_index}" condition="!isManualPlan &amp;&amp; canChangePlan &amp;&amp; p.sortOrder &lt; currentPlanSortOrder &amp;&amp; p.planId != plan?.planId">
                                             <widgets>
                                                 <container-dialog id="MySubscriptionDowngradeDialog_${p_index}" button-text="Downgrade" type="warning">
                                                     <label text="Downgrade to ${p.planName}?" type="h6"/>
@@ -448,7 +457,7 @@
                                 <field name="periodTo"><default-field title="To"><display format="dd-MMM-yyyy"/></default-field></field>
                                 <field name="totalAmount"><default-field title="Amount"><display format="#,##0.00"/></default-field></field>
                                 <field name="statusId"><default-field title="Status"><display text="${ec.entity.find('moqui.basic.StatusItem').condition('statusId', statusId).useCache(true).one()?.description ?: statusId}"/></default-field></field>
-                                <field name="payBtn"><conditional-field condition="canManageSubscription" title="">
+                                <field name="payBtn"><conditional-field condition="canManageSubscription &amp;&amp; !isManualPlan" title="">
                                     <!-- ZE-SUB-007 (MS-040): both buttons carry .saas-pay-btn + data-invoice-id and are
                                          wired by DELEGATED click in saas-pay.js — NOT onclick/@click, which broke on
                                          the /vapps|/qapps shell (script stripped -> handler undefined -> dead button). -->

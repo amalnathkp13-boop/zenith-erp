@@ -70,6 +70,10 @@
                 if (subTenant?.organizationPartyId == '100000') {
                     ec.message.addError("The flagship live tenant (MARUTHI) is protected — pick a test tenant."); return
                 }
+                if (ec.entity.find('zenith.erp.saas.SaasTenantConfig').condition('tenantId',sub.tenantId)
+                        .condition('configKey','MANUAL_PLAN_SUBSCRIPTION').one()?.configValue) {
+                    ec.message.addError('Use Tenant Plans to manage this manual assignment.'); return
+                }
                 long cycleDays = (sub.billingCycle == 'Yearly') ? 365L : 30L
                 long dRem
                 try { dRem = Long.parseLong((daysRemaining ?: '').toString().trim()) }

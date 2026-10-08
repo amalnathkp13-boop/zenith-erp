@@ -1,0 +1,100 @@
+{
+  "viewports": [
+    {
+      "cardsContained": true,
+      "headerBottom": 131,
+      "headerColor": "rgb(255, 255, 255)",
+      "height": 812,
+      "pageTop": 133,
+      "scrollWidth": 375,
+      "surface": "qapps",
+      "utilities": 8,
+      "width": 375
+    },
+    {
+      "cardsContained": true,
+      "headerBottom": 131,
+      "headerColor": "rgb(255, 255, 255)",
+      "height": 812,
+      "pageTop": 133,
+      "scrollWidth": 320,
+      "surface": "qapps",
+      "utilities": 8,
+      "width": 320
+    },
+    {
+      "cardsContained": true,
+      "headerBottom": 141,
+      "headerColor": "rgb(255, 255, 255)",
+      "height": 1024,
+      "pageTop": 149,
+      "scrollWidth": 768,
+      "surface": "qapps",
+      "utilities": 8,
+      "width": 768
+    },
+    {
+      "cardsContained": true,
+      "headerBottom": 51,
+      "headerColor": "rgb(255, 255, 255)",
+      "height": 1000,
+      "pageTop": 59,
+      "scrollWidth": 1440,
+      "surface": "qapps",
+      "utilities": 8,
+      "width": 1440
+    },
+    {
+      "cardsContained": true,
+      "headerBottom": 51,
+      "headerColor": "rgb(255, 255, 255)",
+      "height": 1000,
+      "pageTop": 51,
+      "scrollWidth": 1440,
+      "surface": "apps",
+      "utilities": 0,
+      "width": 1440
+    },
+    {
+      "cardsContained": true,
+      "headerBottom": 51,
+      "headerColor": "rgb(255, 255, 255)",
+      "height": 812,
+      "pageTop": 51,
+      "scrollWidth": 375,
+      "surface": "apps",
+      "utilities": 0,
+      "width": 375
+    },
+    {
+      "cardsContained": true,
+      "headerBottom": 51,
+      "headerColor": "rgb(255, 255, 255)",
+      "height": 812,
+      "pageTop": 51,
+      "scrollWidth": 320,
+      "surface": "apps",
+      "utilities": 0,
+      "width": 320
+    },
+    {
+      "cardsContained": true,
+      "headerBottom": 101,
+      "headerColor": "rgb(255, 255, 255)",
+      "height": 1024,
+      "pageTop": 101,
+      "scrollWidth": 768,
+      "surface": "apps",
+      "utilities": 0,
+      "width": 768
+    }
+  ],
+  "forms": {
+    "qappsPlanChange": "ENTERPRISE through 2026-11-15",
+    "appsExtension": "ENTERPRISE through 2026-11-16",
+    "search": "SAASADMIN_QA_B returns one row",
+    "selection": "selected tenant B shows automatic management"
+  },
+  "classicTabletHeader": "101px with content below at scrollY=0",
+  "scope": "Synthetic disposable stack; no live writes"
+}

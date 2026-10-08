@@ -36,6 +36,7 @@
                 <field name="registeredDate"><header-field show-order-by="true"/>
                     <default-field title="Registered"><display format="dd-MMM-yyyy"/></default-field></field>
                 <field name="actions"><default-field title="">
+                    <link url="../PlanAssignments" text="Assign Plan" btn-type="primary" parameter-map="[tenantId:tenantId]"/>
                     <link url="../TenantDetail" text="View" btn-type="primary" icon="fa fa-eye"
                           parameter-map="[tenantId:tenantId]"/>
                     <link url="suspendTenant" text="Suspend" btn-type="danger" icon="fa fa-ban"

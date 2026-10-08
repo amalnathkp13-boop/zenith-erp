@@ -1,0 +1,72 @@
+[
+  {
+    "path": "component/zenith-erp-app/screen/zenith/ZenithApp.xml",
+    "sha256": "81c4acbbdb2cf68360996180d2dcebfa2d78d3db84c2b88887d58280196939c4",
+    "matches": true
+  },
+  {
+    "path": "component/zenith-erp-saas/screen/zenith/saas/SaasAdmin.xml",
+    "sha256": "87c2c796f4c6747b960fc1f8c3b49354588994a89e183719043c199d60c58c17",
+    "matches": true
+  },
+  {
+    "path": "component/zenith-erp-saas/screen/zenith/saas/SubscriptionDetail.xml",
+    "sha256": "07b5d764f34492b37da718e07477ab80a81d13af5e8e2ee2adb42c3167b33296",
+    "matches": true
+  },
+  {
+    "path": "component/zenith-erp-saas/screen/zenith/saas/Subscriptions.xml",
+    "sha256": "9d23b17ef89aa05a62ee6f6113696b8edfb107788b2af0ef97a814132e106c5f",
+    "matches": true
+  },
+  {
+    "path": "component/zenith-erp-saas/screen/zenith/saas/TenantDashboard.xml",
+    "sha256": "e0b50ba3d69d5816a37254097e164d09db18468d1ad31da305e1f5e7be98cd29",
+    "matches": true
+  },
+  {
+    "path": "component/zenith-erp-saas/screen/zenith/saas/TenantDetail.xml",
+    "sha256": "83daa4bf80581db66b4dbd200bca7324572413290e8f08048bf54864d786db52",
+    "matches": true
+  },
+  {
+    "path": "component/zenith-erp-saas/screen/zenith/saas/Tenants.xml",
+    "sha256": "779dea64351163b4e98a379a42d89dc8de7a1d337e9989f3d30caff4d72cef4f",
+    "matches": true
+  },
+  {
+    "path": "component/zenith-erp-saas/service/zenith/saas/SaasLifecycleServices.xml",
+    "sha256": "215077598e271595a9c19aee5781b9aa3c0f9895da7a16d3631090b84640b965",
+    "matches": true
+  },
+  {
+    "path": "component/zenith-erp-saas/service/zenith/saas/SaasPaymentServices.xml",
+    "sha256": "dc292d8dd004bb84395701e83d99be63912f5a9c218bcb2761506302535cb5fc",
+    "matches": true
+  },
+  {
+    "path": "component/zenith-erp-saas/service/zenith/saas/SaasServices.xml",
+    "sha256": "38c752d7be338a97b464a0cfb5fb1fa87d6b215ad41d9ca79551c18fa74ee9d6",
+    "matches": true
+  },
+  {
+    "path": "component/zenith-erp-app/screen/zenithstatic/css/saas-admin.css",
+    "sha256": "d43bd5ac83fb7c3973c31b6d8dee4c9724d8b79dcba7373cfe16800174b4632d",
+    "matches": true
+  },
+  {
+    "path": "component/zenith-erp-app/screen/zenithstatic/js/saas-admin-ui.js",
+    "sha256": "d82f0b6ba6e5f450e770202f0a10d6f24622eb3ad9486eb1cdf12508432c03be",
+    "matches": true
+  },
+  {
+    "path": "component/zenith-erp-saas/screen/zenith/saas/PlanAssignments.xml",
+    "sha256": "a7e87562b36c42d346c88d7dbb578b0454f042ff3f925f3b2caa1a5b4947e094",
+    "matches": true
+  },
+  {
+    "path": "component/zenith-erp-saas/service/zenith/saas/SaasAdminServices.xml",
+    "sha256": "d8d1cde6c82d83e5f9a5b5db3a1332e05d93a6ebee79a8ce33d3fa6950ed745d",
+    "matches": true
+  }
+]

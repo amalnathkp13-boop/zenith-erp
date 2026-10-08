@@ -108,7 +108,8 @@
                         <label text="${plan?.maxUsers ?: 0} users, ${plan?.maxPosTerminals ?: 0} POS, ${plan?.maxProductsSku ?: 0} products, ${plan?.maxStores ?: 0} stores, ${plan?.maxPromotions ?: 0} promos"/>
                     </container>
 
-                    <container-dialog id="ChangePlanDialog" button-text="Change Plan" type="primary">
+                    <link url="../PlanAssignments" text="Assign / Extend Manual Plan" btn-type="primary" parameter-map="[tenantId:tenantId]"/>
+                    <container-dialog id="ChangePlanDialog" button-text="Change Billed Plan" type="primary">
                         <form-single name="ChangePlanForm" transition="changePlan">
                             <field name="tenantId"><default-field><hidden default-value="${tenantId}"/></default-field></field>
                             <field name="newPlanId"><default-field title="New Plan">

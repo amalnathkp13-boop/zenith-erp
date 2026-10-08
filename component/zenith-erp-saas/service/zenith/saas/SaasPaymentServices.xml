@@ -21,6 +21,10 @@
             <if condition="ec.message.hasError()"><return/></if>
             <set field="invoice" from="ec.entity.find('zenith.erp.saas.SaasInvoice').condition('saasInvoiceId',saasInvoiceId).disableAuthz().forUpdate(true).one()"/>
             <if condition="!(invoice.statusId in ['SiSent','SiOverdue']) || invoice.totalAmount == null || invoice.totalAmount &lt;= 0"><return error="true" message="This invoice is not payable."/></if>
+            <entity-find-one entity-name="zenith.erp.saas.SaasTenantConfig" value-field="manualGrant">
+                <field-map field-name="tenantId" from="invoice.tenantId"/><field-map field-name="configKey" value="MANUAL_PLAN_SUBSCRIPTION"/>
+            </entity-find-one>
+            <if condition="manualGrant?.configValue"><return error="true" message="Online payment is disabled for this manually managed plan. Contact the platform administrator."/></if>
 
             <entity-find-one entity-name="zenith.erp.saas.SaasTenant" value-field="tenant">
                 <field-map field-name="tenantId" from="invoice.tenantId"/>
