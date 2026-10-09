@@ -14,11 +14,29 @@
 /* Keep an open transfer menu clickable above the floating Copilot launcher. */
 #inventoryModule #stockTransfers .st-row-options{z-index:10000}
 
+/* Size cards from the space left by the sidebar, without animated layout changes. */
+body:has(.inv-dashboard) :is(.q-header,.q-page-container,#zq-subnav,#zq-sidebar){transition:none!important}
+#inventoryModule .inv-dashboard :is(.inv-stat,.inv-card,.inv-header,.inv-filters){transition:none}
+#inventoryModule :is(.inv-dashboard,.inv-additional) .apexcharts-canvas{width:100%!important;max-width:100%}
+#inventoryModule :is(.inv-dashboard,.inv-additional) .apexcharts-svg{width:100%!important;max-width:100%}
+@container inventory-overview (max-width:1250px){
+  #inventoryModule .inv-stat{grid-template-columns:40px minmax(0,1fr);gap:10px;padding:16px 12px}
+  #inventoryModule .inv-icon{width:40px;height:40px}
+  #inventoryModule .inv-stat strong{font-size:20px}
+}
 @container inventory-overview (max-width:1050px){
-  #inventoryModule .inv-stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+  #inventoryModule .inv-stats{grid-template-columns:repeat(6,minmax(0,1fr))}
+  #inventoryModule .inv-stat{grid-column:span 2}
+  #inventoryModule .inv-stat:nth-last-child(-n+2){grid-column:span 3}
+  #inventoryModule .inv-middle{grid-template-columns:minmax(0,1fr) minmax(0,1.5fr)}
+  #inventoryModule .inv-middle>.inv-card:last-child{grid-column:1/-1}
+  #inventoryModule .inv-actions{grid-template-columns:repeat(6,minmax(0,1fr))}
+  #inventoryModule .inv-bottom{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #inventoryModule .inv-bottom>.inv-card:first-child{grid-column:1/-1}
 }
 @container inventory-overview (max-width:800px){
   #inventoryModule .inv-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #inventoryModule .inv-stat,#inventoryModule .inv-stat:nth-last-child(-n+2){grid-column:auto}
   #inventoryModule .inv-stats>.inv-stat:last-child{grid-column:1/-1}
   #inventoryModule .inv-middle,#inventoryModule .inv-bottom{grid-template-columns:minmax(0,1fr)}
   #inventoryModule .inv-actions{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -28,9 +46,49 @@
   #inventoryModule .inv-date form{left:0;right:auto;top:calc(100% + 8px);min-width:0;width:260px;max-width:100%}
 }
 @container inventory-overview (max-width:420px){
-  #inventoryModule .inv-stats{grid-template-columns:minmax(0,1fr)}
+  #inventoryModule .inv-header{gap:12px}
+  #inventoryModule .inv-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  #inventoryModule .inv-warehouse-filter{display:block;grid-column:1/-1}
+  #inventoryModule .inv-control{height:100%;gap:8px;padding:8px 10px}
+  #inventoryModule .inv-warehouse-filter select{min-width:0;flex:1}
   #inventoryModule .inv-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
   #inventoryModule .inv-control{max-width:100%;white-space:normal}
+  #inventoryModule .inv-stat{display:block;position:relative;padding:14px 12px;min-height:140px}
+  #inventoryModule .inv-stat .inv-icon{position:absolute;top:12px;right:10px;width:24px;height:24px}
+  #inventoryModule .inv-stat .inv-icon svg{width:20px;height:20px}
+  #inventoryModule .inv-stat-label{display:block;padding-right:26px;min-height:36px;font-size:11px}
+  #inventoryModule .inv-stat strong{font-size:18px;margin:8px 0 4px}
+  #inventoryModule .inv-stat-caption{display:block}
+}
+
+/* Reserve each toolbar row with CSS so a resize never waits for SPA measurements. */
+@media(max-width:1300px){
+  body.zq-nav:has(.inv-dashboard) .q-header .q-toolbar{display:grid!important;grid-template-columns:44px minmax(0,190px) minmax(0,1fr) auto;grid-template-rows:36px 32px;gap:6px;padding:8px!important;height:90px;min-height:90px}
+  body:has(.inv-dashboard) #zq-topextra{display:contents}
+  body:has(.inv-dashboard) .q-header .q-toolbar>button:first-child{grid-column:1;grid-row:1}
+  body:has(.inv-dashboard) .q-header .q-toolbar>button:not(:first-child){grid-column:4;grid-row:1;max-width:96px}
+  body:has(.inv-dashboard) .q-header .q-toolbar>button{min-width:0;min-height:32px;height:32px;padding:0!important}
+  body:has(.inv-dashboard) .q-header .q-toolbar>button .q-btn__wrapper{min-height:32px;padding:0 4px!important}
+  body:has(.inv-dashboard) .q-header .q-toolbar>button:first-child{width:32px}
+  body:has(.inv-dashboard) .q-header .q-toolbar>button:first-child .q-btn__wrapper{padding:0!important}
+  body:has(.inv-dashboard) .q-header .q-toolbar>button .block{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  body:has(.inv-dashboard) .q-header .q-toolbar>.q-space{display:none}
+  body:has(.inv-dashboard) #zq-ownerview{grid-column:2;grid-row:1;min-width:0;max-width:100%;margin:0;width:fit-content}
+  body:has(.inv-dashboard) #zq-ownerview .zqov-org{min-width:0;overflow:hidden;text-overflow:ellipsis}
+  body:has(.inv-dashboard) #zq-search{grid-column:3;grid-row:1;min-width:0;margin:0}
+  body:has(.inv-dashboard) #zq-search :is(input,.zqsr-box){min-width:0;width:100%;max-width:none}
+  body:has(.inv-dashboard) #zq-toolbtns{grid-column:1/-1;grid-row:2;justify-content:flex-end;flex-wrap:nowrap;margin:0}
+  body:has(.inv-dashboard) #zq-toolbtns .zqtb-quad{display:inline-flex}
+  body.zq-nav:has(.inv-dashboard) #zq-subnav{top:90px!important}
+  body.zq-nav:has(.inv-dashboard) .q-page-container{padding-top:130px!important}
+}
+@media(max-width:900px){
+  body.zq-nav:has(.inv-dashboard) .q-header .q-toolbar{grid-template-columns:44px minmax(0,1fr) auto;grid-template-rows:32px 36px 32px;height:128px;min-height:128px}
+  body:has(.inv-dashboard) .q-header .q-toolbar>button:not(:first-child){grid-column:3}
+  body:has(.inv-dashboard) #zq-search{grid-column:1/-1;grid-row:2}
+  body:has(.inv-dashboard) #zq-toolbtns{grid-row:3}
+  body.zq-nav:has(.inv-dashboard) #zq-subnav{top:128px!important}
+  body.zq-nav:has(.inv-dashboard) .q-page-container{padding-top:168px!important}
 }
 
 @media(max-width:1199px){

@@ -597,7 +597,7 @@
 <#if mvHasData>
 <div id="inventoryOverviewChart">
 </div>
-<img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onload="zChart(this,function(){var el=document.getElementById('inventoryOverviewChart');if(!el||el.dataset.ready)return;el.dataset.ready='true';var s=getComputedStyle(el.closest('.inv-dashboard'));var lastWidth=el.clientWidth;var chart=new ApexCharts(el,{chart:{type:'line',height:230,toolbar:{show:false},fontFamily:'Inter, sans-serif'},series:[{name:'Stock In',data:${mvInJson}},{name:'Stock Out',data:${mvOutJson}}],xaxis:{categories:${mvLabelsJson}},colors:[s.getPropertyValue('--green').trim(),s.getPropertyValue('--orange').trim()],stroke:{curve:'smooth',width:2},markers:{size:4},fill:{type:'solid',opacity:1},dataLabels:{enabled:false},legend:{position:'top',horizontalAlign:'left'},yaxis:{min:0},grid:{show:false},tooltip:{theme:'light'}});chart.render();if(window.ResizeObserver){var watch=new ResizeObserver(function(){if(!el.isConnected){watch.disconnect();return;}var next=el.clientWidth;if(next>0){if(next!==lastWidth){lastWidth=next;chart.updateOptions({chart:{width:next}},false,false,false);}}});watch.observe(el);}})"/>
+<img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onload="zInventoryChart(this,function(){var el=document.getElementById('inventoryOverviewChart');if(!el||el.dataset.ready)return;el.dataset.ready='true';var s=getComputedStyle(el.closest('.inv-dashboard'));zInventoryFitChart(el,{chart:{type:'line',height:230,toolbar:{show:false},fontFamily:'Inter, sans-serif'},series:[{name:'Stock In',data:${mvInJson}},{name:'Stock Out',data:${mvOutJson}}],xaxis:{categories:${mvLabelsJson}},colors:[s.getPropertyValue('--green').trim(),s.getPropertyValue('--orange').trim()],stroke:{curve:'smooth',width:2},markers:{size:4},fill:{type:'solid',opacity:1},dataLabels:{enabled:false},legend:{position:'top',horizontalAlign:'left'},yaxis:{min:0},grid:{show:false},tooltip:{theme:'light'}});})"/>
 <#else>
 <div class="inv-chart-empty">
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
@@ -911,8 +911,8 @@
                 <widgets>
                     <render-mode><text type="html,vuet,qvt" template="true"><![CDATA[
                         <div id="invMovementsChart"></div>
-                        <img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onload="zChart(this,function(){(function(){
-                            new ApexCharts(document.querySelector(&quot;#invMovementsChart&quot;), {
+                        <img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onload="zInventoryChart(this,function(){(function(){
+                            zInventoryFitChart(document.querySelector(&quot;#invMovementsChart&quot;), {
                                 chart: { type:'area', height: 300, stacked:false, toolbar:{show:false}, fontFamily:'Roboto, sans-serif' },
                                 series: [ { name:'Stock In', data: ${mvInJson} }, { name:'Stock Out', data: ${mvOutJson} } ],
                                 xaxis: { categories: ${mvLabelsJson} },
@@ -922,7 +922,7 @@
                                 legend: { position:'top' },
                                 dataLabels: { enabled:false },
                                 yaxis: { title:{ text:'Units' }, labels:{ formatter:function(v){ return Math.round(v); } } }
-                            }).render();
+                            });
                         })();})"/>
                     ]]></text></render-mode>
                 </widgets>
@@ -951,10 +951,10 @@
                         <widgets>
                             <render-mode><text type="html,vuet,qvt"><![CDATA[
                                 <div id="invCatChart"></div>
-                                <img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onload="zChart(this,function(){(function(){
+                                <img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onload="zInventoryChart(this,function(){(function(){
                                     var labels = ${catLabelsJson};
                                     var data = ${catValsJson};
-                                    new ApexCharts(document.querySelector(&quot;#invCatChart&quot;), {
+                                    zInventoryFitChart(document.querySelector(&quot;#invCatChart&quot;), {
                                         chart: { type:'bar', height: 340, toolbar:{show:false}, fontFamily:'Roboto, sans-serif' },
                                         series: [{ name:'Products', data: data }],
                                         plotOptions: { bar: { horizontal:true, borderRadius:4, distributed:true, barHeight:'70%' } },
@@ -962,7 +962,7 @@
                                         legend: { show:false },
                                         colors: ['#7C3AED','#2563EB','#059669','#D97706','#DC2626','#A78BFA','#B98BE0','#0284C7'],
                                         dataLabels: { enabled:true }
-                                    }).render();
+                                    });
                                 })();})"/>
                             ]]></text></render-mode>
                         </widgets>
@@ -982,8 +982,8 @@
                     <label text="Do your products have a price?" type="h6" style="text-primary text-weight-bold q-mb-md"/>
                     <render-mode><text type="html,vuet,qvt"><![CDATA[
                         <div id="invPriceChart"></div>
-                        <img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onload="zChart(this,function(){(function(){
-                            new ApexCharts(document.querySelector(&quot;#invPriceChart&quot;), {
+                        <img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onload="zInventoryChart(this,function(){(function(){
+                            zInventoryFitChart(document.querySelector(&quot;#invPriceChart&quot;), {
                                 chart: { type:'donut', height: 320, fontFamily:'Roboto, sans-serif' },
                                 series: ${priceCoverageJson},
                                 labels: ['Has a price','Missing a price'],
@@ -991,7 +991,7 @@
                                 legend: { position:'bottom', fontSize:'12px' },
                                 plotOptions: { pie: { donut: { size:'60%', labels: { show:true, total: { show:true, label:'Products' } } } } },
                                 dataLabels: { enabled:true, formatter: function(v){ return Math.round(v) + '%'; } }
-                            }).render();
+                            });
                         })();})"/>
                     ]]></text></render-mode>
                 </container>
@@ -1052,10 +1052,10 @@
                     <label text="Top products to keep stocked (next 7 days)" type="p" style="text-grey-8 text-weight-bold q-mb-xs q-mt-sm"/>
                     <render-mode><text type="html,vuet,qvt"><![CDATA[
                         <div id="invDemandChart"></div>
-                        <img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onload="zChart(this,function(){(function(){
+                        <img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onload="zInventoryChart(this,function(){(function(){
                             var labels = ${dfLabelsJson};
                             var data = ${dfValsJson};
-                            new ApexCharts(document.querySelector(&quot;#invDemandChart&quot;), {
+                            zInventoryFitChart(document.querySelector(&quot;#invDemandChart&quot;), {
                                 chart: { type:'bar', height: 360, toolbar:{show:false}, fontFamily:'Roboto, sans-serif' },
                                 series: [{ name:'Expected to sell (units)', data: data }],
                                 plotOptions: { bar: { horizontal:true, borderRadius:4, distributed:true, barHeight:'70%' } },
@@ -1063,7 +1063,7 @@
                                 legend: { show:false },
                                 colors: ['#7C3AED','#2563EB','#059669','#D97706','#DC2626','#A78BFA','#B98BE0','#0284C7'],
                                 dataLabels: { enabled:true }
-                            }).render();
+                            });
                         })();})"/>
                     ]]></text></render-mode>
                 </widgets>

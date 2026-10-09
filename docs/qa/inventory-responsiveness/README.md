@@ -12,7 +12,15 @@ Existing colors, typography, desktop structure, data calculations and actions st
 
 The tests require Playwright through `NODE_PATH` and local `SMOKE_USER` / `SMOKE_PASS` environment variables. Optional: `RESPONSIVE_BASE_URL` (localhost only), `RESPONSIVE_ORGANIZATION` and `RESPONSIVE_OUTPUT`. Layout checks can select comma-separated `RESPONSIVE_SCREENS`; interaction checks can select `RESPONSIVE_CONTROLS_ONLY=1`; menu checks can also select `RESPONSIVE_SHELLS` and `RESPONSIVE_WIDTHS`. Results and screenshots default to ignored `tmp/responsiveness` folders. Third-party network requests are blocked during these browser tests; application assets and the real local Moqui renderers remain in use.
 
-Desktop 1440px screenshot comparisons show the existing module layouts are preserved. Most images match exactly; differences in others are confined to transient toolbar controls/badges, plus a small expiry-table hover detail. Dashboard content, cards and chart geometry match the previous layout at desktop width. Source changes are limited to containment, chart sizing and menu layering.
+The initial desktop comparisons preserved the previous module layouts. Most images matched exactly; differences in others were confined to transient toolbar controls/badges, plus a small expiry-table hover detail. The dashboard follow-up below also corrects the narrow card widths left by the sidebar, while keeping the existing colors, data, links and desktop structure.
+
+## Live resizing of the Inventory dashboard
+
+User review identified a delay while shrinking the page that the original settled-width checks did not measure. The follow-up is confined to the Inventory dashboard. Its Quasar toolbar reserves rows directly through CSS, including the notification utilities, search and module tabs. Header/sidebar/content width transitions are disabled on this screen. Container breakpoints now size the icon/value columns from the actual available space; compact cards keep ordinary totals readable, and the three-plus-two KPI layout fills both rows.
+
+Inventory chart SVGs scale immediately with their containers. Axis redraws run after a 120ms pause, with animations and the library's duplicate window/parent resize handlers disabled. Offscreen charts are not redrawn; additional charts initialize when their section is open and they enter the viewport. Closing/reopening and resizing do not submit any preference or business transaction. Chart series, warehouse/date calculations and protected XML actions/transitions remain unchanged.
+
+`verify-dashboard-resize.cjs` checks repeated shrink/expand sequences from 320 to 2560px on both surfaces, with additional insights closed and open. It measures visible SVG fitting without a fixed settling delay, checks toolbar overlap and content reservations, verifies hidden chart deferral and opens the date controls after resizing. Run it with the same environment variables as the other local checks. Screenshots and detailed results remain in the ignored local output folder; `dashboard-resize-checks.json` records the verification summary.
 
 ## Local review data
 
