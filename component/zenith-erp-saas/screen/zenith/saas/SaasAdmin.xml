@@ -18,7 +18,7 @@
         <subscreens-item name="Dashboard" location="component://zenith-erp-saas/screen/zenith/saas/Dashboard.xml" menu-title="Dashboard" menu-index="1"/>
         <subscreens-item name="Tenants" location="component://zenith-erp-saas/screen/zenith/saas/Tenants.xml" menu-title="Tenants" menu-index="2"/>
         <subscreens-item name="Plans" location="component://zenith-erp-saas/screen/zenith/saas/Plans.xml" menu-title="Plans" menu-index="3"/>
-        <subscreens-item name="PlanAssignments" location="component://zenith-erp-saas/screen/zenith/saas/PlanAssignments.xml" menu-title="Tenant Plans" menu-index="4"/>
+        <subscreens-item name="PlanAssignments" location="component://zenith-erp-saas/screen/zenith/saas/PlanAssignments.xml" menu-title="Tenant Plans" menu-index="12"/>
         <subscreens-item name="Subscriptions" location="component://zenith-erp-saas/screen/zenith/saas/Subscriptions.xml" menu-title="Subscriptions" menu-index="4"/>
         <subscreens-item name="Invoices" location="component://zenith-erp-saas/screen/zenith/saas/Invoices.xml" menu-title="Invoices" menu-index="5"/>
         <subscreens-item name="Payments" location="component://zenith-erp-saas/screen/zenith/saas/Payments.xml" menu-title="Payments" menu-index="6"/>

@@ -20,6 +20,7 @@
             if (!note || note.length() > 500) { ec.message.addError('Enter an assignment reason of 1 to 500 characters.'); return }
             def tenant = ec.entity.find('zenith.erp.saas.SaasTenant').condition('tenantId',tenantId).forUpdate(true).one()
             if (!tenant || !tenant.organizationPartyId) { ec.message.addError('Tenant not found.'); return }
+            if (tenant.organizationPartyId == '100000') { ec.message.addError('MARUTHI (100000) is protected from manual plan assignments.'); return }
             if (!(tenant.statusId in ['SaasTenantActive','SaasTenantTrial','SaasTenantSuspended'])) {
                 ec.message.addError('A cancelled tenant must be reviewed before assigning access.'); return
             }
@@ -89,6 +90,8 @@
         <actions><script><![CDATA[
             if (ec.web != null && !ec.user.isInGroup('ADMIN')) { ec.message.addError('Only the platform administrator can run access expiry.'); return }
             def tenant = ec.entity.find('zenith.erp.saas.SaasTenant').condition('tenantId',tenantId).forUpdate(true).one()
+            // A stale config must never let the expiry job suspend the protected flagship.
+            if (tenant?.organizationPartyId == '100000') return
             def config = ec.entity.find('zenith.erp.saas.SaasTenantConfig').condition('tenantId',tenantId)
                 .condition('configKey','MANUAL_PLAN_SUBSCRIPTION').one()
             if (!tenant || !config?.configValue) return

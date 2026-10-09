@@ -81,6 +81,8 @@
                     <container style="sap-card">
                         <label text="2. Assign or extend access" type="h2"/>
                         <label text="A new assignment begins today; extending the same active plan retains its start date. Access includes the entire end date. Assigning a plan activates this account. Existing invoices remain unchanged." type="p" style="sap-subtitle"/>
+                        <section name="ProtectedManualTenant" condition="selectedTenant.organizationPartyId == '100000'"><widgets><label text="This organization is protected. Manual assignment and expiry are unavailable." type="p" style="sap-notice"/></widgets></section>
+                        <section name="ManualPlanAssignmentAllowed" condition="selectedTenant.organizationPartyId != '100000'"><widgets>
                         <form-single name="ManualPlanAssignmentForm" transition="assignManualPlan" map="assignForm">
                             <field name="tenantId"><default-field><hidden/></default-field></field>
                             <field name="newPlanId"><default-field title="Plan"><drop-down><list-options list="availablePlans" key="${planId}" text="${planName}"/></drop-down></default-field></field>
@@ -88,6 +90,7 @@
                             <field name="reason"><default-field title="Assignment reason"><text-area rows="3" cols="35" required="true"/></default-field></field>
                             <field name="assignBtn"><default-field title=""><submit text="Assign Manual Plan"/></default-field></field>
                         </form-single>
+                        </widgets></section>
                         <label text="No invoice, payment or automatic renewal is created. The selected plan's usage limits still apply." type="p" style="sap-note"/>
                     </container>
                 </container>
