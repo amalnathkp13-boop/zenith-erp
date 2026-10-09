@@ -5,34 +5,22 @@
         render-mode="xsl-fo" standalone="true">
 
     <actions>
+        <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[:]" out-map="_printAccess"/>
+        <if condition="!_printAccess.allowed"><script>throw new org.moqui.context.ArtifactAuthorizationException('POS print access denied.')</script></if>
+
         <script>context.zinr = com.zenith.Fmt.INSTANCE</script>
         <script><![CDATA[
             def zinr = context.zinr
             def fromD = (fromDate ?: ec.l10n.format(ec.user.nowTimestamp, 'yyyy-MM-dd'))
             def thruD = (thruDate ?: fromD)
-            def ds = java.sql.Timestamp.valueOf(fromD + ' 00:00:00')
-            def de = java.sql.Timestamp.valueOf(thruD + ' 23:59:59')
+            def ds = ec.l10n.parseTimestamp(fromD + ' 00:00:00', 'yyyy-MM-dd HH:mm:ss')
+            def de = ec.l10n.parseTimestamp(thruD + ' 23:59:59.999', 'yyyy-MM-dd HH:mm:ss.SSS')
             generatedStr = ec.l10n.format(ec.user.nowTimestamp, 'dd MMM yyyy HH:mm')
             periodStr = fromD + ' to ' + thruD
-            def _org = ec.user.getPreference("ACTIVE_ORGANIZATION")
-            def tf = ec.entity.find("zenith.erp.pos.PosTransaction").condition("statusId","PtCompleted")
-                .condition("entryDate","greater-equals",ds).condition("entryDate","less-equals",de)
-            if (_org && _org != '_NA_') tf.condition("organizationPartyId", _org)
-            def txnIds = tf.list().collect { it.transactionId }
-            def canon = { m -> def k=(m ?: 'Other').toString().trim(); def lk=k.toLowerCase();
-                if(lk=='cash')return 'Cash'; if(lk=='upi')return 'UPI'; if(lk=='card')return 'Card';
-                if(lk=='netbanking'||lk=='net banking'||lk=='net_banking')return 'Net Banking';
-                if(lk=='wallet')return 'Wallet'; if(lk=='credit')return 'Credit'; return k }
-            def methodMap = new LinkedHashMap()
-            if (txnIds) {
-                ec.entity.find("zenith.erp.pos.PosPayment").condition("transactionId","in",txnIds).list().each { p ->
-                    def method = canon(p.paymentMethod)
-                    if (!methodMap[method]) methodMap[method] = [m:method, amt:0.0G, cnt:0]
-                    methodMap[method].amt += (p.amount ?: 0) as BigDecimal
-                    methodMap[method].cnt++
-                }
-            }
-            def total = methodMap.values().inject(0.0G) { a, it -> a + (it.amt as BigDecimal) }
+            def paymentReport=ec.service.sync().name('zenith.pos.PosServices.get#PosPaymentBreakdown').parameters([fromDate:ds,thruDate:de]).call()
+            def methodMap=[:]
+            (paymentReport.rows ?: []).each { m -> methodMap[m.paymentMethod]=[m:m.paymentMethod,amt:m.totalAmount,cnt:m.transactionCount] }
+            def total=paymentReport.totalAmount ?: BigDecimal.ZERO
             def all = methodMap.values().sort { -(it.amt as BigDecimal) }
             def stx = (searchText ?: '').trim().toLowerCase()
             if (stx) all = all.findAll { (it.m ?: '').toLowerCase().contains(stx) }

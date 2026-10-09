@@ -10,9 +10,9 @@
 
     <actions>
         <entity-find entity-name="zenith.erp.pos.PosQrPayment" list="qrPayments">
-            <search-form-inputs default-order-by="-generatedDate"/>
+            <search-form-inputs skip-fields="organizationPartyId,ownerPartyId" default-order-by="-generatedDate"/>
             <!-- ZE-SALES-014 f/u: org-isolate CSV/XLSX export (standalone render bypasses the MANTLE_ACTIVE_ORG authz filter) -->
-            <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+            <econdition field-name="organizationPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
         </entity-find>
     </actions>
 

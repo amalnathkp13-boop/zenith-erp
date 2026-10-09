@@ -10,7 +10,7 @@
             <script><![CDATA[amtVal = null; try { amtVal = amount ? new BigDecimal(amount.toString().trim()) : null } catch (Exception e) { amtVal = null }]]></script>
             <if condition="amtVal == null || amtVal &lt;= 0">
                 <return error="true" message="Enter a valid Amount greater than 0 — the cash entry was not saved."/></if>
-            <service-call name="create#zenith.erp.pos.PosCashEntry" in-map="context + [entryType:'CashIn', amount:amtVal, organizationPartyId:ec.user.getPreference('ACTIVE_ORGANIZATION')]"/>
+            <service-call name="zenith.pos.PosServices.record#PosCashEntry" in-map="[entryType:'CashIn', amount:amtVal, sessionId:sessionId, entryDate:entryDate, reason:reason, description:description, referenceNumber:referenceNumber]"/>
         </actions>
         <default-response url="."/></transition>
     <transition name="addCashOut">
@@ -18,7 +18,7 @@
             <script><![CDATA[amtVal = null; try { amtVal = amount ? new BigDecimal(amount.toString().trim()) : null } catch (Exception e) { amtVal = null }]]></script>
             <if condition="amtVal == null || amtVal &lt;= 0">
                 <return error="true" message="Enter a valid Amount greater than 0 — the cash entry was not saved."/></if>
-            <service-call name="create#zenith.erp.pos.PosCashEntry" in-map="context + [entryType:'CashOut', amount:amtVal, organizationPartyId:ec.user.getPreference('ACTIVE_ORGANIZATION')]"/>
+            <service-call name="zenith.pos.PosServices.record#PosCashEntry" in-map="[entryType:'CashOut', amount:amtVal, sessionId:sessionId, entryDate:entryDate, reason:reason, description:description, referenceNumber:referenceNumber]"/>
         </actions>
         <default-response url="."/></transition>
     <transition name="deleteCashEntry"><service-call name="delete#zenith.erp.pos.PosCashEntry"/>
@@ -30,12 +30,20 @@
     <transition name="goDailySummary"><default-response url="../DailySummary"/></transition>
 
     <actions>
+        <entity-find entity-name="zenith.erp.pos.PosSession" list="cashSessionList">
+            <econdition field-name="organizationPartyId" from="posOrganizationPartyId"/>
+            <econdition field-name="statusId" value="PsOpen"/>
+            <order-by field-name="-openDate"/>
+        </entity-find>
+        <script>cashDefaultSession = cashSessionList.size() == 1 ? cashSessionList[0].sessionId : ''</script>
+        <set field="sessionId" from="sessionId ?: cashDefaultSession"/>
         <set field="filterDate" from="filterDate ?: ec.l10n.format(ec.user.nowTimestamp, 'yyyy-MM-dd')"/>
         <set field="filterThruDate" from="filterThruDate ?: filterDate"/>
         <set field="filterType" from="filterType ?: ''"/>
         <set field="searchText" from="searchText ?: ''"/>
-        <set field="dayStart" from="java.sql.Timestamp.valueOf(filterDate + ' 00:00:00')"/>
-        <set field="dayEnd" from="java.sql.Timestamp.valueOf(filterThruDate + ' 23:59:59')"/>
+        <!-- Match the displayed user-local dates, including fractional seconds and DST day lengths. -->
+        <set field="dayStart" from="ec.l10n.parseTimestamp(filterDate + ' 00:00:00', 'yyyy-MM-dd HH:mm:ss')"/>
+        <set field="dayEnd" from="ec.l10n.parseTimestamp(java.time.LocalDate.parse(filterThruDate).plusDays(1).toString() + ' 00:00:00', 'yyyy-MM-dd HH:mm:ss')"/>
 
         <entity-find entity-name="moqui.basic.Enumeration" list="reasonList">
             <econdition field-name="enumTypeId" value="PosCashReason"/>
@@ -46,11 +54,11 @@
         <script>_shopSessions = null; try { def _sc = ec.service.sync().name("zenith.base.ShopServices.get#ActiveShopScope").parameter("includePosScope", true).call(); _shopSessions = _sc?.sessionIds } catch (Exception _e) {}</script>
         <entity-find entity-name="zenith.erp.pos.PosCashEntryView" list="cashEntryList">
             <econdition field-name="entryDate" operator="greater-equals" from="dayStart"/>
-            <econdition field-name="entryDate" operator="less-equals" from="dayEnd"/>
+            <econdition field-name="entryDate" operator="less" from="dayEnd"/>
             <econdition field-name="entryType" from="filterType" ignore-if-empty="true"/>
             <order-by field-name="-entryDate"/>
             <!-- ZE-SALES-014 f/u: org-isolate CSV/XLSX export (standalone render bypasses the MANTLE_ACTIVE_ORG authz filter) -->
-            <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+            <econdition field-name="organizationPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
             <econdition field-name="sessionId" operator="in" from="_shopSessions" ignore-if-empty="true"/><!-- ZE-SHOP -->
         </entity-find>
 
@@ -77,11 +85,11 @@
     </actions>
 
     <widgets>
-        <render-mode><text type="html,qvt" template="true"><![CDATA[<details id="posHelp_cashentry" open style="background:#e8f0fe;border:1px solid #4285f4;border-left:6px solid #1a73e8;border-radius:10px;padding:10px 16px;margin:8px 12px 4px 12px;font-family:Segoe UI,Arial,sans-serif"><summary style="cursor:pointer;font-weight:800;font-size:15px;color:#174ea6;outline:none">&#128181; Cash Entry &mdash; quick help <span style="font-weight:600;color:#5f6368;font-size:12px">(click to hide / show)</span></summary><div style="font-size:13px;color:#202124;line-height:1.9;margin-top:8px">Record cash moving in or out of the drawer that is <b>not a sale</b>.<br><b>1</b>&nbsp;<b>Cash In</b> (left) &mdash; money added, e.g. a change fund or owner deposit.<br><b>2</b>&nbsp;<b>Cash Out</b> (right) &mdash; money taken out, e.g. a bank deposit or petty cash.<br><b>3</b>&nbsp;Pick a reason, enter the amount and press <b>Add</b>. Totals and <b>Net Cash</b> update below.</div></details>]]></text></render-mode>
+        <render-mode><text type="html,qvt" template="true"><![CDATA[<details id="posHelp_cashentry" class="pos-reference-help" style="background:#e8f0fe;border:1px solid #4285f4;border-left:6px solid #1a73e8;border-radius:10px;padding:10px 16px;margin:8px 12px 4px 12px;font-family:Segoe UI,Arial,sans-serif"><summary style="cursor:pointer;font-weight:800;font-size:15px;color:#174ea6;outline:none">&#128181; Cash Entry &mdash; quick help <span style="font-weight:600;color:#5f6368;font-size:12px">(click to hide / show)</span></summary><div style="font-size:13px;color:#202124;line-height:1.9;margin-top:8px">Record cash moving in or out of the drawer that is <b>not a sale</b>.<br><b>1</b>&nbsp;<b>Cash In</b> (left) &mdash; money added, e.g. a change fund or owner deposit.<br><b>2</b>&nbsp;<b>Cash Out</b> (right) &mdash; money taken out, e.g. a bank deposit or petty cash.<br><b>3</b>&nbsp;Pick a reason, enter the amount and press <b>Add</b>. Totals and <b>Net Cash</b> update below.</div></details>]]></text></render-mode>
         <container style="q-pa-md">
             <!-- Header: title + subtitle + actions -->
             <render-mode><text type="html,qvt"><![CDATA[<a id="ce-forms-top"></a>]]></text></render-mode>
-            <container style="zsec-hdr q-mb-md">
+            <container style="pos-reference-cash-header zsec-hdr q-mb-md">
                 <container>
                     <label text="Cash Entry" type="h5" style="text-weight-bold q-my-none"/>
                     <label text="Record and manage all your cash transactions in one place" type="span" style="z-statdesc"/>
@@ -134,8 +142,9 @@
                         <render-mode><text type="html,qvt"><![CDATA[<div style="display:flex;align-items:center;gap:12px;background:#ECFDF5;padding:15px 20px;border-radius:12px 12px 0 0"><div style="width:36px;height:36px;border-radius:50%;background:#fff;color:#059669;display:flex;align-items:center;justify-content:center;flex:0 0 auto"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg></div><div><div style="font-size:15px;font-weight:700;color:#111827">Cash In</div><div style="font-size:12px;color:#6B7280">Record money received</div></div></div>]]></text></render-mode>
                         <container style="q-pa-md">
                         <form-single name="CashInForm" transition="addCashIn">
+                            <field name="sessionId"><default-field title="POS Session (drawer)"><drop-down allow-empty="true"><list-options list="cashSessionList" key="${sessionId}" text="${terminalId} / ${sessionId}"/></drop-down></default-field></field>
                             <field name="entryDate"><default-field title="Date &amp; Time"><date-time type="date-time" default-value="${ec.l10n.format(ec.user.nowTimestamp, 'yyyy-MM-dd HH:mm')}"/></default-field></field>
-                            <field name="amount"><default-field title="Amount (₹)"><text-line size="15" input-type="number"/></default-field></field>
+                            <field name="amount"><default-field title="Amount (₹)"><text-line size="15"/></default-field></field>
                             <field name="reason"><default-field title="Reason">
                                 <drop-down>
                                     <option key="CeDeposit" text="Owner/Partner Deposit"/>
@@ -152,6 +161,7 @@
                                 </conditional-field>
                                 <default-field title=""><label text="You have view-only access — changes are disabled." type="span" style="text-grey-7"/></default-field></field>
                             <field-layout>
+                                <field-ref name="sessionId"/>
                                 <field-row><field-ref name="entryDate"/><field-ref name="amount"/><field-ref name="reason"/></field-row>
                                 <field-row><field-ref name="description"/><field-ref name="referenceNumber"/></field-row>
                                 <field-ref name="enteredByPartyId"/>
@@ -166,8 +176,9 @@
                         <render-mode><text type="html,qvt"><![CDATA[<div style="display:flex;align-items:center;gap:12px;background:#FEF2F2;padding:15px 20px;border-radius:12px 12px 0 0"><div style="width:36px;height:36px;border-radius:50%;background:#fff;color:#DC2626;display:flex;align-items:center;justify-content:center;flex:0 0 auto"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></div><div><div style="font-size:15px;font-weight:700;color:#111827">Cash Out</div><div style="font-size:12px;color:#6B7280">Record money paid out</div></div></div>]]></text></render-mode>
                         <container style="q-pa-md">
                         <form-single name="CashOutForm" transition="addCashOut">
+                            <field name="sessionId"><default-field title="POS Session (drawer)"><drop-down allow-empty="true"><list-options list="cashSessionList" key="${sessionId}" text="${terminalId} / ${sessionId}"/></drop-down></default-field></field>
                             <field name="entryDate"><default-field title="Date &amp; Time"><date-time type="date-time" default-value="${ec.l10n.format(ec.user.nowTimestamp, 'yyyy-MM-dd HH:mm')}"/></default-field></field>
-                            <field name="amount"><default-field title="Amount (₹)"><text-line size="15" input-type="number"/></default-field></field>
+                            <field name="amount"><default-field title="Amount (₹)"><text-line size="15"/></default-field></field>
                             <field name="reason"><default-field title="Reason">
                                 <drop-down>
                                     <option key="CeBankDeposit" text="Bank Deposit"/>
@@ -185,6 +196,7 @@
                                 </conditional-field>
                                 <default-field title=""><label text="You have view-only access — changes are disabled." type="span" style="text-grey-7"/></default-field></field>
                             <field-layout>
+                                <field-ref name="sessionId"/>
                                 <field-row><field-ref name="entryDate"/><field-ref name="amount"/><field-ref name="reason"/></field-row>
                                 <field-row><field-ref name="description"/><field-ref name="referenceNumber"/></field-row>
                                 <field-ref name="enteredByPartyId"/>
@@ -229,7 +241,7 @@
                         <default-field><label text="${byStr}" type="span" style="text-dark"/></default-field></field>
                     <field name="deleteBtn">
                         <conditional-field name="cashdel_write" condition="modCanWrite" title="">
-                            <link url="deleteCashEntry" text="" icon="fa fa-trash" btn-type="danger"
+                            <link url="deleteCashEntry" text="Delete" icon="fa fa-trash" btn-type="danger"
                                   parameter-map="[cashEntryId:ce.cashEntryId]" confirmation="Delete this cash entry?"/>
                         </conditional-field>
                         <default-field title=""><label text="" type="span"/></default-field></field>

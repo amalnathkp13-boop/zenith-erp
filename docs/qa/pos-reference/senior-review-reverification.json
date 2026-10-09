@@ -1,0 +1,54 @@
+{
+  "masterBaseline": "44983553d87503d8119c5903161fa5753f38a1f9",
+  "testedApplicationHead": "f2ede48cac12de11ad9b7bbf1456a494c5d8d86b",
+  "testedBillingParentHead": "628d4d4136c3f199cfe015d07ecbc6a8fff2c85c",
+  "componentTree": "940e16ae0ac0fbd904d1c80825569e755ede8b68",
+  "componentFiles": 1006,
+  "runtimeMismatches": 0,
+  "productionAccess": false,
+  "nativeRuntime": {
+    "checks": 323,
+    "failed": 0,
+    "layouts": 84,
+    "browserExceptions": 0,
+    "reportSha256": "4ab5ab8cf43e19872ea13c08682ce1ad75b158c8dd67a44ffc5ae5f262847fa9",
+    "financialTables": 12,
+    "financialFingerprintsUnchanged": true,
+    "teardown": {
+      "httpPort": 18085,
+      "productionAccess": false,
+      "independentIfExistsReconnectFailed": true,
+      "tcpPort": 19097,
+      "listenersRemaining": 0,
+      "stoppedProcess": 15824
+    }
+  },
+  "framework": "Rebuilt public Windows/H2 runtime; QA-only qvt.ftl/xsl-fo.ftl aliases; not pinned Linux/PostgreSQL acceptance",
+  "pending": [
+    "Repository owner billing, then exact-head required GitHub acceptance",
+    "Owner financial/device/schema acceptance of parent #27 and merge",
+    "Team runtime approval of shared theme before deployment"
+  ],
+  "sharedHeaderRuntime": {
+    "checks": 940,
+    "failed": 0,
+    "routes": 55,
+    "layouts": 330,
+    "nativeScrollLayouts": 323,
+    "shortPageLayouts": 7,
+    "browserExceptions": 0,
+    "blockedRequests": 0,
+    "financialTables": 18,
+    "financialFingerprintsUnchanged": true,
+    "reportSha256": "85b5f4b8d411e829d4d07b3ced9b7a5f7b272531e4a9382a406098d343b98a7f",
+    "parentThemeSha256": "9522f1f130be1e8e655476d866723c85d90725956a17d9cd18f6580f5889f94d"
+  },
+  "teardown": {
+    "tcpPort": 19097,
+    "httpPort": 18085,
+    "independentIfExistsReconnectFailed": true,
+    "listenersRemaining": 0,
+    "productionAccess": false,
+    "stoppedProcess": 28152
+  }
+}

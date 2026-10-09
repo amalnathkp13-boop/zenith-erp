@@ -1,0 +1,60 @@
+{
+  "baseCommit": "9a9b053533ebbe916127430a5fe1b466e382e4e6",
+  "scope": "Isolated real Vue/Quasar shell; not a Moqui end-to-end or billing test",
+  "passed": 624,
+  "moduleTabSets": 16,
+  "additionalPage": "My Subscription",
+  "widths": [
+    1440,
+    1200,
+    1024,
+    900,
+    710,
+    375
+  ],
+  "moduleLayouts": 102,
+  "baselineGapReproduced": true,
+  "smallReverseScroll": [
+    -16,
+    -48,
+    96,
+    -24
+  ],
+  "spaResizeAndModuleSwitch": true,
+  "cashierFilterAndTerminalDestinationPreserved": true,
+  "bootstrapPixelComparisons": 3,
+  "browserExceptions": 0,
+  "writeRequests": 0,
+  "sourceSha256": {
+    "component/zenith-erp-app/screen/zenithstatic/css/zenith-theme-v4.css": "92924dc81e6efabd372e8a94edfd5757b8d58608497423c99c25810453d96074",
+    "component/zenith-erp-app/screen/zenithstatic/js/qapps-nav.js": "495e616b08efd0de4753e4739c1f4e5d22e416983d324e00e6d5245ff1baf825",
+    "component/zenith-erp-app/screen/zenith/ZenithApp.xml": "cce514f723cfd404d90d18ebcf8cd2fc6557c92d75e6ee44d62da1cb08d12fab"
+  },
+  "guards": "All four local repository guards passed",
+  "cleanup": "Loopback fixture server and browser stopped; no database or tenant rows created by isolated runner",
+  "frameworkVersions": {
+    "Quasar": "1.22.10"
+  },
+  "nativeRuntime": {
+    "renders": 72,
+    "checks": 115,
+    "nativeScrolledLayouts": 19,
+    "browserExceptions": 0,
+    "financialSubscriptionTablesCompared": 18,
+    "beforeAfterEqual": true,
+    "allBusinessWriteRequestsBlocked": true,
+    "focusedTerminalGeometryUnchanged": true,
+    "componentFilesCompared": 1004,
+    "componentMismatches": 0,
+    "surfaces": [
+      "apps",
+      "qapps"
+    ],
+    "widths": [
+      1440,
+      710
+    ],
+    "database": "Named disposable memory H2; no production database access",
+    "teardown": "JVM stopped, HTTP/database ports closed, fresh IFEXISTS reconnect failed"
+  }
+}

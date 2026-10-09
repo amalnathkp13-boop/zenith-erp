@@ -7,6 +7,9 @@
     <parameter name="transactionId" required="true"/>
 
     <actions>
+        <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[transactionId:transactionId]" out-map="_printAccess"/>
+        <if condition="!_printAccess.allowed"><script>throw new org.moqui.context.ArtifactAuthorizationException('POS print access denied.')</script></if>
+
         <!-- ZE-INR: this screen is standalone="true" (renders OUTSIDE ZenithApp), so it does NOT inherit the
              shared `zinr` regrouper set in ZenithApp pre-actions. Set it locally so the zinr.inr(...) calls
              below (and in the template) work — otherwise the receipt NPEs and POS printing breaks. -->
@@ -64,7 +67,8 @@
             footerText = rTpl?.footerText ?: ''
             termsText = rTpl?.termsText ?: ''
 
-            cs = '₹'
+            // FOP's bundled base fonts do not contain the rupee glyph. Use a readable currency prefix.
+            cs = 'Rs. '
             billNo = txn.transactionNumber ?: txn.transactionId
             billDate = ec.l10n.format(txn.entryDate, 'dd/MM/yyyy hh:mm a')
             customerName = txn.customerName ?: 'Walk-In Customer'
@@ -167,7 +171,7 @@
                 <fo:table-body>
                     <#list items as item>
                     <fo:table-row>
-                        <fo:table-cell padding="1pt"><fo:block font-size="7pt">${item.productName!item.productId!''}</fo:block></fo:table-cell>
+                        <fo:table-cell padding="1pt"><fo:block font-size="7pt">${(item.productName!item.productId!'')?xml}</fo:block></fo:table-cell>
                         <fo:table-cell padding="1pt"><fo:block font-size="7pt" text-align="center">${zinr.inr(ec.l10n.format(item.quantity!0, '#,##0.##'))}</fo:block></fo:table-cell>
                         <fo:table-cell padding="1pt"><fo:block font-size="7pt" text-align="right">${zinr.inr(ec.l10n.format(item.unitPrice!0, '#,##0.00'))}</fo:block></fo:table-cell>
                         <fo:table-cell padding="1pt"><fo:block font-size="7pt" text-align="right">${zinr.inr(ec.l10n.format(item.lineTotal!0, '#,##0.00'))}</fo:block></fo:table-cell>
@@ -201,13 +205,13 @@
                 <fo:table-column column-width="proportional-column-width(1)"/><fo:table-column column-width="24mm"/>
                 <fo:table-body>
                     <fo:table-row>
-                        <fo:table-cell><fo:block font-size="7pt">Subtotal</fo:block></fo:table-cell>
+                        <fo:table-cell><fo:block font-size="7pt">Taxable (after discount)</fo:block></fo:table-cell>
                         <fo:table-cell><fo:block font-size="7pt" text-align="right">${cs}${zinr.inr(ec.l10n.format(txn.subtotal!0, '#,##0.00'))}</fo:block></fo:table-cell>
                     </fo:table-row>
                     <#if ((txn.discountTotal!0)) gt 0>
                     <fo:table-row>
-                        <fo:table-cell><fo:block font-size="7pt">Discount</fo:block></fo:table-cell>
-                        <fo:table-cell><fo:block font-size="7pt" text-align="right">-${cs}${zinr.inr(ec.l10n.format(txn.discountTotal!0, '#,##0.00'))}</fo:block></fo:table-cell>
+                        <fo:table-cell><fo:block font-size="7pt">Discount included</fo:block></fo:table-cell>
+                        <fo:table-cell><fo:block font-size="7pt" text-align="right">${cs}${zinr.inr(ec.l10n.format(txn.discountTotal!0, '#,##0.00'))}</fo:block></fo:table-cell>
                     </fo:table-row>
                     </#if>
                     <#if ((txn.totalTaxAmount!0)) gt 0>

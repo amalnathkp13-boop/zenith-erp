@@ -69,7 +69,7 @@
             <econdition field-name="transactionNumber" operator="like" from="searchLike" ignore-if-empty="true"/>
             <order-by field-name="-entryDate"/>
             <!-- ZE-SALES-014 f/u: org-isolate CSV/PDF export (standalone render bypasses the MANTLE_ACTIVE_ORG authz filter) -->
-            <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+            <econdition field-name="organizationPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
         </entity-find>
 
         <script><![CDATA[

@@ -72,7 +72,7 @@
             <econdition field-name="expenseDate" operator="less-equals" from="dayEnd"/>
             <econdition field-name="categoryId" from="filterCategoryId" ignore-if-empty="true"/>
             <order-by field-name="-expenseDate"/>
-            <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+            <econdition field-name="organizationPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
         </entity-find>
 
         <script><![CDATA[
@@ -337,7 +337,7 @@
                         <default-field><label text="${enteredByStr}" type="span" style="text-dark"/></default-field></field>
                     <field name="deleteBtn">
                         <conditional-field name="exp_del_write" condition="modCanWrite" title="">
-                            <link url="deleteExpense" text="" icon="delete" link-type="anchor" style="z-obtn z-red z-obtn-ico"
+                            <link url="deleteExpense" text="Delete" icon="delete" link-type="anchor" style="z-obtn z-red"
                                   parameter-map="[expenseId:exp.expenseId]" confirmation="Delete this expense entry?"/>
                         </conditional-field>
                         <default-field title=""><label text="" type="span"/></default-field>

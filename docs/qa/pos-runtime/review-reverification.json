@@ -1,0 +1,42 @@
+{
+  "masterBaseline": "d9dca975d4f22a74470ae0a3b8bebe16fc57b1a3",
+  "testedApplicationHead": "c5516c8f505ff552be92db4f3dd8701d6af4a19f",
+  "componentTree": "45e10b6d84e1b19afc61c404b321eaafb7cdbcf4",
+  "componentFiles": 999,
+  "runtimeMismatches": 0,
+  "productionAccess": false,
+  "nativeRuntime": {
+    "checks": 522,
+    "failed": 0,
+    "pages": 56,
+    "layouts": 100,
+    "browserExceptions": 0,
+    "reportSha256": "0fa0fb2e704acbe46e3920c39984522f3285ee4564fc929b6038d4e3d5d12c76"
+  },
+  "reviewRegressions": [
+    "filled/tendered cart tax-destination change denied before writes",
+    "same-destination customer selection preserves tax",
+    "legacy original offline records retained until exact verified acknowledgement",
+    "stored session and terminal org ownership checked",
+    "Payment Wise screen/CSV/PDF parse report dates in user timezone",
+    "early and final-millisecond day-boundary CSV tests on both interfaces; captured timestamp restored and financial figures unchanged"
+  ],
+  "teardown": {
+    "listenersRemaining": 0,
+    "tcpPort": 19096,
+    "independentIfExistsReconnectFailed": true,
+    "stoppedProcess": 20416,
+    "httpPort": 18084,
+    "productionAccess": false
+  },
+  "pending": [
+    "GitHub required acceptance cannot start due to account billing/spending limit",
+    "Trusted clean Linux/PostgreSQL acceptance",
+    "Owner MARUTHI before/after financial acceptance; device/provider recovery checks"
+  ],
+  "nativeLimitations": [
+    "Public rebuilt Windows/H2 framework; not the pinned Linux/PostgreSQL acceptance image",
+    "One earlier unchanged PDF template attempt emitted raw FreeMarker; fresh runtime passed all PDF checks. Exact-image CI remains required."
+  ],
+  "testHarnessChange": "Search/Enter assertion now waits for the actual product suggestion and addItem response. Exactly-one-item, quantity and request-count assertions remain unchanged."
+}

@@ -295,33 +295,14 @@
 
     // ---- per-module sub-nav bar (below the header): current module's sections as horizontal tabs ----
     var subBar = null;
-    // Sales reserves the wrapped toolbar height without changing other modules.
-    function syncSalesHeader() {
-        if (!subBar || !subBar.matches('.show[data-mod="sales"]')) {
-            document.body.style.removeProperty('--zq-sales-header-height'); return;
-        }
+    // The header and fixed tabs share one offset, including wrapped mobile toolbars.
+    function syncHeaderLayout() {
         var header = document.querySelector('.q-header');
-        if (header) document.body.style.setProperty('--zq-sales-header-height', (header.offsetHeight || 51) + 'px');
-    }
-    // Contacts can wrap the header; reserve its actual height without changing other modules.
-    function syncContactsHeader() {
-        if (!subBar || !subBar.matches('.show[data-mod="Contacts"]')) {
-            document.body.style.removeProperty('--zq-contacts-header-height');
-            return;
-        }
-        var header = document.querySelector('.q-header');
-        if (header) document.body.style.setProperty('--zq-contacts-header-height', (header.offsetHeight || 51) + 'px');
-    }
-    // My Subscription keeps the content below its wrapped mobile toolbar.
-    function syncMySubscriptionHeader() {
-        if (!document.querySelector('.mysub-wrap')) {
-            document.body.style.removeProperty('--zq-mysub-header-height'); return;
-        }
-        var header = document.querySelector('.q-header');
-        if (header) document.body.style.setProperty('--zq-mysub-header-height', (header.offsetHeight || 51) + 'px');
+        if (!header) return;
+        document.body.style.setProperty('--zq-header-height', header.getBoundingClientRect().height + 'px');
+        document.body.style.setProperty('--zq-subnav-height', (subBar ? subBar.getBoundingClientRect().height : 0) + 'px');
     }
     function updateSubnav() {
-        syncMySubscriptionHeader();
         if (!subBar) return;
         var rel = location.pathname.replace(/^\/qapps\/zenith/, '') || '/';
         // Home/Dashboard landing → the "Dashboards" hub (every ERP dashboard)
@@ -337,13 +318,13 @@
                 if (on) a.classList.add('on');
                 subBar.appendChild(a);
             });
-            subBar.classList.add('show'); document.body.classList.add('zq-has-subnav'); syncContactsHeader(); syncSalesHeader();
+            subBar.classList.add('show'); document.body.classList.add('zq-has-subnav'); syncHeaderLayout();
             return;
         }
         var key = null, klen = -1;
         for (var k in SUBNAV) { if (rel.indexOf(k) === 0 && k.length > klen) { key = k; klen = k.length; } }
         subBar.innerHTML = '';
-        if (!key) { subBar.classList.remove('show'); document.body.classList.remove('zq-has-subnav'); syncContactsHeader(); syncSalesHeader(); return; }
+        if (!key) { subBar.classList.remove('show'); document.body.classList.remove('zq-has-subnav'); syncHeaderLayout(); return; }
         var arr = SUBNAV[key], mount = key.slice(1);
         subBar.setAttribute('data-mod', mount);  // ZE-CONTACTS-DS: lets CSS scope the active-tab pill to Contacts only
         // ZE-NAV-ALIAS: a detail/edit screen (menu-include=false, e.g. EditStockTransfer) shares no URL prefix with its
@@ -367,7 +348,7 @@
             subBar.appendChild(a);
         }
         if (active) active.classList.add('on');
-        subBar.classList.add('show'); document.body.classList.add('zq-has-subnav'); syncContactsHeader(); syncSalesHeader();
+        subBar.classList.add('show'); document.body.classList.add('zq-has-subnav'); syncHeaderLayout();
         if (active) { try { var r = active.getBoundingClientRect(), br = subBar.getBoundingClientRect(); subBar.scrollLeft += (r.left - br.left) - (subBar.clientWidth / 2) + (r.width / 2); } catch (_e) {} }
     }
 
@@ -383,15 +364,13 @@
         applyActive();
         buildTopbar(header);
         subBar = el('div'); subBar.id = 'zq-subnav';
-        subBar.style.top = (header.offsetHeight || 51) + 'px';
         body.appendChild(subBar);
         updateSubnav();
-        if (window.ResizeObserver) new ResizeObserver(syncContactsHeader).observe(header);
-        else window.addEventListener('resize', syncContactsHeader);
-        if (window.ResizeObserver) new ResizeObserver(syncSalesHeader).observe(header);
-        else window.addEventListener('resize', syncSalesHeader);
-        if (window.ResizeObserver) new ResizeObserver(syncMySubscriptionHeader).observe(header);
-        else window.addEventListener('resize', syncMySubscriptionHeader);
+        if (window.ResizeObserver) {
+            var headerResize = new ResizeObserver(syncHeaderLayout);
+            headerResize.observe(header);
+            headerResize.observe(subBar);
+        } else window.addEventListener('resize', syncHeaderLayout);
         // collapse (persisted)
         try { if (localStorage.getItem('zqSideCollapsed') === '1') body.classList.add('zq-side-collapsed'); } catch (_e) {}
         var tgl = document.getElementById('zq-side-toggle');

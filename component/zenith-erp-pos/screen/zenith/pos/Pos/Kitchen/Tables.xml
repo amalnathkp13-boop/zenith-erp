@@ -172,9 +172,8 @@
     <div class="tm-head-actions">
       <button type="button" class="tm-btn is-primary tm-viewbtn" onclick="tmView('floor', this)">Floor View</button>
       <button type="button" class="tm-btn tm-viewbtn" onclick="tmView('list', this)">List View</button>
-      <button type="button" class="tm-btn" onclick="tmSoon('wrap','Advanced filter')"><@ic 'filter'/> Filter</button>
       <#if modCanWrite>
-      <button type="button" class="tm-btn" id="tm-editbtn" onclick="tmEdit(this)"><@ic 'pencil'/> Edit Layout</button>
+      <button type="button" class="tm-btn" id="tm-editbtn" onclick="tmEdit(this)"><@ic 'pencil'/> Manage Tables</button>
       </#if>
     </div>
   </div>
@@ -190,17 +189,13 @@
   <#if modCanWrite>
   <div class="tm-ebanner">
     <div>
-      <span class="tm-ebanner__title"><@ic 'pencil' 14/> Edit Layout Mode</span>
-      <span class="tm-ebanner__sub">Add or remove tables &#183; Select a table, then Delete</span>
+      <span class="tm-ebanner__title"><@ic 'pencil' 14/> Manage Tables</span>
+      <span class="tm-ebanner__sub">Add or remove tables &#183; Changes save immediately</span>
     </div>
     <div class="tm-ebanner__actions">
       <button type="button" class="tm-ebtn" onclick="tmModal(true)"><@ic 'plus' 14/> Add Table</button>
-      <button type="button" class="tm-ebtn" onclick="tmSoon('wrap','Duplicate')"><@ic 'copy' 14/> Duplicate</button>
-      <button type="button" class="tm-ebtn" onclick="tmSoon('wrap','Rotate')"><@ic 'rotate-cw' 14/> Rotate</button>
-      <button type="button" class="tm-ebtn is-danger is-disabled" id="tm-ebtn-delete" onclick="tmDelete()"><@ic 'trash' 14/> Delete</button>
-      <button type="button" class="tm-ebtn" onclick="tmSoon('wrap','Undo')"><@ic 'undo' 14/> Undo</button>
-      <button type="button" class="tm-ebtn" onclick="tmEdit(document.getElementById('tm-editbtn'))">Cancel</button>
-      <button type="button" class="tm-ebtn is-primary" onclick="tmSoon('wrap','Save Layout')">Save Layout</button>
+      <button type="button" class="tm-ebtn is-danger is-disabled" id="tm-ebtn-delete" disabled="disabled" onclick="tmDelete()"><@ic 'trash' 14/> Delete</button>
+      <button type="button" class="tm-ebtn" onclick="tmEdit(document.getElementById('tm-editbtn'))">Done</button>
     </div>
   </div>
   </#if>
@@ -268,7 +263,7 @@
             <#if ord.items?has_content>
             <ul class="tm-oitems">
               <#list ord.items as it>
-              <li class="tm-oitem"><span class="tm-oitem__name">${it.q} &#215; ${it.name}</span><span class="tm-oitem__amt">${it.amt}</span></li>
+              <li class="tm-oitem"><span class="tm-oitem__name">${it.q} &#215; ${it.name?html}</span><span class="tm-oitem__amt">${it.amt}</span></li>
               </#list>
             </ul>
             </#if>
@@ -294,14 +289,9 @@
           </#if>
 
           <div class="tm-actions">
-            <button type="button" class="tm-abtn is-primary" onclick="tmGo('goTerminal')"><@ic 'plus' 14/> Add Items</button>
-            <button type="button" class="tm-abtn" onclick="tmSoon('${tbl.tableId}','Send to Kitchen')"><@ic 'flame' 14/> Send to Kitchen</button>
-            <button type="button" class="tm-abtn" onclick="tmSoon('${tbl.tableId}','Transfer Table')"><@ic 'swap' 14/> Transfer Table</button>
-            <button type="button" class="tm-abtn" onclick="tmSoon('${tbl.tableId}','Split Bill')"><@ic 'scissors' 14/> Split Bill</button>
+            <button type="button" class="tm-abtn is-primary" onclick="tmGo('goTerminal')"><@ic 'plus' 14/> Open Billing</button>
             <#if ord?has_content>
-            <button type="button" class="tm-abtn" onclick="tmGo('goTransactions')"><@ic 'printer' 14/> Print Bill</button>
-            <#else>
-            <button type="button" class="tm-abtn" onclick="tmSoon('${tbl.tableId}','Print Bill')"><@ic 'printer' 14/> Print Bill</button>
+            <button type="button" class="tm-abtn" onclick="tmGo('goTransactions')"><@ic 'receipt' 14/> View Transactions</button>
             </#if>
             <#if modCanWrite>
             <button type="button" class="tm-abtn is-danger" onclick="tmPost('closeTable',{tableId:'${tbl.tableId}'})"><@ic 'xcircle' 14/> Close Table</button>
@@ -318,7 +308,6 @@
           </div>
           </#if>
 
-          <div class="tm-soonmsg" id="tm-soon-${tbl.tableId}"></div>
         </div>
       </#list>
     </div>
@@ -331,7 +320,7 @@
           <#if tables?has_content>
           <#list tables as tbl>
             <#assign cd = tmCard[tbl.tableId]/>
-            <tr>
+            <tr data-status="${cd.key}" data-table-id="${tbl.tableId}">
               <td style="font-weight:600;">${(tbl.tableNumber)!'?'}</td>
               <td>${(tbl.tableName)!'-'}</td>
               <td>${(tbl.seatingCapacity)!4}</td>
@@ -378,7 +367,7 @@
   <!-- JS runs from an external file injected via img-onload: reliable on BOTH /apps and /qapps
        (/qapps' Vue template compiler strips inline <script> and chokes on a second root). -->
   <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" style="display:none"
-       onload="(function(){if(window.__tmJs)return;window.__tmJs=1;var s=document.createElement('script');s.src='/zenithstatic/js/tm-tables.js?v=2';document.head.appendChild(s);})()"/>
+       onload="(function(){if(window.__tmJs)return;window.__tmJs=1;var s=document.createElement('script');s.src='/zenithstatic/js/tm-tables.js?v=3';document.head.appendChild(s);})()"/>
 
 </div>
         ]]></text></render-mode>

@@ -1,0 +1,103 @@
+/* POS reference gaps only. The billing terminal and already styled cards retain their own rules. */
+.pos-reference-help {
+    background: var(--z-bg-card, #fff) !important;
+    border: 1px solid var(--z-border, #e5e7eb) !important;
+    border-radius: 8px !important;
+    padding: 8px 12px !important;
+    margin: 8px 12px 12px !important;
+    font-family: inherit !important;
+}
+.pos-reference-help > div { color: var(--z-text-main, #202124) !important; }
+.pos-reference-help > summary {
+    color: var(--z-text-secondary, #6b7280) !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+}
+.pos-reference-help > summary:focus-visible {
+    outline: 2px solid var(--z-primary, #7c3aed) !important;
+    outline-offset: 3px;
+}
+.pos-reference-header {
+    display: flex !important;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 12px !important;
+    color: var(--z-text-main, #111827);
+    background: transparent;
+}
+.pos-reference-header > .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pos-reference-header form { margin: 0; }
+.pos-reference-header h5 { margin: 0; font-size: 20px; line-height: 1.4; }
+.pos-reference-header :is(a, button) { font-size: 12px; }
+.pos-reference-dates { position: relative; z-index: 2; padding: 12px !important; box-shadow: none !important; }
+.pos-reference-dates > div { margin-bottom: 0 !important; }
+.pos-reference-cash-header { display: flex !important; flex-wrap: wrap; justify-content: space-between; gap: 12px; }
+.pos-reference-cash-header .z-btnrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pos-reference-cash-header h5 { font-size: 20px; line-height: 1.4; margin: 0 0 4px; }
+
+/* The shared Quasar label-left rule consumes 152px inside narrow POS form columns.
+   Give only the cash forms label-above inputs; keep the native controls and validation. */
+body.zq-nav :is(#CashFilter, #CashInForm, #CashOutForm) .q-field:has(.q-field__label) {
+    padding-left: 0 !important;
+    padding-top: 22px;
+    width: 100%;
+    max-width: 100% !important;
+    min-width: 0;
+}
+body.zq-nav :is(#CashFilter, #CashInForm, #CashOutForm) .q-field .q-field__label {
+    position: absolute !important;
+    left: 0 !important;
+    right: auto !important;
+    top: -22px !important;
+    bottom: auto !important;
+    width: auto !important;
+    max-width: 100% !important;
+    height: auto !important;
+    display: block !important;
+    transform: none !important;
+    font-size: 12px !important;
+    line-height: 18px !important;
+    text-align: left !important;
+    white-space: normal !important;
+    color: var(--z-text-secondary, #6b7280) !important;
+}
+body.zq-nav :is(#CashFilter, #CashInForm, #CashOutForm) .q-field__control-container { padding-top: 0 !important; }
+body.zq-nav :is(#CashFilter, #CashInForm, #CashOutForm) .q-field__native { padding-top: 6px; padding-bottom: 6px; }
+body.zq-nav #CashFilter > .row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) auto auto;
+    gap: 12px;
+    align-items: end;
+}
+body.zq-nav #CashFilter > .row > * { width: auto; min-width: 0; }
+body.zq-nav #CashFilter .q-ma-sm { margin: 0; }
+body.zq-nav #CashFilter .q-field--with-bottom { padding-bottom: 0; }
+body.zq-nav #CashFilter .q-field--error { padding-bottom: 20px; }
+#content :is(#CashFilter, #CashInForm, #CashOutForm) .form-group > .control-label {
+    float: none; width: 100%; text-align: left; padding: 0 0 4px; font-size: 12px;
+}
+#content :is(#CashFilter, #CashInForm, #CashOutForm) .form-group > [class*="col-"] {
+    float: none; width: 100%; padding: 0;
+}
+#content :is(#CashFilter, #CashInForm, #CashOutForm) :is(.form-control, .select2-container) { width: 100% !important; }
+#content #CashFilter > fieldset > .row {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto auto; gap: 12px; align-items: end; margin: 0;
+}
+#content #CashFilter > fieldset > .row > div { float: none; width: auto; min-width: 0; padding: 0; }
+#content #CashFilter .form-group { margin: 0; }
+#content #CashFilter .form-group > .control-label:empty { display: none; }
+#content #CashFilter .input-group { width: 100%; }
+
+@media (max-width: 1100px) {
+    body.zq-nav #CashFilter > .row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #content #CashFilter > fieldset > .row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 767px) {
+    .pos-reference-header { align-items: flex-start; }
+    .pos-reference-header > .row { width: 100%; }
+    body.zq-nav #CashFilter > .row { grid-template-columns: minmax(0, 1fr); }
+    #content #CashFilter > fieldset > .row { grid-template-columns: minmax(0, 1fr); }
+    .pos-reference-cash-header .z-btnrow { width: 100%; }
+}

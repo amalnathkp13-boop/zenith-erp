@@ -16,7 +16,7 @@
 
     <actions>
         <entity-find entity-name="zenith.erp.pos.PosReceiptTemplate" list="templateList">
-            <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+            <econdition field-name="organizationPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
             <order-by field-name="templateName"/>
         </entity-find>
         <script><![CDATA[

@@ -1,0 +1,101 @@
+<?xml version='1.0' encoding='utf-8'?>
+<entity-facade-xml type="demo">
+  <zenith.erp.india.IndiaGstSlab gstSlabId="GST_0" slabName="Zero GST" gstRate="0" cgstRate="0" sgstRate="0" igstRate="0" cessRate="0" />
+  <mantle.party.Party partyId="POS_QA_A" partyTypeEnumId="PtyOrganization" />
+  <mantle.party.Organization partyId="POS_QA_A" organizationName="Disposable POS QA A" />
+  <mantle.party.PartyRole partyId="POS_QA_A" roleTypeId="OrgInternal" />
+  <mantle.facility.Facility facilityId="POS_QA_A_FAC" ownerPartyId="POS_QA_A" facilityTypeEnumId="FcTpRetailStore" facilityName="Disposable POS facility A" />
+  <zenith.erp.base.CompanySettings organizationPartyId="POS_QA_A" settingKey="COUNTRY_GEO_ID" settingValue="IND" />
+  <zenith.erp.base.CompanySettings organizationPartyId="POS_QA_A" settingKey="CURRENCY_UOM_ID" settingValue="INR" />
+  <zenith.erp.base.CompanySettings organizationPartyId="POS_QA_A" settingKey="FY_START_MONTH" settingValue="4" />
+  <zenith.erp.base.CompanySettings organizationPartyId="POS_QA_A" settingKey="TAX_CALCULATION_SERVICE" settingValue="zenith.india.IndiaTaxServices.calculate#Tax" />
+  <zenith.erp.pos.PosTerminal terminalId="POS_QA_A_TERM1" organizationPartyId="POS_QA_A" terminalName="Disposable POS A terminal 1" regionGeoId="33" stateCode="33" countryGeoId="IND" facilityId="POS_QA_A_FAC" isActive="Y" />
+  <zenith.erp.pos.PosTerminal terminalId="POS_QA_A_TERM2" organizationPartyId="POS_QA_A" terminalName="Disposable POS A terminal 2" regionGeoId="33" stateCode="33" countryGeoId="IND" facilityId="POS_QA_A_FAC" isActive="Y" />
+  <mantle.product.category.ProductCategory productCategoryId="POS_QA_A_CAT" productCategoryTypeEnumId="PctCatalog" categoryName="Disposable POS A category" ownerPartyId="POS_QA_A" />
+  <mantle.product.Product productId="POS_QA_A_P18" pseudoId="POS_QA_A_P18" productName="Disposable POS A P18" productTypeEnumId="PtAsset" ownerPartyId="POS_QA_A" amountUomId="OTH_ea" mrpAmount="100" gstSlabId="GST_18" inventoryTracked="N" />
+  <mantle.product.category.ProductCategoryMember productId="POS_QA_A_P18" productCategoryId="POS_QA_A_CAT" fromDate="2020-01-01 00:00:00" />
+  <zenith.erp.pos.PosProductModePrice productId="POS_QA_A_P18" salesModeId="WHOLESALE" organizationPartyId="POS_QA_A" price="90" />
+  <zenith.erp.pos.PosProductModePrice productId="POS_QA_A_P18" salesModeId="EMPLOYEE" organizationPartyId="POS_QA_A" price="80" />
+  <mantle.product.Product productId="POS_QA_A_P5" pseudoId="POS_QA_A_P5" productName="Disposable POS A P5" productTypeEnumId="PtAsset" ownerPartyId="POS_QA_A" amountUomId="OTH_ea" mrpAmount="200" gstSlabId="GST_5" inventoryTracked="N" />
+  <mantle.product.category.ProductCategoryMember productId="POS_QA_A_P5" productCategoryId="POS_QA_A_CAT" fromDate="2020-01-01 00:00:00" />
+  <zenith.erp.pos.PosProductModePrice productId="POS_QA_A_P5" salesModeId="WHOLESALE" organizationPartyId="POS_QA_A" price="90" />
+  <zenith.erp.pos.PosProductModePrice productId="POS_QA_A_P5" salesModeId="EMPLOYEE" organizationPartyId="POS_QA_A" price="80" />
+  <mantle.product.Product productId="POS_QA_A_FREE" pseudoId="POS_QA_A_FREE" productName="Disposable POS A FREE" productTypeEnumId="PtAsset" ownerPartyId="POS_QA_A" amountUomId="OTH_ea" mrpAmount="0" gstSlabId="GST_0" inventoryTracked="N" />
+  <mantle.product.category.ProductCategoryMember productId="POS_QA_A_FREE" productCategoryId="POS_QA_A_CAT" fromDate="2020-01-01 00:00:00" />
+  <mantle.product.Product productId="POS_QA_A_NOWS" pseudoId="POS_QA_A_NOWS" productName="Disposable POS A NOWS" productTypeEnumId="PtAsset" ownerPartyId="POS_QA_A" amountUomId="OTH_ea" mrpAmount="50" gstSlabId="GST_18" inventoryTracked="N" />
+  <mantle.product.category.ProductCategoryMember productId="POS_QA_A_NOWS" productCategoryId="POS_QA_A_CAT" fromDate="2020-01-01 00:00:00" />
+  <mantle.product.Product productId="POS_QA_A_BREAK" pseudoId="POS_QA_A_BREAK" productName="Disposable POS A BREAK" productTypeEnumId="PtAsset" ownerPartyId="POS_QA_A" amountUomId="OTH_ea" mrpAmount="100" gstSlabId="GST_18" inventoryTracked="N" />
+  <mantle.product.category.ProductCategoryMember productId="POS_QA_A_BREAK" productCategoryId="POS_QA_A_CAT" fromDate="2020-01-01 00:00:00" />
+  <zenith.erp.pos.PosProductModePrice productId="POS_QA_A_BREAK" salesModeId="WHOLESALE" organizationPartyId="POS_QA_A" price="90" thresholdQty="5" />
+  <zenith.erp.pos.PosProductModePrice productId="POS_QA_A_BREAK" salesModeId="EMPLOYEE" organizationPartyId="POS_QA_A" price="80" />
+  <mantle.party.Party partyId="POS_QA_A_CUST_SAME" ownerPartyId="POS_QA_A" partyTypeEnumId="PtyPerson" />
+  <mantle.party.Person partyId="POS_QA_A_CUST_SAME" firstName="Synthetic" lastName="POS A SAME" />
+  <mantle.party.PartyRole partyId="POS_QA_A_CUST_SAME" roleTypeId="Customer" />
+  <zenith.erp.tax.TaxRegistration registrationId="POS_QA_A_CUST_SAME_TAX" partyId="POS_QA_A_CUST_SAME" organizationPartyId="POS_QA_A" regionGeoId="33" countryGeoId="IND" isDefault="Y" />
+  <mantle.party.Party partyId="POS_QA_A_CUST_INTER" ownerPartyId="POS_QA_A" partyTypeEnumId="PtyPerson" />
+  <mantle.party.Person partyId="POS_QA_A_CUST_INTER" firstName="Synthetic" lastName="POS A INTER" />
+  <mantle.party.PartyRole partyId="POS_QA_A_CUST_INTER" roleTypeId="Customer" />
+  <zenith.erp.tax.TaxRegistration registrationId="POS_QA_A_CUST_INTER_TAX" partyId="POS_QA_A_CUST_INTER" organizationPartyId="POS_QA_A" regionGeoId="27" countryGeoId="IND" isDefault="Y" />
+  <zenith.erp.pos.PosReceiptTemplate templateId="POS_QA_A_RECEIPT" templateName="Disposable POS A receipt" organizationPartyId="POS_QA_A" companyName="Disposable POS QA A" receiptWidth="80mm" isDefault="Y" isActive="Y" />
+  <mantle.party.Party partyId="POS_QA_B" partyTypeEnumId="PtyOrganization" />
+  <mantle.party.Organization partyId="POS_QA_B" organizationName="Disposable POS QA B" />
+  <mantle.party.PartyRole partyId="POS_QA_B" roleTypeId="OrgInternal" />
+  <mantle.facility.Facility facilityId="POS_QA_B_FAC" ownerPartyId="POS_QA_B" facilityTypeEnumId="FcTpRetailStore" facilityName="Disposable POS facility B" />
+  <zenith.erp.base.CompanySettings organizationPartyId="POS_QA_B" settingKey="COUNTRY_GEO_ID" settingValue="IND" />
+  <zenith.erp.base.CompanySettings organizationPartyId="POS_QA_B" settingKey="CURRENCY_UOM_ID" settingValue="INR" />
+  <zenith.erp.base.CompanySettings organizationPartyId="POS_QA_B" settingKey="FY_START_MONTH" settingValue="4" />
+  <zenith.erp.base.CompanySettings organizationPartyId="POS_QA_B" settingKey="TAX_CALCULATION_SERVICE" settingValue="zenith.india.IndiaTaxServices.calculate#Tax" />
+  <zenith.erp.pos.PosTerminal terminalId="POS_QA_B_TERM1" organizationPartyId="POS_QA_B" terminalName="Disposable POS B terminal 1" regionGeoId="33" stateCode="33" countryGeoId="IND" facilityId="POS_QA_B_FAC" isActive="Y" />
+  <zenith.erp.pos.PosTerminal terminalId="POS_QA_B_TERM2" organizationPartyId="POS_QA_B" terminalName="Disposable POS B terminal 2" regionGeoId="33" stateCode="33" countryGeoId="IND" facilityId="POS_QA_B_FAC" isActive="Y" />
+  <mantle.product.category.ProductCategory productCategoryId="POS_QA_B_CAT" productCategoryTypeEnumId="PctCatalog" categoryName="Disposable POS B category" ownerPartyId="POS_QA_B" />
+  <mantle.product.Product productId="POS_QA_B_P18" pseudoId="POS_QA_B_P18" productName="Disposable POS B P18" productTypeEnumId="PtAsset" ownerPartyId="POS_QA_B" amountUomId="OTH_ea" mrpAmount="100" gstSlabId="GST_18" inventoryTracked="N" />
+  <mantle.product.category.ProductCategoryMember productId="POS_QA_B_P18" productCategoryId="POS_QA_B_CAT" fromDate="2020-01-01 00:00:00" />
+  <zenith.erp.pos.PosProductModePrice productId="POS_QA_B_P18" salesModeId="WHOLESALE" organizationPartyId="POS_QA_B" price="90" />
+  <zenith.erp.pos.PosProductModePrice productId="POS_QA_B_P18" salesModeId="EMPLOYEE" organizationPartyId="POS_QA_B" price="80" />
+  <mantle.product.Product productId="POS_QA_B_P5" pseudoId="POS_QA_B_P5" productName="Disposable POS B P5" productTypeEnumId="PtAsset" ownerPartyId="POS_QA_B" amountUomId="OTH_ea" mrpAmount="200" gstSlabId="GST_5" inventoryTracked="N" />
+  <mantle.product.category.ProductCategoryMember productId="POS_QA_B_P5" productCategoryId="POS_QA_B_CAT" fromDate="2020-01-01 00:00:00" />
+  <zenith.erp.pos.PosProductModePrice productId="POS_QA_B_P5" salesModeId="WHOLESALE" organizationPartyId="POS_QA_B" price="90" />
+  <zenith.erp.pos.PosProductModePrice productId="POS_QA_B_P5" salesModeId="EMPLOYEE" organizationPartyId="POS_QA_B" price="80" />
+  <mantle.product.Product productId="POS_QA_B_FREE" pseudoId="POS_QA_B_FREE" productName="Disposable POS B FREE" productTypeEnumId="PtAsset" ownerPartyId="POS_QA_B" amountUomId="OTH_ea" mrpAmount="0" gstSlabId="GST_0" inventoryTracked="N" />
+  <mantle.product.category.ProductCategoryMember productId="POS_QA_B_FREE" productCategoryId="POS_QA_B_CAT" fromDate="2020-01-01 00:00:00" />
+  <mantle.product.Product productId="POS_QA_B_NOWS" pseudoId="POS_QA_B_NOWS" productName="Disposable POS B NOWS" productTypeEnumId="PtAsset" ownerPartyId="POS_QA_B" amountUomId="OTH_ea" mrpAmount="50" gstSlabId="GST_18" inventoryTracked="N" />
+  <mantle.product.category.ProductCategoryMember productId="POS_QA_B_NOWS" productCategoryId="POS_QA_B_CAT" fromDate="2020-01-01 00:00:00" />
+  <mantle.product.Product productId="POS_QA_B_BREAK" pseudoId="POS_QA_B_BREAK" productName="Disposable POS B BREAK" productTypeEnumId="PtAsset" ownerPartyId="POS_QA_B" amountUomId="OTH_ea" mrpAmount="100" gstSlabId="GST_18" inventoryTracked="N" />
+  <mantle.product.category.ProductCategoryMember productId="POS_QA_B_BREAK" productCategoryId="POS_QA_B_CAT" fromDate="2020-01-01 00:00:00" />
+  <zenith.erp.pos.PosProductModePrice productId="POS_QA_B_BREAK" salesModeId="WHOLESALE" organizationPartyId="POS_QA_B" price="90" thresholdQty="5" />
+  <zenith.erp.pos.PosProductModePrice productId="POS_QA_B_BREAK" salesModeId="EMPLOYEE" organizationPartyId="POS_QA_B" price="80" />
+  <mantle.party.Party partyId="POS_QA_B_CUST_SAME" ownerPartyId="POS_QA_B" partyTypeEnumId="PtyPerson" />
+  <mantle.party.Person partyId="POS_QA_B_CUST_SAME" firstName="Synthetic" lastName="POS B SAME" />
+  <mantle.party.PartyRole partyId="POS_QA_B_CUST_SAME" roleTypeId="Customer" />
+  <zenith.erp.tax.TaxRegistration registrationId="POS_QA_B_CUST_SAME_TAX" partyId="POS_QA_B_CUST_SAME" organizationPartyId="POS_QA_B" regionGeoId="33" countryGeoId="IND" isDefault="Y" />
+  <mantle.party.Party partyId="POS_QA_B_CUST_INTER" ownerPartyId="POS_QA_B" partyTypeEnumId="PtyPerson" />
+  <mantle.party.Person partyId="POS_QA_B_CUST_INTER" firstName="Synthetic" lastName="POS B INTER" />
+  <mantle.party.PartyRole partyId="POS_QA_B_CUST_INTER" roleTypeId="Customer" />
+  <zenith.erp.tax.TaxRegistration registrationId="POS_QA_B_CUST_INTER_TAX" partyId="POS_QA_B_CUST_INTER" organizationPartyId="POS_QA_B" regionGeoId="27" countryGeoId="IND" isDefault="Y" />
+  <mantle.party.Party partyId="POS_QA_MANAGER" partyTypeEnumId="PtyPerson" />
+  <mantle.party.Person partyId="POS_QA_MANAGER" firstName="Disposable" lastName="POS QA" />
+  <moqui.security.UserAccount userId="POS_QA_MANAGER" username="pos.qa" userFullName="Disposable POS QA" partyId="POS_QA_MANAGER" timeZone="Asia/Kolkata" disabled="Y" requirePasswordChange="N" />
+  <moqui.security.UserGroupMember userId="POS_QA_MANAGER" userGroupId="ZENITH_ADMIN" fromDate="2020-01-01 00:00:00" />
+  <moqui.security.UserGroupMember userId="POS_QA_MANAGER" userGroupId="ZENITH_ALL" fromDate="2020-01-01 00:00:00" />
+  <mantle.party.PartyRelationship partyRelationshipId="POS_QA_MANAGER_REL" fromPartyId="POS_QA_MANAGER" toPartyId="POS_QA_A" relationshipTypeEnumId="PrtAgent" toRoleTypeId="OrgInternal" fromDate="2020-01-01 00:00:00" />
+  <moqui.security.UserPreference userId="POS_QA_MANAGER" preferenceKey="ACTIVE_ORGANIZATION" preferenceValue="POS_QA_A" />
+  <mantle.party.Party partyId="POS_QA_CASHIER" partyTypeEnumId="PtyPerson" />
+  <mantle.party.Person partyId="POS_QA_CASHIER" firstName="Disposable" lastName="POS QA" />
+  <moqui.security.UserAccount userId="POS_QA_CASHIER" username="pos.cashier.qa" userFullName="Disposable POS QA" partyId="POS_QA_CASHIER" timeZone="Asia/Kolkata" disabled="Y" requirePasswordChange="N" />
+  <moqui.security.UserGroupMember userId="POS_QA_CASHIER" userGroupId="ZENITH_CASHIER" fromDate="2020-01-01 00:00:00" />
+  <mantle.party.PartyRelationship partyRelationshipId="POS_QA_CASHIER_REL" fromPartyId="POS_QA_CASHIER" toPartyId="POS_QA_A" relationshipTypeEnumId="PrtAgent" toRoleTypeId="OrgInternal" fromDate="2020-01-01 00:00:00" />
+  <moqui.security.UserPreference userId="POS_QA_CASHIER" preferenceKey="ACTIVE_ORGANIZATION" preferenceValue="POS_QA_A" />
+  <mantle.party.Party partyId="POS_QA_MANAGER_B" partyTypeEnumId="PtyPerson" />
+  <mantle.party.Person partyId="POS_QA_MANAGER_B" firstName="Disposable" lastName="POS QA" />
+  <moqui.security.UserAccount userId="POS_QA_MANAGER_B" username="pos.b.qa" userFullName="Disposable POS QA" partyId="POS_QA_MANAGER_B" timeZone="Asia/Kolkata" disabled="Y" requirePasswordChange="N" />
+  <moqui.security.UserGroupMember userId="POS_QA_MANAGER_B" userGroupId="ZENITH_ADMIN" fromDate="2020-01-01 00:00:00" />
+  <moqui.security.UserGroupMember userId="POS_QA_MANAGER_B" userGroupId="ZENITH_ALL" fromDate="2020-01-01 00:00:00" />
+  <mantle.party.PartyRelationship partyRelationshipId="POS_QA_MANAGER_B_REL" fromPartyId="POS_QA_MANAGER_B" toPartyId="POS_QA_B" relationshipTypeEnumId="PrtAgent" toRoleTypeId="OrgInternal" fromDate="2020-01-01 00:00:00" />
+  <moqui.security.UserPreference userId="POS_QA_MANAGER_B" preferenceKey="ACTIVE_ORGANIZATION" preferenceValue="POS_QA_B" />
+  <mantle.party.Party partyId="EX_JOHN_DOE" partyTypeEnumId="PtyPerson" />
+  <mantle.party.Person partyId="EX_JOHN_DOE" firstName="Public" lastName="Demo QA" />
+  <moqui.security.UserAccount userId="EX_JOHN_DOE" partyId="EX_JOHN_DOE" />
+  <mantle.product.Product productId="POS_QA_A_STOCK" pseudoId="POS_QA_A_STOCK" productName="Synthetic tracked POS item" productTypeEnumId="PtAsset" ownerPartyId="POS_QA_A" amountUomId="OTH_ea" mrpAmount="100" gstSlabId="GST_18" inventoryTracked="Y"/>
+  <mantle.product.Product productId="POS_QA_A_XSS" pseudoId="POS_QA_A_XSS" productName="&lt;img src=x onerror=window.posQaXss=1&gt;" productTypeEnumId="PtAsset" ownerPartyId="POS_QA_A" amountUomId="OTH_ea" mrpAmount="10" gstSlabId="GST_0" inventoryTracked="N"/>
+  <zenith.erp.giftcard.GiftCard giftCardId="POS_QA_A_GIFT" cardNumber="POS-QA-DEMO-GIFT" organizationPartyId="POS_QA_A" initialBalance="50" currentBalance="50" currencyUomId="INR" statusId="GcActive"/>
+</entity-facade-xml>

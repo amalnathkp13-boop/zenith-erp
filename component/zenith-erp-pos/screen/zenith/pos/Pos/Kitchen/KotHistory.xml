@@ -35,7 +35,7 @@
             <econdition field-name="tableNumber" from="filterTable" ignore-if-empty="true"/>
             <order-by field-name="-kotDate"/>
             <!-- ZE-SALES-014 f/u: org-isolate CSV/XLSX export (standalone render bypasses the MANTLE_ACTIVE_ORG authz filter) -->
-            <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+            <econdition field-name="organizationPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
         </entity-find>
 
         <script><![CDATA[
@@ -163,7 +163,7 @@
                     <display/>
                 </default-field></field>
                 <field name="cancelBtn"><default-field title="">
-                    <link url="cancelKot" text="" icon="fa fa-ban" btn-type="danger"
+                    <link url="cancelKot" text="Cancel" icon="fa fa-ban" btn-type="danger"
                           parameter-map="[kotId:k.kotId]"
                           condition="modCanWrite &amp;&amp; k.statusId in ['KotNew','KotPreparing']"
                           confirmation="Cancel this KOT?"/>

@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
+    <!-- The editable active-org preference is resolved against actual membership before any POS access. -->
+    <service verb="assert" noun="PosAccess">
+        <in-parameters>
+            <parameter name="transactionId"/><parameter name="sessionId"/><parameter name="terminalId"/>
+            <parameter name="heldId"/><parameter name="productId"/><parameter name="templateId"/>
+            <parameter name="cashEntryId"/><parameter name="expenseId"/><parameter name="wastageId"/>
+            <parameter name="returnId"/><parameter name="customerPartyId"/><parameter name="facilityId"/><parameter name="printerId"/><parameter name="kotId"/><parameter name="waiterId"/><parameter name="qrPaymentId"/>
+        </in-parameters>
+        <out-parameters><parameter name="allowed" type="Boolean"/><parameter name="organizationPartyId"/></out-parameters>
+        <actions><script><![CDATA[
+            def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
+            if (!ec.user.isInGroup('ADMIN')) {
+                ec.user.context.activeOrgId = null
+                ec.user.context.userOrgIds = []
+                ec.user.context.filterOrgIds = []
+                def partyId = ec.user.userAccount?.partyId
+                def info = partyId ? ec.service.sync().name('mantle.party.PartyServices.get#PartyOrganizationInfo')
+                        .parameters([partyId:partyId]).disableAuthz().call() : null
+                def ids = info?.userOrgIds ?: []
+                org = info?.activeOrgId
+                if (!ids.contains(org)) org = null
+                ec.user.context.activeOrgId = org
+                ec.user.context.userOrgIds = ids
+                ec.user.context.filterOrgIds = org ? [org] : []
+            }
+            organizationPartyId = org && org != '_NA_' ? org : null
+            allowed = organizationPartyId != null
+            // Only ownership probes bypass filters. Business reads/writes retain normal authorization.
+            def targets = [
+                [transactionId,'zenith.erp.pos.PosTransaction','transactionId'],
+                [sessionId,'zenith.erp.pos.PosSession','sessionId'],
+                [terminalId,'zenith.erp.pos.PosTerminal','terminalId'],
+                [templateId,'zenith.erp.pos.PosReceiptTemplate','templateId'],
+                [cashEntryId,'zenith.erp.pos.PosCashEntry','cashEntryId'],
+                [expenseId,'zenith.erp.pos.PosExpense','expenseId'],
+                [wastageId,'zenith.erp.pos.PosStockWastage','wastageId'],
+                [printerId,'zenith.erp.pos.PrinterConfiguration','printerId'],
+                [kotId,'zenith.erp.pos.KitchenOrderTicket','kotId'],
+                [waiterId,'zenith.erp.pos.Waiter','waiterId'],
+                [qrPaymentId,'zenith.erp.pos.PosQrPayment','qrPaymentId']]
+            for (t in targets) {
+                if (!t[0] || !allowed) continue
+                def row = ec.entity.find(t[1]).condition(t[2],t[0]).disableAuthz().one()
+                allowed = row != null && row.organizationPartyId == organizationPartyId
+            }
+            if (returnId && allowed) {
+                def ret=ec.entity.find('zenith.erp.pos.PosReturn').condition('returnId',returnId).disableAuthz().one()
+                def session=ret ? ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',ret.sessionId).disableAuthz().one() : null
+                allowed=session!=null && session.organizationPartyId==organizationPartyId
+            }
+            if (heldId && allowed) {
+                def held = ec.entity.find('zenith.erp.pos.PosHeldTransaction').condition('heldId',heldId).disableAuthz().one()
+                def session = held ? ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',held.sessionId).disableAuthz().one() : null
+                allowed = session != null && session.organizationPartyId == organizationPartyId
+            }
+            if (productId && allowed) {
+                def product = ec.entity.find('mantle.product.Product').condition('productId',productId).disableAuthz().one()
+                allowed = product != null && product.ownerPartyId == organizationPartyId
+            }
+            if (facilityId && allowed) {
+                def facility=ec.entity.find('mantle.facility.Facility').condition('facilityId',facilityId).disableAuthz().one()
+                allowed=facility!=null && facility.ownerPartyId==organizationPartyId
+            }
+            if (customerPartyId && allowed) {
+                def customer = ec.entity.find('mantle.party.Party').condition('partyId',customerPartyId).disableAuthz().one()
+                allowed = customer != null && customer.ownerPartyId == organizationPartyId
+            }
+            if (!allowed) ec.message.addError('Select an authorized organization and a POS record belonging to it.')
+        ]]></script></actions>
+    </service>
+</services>

@@ -57,7 +57,7 @@
             <econdition field-name="isActive" value="Y"/>
             <!-- ZE-SALES-014 f/u: isolate the terminal/config list too — this is a MULTI-LIST screen and the
                  CSV export renders every form-list, so terminalConfigList (built from these terminals) leaked. -->
-            <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+            <econdition field-name="organizationPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
         </entity-find>
 
         <!-- Get offline configs -->

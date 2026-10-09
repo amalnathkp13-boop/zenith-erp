@@ -86,7 +86,7 @@
 
         <entity-find entity-name="zenith.erp.pos.PosTransaction" list="completedTxns">
             <econdition field-name="statusId" value="PtCompleted"/>
-            <econdition field-name="organizationPartyId" from="_org" ignore-if-empty="true"/>
+            <econdition field-name="organizationPartyId" from="(_org) ?: '__NO_ORGANIZATION__'"/>
             <econdition field-name="sessionId" operator="in" from="_shopSessions" ignore-if-empty="true"/><!-- ZE-SHOP -->
             <econdition field-name="entryDate" operator="greater-equals" from="dayStart"/>
             <econdition field-name="entryDate" operator="less-equals" from="dayEnd"/>

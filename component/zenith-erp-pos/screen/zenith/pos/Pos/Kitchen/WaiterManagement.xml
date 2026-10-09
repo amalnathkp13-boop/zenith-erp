@@ -44,7 +44,7 @@
         <set field="curOrg" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
         <if condition="curOrg == '_NA_'"><set field="curOrg" from="null"/></if>
         <entity-find entity-name="zenith.erp.pos.Waiter" list="waiters">
-            <econdition field-name="organizationPartyId" from="curOrg" ignore-if-empty="true"/>
+            <econdition field-name="organizationPartyId" from="(curOrg) ?: '__NO_ORGANIZATION__'"/>
             <order-by field-name="waiterName"/>
         </entity-find>
         <entity-find entity-name="zenith.erp.pos.RestaurantTable" list="_tables"/>

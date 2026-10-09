@@ -208,7 +208,7 @@
                             <tbody>
                                 <#list (productSummary![]) as p>
                                 <tr>
-                                    <td>${p.productName!''}</td>
+                                    <td>${(p.productName!'')?html}</td>
                                     <td>${p.entryCount!0}</td>
                                     <td>${p.qtyStr!'0'}</td>
                                     <td class="z-num">${p.lossStr!'0.00'}</td>

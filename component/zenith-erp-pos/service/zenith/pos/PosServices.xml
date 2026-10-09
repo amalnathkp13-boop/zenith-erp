@@ -11,6 +11,11 @@
         </in-parameters>
         <out-parameters><parameter name="sessionId"/></out-parameters>
         <actions>
+            <if condition="openingCash &lt; 0"><return error="true" message="Opening cash cannot be negative."/></if>
+            <entity-find-one entity-name="zenith.erp.pos.PosTerminal" value-field="_openTerminal" for-update="true"/>
+            <if condition="!_openTerminal || _openTerminal.isActive != 'Y'"><return error="true" message="Choose an active POS terminal."/></if>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[terminalId:terminalId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
             <!-- Enforce one open session per terminal: block if this terminal already has an open session -->
             <entity-find entity-name="zenith.erp.pos.PosSession" list="existingOpen" limit="1">
                 <econdition field-name="terminalId" from="terminalId"/>
@@ -18,6 +23,8 @@
             </entity-find>
             <if condition="existingOpen">
                 <entity-find-count entity-name="zenith.erp.pos.PosTransaction" count-field="_exTxnCount"><econdition field-name="sessionId" from="existingOpen[0].sessionId"/><econdition field-name="statusId" value="PtCompleted"/></entity-find-count>
+                <service-call name="zenith.pos.PosServices.check#PosSessionRetirement" in-map="[sessionId:existingOpen[0].sessionId]" out-map="_retirement"/>
+                <if condition="_retirement.hasUnfinishedMoney || _retirement.hasHeldSales"><return error="true" message="Resolve the recorded payments and held bills in this session before reopening it."/></if>
                 <if condition="_exTxnCount &gt; 0">
                     <return error="true" message="This terminal already has an active session with sales recorded. Please close that session before opening a new one."/>
                 </if>
@@ -46,10 +53,11 @@
                 def _opId = ec.user.userAccount?.partyId
                 if (_opId) {
                     ec.entity.find("zenith.erp.pos.PosSession")
-                        .condition("operatorPartyId", _opId).condition("statusId", "PsOpen").list().each { os ->
+                        .condition("operatorPartyId", _opId).condition("organizationPartyId", _posAccess.organizationPartyId).condition("statusId", "PsOpen").list().each { os ->
                         def soldCount = ec.entity.find("zenith.erp.pos.PosTransaction")
                             .condition("sessionId", os.sessionId).condition("statusId", "PtCompleted").count()
-                        if (soldCount == 0) {
+                        def retirement = ec.service.sync().name("zenith.pos.PosServices.check#PosSessionRetirement").parameter("sessionId",os.sessionId).call()
+                        if (soldCount == 0 && !retirement.hasUnfinishedMoney && !retirement.hasHeldSales) {
                             ec.entity.find("zenith.erp.pos.PosTransaction").condition("sessionId", os.sessionId).condition("statusId", "PtCreated").list().each { st ->
                                 ec.entity.find("zenith.erp.pos.PosTransactionItem").condition("transactionId", st.transactionId).deleteAll()
                                 ec.entity.find("zenith.erp.pos.PosPayment").condition("transactionId", st.transactionId).deleteAll()
@@ -69,24 +77,8 @@
                          openDate:ec.user.nowTimestamp, openingCash:openingCash,
                          totalSales:0, totalReturns:0, totalTransactions:0, statusId:'PsOpen']"/>
 
-            <!-- Warm the pricing/tax/total engine now (start of shift, no customer waiting) so the FIRST item
-                 added to a cart is fast instead of paying a one-time per-JVM cold-start (~1s) at the register.
-                 Warms the pricing/tax engine only (no cart, no bill number consumed) so there are no scratch-cart side effects. -->
-            <script><![CDATA[
-                try {
-                    def warmProd = ec.entity.find("mantle.product.Product").condition("ownerPartyId", _term?.organizationPartyId).limit(1).list()[0]
-                    if (warmProd) {
-                        def _wOrg = _term?.organizationPartyId
-                        def _wGeo = _term?.regionGeoId ?: 'IND_TN'
-                        ec.service.sync().name("zenith.pricing.PricingServices.calculate#Price")
-                            .parameters([productId:warmProd.productId, organizationPartyId:_wOrg, quantity:1, salesChannelEnumId:'ScPos']).call()
-                        ec.service.sync().name("zenith.tax.TaxServices.calculate#Tax")
-                            .parameters([organizationPartyId:_wOrg, originRegionGeoId:_wGeo, destinationRegionGeoId:_wGeo, isTaxInclusive:'N',
-                                         items:[[productId:warmProd.productId, productTaxCode:(warmProd.productTaxCode ?: ''), quantity:1, unitPrice:(warmProd.mrpAmount ?: 1), taxCategoryId:warmProd.taxCategoryId]]]).call()
-                    }
-                } catch (Throwable e) { ec.logger.warn("POS warmup skipped: " + e.message) }
-                ec.message.clearErrors()
-            ]]></script>
+            <!-- Pricing/tax validation belongs to the actual cart line. Optional speculative
+                 calculations must not poison or hide a rollback of the newly opened session. -->
         </actions>
     </service>
 
@@ -96,6 +88,8 @@
             <parameter name="closingCash" type="BigDecimal" required="true"/>
         </in-parameters>
         <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[sessionId:sessionId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
             <entity-find-one entity-name="zenith.erp.pos.PosSession" value-field="session"/>
             <if condition="!session">
                 <return error="true" message="Session not found"/></if>
@@ -105,26 +99,12 @@
             <if condition="session.statusId != 'PsOpen'">
                 <return/></if>
 
-            <script><![CDATA[
-                def txns = ec.entity.find("zenith.erp.pos.PosTransaction")
-                    .condition("sessionId", sessionId)
-                    .condition("statusId", "PtCompleted").list()
-                def txnIds = txns*.transactionId
+            <if condition="closingCash &lt; 0"><return error="true" message="Closing cash cannot be negative."/></if>
+            <service-call name="zenith.pos.PosServices.check#PosSessionRetirement" in-map="[sessionId:sessionId]" out-map="_retirement"/>
+            <if condition="_retirement.hasUnfinishedMoney || _retirement.hasHeldSales"><return error="true" message="Resolve recorded payments and held bills before closing the session."/></if>
+            <service-call name="zenith.pos.PosServices.get#PosSessionCashSummary" in-map="[sessionId:sessionId]" out-map="context"/>
+            <set field="cashDiff" from="(closingCash as BigDecimal) - expectedCash"/>
 
-                def cashReceived = 0 as BigDecimal
-                if (txnIds) {
-                    def payments = ec.entity.find("zenith.erp.pos.PosPayment")
-                        .condition("transactionId", "in", txnIds)
-                        .condition("paymentMethod", "Cash").list()
-                    payments.each { cashReceived += (it.amount ?: 0) as BigDecimal }
-                }
-
-                def changeGiven = 0 as BigDecimal
-                txns.each { changeGiven += (it.changeAmount ?: 0) as BigDecimal }
-
-                def expectedCash = (session.openingCash ?: 0) as BigDecimal + cashReceived - changeGiven
-                def cashDiff = (closingCash as BigDecimal) - expectedCash
-            ]]></script>
 
             <service-call name="update#zenith.erp.pos.PosSession"
                 in-map="[sessionId:sessionId, closeDate:ec.user.nowTimestamp,
@@ -151,6 +131,8 @@
             <parameter name="denominationCount" type="Integer" required="true"/>
         </in-parameters>
         <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[sessionId:sessionId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
             <set field="amount" from="(denomination * denominationCount) as BigDecimal"/>
             <service-call name="store#zenith.erp.pos.CashDenomination"
                 in-map="[sessionId:sessionId, denomination:denomination,
@@ -224,13 +206,16 @@
         <in-parameters>
             <parameter name="sessionId" required="true"/>
             <parameter name="transactionType" default-value="Sale"/>
+            <parameter name="reuseOpenCart" type="Boolean" default-value="true"/>
             <parameter name="customerName"/>
             <parameter name="customerTaxRegNumber"/>
             <parameter name="destinationRegionGeoId"/>
         </in-parameters>
         <out-parameters><parameter name="transactionId"/></out-parameters>
         <actions>
-            <entity-find-one entity-name="zenith.erp.pos.PosSession" value-field="session"/>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[sessionId:sessionId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
+            <entity-find-one entity-name="zenith.erp.pos.PosSession" value-field="session" for-update="true"/>
             <if condition="session.statusId != 'PsOpen'">
                 <return error="true" message="Session is not open"/></if>
 
@@ -240,7 +225,7 @@
                 <econdition field-name="statusId" value="PtCreated"/>
                 <order-by field-name="-entryDate"/>
             </entity-find>
-            <if condition="existingOpen">
+            <if condition="reuseOpenCart &amp;&amp; existingOpen">
                 <set field="transactionId" from="existingOpen[0].transactionId"/>
                 <return/>
             </if>
@@ -275,7 +260,11 @@
         </in-parameters>
         <out-parameters><parameter name="itemSeqId"/></out-parameters>
         <actions>
-            <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="txn"/>
+            <if condition="quantity &lt;= 0 || (unitPrice != null &amp;&amp; unitPrice &lt; 0) || discountPercent &lt; 0 || discountPercent &gt; 100"><return error="true" message="Use a positive quantity, a non-negative price and a discount from 0 to 100%."/></if>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[transactionId:transactionId, productId:productId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
+            <!-- Serialize the first line with empty-cart customer destination changes. -->
+            <set field="txn" from="ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',transactionId).forUpdate(true).one()"/>
             <if condition="txn.statusId != 'PtCreated'">
                 <return error="true" message="Transaction is already completed or voided"/></if>
 
@@ -457,6 +446,8 @@
             <parameter name="itemSeqId" required="true"/>
         </in-parameters>
         <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[transactionId:transactionId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
             <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="txn"/>
             <if condition="txn.statusId != 'PtCreated'">
                 <return error="true" message="Transaction is already completed or voided"/></if>
@@ -562,7 +553,7 @@
             <parameter name="amount" type="BigDecimal" required="true"/>
             <parameter name="digitalTransactionId"/>
             <parameter name="cardLastFour"/>
-            <parameter name="referenceNumber"/>
+            <parameter name="referenceNumber"/><parameter name="collectionSessionId"/>
             <parameter name="bypassModeRules" type="Boolean" default="false">
                 <description>Set by internal callers replaying/settling an ALREADY-committed sale (offline
                     sync, credit settlement) so the opt-in sales-mode order rules are not re-applied to a
@@ -571,6 +562,10 @@
         </in-parameters>
         <out-parameters><parameter name="paymentId"/></out-parameters>
         <actions>
+            <if condition="amount &lt; 0"><return error="true" message="Payment amount must be greater than zero."/></if>
+            <if condition="!['Cash','Card','UPI','GiftCard','LoyaltyPoints'].contains(paymentMethod)"><return error="true" message="Choose a supported payment method."/></if>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[transactionId:transactionId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
             <!-- ZE-POS-MODERULES: opt-in per-mode order rules gate, BEFORE any payment row is created, so the
                  cashier is stopped up-front rather than after cash is recorded. No-op unless the tenant opted
                  in. The error is raised HERE (this service's own return) rather than by check#… so it does not
@@ -597,8 +592,33 @@
             <set field="_openCredit" from="_ptxn.isCredit == 'Y' &amp;&amp; ((_ptxn.paidAmount ?: 0) as BigDecimal) &lt; ((_ptxn.payableAmount ?: 0) as BigDecimal)"/>
             <if condition="_ptxn.statusId != 'PtCreated' &amp;&amp; !_openCredit">
                 <return error="true" message="This bill is already completed - the payment was not re-applied."/></if>
+            <if condition="amount == 0">
+                <entity-find-count entity-name="zenith.erp.pos.PosTransactionItem" count-field="_zeroLines"><econdition field-name="transactionId"/></entity-find-count>
+                <if condition="_ptxn.statusId == 'PtCreated' &amp;&amp; _zeroLines &amp;&amp; ((_ptxn.payableAmount ?: 0) as BigDecimal) == 0"><return/></if>
+                <return error="true" message="Payment amount must be greater than zero."/>
+            </if>
+            <script><![CDATA[
+                if (paymentMethod != 'Cash') {
+                    def existing = ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId',transactionId).list()
+                    def nonCash = existing.findAll { it.paymentMethod != 'Cash' }.sum { (it.amount ?: 0) as BigDecimal } ?: BigDecimal.ZERO
+                    if (nonCash + amount > ((_ptxn.payableAmount ?: 0) as BigDecimal)) ec.message.addError('Non-cash payments cannot exceed the bill total.')
+                }
+            ]]></script>
+            <if condition="ec.message.hasError()"><return/></if>
+            <script><![CDATA[
+                if (_openCredit && paymentMethod=='Cash') {
+                    def drawers=ec.entity.find('zenith.erp.pos.PosSession').condition('organizationPartyId',_posAccess.organizationPartyId).condition('operatorPartyId',ec.user.userAccount?.partyId).condition('statusId','PsOpen').list()
+                    if (!collectionSessionId && drawers.size()==1) collectionSessionId=drawers[0].sessionId
+                    if (!drawers.any { it.sessionId==collectionSessionId }) ec.message.addError('Open/select your POS drawer before collecting cash for this credit bill.')
+                } else if (!_openCredit) {
+                    def saleSession=ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',_ptxn.sessionId).one()
+                    if (saleSession?.statusId!='PsOpen') ec.message.addError('The sale session must be open before payment.')
+                    collectionSessionId=_ptxn.sessionId
+                } else { collectionSessionId=null }
+            ]]></script>
+            <if condition="ec.message.hasError()"><return/></if>
             <service-call name="create#zenith.erp.pos.PosPayment" out-map="context"
-                in-map="[transactionId:transactionId, paymentMethod:paymentMethod,
+                in-map="[transactionId:transactionId, collectionSessionId:collectionSessionId, paymentMethod:paymentMethod,
                          amount:amount, digitalTransactionId:digitalTransactionId,
                          cardLastFour:cardLastFour, referenceNumber:referenceNumber,
                          paymentDate:ec.user.nowTimestamp]"/>
@@ -621,7 +641,11 @@
     <service verb="complete" noun="PosTransaction">
         <in-parameters><parameter name="transactionId" required="true"/></in-parameters>
         <actions>
-            <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="txn"/>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[transactionId:transactionId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
+            <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="txn" for-update="true"/>
+            <entity-find-count entity-name="zenith.erp.pos.PosTransactionItem" count-field="_lineCount"><econdition field-name="transactionId"/></entity-find-count>
+            <if condition="!_lineCount"><return error="true" message="Add an item before completing a bill."/></if>
             <if condition="txn.statusId != 'PtCreated'">
                 <return error="true" message="Transaction is not in Created status"/></if>
             <if condition="(txn.paidAmount ?: 0) &lt; (txn.payableAmount ?: 0)">
@@ -651,7 +675,7 @@
             <script>ec.service.async().name("zenith.pos.PosSyncServices.sync#PosTransactionInvoice").parameter("transactionId", transactionId).call()</script>
 
             <!-- Update session totals -->
-            <entity-find-one entity-name="zenith.erp.pos.PosSession" value-field="session">
+            <entity-find-one entity-name="zenith.erp.pos.PosSession" value-field="session" for-update="true">
                 <field-map field-name="sessionId" from="txn.sessionId"/></entity-find-one>
             <if condition="txn.transactionType == 'Sale'">
                 <service-call name="update#zenith.erp.pos.PosSession"
@@ -698,8 +722,12 @@
             <parameter name="customerPhone" required="true"/>
         </in-parameters>
         <actions>
-            <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="txn"/>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[transactionId:transactionId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
+            <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="txn" for-update="true"/>
             <if condition="!txn"><return error="true" message="Transaction not found"/></if>
+            <entity-find-count entity-name="zenith.erp.pos.PosTransactionItem" count-field="_lineCount"><econdition field-name="transactionId"/></entity-find-count>
+            <if condition="!_lineCount"><return error="true" message="Add an item before completing a bill."/></if>
             <if condition="txn.statusId != 'PtCreated'">
                 <return error="true" message="Transaction is not in Created status"/></if>
             <if condition="!customerName?.trim() || !customerPhone?.trim()">
@@ -729,12 +757,12 @@
             <service-call name="zenith.pos.PosServices.assign#BillNumber" in-map="[transactionId:transactionId]"/>
             <service-call name="update#zenith.erp.pos.PosTransaction"
                 in-map="[transactionId:transactionId, statusId:'PtCompleted', isCredit:'Y', completedDate:ec.user.nowTimestamp,
-                         paidAmount:0, changeAmount:0, customerPartyId:custPartyId,
+                         paidAmount:txn.paidAmount ?: 0, changeAmount:0, customerPartyId:custPartyId,
                          customerName:customerName, customerPhone:customerPhone]"/>
             <script>ec.service.async().name("zenith.pos.PosSyncServices.sync#PosTransactionInvoice").parameter("transactionId", transactionId).call()</script>
 
             <!-- A credit sale is still a sale: update session sales totals (no cash collected) -->
-            <entity-find-one entity-name="zenith.erp.pos.PosSession" value-field="session">
+            <entity-find-one entity-name="zenith.erp.pos.PosSession" value-field="session" for-update="true">
                 <field-map field-name="sessionId" from="txn.sessionId"/></entity-find-one>
             <if condition="session">
                 <service-call name="update#zenith.erp.pos.PosSession"
@@ -751,7 +779,7 @@
             <parameter name="transactionId" required="true"/>
             <parameter name="paymentMethod" required="true"/>
             <parameter name="amount" type="BigDecimal" required="true"/>
-            <parameter name="referenceNumber"/>
+            <parameter name="referenceNumber"/><parameter name="collectionSessionId"/>
         </in-parameters>
         <out-parameters>
             <parameter name="outstanding" type="BigDecimal"/>
@@ -759,6 +787,8 @@
             <parameter name="paidAmount" type="BigDecimal"/>
         </out-parameters>
         <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[transactionId:transactionId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
             <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="txn"/>
             <if condition="!txn"><return error="true" message="Transaction not found"/></if>
             <if condition="txn.isCredit != 'Y'">
@@ -770,7 +800,7 @@
                  sales-mode order rules (they applied when the sale was first made, not at settlement). -->
             <service-call name="zenith.pos.PosServices.process#PosPayment"
                 in-map="[transactionId:transactionId, paymentMethod:paymentMethod,
-                         amount:amount, referenceNumber:referenceNumber, bypassModeRules:true]"/>
+                         amount:amount, referenceNumber:referenceNumber, collectionSessionId:collectionSessionId, bypassModeRules:true]"/>
 
             <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="txn2"/>
             <set field="paidAmount" from="(txn2.paidAmount ?: 0) as BigDecimal"/>
@@ -805,9 +835,12 @@
             <parameter name="created" type="Boolean"/>
         </out-parameters>
         <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[:]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
             <!-- SECURITY (org isolation): scope SKU matching + ownership to the caller's active org so an
                  import can never match/overwrite another tenant's product or create an unowned (orphan) one. -->
-            <set field="_org" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
+            <set field="_org" from="_posAccess.organizationPartyId"/>
+            <if condition="(listPrice != null &amp;&amp; listPrice &lt; 0) || (mrp != null &amp;&amp; mrp &lt; 0) || (reorderPoint != null &amp;&amp; reorderPoint &lt; 0) || (reorderQuantity != null &amp;&amp; reorderQuantity &lt; 0)"><return error="true" message="Product prices and reorder quantities cannot be negative."/></if>
             <!-- mrpAmount is the price the POS charges; prefer the selling (list) price -->
             <set field="priceVal" from="listPrice ?: mrp"/>
             <set field="expVal" from="null"/>
@@ -823,7 +856,7 @@
             <if condition="sku">
                 <entity-find entity-name="mantle.product.Product" list="exList" limit="1">
                     <econdition field-name="pseudoId" from="sku"/>
-                    <econdition field-name="ownerPartyId" from="_org" ignore-if-empty="true"/>
+                    <econdition field-name="ownerPartyId" from="_org"/>
                 </entity-find>
                 <if condition="exList"><set field="existing" from="exList[0]"/></if>
             </if>
@@ -855,6 +888,8 @@
     <service verb="void" noun="PosTransaction">
         <in-parameters><parameter name="transactionId" required="true"/></in-parameters>
         <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[transactionId:transactionId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
             <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="txn"/>
             <!-- Guard a missing/empty transactionId (e.g. VOID tapped on an empty cart, or a stale page) so it
                  returns a clean message instead of a NullPointerException 500 that looks like a crash. -->
@@ -862,6 +897,8 @@
                 <return error="true" message="No sale to void"/></if>
             <if condition="txn.statusId != 'PtCreated'">
                 <return error="true" message="Only transactions in Created status can be voided"/></if>
+            <entity-find-count entity-name="zenith.erp.pos.PosPayment" count-field="_voidPayments"><econdition field-name="transactionId"/></entity-find-count>
+            <if condition="_voidPayments &gt; 0 || txn.transactionNumber"><return error="true" message="This cart has recorded payments. Resolve them before voiding the sale."/></if>
             <service-call name="update#zenith.erp.pos.PosTransaction"
                 in-map="[transactionId:transactionId, statusId:'PtVoided']"/>
         </actions>
@@ -874,6 +911,8 @@
         <in-parameters><parameter name="transactionId" required="true"/></in-parameters>
         <out-parameters><parameter name="receiptData" type="Map"/></out-parameters>
         <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[transactionId:transactionId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
             <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="txn"/>
             <entity-find entity-name="zenith.erp.pos.PosTransactionItem" list="items">
                 <econdition field-name="transactionId"/><order-by field-name="itemSeqId"/></entity-find>
@@ -926,6 +965,8 @@
         </in-parameters>
         <out-parameters><parameter name="heldId"/></out-parameters>
         <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[transactionId:transactionId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
             <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="txn"/>
             <if condition="txn.statusId != 'PtCreated'">
                 <return error="true" message="Only open transactions can be held"/></if>
@@ -937,7 +978,8 @@
                 import groovy.json.JsonOutput
                 def itemsList = items.collect { [productId: it.productId, productName: it.productName,
                     quantity: it.quantity, unitPrice: it.unitPrice, discountPercent: it.discountPercent,
-                    lineTotal: it.lineTotal] }
+                    lineTotal: it.lineTotal, sourceTransactionId:transactionId, salesModeId:it.salesModeId,
+                    manualPrice:it.manualPrice, taxOn:((it.totalTaxAmount ?: 0) > 0 ? 'Y' : 'N')] }
                 itemsJson = JsonOutput.toJson(itemsList)
             ]]></script>
 
@@ -962,7 +1004,9 @@
         </in-parameters>
         <out-parameters><parameter name="transactionId"/></out-parameters>
         <actions>
-            <entity-find-one entity-name="zenith.erp.pos.PosHeldTransaction" value-field="held"/>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[sessionId:sessionId, heldId:heldId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
+            <entity-find-one entity-name="zenith.erp.pos.PosHeldTransaction" value-field="held" for-update="true"/>
             <if condition="held.statusId != 'PhHeld'">
                 <return error="true" message="This held transaction has already been recalled or voided"/></if>
 
@@ -985,6 +1029,25 @@
                 </if>
             </if>
 
+            <script><![CDATA[
+                def snapshot = new groovy.json.JsonSlurper().parseText(held.itemsJson ?: '[]')
+                def sourceId = snapshot ? snapshot[0].sourceTransactionId : null
+                def source = sourceId ? ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',sourceId).forUpdate(true).one() : null
+                def targetSession = ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',sessionId).one()
+                if (!targetSession || targetSession.statusId != 'PsOpen') {
+                    ec.message.addError('Session is not open'); return
+                }
+                if (source && source.statusId == 'PtHeld' && source.organizationPartyId == targetSession.organizationPartyId) {
+                    // Resume the original cart: preserve tax-off, manual prices, mode locks, customer and audit rows.
+                    if (curOpen && curOpen[0].transactionId != sourceId && !curItems) {
+                        curOpen[0].statusId = 'PtVoided'; curOpen[0].update()
+                    }
+                    source.sessionId = sessionId; source.statusId = 'PtCreated'; source.update()
+                    transactionId = sourceId
+                    held.recallTime = ec.user.nowTimestamp; held.statusId = 'PhRecalled'; held.update()
+                }
+            ]]></script>
+            <if condition="ec.message.hasError() || transactionId"><return/></if>
             <service-call name="zenith.pos.PosServices.create#PosTransaction" out-map="txnOut"
                           in-map="[sessionId:sessionId, transactionType:'Sale',
                                    customerPartyId:held.customerPartyId]"/>
@@ -999,7 +1062,7 @@
                 <service-call name="zenith.pos.PosServices.add#PosTransactionItem"
                               in-map="[transactionId:transactionId, productId:si.productId,
                                        quantity:si.quantity, unitPrice:si.unitPrice,
-                                       discountPercent:si.discountPercent ?: 0]"/>
+                                       discountPercent:si.discountPercent ?: 0, salesModeId:si.salesModeId, taxOn:si.taxOn ?: 'Y']"/>
             </iterate>
 
             <service-call name="update#zenith.erp.pos.PosHeldTransaction"
@@ -1020,6 +1083,8 @@
         </in-parameters>
         <out-parameters><parameter name="returnId"/></out-parameters>
         <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[sessionId:sessionId,transactionId:originalTransactionId,customerPartyId:customerPartyId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
             <service-call name="create#zenith.erp.pos.PosReturn" out-map="retOut"
                           in-map="[sessionId:sessionId, originalTransactionId:originalTransactionId,
                                    returnDate:ec.user.nowTimestamp, customerPartyId:customerPartyId,
@@ -1063,6 +1128,8 @@
     <service verb="complete" noun="PosReturn">
         <in-parameters><parameter name="returnId" required="true"/></in-parameters>
         <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[returnId:returnId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
             <entity-find-one entity-name="zenith.erp.pos.PosReturn" value-field="ret"/>
             <if condition="ret.statusId != 'PrCreated'">
                 <return error="true" message="Return is not in Created status"/></if>
@@ -1098,6 +1165,10 @@
         </in-parameters>
         <out-parameters><parameter name="cashMgmtId"/></out-parameters>
         <actions>
+            <if condition="amount &lt;= 0"><return error="true" message="Cash movement amount must be greater than zero."/></if>
+            <if condition="!['PcmFloatIn','PcmFloatOut','PcmBankDrop','PcmSafeCount','PcmPettyCash'].contains(transactionTypeEnumId)"><return error="true" message="Choose a supported cash movement type."/></if>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[sessionId:sessionId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
             <entity-find-one entity-name="zenith.erp.pos.PosSession" value-field="session"/>
             <if condition="session.statusId != 'PsOpen'">
                 <return error="true" message="Session is not open"/></if>
@@ -1121,6 +1192,11 @@
         </in-parameters>
         <out-parameters><parameter name="handoverId"/></out-parameters>
         <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[sessionId:fromSessionId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_toAccess" in-map="[sessionId:toSessionId]"/>
+            <if condition="!_toAccess.allowed"><return/></if>
+            <if condition="actualCash &lt; 0"><return error="true" message="Cash cannot be negative."/></if>
             <entity-find-one entity-name="zenith.erp.pos.PosSession" value-field="fromSession">
                 <field-map field-name="sessionId" from="fromSessionId"/></entity-find-one>
 
@@ -1147,6 +1223,8 @@
         </in-parameters>
         <out-parameters><parameter name="quickKeyId"/></out-parameters>
         <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[terminalId:terminalId,productId:productId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
             <entity-find-one entity-name="mantle.product.Product" value-field="product">
                 <field-map field-name="productId"/></entity-find-one>
             <if condition="!displayName"><set field="displayName" from="product?.productName ?: productId"/></if>
@@ -1177,6 +1255,8 @@
             </parameter>
         </in-parameters>
         <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[transactionId:posTransactionId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
             <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="txn">
                 <field-map field-name="transactionId" from="posTransactionId"/></entity-find-one>
             <if condition="!txn"><return error="true" message="Transaction not found"/></if>
@@ -1207,6 +1287,8 @@
             <parameter name="totalPromoDiscount" type="BigDecimal"/>
         </out-parameters>
         <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[transactionId:transactionId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
             <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="txn"/>
             <if condition="txn.statusId != 'PtCreated'">
                 <return error="true" message="Transaction is already completed"/></if>
@@ -1257,17 +1339,22 @@
             <parameter name="paymentId"/>
         </out-parameters>
         <actions>
-            <service-call name="zenith.giftcard.GiftCardServices.redeem#GiftCard" ignore-error="true"
+            <if condition="amount &lt;= 0"><return error="true" message="Redemption must be greater than zero."/></if>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[transactionId:transactionId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
+            <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="_redeemTxn" for-update="true"/>
+            <if condition="_redeemTxn?.statusId != 'PtCreated'"><return error="true" message="Only an open cart can redeem a balance."/></if>
+            <service-call name="zenith.giftcard.GiftCardServices.redeem#GiftCard"
                           in-map="[cardNumber:cardNumber, pin:pin, amount:amount,
                                    referenceType:'PosTransaction', referenceId:transactionId]"
                           out-map="redeemResult"/>
 
-            <if condition="redeemResult &amp;&amp; !redeemResult._errorMessage">
+            <if condition="redeemResult &amp;&amp; !ec.message.hasError() &amp;&amp; (redeemResult.redeemedAmount ?: 0) &gt; 0">
                 <service-call name="zenith.pos.PosServices.process#PosPayment"
                               in-map="[transactionId:transactionId, paymentMethod:'GiftCard',
-                                       amount:amount, referenceNumber:cardNumber]"
+                                       amount:redeemResult.redeemedAmount, referenceNumber:cardNumber]"
                               out-map="payResult"/>
-                <set field="success" from="true"/>
+                <set field="success" from="!ec.message.hasError() &amp;&amp; payResult?.paymentId != null"/>
                 <set field="paymentId" from="payResult.paymentId"/>
             <else>
                 <set field="success" from="false"/>
@@ -1290,6 +1377,11 @@
             <parameter name="success" type="Boolean"/>
         </out-parameters>
         <actions>
+            <if condition="pointsToRedeem &lt;= 0"><return error="true" message="Points must be greater than zero."/></if>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[transactionId:transactionId,customerPartyId:customerPartyId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
+            <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="_redeemTxn" for-update="true"/>
+            <if condition="_redeemTxn?.statusId != 'PtCreated'"><return error="true" message="Only an open cart can redeem a balance."/></if>
             <entity-find entity-name="zenith.erp.loyalty.LoyaltyMember" list="members" limit="1">
                 <econdition field-name="partyId" from="customerPartyId"/>
                 <econdition field-name="statusId" value="LmActive"/>
@@ -1310,17 +1402,17 @@
 
             <set field="discountAmount" from="(pointsToRedeem * (program.pointRedemptionValue ?: BigDecimal.ZERO)).setScale(2, java.math.RoundingMode.HALF_UP)" type="BigDecimal"/>
 
-            <service-call name="zenith.loyalty.LoyaltyServices.redeem#Points" ignore-error="true"
+            <service-call name="zenith.loyalty.LoyaltyServices.redeem#Points"
                           in-map="[memberId:member.memberId, points:pointsToRedeem,
                                    referenceTypeEnumId:'PrtSale', referenceId:transactionId,
                                    description:'POS Redemption']"
                           out-map="redeemResult"/>
 
-            <if condition="redeemResult &amp;&amp; !redeemResult._errorMessage">
+            <if condition="redeemResult &amp;&amp; !ec.message.hasError()">
                 <service-call name="zenith.pos.PosServices.process#PosPayment"
                               in-map="[transactionId:transactionId, paymentMethod:'LoyaltyPoints',
                                        amount:discountAmount, referenceNumber:'LP-' + pointsToRedeem + 'pts']"/>
-                <set field="success" from="true"/>
+                <set field="success" from="!ec.message.hasError()"/>
             <else>
                 <set field="success" from="false"/>
             </else>
@@ -1342,7 +1434,10 @@
         </in-parameters>
         <out-parameters><parameter name="weighingScaleConfigId"/></out-parameters>
         <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[terminalId:terminalId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
             <service-call name="create#zenith.erp.pos.WeighingScaleConfig" in-map="context" out-map="context"/>
+            <set field="weighingScaleConfigId" from="scaleConfigId"/>
         </actions>
     </service>
 
@@ -1350,13 +1445,15 @@
     <service verb="export" noun="PosCatalog">
         <description>Export full product catalog, prices, and customers for IndexedDB</description>
         <in-parameters>
-            <parameter name="organizationPartyId"/>
+            <parameter name="organizationPartyId"/><parameter name="terminalId"/>
         </in-parameters>
         <out-parameters>
             <parameter name="products" type="List"/>
             <parameter name="customers" type="List"/>
         </out-parameters>
         <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[terminalId:terminalId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
             <!-- SECURITY (org isolation): the catalog org MUST be the caller's own active org, never a
                  client param - omitting it previously dumped EVERY tenant's products + customer PII.
                  Only a platform super-admin may pass an explicit org. No org -> empty catalog. -->
@@ -1368,7 +1465,16 @@
             <entity-find entity-name="mantle.product.Product" list="productList">
                 <econdition field-name="ownerPartyId" from="organizationPartyId"/>
             </entity-find>
+            <entity-find-one entity-name="zenith.erp.pos.PosTerminal" value-field="_catalogTerminal"><field-map field-name="terminalId"/></entity-find-one>
+            <entity-find entity-name="zenith.erp.india.IndiaGstConfig" list="_catalogGst" limit="1"><econdition field-name="organizationPartyId"/></entity-find>
+            <set field="_catalogRegion" from="_catalogTerminal?.regionGeoId ?: (_catalogGst ? _catalogGst[0].stateCode : null)"/>
             <iterate list="productList" entry="prod">
+                <set field="_catalogTax" from="null"/>
+                <if condition="_catalogRegion">
+                <service-call name="zenith.tax.TaxServices.calculate#Tax" out-map="_catalogTax"
+                    in-map="[organizationPartyId:organizationPartyId,items:[[productId:prod.productId,productTaxCode:prod.productTaxCode,taxCategoryId:prod.taxCategoryId,quantity:1,unitAmount:100,isTaxInclusive:'N']],originRegionGeoId:_catalogRegion,destinationRegionGeoId:_catalogRegion,transactionType:'SALE']"/>
+                </if>
+
                 <script>
                     def _uom = (['OTH_ea':'Nos','WT_kg':'kg','WT_g':'g','VLIQ_L':'L','VLIQ_ml':'ml','LEN_m':'m','LEN_cm':'cm'].get(prod.amountUomId) ?: '')
                     products.add([
@@ -1377,6 +1483,7 @@
                         listPrice: prod.mrpAmount ?: 0,
                         barcode: prod.pseudoId ?: prod.productId,
                         taxCode: prod.productTaxCode ?: '',
+                        taxRate: _catalogTax?.taxedItems ? (_catalogTax.taxedItems[0].taxBreakdowns?.sum { (it.taxRate ?: 0) as BigDecimal } ?: 0) : null,
                         uom: _uom
                     ])
                 </script>
@@ -1415,6 +1522,8 @@
             <parameter name="receipt" type="Map"/>
         </out-parameters>
         <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[transactionId:transactionId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
             <script><![CDATA[
                 def rTxId = transactionId
                 def txn = ec.entity.find("zenith.erp.pos.PosTransaction").condition("transactionId", rTxId).one()
@@ -1423,12 +1532,9 @@
                 def payments = ec.entity.find("zenith.erp.pos.PosPayment").condition("transactionId", rTxId).list()
                 def sess = txn.sessionId ? ec.entity.find("zenith.erp.pos.PosSession").condition("sessionId", txn.sessionId).one() : null
                 def terminal = sess?.terminalId ? ec.entity.find("zenith.erp.pos.PosTerminal").condition("terminalId", sess.terminalId).one() : null
-                def rTplList = (terminal?.organizationPartyId ? ec.entity.find("zenith.erp.pos.PosReceiptTemplate").condition("organizationPartyId", terminal.organizationPartyId).condition("isActive", "Y").orderBy("-isDefault").list() : null) ?: ec.entity.find("zenith.erp.pos.PosReceiptTemplate").condition("isDefault", "Y").condition("isActive", "Y").list()
+                def rTplList = ec.entity.find("zenith.erp.pos.PosReceiptTemplate")
+                    .condition("organizationPartyId",txn.organizationPartyId).condition("isActive","Y").orderBy("-isDefault").list()
                 def rTpl = rTplList ? rTplList[0] : null
-                if (!rTpl) {
-                    def rTplList2 = ec.entity.find("zenith.erp.pos.PosReceiptTemplate").condition("isActive", "Y").list()
-                    rTpl = rTplList2 ? rTplList2[0] : null
-                }
                 def operatorName = ''
                 if (sess?.operatorPartyId) {
                     def opP = ec.entity.find("mantle.party.Person").condition("partyId", sess.operatorPartyId).one()
@@ -1465,103 +1571,63 @@
         </actions>
     </service>
 
-    <service verb="sync" noun="OfflineTransactions">
-        <description>Receive and process offline POS transactions into the queue</description>
-        <in-parameters>
-            <parameter name="terminalId" required="true"/>
-            <parameter name="transactions" type="List" required="true"/>
-        </in-parameters>
-        <out-parameters>
-            <parameter name="syncedCount" type="Integer"/>
-        </out-parameters>
+    <!-- Each offline sale commits independently. Only successful ids may leave the device queue. -->
+    <service verb="sync" noun="OfflineTransactions" transaction="ignore">
+        <in-parameters><parameter name="terminalId" required="true"/><parameter name="transactions" type="List" required="true"/></in-parameters>
+        <out-parameters><parameter name="syncedCount" type="Integer"/><parameter name="syncedIds" type="List"/><parameter name="failedCount" type="Integer"/></out-parameters>
         <actions>
-            <set field="syncedCount" from="0"/>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[terminalId:terminalId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
             <script><![CDATA[
-                import groovy.json.JsonSlurper
-                def slurper = new JsonSlurper()
-                def synced = 0
-                transactions.each { txnStr ->
-                    def sale = null
-                    try { sale = slurper.parseText(txnStr as String) } catch (Exception e) { sale = null }
-                    if (sale == null) return
-
-                    // Idempotency: if this offline sale was already synced, skip (handles re-sync / double-fire)
-                    if (sale.offlineId) {
-                        def dup = ec.entity.find("zenith.erp.pos.PosPayment")
-                            .condition("referenceNumber", "OFFLINE:" + sale.offlineId).count()
-                        if (dup > 0) { synced += 1; return }
-                    }
-
-                    // SECURITY (org isolation): resolve the session ONLY within the caller's active org, so a
-                    // client-supplied terminalId/sessionId from another tenant can never attach a sale to that
-                    // tenant's books. No active org -> no session -> the sale is recorded OtPending, not injected.
-                    // (Also fixes the -openedDate orderBy: the field is openDate, so it was silently dropped.)
-                    def _activeOrg = ec.user.getPreference("ACTIVE_ORGANIZATION")
-                    def sessionId = sale.sessionId
-                    def sess = sessionId ? ec.entity.find("zenith.erp.pos.PosSession").condition("sessionId", sessionId).condition("organizationPartyId", _activeOrg).one() : null
-                    if (sess == null || sess.statusId != 'PsOpen') {
-                        def openList = ec.entity.find("zenith.erp.pos.PosSession")
-                            .condition("terminalId", sale.terminalId ?: terminalId)
-                            .condition("organizationPartyId", _activeOrg)
-                            .condition("statusId", "PsOpen").orderBy("-openDate").list()
-                        sess = openList ? openList[0] : null
-                    }
-
-                    def createdTxnId = null
-                    def status = 'OtPending'
-                    def errMsg = null
-                    if (sess != null) {
-                        try {
-                            def cr = ec.service.sync().name("zenith.pos.PosServices.create#PosTransaction")
-                                .parameters([sessionId: sess.sessionId, transactionType: 'Sale']).call()
-                            createdTxnId = cr.transactionId
-                            (sale.items ?: []).each { it ->
-                                ec.service.sync().name("zenith.pos.PosServices.add#PosTransactionItem")
-                                    .parameters([transactionId: createdTxnId, productId: it.productId,
-                                                 quantity: (it.qty ?: 1) as BigDecimal,
-                                                 unitPrice: (it.price ?: 0) as BigDecimal]).call()
-                            }
-                            // ZE-SALES-020 (SL-075) sweep: add#PosTransactionItem has productId REQUIRED. A malformed
-                            // offline item with a null productId fails validation WITHOUT throwing, so the catch below
-                            // never fires — it silently poisons ec.message, which then blocks process#PosPayment,
-                            // complete#PosTransaction and the offline audit record, misreports the sale as OtSynced,
-                            // and cascades into the rest of the batch. Surface it as a normal failure so this sale is
-                            // marked OtFailed (kept, not lost) and the batch continues cleanly.
-                            if (ec.message.hasError()) throw new Exception("Invalid offline item(s): " + ec.message.getErrorsString())
-                            // Pay the recomputed payable so completion succeeds even if tax shifted the total
-                            def txn = ec.entity.find("zenith.erp.pos.PosTransaction").condition("transactionId", createdTxnId).one()
-                            def payable = (txn?.payableAmount ?: sale.total ?: 0) as BigDecimal
-                            // bypassModeRules: this offline sale already happened at the counter; replaying it
-                            // into the books must never be blocked by the opt-in sales-mode order rules.
-                            ec.service.sync().name("zenith.pos.PosServices.process#PosPayment")
-                                .parameters([transactionId: createdTxnId,
-                                             paymentMethod: (sale.paymentMethod ?: 'Cash'),
-                                             amount: payable, bypassModeRules: true,
-                                             referenceNumber: ('OFFLINE:' + (sale.offlineId ?: ''))]).call()
-                            ec.service.sync().name("zenith.pos.PosServices.complete#PosTransaction")
-                                .parameters([transactionId: createdTxnId]).call()
-                            status = 'OtSynced'
-                            synced += 1
-                        } catch (Exception e) {
-                            status = 'OtFailed'
-                            errMsg = e.message
-                            ec.message.clearErrors()
-                        }
-                    }
-
-                    ec.service.sync().name("create#zenith.erp.pos.PosOfflineTransaction")
-                        .parameters([terminalId: (sale.terminalId ?: terminalId),
-                                     offlineTimestamp: ec.user.nowTimestamp,
-                                     syncedTimestamp: ec.user.nowTimestamp,
-                                     transactionDataJson: (txnStr as String),
-                                     itemCount: (sale.items ? sale.items.size() : 0),
-                                     grandTotal: (sale.total ?: 0) as BigDecimal,
-                                     paymentMethod: (sale.paymentMethod ?: ''),
-                                     statusId: status,
-                                     syncError: errMsg,
-                                     createdTransactionId: createdTxnId]).call()
+                syncedIds=[]; failedCount=0
+                transactions.each { raw ->
+                    try {
+                        def r=ec.service.sync().name('zenith.pos.PosServices.import#OfflinePosSale').parameters([terminalId:terminalId,saleJson:raw as String]).call()
+                        if (!ec.message.hasError() && r?.offlineId) syncedIds.add(r.offlineId)
+                        else failedCount++
+                    } catch (Exception e) { failedCount++ }
+                    ec.message.clearErrors()
                 }
-                syncedCount = synced
+                syncedCount=syncedIds.size()
+            ]]></script>
+        </actions>
+    </service>
+    <service verb="import" noun="OfflinePosSale" transaction="force-new">
+        <in-parameters><parameter name="terminalId" required="true"/><parameter name="saleJson" required="true"/></in-parameters>
+        <out-parameters><parameter name="offlineId"/></out-parameters>
+        <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[terminalId:terminalId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
+            <script><![CDATA[
+                def sale=new groovy.json.JsonSlurper().parseText(saleJson)
+                def org=_posAccess.organizationPartyId
+                if (!(sale instanceof Map) || !sale.offlineId || sale.offlineId.toString().size()>120 || sale.terminalId!=terminalId || (sale.organizationPartyId && sale.organizationPartyId!=org) || !(sale.items instanceof List) || !sale.items || !['Cash','Card','UPI'].contains(sale.paymentMethod)) {
+                    ec.message.addError('Invalid offline sale or terminal.'); return
+                }
+                // Lock serializes replay on a terminal; the org/id key also isolates identical ids in different tenants.
+                ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',terminalId).forUpdate(true).one()
+                def key=java.util.UUID.nameUUIDFromBytes((org+'\u0000'+sale.offlineId).getBytes('UTF-8')).toString()
+                def prior=ec.entity.find('zenith.erp.pos.PosOfflineTransaction').condition('offlineTransactionId',key).one()
+                if (prior?.statusId=='OtSynced') { offlineId=sale.offlineId; return }
+                // Compatibility with older imports, always through the caller's owned transaction.
+                def legacy=ec.entity.find('zenith.erp.pos.PosPayment').condition('referenceNumber','OFFLINE:'+sale.offlineId).list()
+                if (legacy.any { ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',it.transactionId).condition('organizationPartyId',org).condition('statusId','PtCompleted').one() }) { offlineId=sale.offlineId; return }
+                def sess=sale.sessionId ? ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',sale.sessionId).condition('terminalId',terminalId).condition('organizationPartyId',org).condition('statusId','PsOpen').one() : null
+                if (!sess) { ec.message.addError('Open the original terminal session before syncing this sale.'); return }
+                def cr=ec.service.sync().name('zenith.pos.PosServices.create#PosTransaction').parameters([sessionId:sess.sessionId,reuseOpenCart:false]).call()
+                sale.items.each { it ->
+                    if (!(it instanceof Map) || it.qty==null || it.price==null) { ec.message.addError('Invalid offline item.'); return }
+                    ec.service.sync().name('zenith.pos.PosServices.add#PosTransactionItem').parameters([transactionId:cr.transactionId,productId:it.productId,quantity:it.qty,unitPrice:it.price,taxOn:sale.taxOn ?: 'Y']).call()
+                }
+                if (ec.message.hasError()) return
+                def txn=ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',cr.transactionId).one()
+                // Never invent cash collected. Old tax-free snapshots that differ remain on the device for review.
+                if (sale.total==null || (sale.total as BigDecimal).compareTo(txn.payableAmount as BigDecimal)!=0) { ec.message.addError('Offline total differs from the recorded payable; review the retained sale.'); return }
+                ec.service.sync().name('zenith.pos.PosServices.process#PosPayment').parameters([transactionId:cr.transactionId,paymentMethod:sale.paymentMethod,amount:sale.total,referenceNumber:'OFFLINE:'+sale.offlineId,bypassModeRules:true]).call()
+                ec.service.sync().name('zenith.pos.PosServices.complete#PosTransaction').parameters([transactionId:cr.transactionId]).call()
+                if (ec.message.hasError()) return
+                ec.service.sync().name('create#zenith.erp.pos.PosOfflineTransaction').parameters([offlineTransactionId:key,terminalId:terminalId,offlineTimestamp:ec.user.nowTimestamp,syncedTimestamp:ec.user.nowTimestamp,transactionDataJson:saleJson,itemCount:sale.items.size(),grandTotal:sale.total,paymentMethod:sale.paymentMethod,statusId:'OtSynced',syncAttempts:1,createdTransactionId:cr.transactionId]).call()
+                if (!ec.message.hasError()) offlineId=sale.offlineId
             ]]></script>
         </actions>
     </service>
@@ -1575,6 +1641,8 @@
             <parameter name="taxOn"/>
         </in-parameters>
         <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[transactionId:transactionId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
             <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="txn"/>
             <if condition="!txn || txn.statusId != 'PtCreated'"><return/></if>
             <entity-find-one entity-name="zenith.erp.pos.PosSession" value-field="session">
@@ -1668,6 +1736,8 @@
             <parameter name="taxOn"/>
         </in-parameters>
         <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[transactionId:transactionId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
             <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="txn"/>
             <if condition="!txn || txn.statusId != 'PtCreated'"><return/></if>
             <entity-find-one entity-name="zenith.erp.pos.PosTransactionItem" value-field="it">
@@ -1787,6 +1857,8 @@
             <parameter name="thresholdQty" type="BigDecimal"><description>Quantity-break threshold for a fixed mode (e.g. Wholesale): a RETAIL cart line auto-switches to this mode's price once its quantity reaches this value. Null/0 = off.</description></parameter>
         </in-parameters>
         <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[productId:productId]"/>
+            <if condition="!_posAccess.allowed"><return/></if>
             <entity-find-one entity-name="mantle.product.Product" value-field="product">
                 <field-map field-name="productId"/></entity-find-one>
             <if condition="!product"><return error="true" message="Unknown product ${productId}"/></if>
@@ -1926,4 +1998,179 @@
         </actions>
     </service>
 
+    <!-- Cash-book entries tied to an open drawer participate in session reconciliation. -->
+    <service verb="record" noun="PosCashEntry">
+        <in-parameters>
+            <parameter name="sessionId"/><parameter name="entryType" required="true"/>
+            <parameter name="amount" type="BigDecimal" required="true"/>
+            <parameter name="entryDate" type="Timestamp"/><parameter name="reason"/>
+            <parameter name="description"/><parameter name="referenceNumber"/>
+        </in-parameters>
+        <out-parameters><parameter name="cashEntryId"/></out-parameters>
+        <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_cashAccess" in-map="[sessionId:sessionId]"/>
+            <if condition="!_cashAccess.allowed"><return/></if>
+            <if condition="amount &lt;= 0 || !['CashIn','CashOut'].contains(entryType)"><return error="true" message="Choose Cash In or Cash Out and a positive amount."/></if>
+            <script><![CDATA[
+                if (!sessionId) {
+                    def sessions = ec.entity.find('zenith.erp.pos.PosSession').condition('organizationPartyId',_cashAccess.organizationPartyId)
+                        .condition('operatorPartyId',ec.user.userAccount?.partyId).condition('statusId','PsOpen').list()
+                    if (sessions.size() == 1) sessionId = sessions[0].sessionId
+                    else if (sessions.size() > 1) ec.message.addError('Choose the POS session for this cash entry.')
+                }
+                if (sessionId) {
+                    def session = ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',sessionId).one()
+                    if (session?.statusId != 'PsOpen') ec.message.addError('Cash entries can only be recorded against an open POS session.')
+                }
+            ]]></script>
+            <if condition="ec.message.hasError()"><return/></if>
+            <service-call name="create#zenith.erp.pos.PosCashEntry" out-map="context" in-map="[organizationPartyId:_cashAccess.organizationPartyId, sessionId:sessionId, entryType:entryType, amount:amount, entryDate:entryDate ?: ec.user.nowTimestamp, reason:reason, description:description, referenceNumber:referenceNumber, enteredByPartyId:ec.user.userAccount?.partyId]"/>
+        </actions>
+    </service>
+
+    <service verb="get" noun="PosSessionCashSummary">
+        <in-parameters><parameter name="sessionId" required="true"/></in-parameters>
+        <out-parameters>
+            <parameter name="cashReceived" type="BigDecimal"/><parameter name="changeGiven" type="BigDecimal"/>
+            <parameter name="movementNet" type="BigDecimal"/><parameter name="expectedCash" type="BigDecimal"/>
+        </out-parameters>
+        <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[sessionId:sessionId]" out-map="_summaryAccess"/>
+            <if condition="!_summaryAccess.allowed"><return/></if>
+            <entity-find-one entity-name="zenith.erp.pos.PosSession" value-field="session"/>
+            <script><![CDATA[
+                def txns = ec.entity.find("zenith.erp.pos.PosTransaction")
+                    .condition("sessionId", sessionId)
+                    .condition("statusId", "PtCompleted").list()
+                def txnIds = txns*.transactionId
+
+                // New payments name the collecting drawer. Legacy rows retain original-session attribution,
+                // but a closed drawer never acquires a later collection retroactively.
+                def received=ec.entity.find('zenith.erp.pos.PosPayment').condition('collectionSessionId',sessionId).condition('paymentMethod','Cash').list()
+                if (txnIds) received.addAll(ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId','in',txnIds).condition('collectionSessionId',null).condition('paymentMethod','Cash').list())
+                received=received.findAll { pay ->
+                    def bill=ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',pay.transactionId).condition('organizationPartyId',session.organizationPartyId).one()
+                    bill?.statusId=='PtCompleted' && (!session.closeDate || !pay.paymentDate || pay.paymentDate<=session.closeDate)
+                }
+                cashReceived=received.sum { (it.amount ?: 0) as BigDecimal } ?: BigDecimal.ZERO
+                changeGiven=BigDecimal.ZERO
+                def receivedIds=received*.paymentId
+                received*.transactionId.unique().each { id ->
+                    def allCash=ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId',id).condition('paymentMethod','Cash').orderBy('paymentDate').orderBy('paymentId').list()
+                    // Change belongs to the latest cash collection, never a card-only amended bill.
+                    if (allCash && receivedIds.contains(allCash[-1].paymentId)) {
+                        def bill=ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',id).one()
+                        changeGiven+=(bill.changeAmount ?: 0) as BigDecimal
+                    }
+                }
+
+                def movements = ec.entity.find("zenith.erp.pos.PosCashManagement").condition("sessionId",sessionId).list()
+                movementNet = BigDecimal.ZERO
+                movements.each { movement ->
+                    def amount = (movement.amount ?: 0) as BigDecimal
+                    if (movement.transactionTypeEnumId == 'PcmFloatIn') movementNet += amount
+                    else if (['PcmFloatOut','PcmBankDrop','PcmPettyCash'].contains(movement.transactionTypeEnumId)) movementNet -= amount
+                }
+                def entries = ec.entity.find("zenith.erp.pos.PosCashEntry").condition("sessionId",sessionId).condition("organizationPartyId",session.organizationPartyId).list()
+                entries.each { entry ->
+                    def amount = (entry.amount ?: 0) as BigDecimal
+                    if (entry.entryType == 'CashIn') movementNet += amount
+                    else if (entry.entryType == 'CashOut') movementNet -= amount
+                }
+                expectedCash = ((session.openingCash ?: 0) as BigDecimal) + cashReceived - changeGiven + movementNet
+            ]]></script>
+        </actions>
+    </service>
+
+    <!-- Change place of supply without resetting manual prices, discounts, or per-line modes. -->
+    <service verb="refresh" noun="PosTransactionTax">
+        <in-parameters><parameter name="transactionId" required="true"/><parameter name="taxOn"/></in-parameters>
+        <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[transactionId:transactionId]" out-map="_taxAccess"/>
+            <if condition="!_taxAccess.allowed"><return/></if>
+            <script><![CDATA[
+                def txn = ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',transactionId).forUpdate(true).one()
+                if (txn.statusId != 'PtCreated') { ec.message.addError('Only an open cart can change its tax destination.'); return }
+                def lines = ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId',transactionId).list()
+                for (line in lines) {
+                    def product = ec.entity.find('mantle.product.Product').condition('productId',line.productId).one()
+                    def mode = line.salesModeId ? ec.entity.find('zenith.erp.pos.PosSalesMode').condition('salesModeId',line.salesModeId).one() : null
+                    def enabled = taxOn ? taxOn != 'N' : ((line.totalTaxAmount ?: 0) > 0)
+                    def result = ec.service.sync().name('zenith.tax.TaxServices.calculate#Tax').parameters([
+                        organizationPartyId:txn.organizationPartyId, originRegionGeoId:txn.originRegionGeoId,
+                        destinationRegionGeoId:txn.destinationRegionGeoId, transactionType:'SALE',
+                        items:[[productId:line.productId, productTaxCode:line.productTaxCode, taxCategoryId:product?.taxCategoryId,
+                            quantity:line.quantity, unitAmount:line.unitPrice, discountAmount:line.discountAmount,
+                            isTaxInclusive:mode?.isTaxInclusive ?: 'N']]]).call()
+                    if (ec.message.hasError()) return
+                    def taxed = result?.taxedItems ? result.taxedItems[0] : null
+                    def base = (line.quantity as BigDecimal) * (line.unitPrice as BigDecimal) - ((line.discountAmount ?: 0) as BigDecimal)
+                    line.taxableAmount = enabled && taxed?.taxableAmount != null ? taxed.taxableAmount : base
+                    line.totalTaxAmount = enabled ? (taxed?.totalTaxAmount ?: 0) : 0
+                    line.lineTotal = line.taxableAmount + line.totalTaxAmount; line.update()
+                    ec.entity.find('zenith.erp.tax.TaxLineDetail').condition('referenceType','PosTransactionItem')
+                        .condition('referenceId',transactionId).condition('referenceSeqId',line.itemSeqId).deleteAll()
+                    if (enabled && taxed?.taxBreakdowns) ec.service.sync().name('zenith.tax.TaxServices.store#TaxLineDetails')
+                        .parameters([referenceType:'PosTransactionItem',referenceId:transactionId,referenceSeqId:line.itemSeqId,taxBreakdowns:taxed.taxBreakdowns]).call()
+                }
+                ec.service.sync().name('zenith.pos.PosServices.recalculate#TransactionTotals').parameter('transactionId',transactionId).call()
+            ]]></script>
+        </actions>
+    </service>
+
+    <!-- An abandoned cart has neither a recorded tender nor an issued number. Never infer that from status alone. -->
+    <service verb="check" noun="PosSessionRetirement">
+        <in-parameters><parameter name="sessionId" required="true"/></in-parameters>
+        <out-parameters><parameter name="hasUnfinishedMoney" type="Boolean"/><parameter name="hasHeldSales" type="Boolean"/></out-parameters>
+        <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[sessionId:sessionId]" out-map="_retireAccess"/>
+            <if condition="!_retireAccess.allowed"><return/></if>
+            <script><![CDATA[
+                def carts = ec.entity.find('zenith.erp.pos.PosTransaction').condition('sessionId',sessionId)
+                    .condition('statusId','in',['PtCreated','PtHeld']).orderBy('transactionId').forUpdate(true).list()
+                hasUnfinishedMoney = carts.any { cart -> cart.transactionNumber || ((cart.paidAmount ?: 0) > 0) ||
+                    ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId',cart.transactionId).count() > 0 }
+                hasHeldSales = ec.entity.find('zenith.erp.pos.PosHeldTransaction').condition('sessionId',sessionId).condition('statusId','PhHeld').count() > 0
+            ]]></script>
+        </actions>
+    </service>
+
+
+    <!-- Payment-wise reports show money retained, subtracting change exactly once. -->
+    <service verb="get" noun="PosPaymentBreakdown">
+        <in-parameters><parameter name="fromDate" type="Timestamp" required="true"/><parameter name="thruDate" type="Timestamp" required="true"/></in-parameters>
+        <out-parameters><parameter name="rows" type="List"/><parameter name="totalAmount" type="BigDecimal"/></out-parameters>
+        <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[:]" out-map="_reportAccess"/>
+            <if condition="!_reportAccess.allowed"><return/></if>
+            <script><![CDATA[
+                def bills=ec.entity.find('zenith.erp.pos.PosTransaction').condition('organizationPartyId',_reportAccess.organizationPartyId)
+                    .condition('statusId','PtCompleted').condition('entryDate','greater-equals',fromDate).condition('entryDate','less-equals',thruDate).list()
+                def byId=bills.collectEntries { [(it.transactionId):it] }
+                def payments=bills ? ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId','in',byId.keySet().toList())
+                    .orderBy('paymentDate').orderBy('paymentId').list() : []
+                def latestCash=[:]
+                payments.each { if(it.paymentMethod?.equalsIgnoreCase('Cash')) latestCash[it.transactionId]=it.paymentId }
+                def methods=[:]
+                payments.each { pay ->
+                    def key=(pay.paymentMethod ?: 'Other').toString().trim()
+                    if(key.equalsIgnoreCase('Cash'))key='Cash'
+                    if(key.equalsIgnoreCase('Card'))key='Card'
+                    if(key.equalsIgnoreCase('UPI'))key='UPI'
+                    // Preserve the report's existing legacy-method aliases.
+                    if(['netbanking','net banking','net_banking'].contains(key.toLowerCase()))key='Net Banking'
+                    if(key.equalsIgnoreCase('Wallet'))key='Wallet'
+                    if(key.equalsIgnoreCase('Credit'))key='Credit'
+                    if(!methods[key])methods[key]=[paymentMethod:key,totalAmount:BigDecimal.ZERO,ids:new HashSet()]
+                    def net=(pay.amount ?: 0) as BigDecimal
+                    if(latestCash[pay.transactionId]==pay.paymentId)net-=((byId[pay.transactionId].changeAmount ?: 0) as BigDecimal)
+                    methods[key].totalAmount+=net
+                    methods[key].ids.add(pay.transactionId)
+                }
+                totalAmount=methods.values().inject(BigDecimal.ZERO){sum,m -> sum+m.totalAmount}
+                rows=methods.values().collect { m -> [paymentMethod:m.paymentMethod,totalAmount:m.totalAmount,transactionCount:m.ids.size(),
+                    percentage:totalAmount>0 ? (m.totalAmount*100/totalAmount).setScale(2,java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO] }.sort { -it.totalAmount }
+            ]]></script>
+        </actions>
+    </service>
 </services>

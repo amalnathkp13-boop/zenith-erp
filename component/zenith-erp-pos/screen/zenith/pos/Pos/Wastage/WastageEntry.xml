@@ -26,7 +26,7 @@
         <actions>
             <entity-find entity-name="mantle.product.Product" list="exactList" limit="1">
                 <econdition field-name="productId" from="term"/>
-                <econdition field-name="ownerPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+                <econdition field-name="ownerPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
             </entity-find>
             <if condition="exactList"><then>
                 <set field="options" from="exactList.collect { [value:it.productId, label:(it.productName ?: it.pseudoId) + ' (' + (it.pseudoId ?: '') + ')'] }"/>
@@ -34,7 +34,7 @@
             </then><else>
                 <entity-find entity-name="mantle.product.Product" list="prodList" limit="20">
                     <econdition field-name="productTypeEnumId" value="PtAsset"/>
-                    <econdition field-name="ownerPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+                    <econdition field-name="ownerPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
                     <econditions combine="or">
                         <econdition field-name="productName" operator="like" value="%${term}%" ignore-case="true"/>
                         <econdition field-name="pseudoId" operator="like" value="%${term}%" ignore-case="true"/>
@@ -71,8 +71,9 @@
 
     <transition name="recordExpiredWastage">
         <actions><script><![CDATA[
-            def qty = ec.web.parameters.quantity ? (ec.web.parameters.quantity as BigDecimal) : BigDecimal.ZERO
-            def cost = ec.web.parameters.unitCost ? (ec.web.parameters.unitCost as BigDecimal) : BigDecimal.ZERO
+            def qty=null;def cost=null
+            try { qty=new BigDecimal((ec.web.parameters.quantity ?: '').toString());cost=new BigDecimal((ec.web.parameters.unitCost ?: '0').toString()) } catch(Exception ignored) {}
+            if(qty==null || cost==null || cost<0){ec.web.sendJsonResponse([success:false,error:'Enter a positive quantity and nonnegative unit cost.']);return}
             if (qty <= BigDecimal.ZERO) { ec.web.sendJsonResponse([success:false, error:'Enter a quantity greater than zero']); return }
             ec.service.sync().name("create#zenith.erp.pos.PosStockWastage").parameters([
                 productId:ec.web.parameters.productId, productName:ec.web.parameters.productName,
@@ -123,7 +124,7 @@
         <!-- Recent wastage entries (org-scoped, latest first) -->
         <entity-find entity-name="zenith.erp.pos.PosStockWastageView" list="wastageList" limit="20">
             <order-by field-name="-wastageDate"/>
-            <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+            <econdition field-name="organizationPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
         </entity-find>
         <set field="entryCount" from="wastageList.size()"/>
 
@@ -179,7 +180,7 @@
         <entity-find entity-name="mantle.product.Product" list="perishableList">
             <econdition field-name="productTypeEnumId" value="PtAsset"/>
             <econdition field-name="isPerishable" value="Y"/>
-            <econdition field-name="ownerPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+            <econdition field-name="ownerPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
             <order-by field-name="expiryDate"/>
         </entity-find>
     </actions>

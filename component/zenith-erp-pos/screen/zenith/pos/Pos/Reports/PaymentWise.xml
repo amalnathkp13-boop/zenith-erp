@@ -10,27 +10,12 @@
                 ExecutionContext ec = context.ec
                 def fromD = (fromDate ?: ec.l10n.format(ec.user.nowTimestamp, 'yyyy-MM-dd'))
                 def thruD = (thruDate ?: fromD)
-                def ds = java.sql.Timestamp.valueOf(fromD + ' 00:00:00')
-                def de = java.sql.Timestamp.valueOf(thruD + ' 23:59:59')
-                def _org = ec.user.getPreference("ACTIVE_ORGANIZATION")
-                def tf = ec.entity.find("zenith.erp.pos.PosTransaction").condition("statusId","PtCompleted")
-                    .condition("entryDate","greater-equals",ds).condition("entryDate","less-equals",de)
-                if (_org) tf.condition("organizationPartyId", _org)
-                def txnIds = tf.list().collect { it.transactionId }
-                def canon = { m -> def k=(m ?: 'Other').toString().trim(); def lk=k.toLowerCase();
-                    if(lk=='cash')return 'Cash'; if(lk=='upi')return 'UPI'; if(lk=='card')return 'Card';
-                    if(lk=='netbanking'||lk=='net banking'||lk=='net_banking')return 'Net Banking';
-                    if(lk=='wallet')return 'Wallet'; if(lk=='credit')return 'Credit'; return k }
-                def methodMap = new LinkedHashMap()
-                if (txnIds) {
-                    ec.entity.find("zenith.erp.pos.PosPayment").condition("transactionId","in",txnIds).list().each { p ->
-                        def method = canon(p.paymentMethod)
-                        if (!methodMap[method]) methodMap[method] = [m:method, amt:0.0G, cnt:0]
-                        methodMap[method].amt += (p.amount ?: 0) as BigDecimal
-                        methodMap[method].cnt++
-                    }
-                }
-                def total = methodMap.values().inject(0.0G) { a, it -> a + (it.amt as BigDecimal) }
+                def ds = ec.l10n.parseTimestamp(fromD + ' 00:00:00', 'yyyy-MM-dd HH:mm:ss')
+                def de = ec.l10n.parseTimestamp(thruD + ' 23:59:59.999', 'yyyy-MM-dd HH:mm:ss.SSS')
+                def paymentReport=ec.service.sync().name('zenith.pos.PosServices.get#PosPaymentBreakdown').parameters([fromDate:ds,thruDate:de]).call()
+                def methodMap=[:]
+                (paymentReport.rows ?: []).each { m -> methodMap[m.paymentMethod]=[m:m.paymentMethod,amt:m.totalAmount,cnt:m.transactionCount] }
+                def total=paymentReport.totalAmount ?: BigDecimal.ZERO
                 def rows = methodMap.values().sort { -(it.amt as BigDecimal) }
                 def stx = (searchText ?: '').trim().toLowerCase()
                 if (stx) rows = rows.findAll { (it.m ?: '').toLowerCase().contains(stx) }
@@ -58,55 +43,23 @@
         <set field="fromDate" from="fromDate ?: ec.l10n.format(ec.user.nowTimestamp, 'yyyy-MM-dd')"/>
         <set field="thruDate" from="thruDate ?: fromDate"/>
         <set field="searchText" from="searchText ?: ''"/>
-        <set field="dayStart" from="java.sql.Timestamp.valueOf(fromDate + ' 00:00:00')"/>
-        <set field="dayEnd" from="java.sql.Timestamp.valueOf(thruDate + ' 23:59:59')"/>
+        <set field="dayStart" from="ec.l10n.parseTimestamp(fromDate + ' 00:00:00', 'yyyy-MM-dd HH:mm:ss')"/>
+        <set field="dayEnd" from="ec.l10n.parseTimestamp(thruDate + ' 23:59:59.999', 'yyyy-MM-dd HH:mm:ss.SSS')"/>
         <script>context.zinr = com.zenith.Fmt.INSTANCE</script>
 
         <script><![CDATA[
             def zinr = context.zinr
-            // ZE-SALES-014 f/u: org-isolate (standalone CSV/PDF render skips the authz filter)
-            def _org = ec.user.getPreference("ACTIVE_ORGANIZATION")
-            def _txnFind = ec.entity.find("zenith.erp.pos.PosTransaction")
-                .condition("statusId", "PtCompleted")
-                .condition("entryDate", "greater-equals", dayStart)
-                .condition("entryDate", "less-equals", dayEnd)
-            if (_org) _txnFind.condition("organizationPartyId", _org)
-            def txnIds = _txnFind.list().collect { it.transactionId }
-
             def colorMap = [cash:'success', upi:'primary', card:'info', 'net banking':'teal', wallet:'warning', credit:'danger']
             def iconMap  = [cash:'payments', upi:'qr_code_2', card:'credit_card', 'net banking':'account_balance', wallet:'account_balance_wallet', credit:'credit_card']
-            def canon = { m -> def k=(m ?: 'Other').toString().trim(); def lk=k.toLowerCase();
-                if(lk=='cash')return 'Cash'; if(lk=='upi')return 'UPI'; if(lk=='card')return 'Card';
-                if(lk=='netbanking'||lk=='net banking'||lk=='net_banking')return 'Net Banking';
-                if(lk=='wallet')return 'Wallet'; if(lk=='credit')return 'Credit'; return k }
-
-            paymentWiseList = []
-            grandTotalAmount = BigDecimal.ZERO
-            if (txnIds) {
-                def payments = ec.entity.find("zenith.erp.pos.PosPayment").condition("transactionId","in",txnIds).list()
-                def methodMap = new LinkedHashMap()
-                payments.each { p ->
-                    def method = canon(p.paymentMethod)
-                    if (!methodMap[method]) methodMap[method] = [paymentMethod: method, totalAmount: BigDecimal.ZERO,
-                        transactionCount: 0 as int, percentage: BigDecimal.ZERO]
-                    methodMap[method].totalAmount += (p.amount ?: 0) as BigDecimal
-                    methodMap[method].transactionCount++
-                }
-                def total = methodMap.values().inject(0.0G) { a, it -> a + (it.totalAmount as BigDecimal) }
-                methodMap.values().each { m ->
-                    m.percentage = total > 0 ? (m.totalAmount * 100 / total).setScale(2, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO
-                    def k = m.paymentMethod.toLowerCase()
-                    m.color = colorMap[k] ?: 'grey'
-                    m.icon = iconMap[k] ?: 'payment'
-                    m.amtStr = zinr.inr(ec.l10n.format(m.totalAmount, '#,##0.00'))
-                    m.pctStr = ec.l10n.format(m.percentage, '#0.00') + '%'
-                }
-                def rows = methodMap.values().sort { -(it.totalAmount as BigDecimal) }
-                def stx = (searchText ?: '').trim().toLowerCase()
-                if (stx) rows = rows.findAll { (it.paymentMethod ?: '').toLowerCase().contains(stx) }
-                paymentWiseList = rows
-                grandTotalAmount = paymentWiseList.inject(0.0G) { a, it -> a + (it.totalAmount as BigDecimal) }
+            def paymentReport=ec.service.sync().name('zenith.pos.PosServices.get#PosPaymentBreakdown').parameters([fromDate:dayStart,thruDate:dayEnd]).call()
+            def all=paymentReport.rows ?: []
+            all.each { m ->
+                def k=m.paymentMethod.toLowerCase();m.color=colorMap[k] ?: 'grey';m.icon=iconMap[k] ?: 'payment'
+                m.amtStr=zinr.inr(ec.l10n.format(m.totalAmount,'#,##0.00'));m.pctStr=ec.l10n.format(m.percentage,'#0.00')+'%'
             }
+            def stx=(searchText ?: '').trim().toLowerCase()
+            paymentWiseList=stx ? all.findAll { (it.paymentMethod ?: '').toLowerCase().contains(stx) } : all
+            grandTotalAmount=paymentWiseList.inject(BigDecimal.ZERO){sum,m -> sum+m.totalAmount}
             grandTotalStr = '₹ ' + zinr.inr(ec.l10n.format(grandTotalAmount, '#,##0.00'))
             methodCount = paymentWiseList.size()
         ]]></script>

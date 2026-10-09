@@ -246,7 +246,7 @@
 
     <transition name="exportPosCatalog" require-session-token="false">
         <actions><script><![CDATA[
-            def res = ec.service.sync().name("zenith.pos.PosServices.export#PosCatalog").parameters([organizationPartyId: (ec.user.getPreference('ACTIVE_ORGANIZATION'))]).call()
+            def res = ec.service.sync().name("zenith.pos.PosServices.export#PosCatalog").parameters([organizationPartyId: (ec.user.getPreference('ACTIVE_ORGANIZATION')),terminalId:ec.web.parameters.terminalId]).call()
             ec.web.sendJsonResponse([products: res.products ?: [], customers: res.customers ?: []])
         ]]></script></actions>
         <default-response type="none"/>
@@ -260,7 +260,7 @@
             if (!(txns instanceof List)) txns = [txns]
             def res = ec.service.sync().name("zenith.pos.PosServices.sync#OfflineTransactions")
                 .parameters([terminalId: tid, transactions: txns]).call()
-            ec.web.sendJsonResponse([syncedCount: res.syncedCount ?: 0])
+            ec.web.sendJsonResponse([syncedCount: res.syncedCount ?: 0, syncedIds:res.syncedIds ?: [], failedCount:res.failedCount ?: 0])
         ]]></script></actions>
         <default-response type="none"/>
     </transition>
@@ -1599,50 +1599,100 @@
         <default-response type="none"/>
     </transition>
 
-    <transition name="setCustomer" begin-transaction="true">
+    <!-- Changing a destination after lines/tenders exist must never silently retax a bill. -->
+    <transition name="setCustomer" method="post" begin-transaction="true">
         <actions><script><![CDATA[
             def txId = ec.web.parameters.transactionId
             def cpid = ec.web.parameters.customerPartyId
-            if (!txId || !cpid) { ec.web.sendJsonResponse([success:false, error:'Missing customer or bill']); return }
-            def txn = ec.entity.find("zenith.erp.pos.PosTransaction").condition("transactionId", txId).one()
-            if (!txn) { ec.web.sendJsonResponse([success:false, error:'No open bill — add an item first']); return }
-            if (txn.statusId != 'PtCreated') { ec.web.sendJsonResponse([success:false, error:'This bill is already finalized']); return }
-            // Org isolation: a customer may only be attached to a bill of the same organization.
-            def custParty = ec.entity.find("mantle.party.Party").condition("partyId", cpid).one()
-            if (txn.organizationPartyId && custParty?.ownerPartyId && custParty.ownerPartyId != txn.organizationPartyId) {
-                ec.web.sendJsonResponse([success:false, error:'That customer belongs to a different organization']); return }
-            def pdr = ec.entity.find("mantle.party.PartyDetailAndRole").condition("partyId", cpid).limit(1).list()
-            def nm = null
-            if (pdr) { def r = pdr[0]; nm = (r.organizationName ?: (((r.firstName ?: '') + ' ' + (r.lastName ?: '')).trim())) }
-            if (!nm) { def per = ec.entity.find("mantle.party.Person").condition("partyId", cpid).one()
-                if (per) nm = (((per.firstName ?: '') + ' ' + (per.lastName ?: '')).trim())
-                else nm = ec.entity.find("mantle.party.Organization").condition("partyId", cpid).one()?.organizationName }
-            nm = nm ?: cpid
-            def phone = null
-            def pcms = ec.entity.find("mantle.party.contact.PartyContactMech").condition("partyId", cpid).conditionDate("fromDate","thruDate", ec.user.nowTimestamp).list()
-            for (pcm in pcms) {
-                def tn = ec.entity.find("mantle.party.contact.TelecomNumber").condition("contactMechId", pcm.contactMechId).one()
-                if (tn) { phone = ((tn.countryCode ? ('+' + tn.countryCode + ' ') : '') + (tn.areaCode ?: '') + ' ' + (tn.contactNumber ?: '')).replaceAll("\\s+", " ").trim(); if (phone) break }
+            def sid = ec.web.parameters.sessionId
+            if (!cpid || (!txId && !sid)) { ec.web.sendJsonResponse([success:false, error:'Missing customer or session']); return }
+            def access = ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess')
+                .parameters([transactionId:txId,sessionId:sid,customerPartyId:cpid]).call()
+            if (!access?.allowed) { ec.web.sendJsonResponse([success:false,error:'Customer or bill unavailable in this organization.']); return }
+            // Selecting before the first item creates/reuses an unnumbered empty cart.
+            // The session lock in create#PosTransaction serializes concurrent first-item requests.
+            if (!txId) {
+                def created = ec.service.sync().name('zenith.pos.PosServices.create#PosTransaction').parameter('sessionId',sid).call()
+                txId = created?.transactionId
+                if (!txId || ec.message.hasError()) { ec.web.sendJsonResponse([success:false,error:'Could not prepare the empty bill.']); return }
             }
-            def gstin = ec.entity.find("zenith.erp.india.IndiaGstin").condition("partyId", cpid).one()?.gstin
-            ec.service.sync().name("update#zenith.erp.pos.PosTransaction")
-                .parameters([transactionId:txId, customerPartyId:cpid, customerName:nm, customerPhone:phone, customerGstin:gstin, customerTaxRegNumber:gstin]).call()
-            ec.web.sendJsonResponse([success:true, customer:nm, customerPhone:(phone ?: ''), customerPartyId:cpid, customerGstin:(gstin ?: '')])
-        ]]></script></actions>
-        <default-response type="none"/>
+            def txn = ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',txId).forUpdate(true).one()
+            if (txn.statusId != 'PtCreated') { ec.web.sendJsonResponse([success:false,error:'This bill is already finalized']); return }
+            def registration = ec.service.sync().name('zenith.tax.TaxServices.get#PartyTaxRegistration').parameter('partyId',cpid).call()
+            if (ec.message.hasError()) { ec.web.sendJsonResponse([success:false,error:'Customer tax registration is unavailable.']); return }
+            def destination = registration?.regionGeoId ?: txn.originRegionGeoId
+            def currentDestination = txn.destinationRegionGeoId ?: txn.originRegionGeoId
+            boolean hasContents = txn.transactionNumber || ((txn.paidAmount ?: 0) > 0) ||
+                ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId',txId).count() > 0 ||
+                ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId',txId).count() > 0
+            if (destination != currentDestination && hasContents) {
+                ec.web.sendJsonResponse([success:false,error:'Choose a different tax destination before adding items or taking payment. Start a new bill to change it.']); return
+            }
+            def details = ec.entity.find('mantle.party.PartyDetailAndRole').condition('partyId',cpid).limit(1).list()
+            def person = details ? details[0] : null
+            def name = person?.organizationName ?: (((person?.firstName ?: '')+' '+(person?.lastName ?: '')).trim()) ?: cpid
+            def phone = null
+            def mechanisms = ec.entity.find('mantle.party.contact.PartyContactMech').condition('partyId',cpid)
+                .conditionDate('fromDate','thruDate',ec.user.nowTimestamp).list()
+            for (mechanism in mechanisms) {
+                def number = ec.entity.find('mantle.party.contact.TelecomNumber').condition('contactMechId',mechanism.contactMechId).one()
+                if (number) { phone = ((number.countryCode ? ('+'+number.countryCode+' ') : '')+(number.areaCode ?: '')+' '+(number.contactNumber ?: '')).replaceAll('\\s+',' ').trim(); if (phone) break }
+            }
+            def gstin = registration?.registrationNumber
+            ec.service.sync().name('update#zenith.erp.pos.PosTransaction').parameters([
+                transactionId:txId,customerPartyId:cpid,customerName:name,customerPhone:phone,
+                customerGstin:gstin,customerTaxRegNumber:gstin,destinationRegionGeoId:destination]).call()
+            if (ec.message.hasError()) { ec.web.sendJsonResponse([success:false,error:'Customer could not be changed.']); return }
+            ec.web.sendJsonResponse([success:true,transactionId:txId,customer:name,customerPhone:phone ?: '',customerPartyId:cpid,customerGstin:gstin ?: ''])
+        ]]></script></actions><default-response type="none"/>
     </transition>
-
-    <transition name="clearCustomer" begin-transaction="true">
+    <transition name="clearCustomer" method="post" begin-transaction="true">
         <actions><script><![CDATA[
             def txId = ec.web.parameters.transactionId
-            def v = txId ? ec.entity.find("zenith.erp.pos.PosTransaction").condition("transactionId", txId).one() : null
-            if (v && v.statusId == 'PtCreated') {
-                v.customerPartyId = null; v.customerName = null; v.customerPhone = null
-                v.customerGstin = null; v.customerTaxRegNumber = null; v.update()
+            if (!txId) { ec.web.sendJsonResponse([success:false,error:'Missing bill']); return }
+            def access = ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess').parameter('transactionId',txId).call()
+            if (!access?.allowed) { ec.web.sendJsonResponse([success:false,error:'Bill unavailable in this organization.']); return }
+            def txn = ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',txId).forUpdate(true).one()
+            if (txn.statusId != 'PtCreated') { ec.web.sendJsonResponse([success:false,error:'This bill is already finalized']); return }
+            boolean hasContents = txn.transactionNumber || ((txn.paidAmount ?: 0) > 0) ||
+                ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId',txId).count() > 0 ||
+                ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId',txId).count() > 0
+            if ((txn.destinationRegionGeoId ?: txn.originRegionGeoId) != txn.originRegionGeoId && hasContents) {
+                ec.web.sendJsonResponse([success:false,error:'Start a new bill to clear a customer with a different tax destination. Existing bill amounts are preserved.']); return
             }
-            ec.web.sendJsonResponse([success:true, customer:'', customerPhone:'', customerPartyId:''])
-        ]]></script></actions>
-        <default-response type="none"/>
+            txn.customerPartyId = null; txn.customerName = null; txn.customerPhone = null
+            txn.customerGstin = null; txn.customerTaxRegNumber = null; txn.destinationRegionGeoId = txn.originRegionGeoId; txn.update()
+            ec.web.sendJsonResponse([success:true,customer:'',customerPhone:'',customerPartyId:''])
+        ]]></script></actions><default-response type="none"/>
+    </transition>
+    <!-- Ownership resolution reads metadata only; it does not import, retax or settle a sale. -->
+    <transition name="resolveLegacyOfflineScope" method="post">
+        <actions><script><![CDATA[
+            def access = ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess').call()
+            if (!access?.allowed || ec.web.parameters.organizationPartyId != access.organizationPartyId) {
+                throw new org.moqui.context.ArtifactAuthorizationException('Select the authorized organization before recovering offline sales.')
+            }
+            def candidates
+            try { candidates = new groovy.json.JsonSlurper().parseText(ec.web.parameters.candidates ?: '[]') }
+            catch (Exception ignored) { ec.web.response.setStatus(400); ec.web.sendJsonResponse([eligibleIds:[]]); return }
+            if (!(candidates instanceof List) || candidates.size() > 200) {
+                ec.web.response.setStatus(400); ec.web.sendJsonResponse([eligibleIds:[]]); return
+            }
+            def eligible = []
+            for (candidate in candidates) {
+                if (!(candidate instanceof Map) || !(candidate.offlineId instanceof String) || !candidate.offlineId || candidate.offlineId.length() > 255 ||
+                    !(candidate.sessionId instanceof String) || !(candidate.terminalId instanceof String)) continue
+                if (candidate.organizationPartyId && candidate.organizationPartyId != access.organizationPartyId) continue
+                def session = ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',candidate.sessionId)
+                    .condition('organizationPartyId',access.organizationPartyId).one()
+                def terminal = ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',candidate.terminalId)
+                    .condition('organizationPartyId',access.organizationPartyId).one()
+                // one() may resolve by primary key; compare stored ownership explicitly.
+                if (session?.organizationPartyId == access.organizationPartyId && terminal?.organizationPartyId == access.organizationPartyId &&
+                    session.terminalId == terminal.terminalId) eligible.add(candidate.offlineId)
+            }
+            ec.web.sendJsonResponse([organizationPartyId:access.organizationPartyId,eligibleIds:eligible.unique()])
+        ]]></script></actions><default-response type="none"/>
     </transition>
 
     <transition name="closeSession" begin-transaction="true">
@@ -1723,6 +1773,10 @@
 
 
 
+                    if (transactionId && ['addItem','setItemMode','updateQty','updatePrice','applyDiscount','removeItem','scanAdd'].contains(action)) {
+                        def editable=ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',transactionId).forUpdate(true).one()
+                        if (!editable || editable.statusId!='PtCreated') { ec.web.sendJsonResponse([success:false,error:'Only an open cart can be edited. Use the audited amendment flow for an issued bill.']);return }
+                    }
                     if (action == 'addItem') {
 
 
@@ -1870,7 +1924,9 @@
 
 
 
-                            def nq = (p.newQty as BigDecimal)
+                            def nq = null
+                            try { nq = new BigDecimal((p.newQty ?: '').toString()) } catch (Exception ignored) {}
+                            if (nq==null || nq<=0) { ec.web.sendJsonResponse([success:false,error:'Quantity must be greater than zero. Use Remove to delete a line.']);return }
 
 
 
@@ -1976,7 +2032,9 @@
 
 
 
-                            def np = (p.newPrice as BigDecimal)
+                            def np = null
+                            try { np = new BigDecimal((p.newPrice ?: '').toString()) } catch (Exception ignored) {}
+                            if (np==null || np<0) { ec.web.sendJsonResponse([success:false,error:'Enter a non-negative price.']);return }
 
 
 
@@ -2359,7 +2417,7 @@
                         if (!stxId || !smethod || samt <= BigDecimal.ZERO) { ec.web.sendJsonResponse([success:false, error:'Missing settlement details']); return }
                         try {
                             def rOut = ec.service.sync().name("zenith.pos.PosServices.settle#PosCredit")
-                                .parameters([transactionId:stxId, paymentMethod:smethod, amount:samt, referenceNumber:sref]).call()
+                                .parameters([transactionId:stxId, paymentMethod:smethod, amount:samt, referenceNumber:sref, collectionSessionId:sessionId]).call()
                             if (ec.message.hasError()) { def em = ec.message.errorsString; ec.message.clearErrors(); ec.web.sendJsonResponse([success:false, error:em]); return }
                             ec.web.sendJsonResponse([success:true, outstanding:rOut.outstanding, fullyPaid:rOut.fullyPaid, paidAmount:rOut.paidAmount])
                         } catch (Exception se) {
@@ -2440,11 +2498,19 @@
                         def reason = p.editReason ?: 'No reason provided'
                         def editType = p.editType
                         def itemSeqId = p.editItemSeqId
-                        def txn = ec.entity.find("zenith.erp.pos.PosTransaction").condition("transactionId", txId).one()
+                        def txn = ec.entity.find("zenith.erp.pos.PosTransaction").condition("transactionId", txId).forUpdate(true).one()
                         if (!txn || txn.statusId != 'PtCompleted') {
                             ec.web.sendJsonResponse([success:false, error:'Transaction not found or not editable'])
                             return
                         }
+                        // Validate before writing any issued synthetic/live amendment; errors are ordinary JSON.
+                        def editedValue = null
+                        if (['QTY_CHANGE','PRICE_CHANGE','ITEM_ADDED'].contains(editType)) {
+                            try { editedValue = new BigDecimal((editType=='QTY_CHANGE' ? p.newQty : editType=='PRICE_CHANGE' ? p.newPrice : p.addQty ?: '1').toString()) }
+                            catch (Exception ignored) { ec.web.sendJsonResponse([success:false,error:'Enter a valid quantity or price.']);return }
+                            if ((editType=='PRICE_CHANGE' && editedValue < 0) || (editType!='PRICE_CHANGE' && editedValue <= 0)) { ec.web.sendJsonResponse([success:false,error:'Use a positive quantity and a non-negative price.']);return }
+                        }
+                        if (!['QTY_CHANGE','PRICE_CHANGE','ITEM_ADDED','ITEM_REMOVED'].contains(editType)) { ec.web.sendJsonResponse([success:false,error:'Choose a valid amendment.']);return }
                         def oldGrand = (txn.grandTotal ?: 0) as BigDecimal
                         def invAdjProduct = null; def invAdjQty = BigDecimal.ZERO
                         def _addedSeqId = null
@@ -2453,14 +2519,16 @@
                                 .condition("transactionId", txId).condition("itemSeqId", itemSeqId).one()
                             if (!item) { ec.web.sendJsonResponse([success:false, error:'Item not found']); return }
                             def oldQty = item.quantity as BigDecimal
-                            def newQty = new BigDecimal(p.newQty)
+                            def newQty = editedValue
                             invAdjProduct = item.productId; invAdjQty = oldQty - newQty
                             if (newQty <= 0) { ec.web.sendJsonResponse([success:false, error:'Quantity must be > 0']); return }
                             def up = (item.unitPrice ?: 0) as BigDecimal
                             def dp = (item.discountPercent ?: 0) as BigDecimal
                             def ls = newQty * up
                             def da = ls * dp / 100
-                            def ta = ls - da
+                            def originalNet=((item.quantity ?: 0) as BigDecimal)*((item.unitPrice ?: 0) as BigDecimal)-((item.discountAmount ?: 0) as BigDecimal)
+                            def taxableFraction=originalNet>0 ? ((item.taxableAmount ?: 0) as BigDecimal)/originalNet : BigDecimal.ONE
+                            def ta = (ls - da) * taxableFraction
                             def taxR = BigDecimal.ZERO
                             if (item.totalTaxAmount != null && item.taxableAmount != null && (item.taxableAmount as BigDecimal) != 0) {
                                 taxR = (item.totalTaxAmount as BigDecimal) / (item.taxableAmount as BigDecimal)
@@ -2487,12 +2555,14 @@
                                 .condition("transactionId", txId).condition("itemSeqId", itemSeqId).one()
                             if (!item) { ec.web.sendJsonResponse([success:false, error:'Item not found']); return }
                             def oldPrice = item.unitPrice as BigDecimal
-                            def newPrice = new BigDecimal(p.newPrice)
+                            def newPrice = editedValue
                             def q = (item.quantity ?: 1) as BigDecimal
                             def ls = q * newPrice
                             def dp = (item.discountPercent ?: 0) as BigDecimal
                             def da = ls * dp / 100
-                            def ta = ls - da
+                            def originalNet=((item.quantity ?: 0) as BigDecimal)*((item.unitPrice ?: 0) as BigDecimal)-((item.discountAmount ?: 0) as BigDecimal)
+                            def taxableFraction=originalNet>0 ? ((item.taxableAmount ?: 0) as BigDecimal)/originalNet : BigDecimal.ONE
+                            def ta = (ls - da) * taxableFraction
                             def taxR = BigDecimal.ZERO
                             if (item.totalTaxAmount != null && item.taxableAmount != null && (item.taxableAmount as BigDecimal) != 0) {
                                 taxR = (item.totalTaxAmount as BigDecimal) / (item.taxableAmount as BigDecimal)
@@ -2593,6 +2663,11 @@
                                     oldValue:'N/A', newValue:(prod.productName ?: productId)+' x'+addQty+' @'+unitPrice,
                                     oldGrandTotal:oldGrand, newGrandTotal:txnAfter.grandTotal ?: 0]).call()
                         }
+                        if (['QTY_CHANGE','PRICE_CHANGE'].contains(editType)) {
+                            def changedLine=ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId',txId).condition('itemSeqId',itemSeqId).one()
+                            def details=ec.entity.find('zenith.erp.tax.TaxLineDetail').condition('referenceType','PosTransactionItem').condition('referenceId',txId).condition('referenceSeqId',itemSeqId).list()
+                            details.each { detail -> detail.taxableAmount=changedLine.taxableAmount;detail.taxAmount=((changedLine.taxableAmount ?: 0) as BigDecimal)*((detail.taxRate ?: 0) as BigDecimal)/100;detail.update() }
+                        }
                         def txnFinal = ec.entity.find("zenith.erp.pos.PosTransaction").condition("transactionId", txId).one()
                         def itemsFinal = ec.entity.find("zenith.erp.pos.PosTransactionItem")
                             .condition("transactionId", txId).orderBy("itemSeqId").list()
@@ -2624,6 +2699,8 @@
                                     }
                                 }
                                 def _inv2 = ec.entity.find("mantle.account.invoice.Invoice").condition("invoiceId", _iid).one()
+                                _inv2.invoiceTotal = txnFinal.grandTotal
+                                _inv2.unpaidTotal = ((txnFinal.grandTotal ?: 0) as BigDecimal) - ((_inv2.appliedPaymentsTotal ?: 0) as BigDecimal)
                                 _inv2.totalTaxableAmount = txnFinal.subtotal
                                 _inv2.totalTaxAmount = txnFinal.totalTaxAmount
                                 _inv2.roundOffAmount = txnFinal.roundOff
@@ -2804,7 +2881,8 @@
 
 
 
-                        def expectedCash = openingCash + cashReceived - changeGiven
+                        def drawer = ec.service.sync().name("zenith.pos.PosServices.get#PosSessionCashSummary").parameter("sessionId",sess.sessionId).call()
+                        def expectedCash = drawer.expectedCash
 
 
 
@@ -2816,7 +2894,7 @@
 
 
 
-                            openingCash:openingCash, cashReceived:cashReceived,
+                            openingCash:openingCash, cashReceived:drawer.cashReceived,
 
 
 
@@ -2824,7 +2902,7 @@
 
 
 
-                            changeGiven:changeGiven, expectedCash:expectedCash]
+                            changeGiven:drawer.changeGiven, expectedCash:expectedCash]
 
 
 
@@ -3005,6 +3083,10 @@
 
 
         <if condition="ec.web.parameters.freshSale == 'Y' &amp;&amp; sessionId">
+            <service-call name="zenith.pos.PosServices.check#PosSessionRetirement" in-map="[sessionId:sessionId]" out-map="_freshRetirement"/>
+            <if condition="_freshRetirement.hasUnfinishedMoney">
+                <message error="true">This cart has recorded payments. Complete or resolve it before starting a new sale.</message>
+                <else>
             <script><![CDATA[
                 ec.entity.find("zenith.erp.pos.PosTransaction").condition("sessionId", sessionId).condition("statusId", "PtCreated").list().each { st ->
                     ec.entity.find("zenith.erp.pos.PosTransactionItem").condition("transactionId", st.transactionId).deleteAll()
@@ -3022,6 +3104,8 @@
                  back onto the summary screen instead of landing on a fresh cart. -->
             <set field="lastCompletedId" from="null"/>
             <script>ec.web.parameters.remove("lastCompletedId")</script>
+                </else>
+            </if>
         </if>
 
         <if condition="sessionId &amp;&amp; !transactionId &amp;&amp; !lastCompletedId">
@@ -3188,15 +3272,7 @@
 
 
 
-                def rTpl = (terminal?.organizationPartyId ? ec.entity.find("zenith.erp.pos.PosReceiptTemplate").condition("organizationPartyId", terminal.organizationPartyId).condition("isActive", "Y").orderBy("-isDefault").limit(1).one() : null) ?: ec.entity.find("zenith.erp.pos.PosReceiptTemplate").condition("isDefault", "Y").condition("isActive", "Y").limit(1).one()
-
-
-
-                if (!rTpl) rTpl = ec.entity.find("zenith.erp.pos.PosReceiptTemplate")
-
-
-
-                        .condition("isActive", "Y").limit(1).one()
+                def rTpl = (terminal?.organizationPartyId ? ec.entity.find("zenith.erp.pos.PosReceiptTemplate").condition("organizationPartyId", terminal.organizationPartyId).condition("isActive", "Y").orderBy("-isDefault").limit(1).one() : null)
 
 
 
@@ -3559,7 +3635,7 @@
 
 
         <entity-find entity-name="mantle.product.category.ProductCategory" list="categoryList">
-            <econdition field-name="ownerPartyId" from="posOrg" ignore-if-empty="true"/>
+            <econdition field-name="ownerPartyId" from="(posOrg) ?: '__NO_ORGANIZATION__'"/>
 
 
 
@@ -3946,7 +4022,7 @@
 
 
         <entity-find entity-name="zenith.erp.pos.PosTerminal" list="terminalList">
-            <econdition field-name="organizationPartyId" from="posOrg" ignore-if-empty="true"/>
+            <econdition field-name="organizationPartyId" from="(posOrg) ?: '__NO_ORGANIZATION__'"/>
 
 
 
@@ -4366,7 +4442,7 @@
 
 
                         </form-single>
-                        <render-mode><text type="html,qvt" template="true"><![CDATA[<img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="try{if(location.pathname.indexOf('/qapps/')===0){location.replace(location.href.replace('/qapps/','/apps/'));}}catch(e){}"/><div style="text-align:center;margin-top:18px"><button id="pos-history-btn-ns" type="button" onclick="window.posOpenHistory&amp;&amp;window.posOpenHistory()" style="padding:10px 24px;border-radius:8px;font-size:14px;font-weight:bold;cursor:pointer;background:#7C3AED;color:#fff;border:1px solid #A78BFA">&#128196; View Bill History<span style="margin-left:7px;padding:1px 6px;border:1px solid rgba(255,255,255,0.7);border-radius:4px;font-size:11px;font-weight:700;opacity:0.9">F9</span></button></div><script src="/zenithstatic/js/pos-terminal.js?v=150"></script>]]></text></render-mode>
+                        <render-mode><text type="html,qvt" template="true"><![CDATA[<img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="try{if(location.pathname.indexOf('/qapps/')===0){location.replace(location.href.replace('/qapps/','/apps/'));}}catch(e){}"/><div style="text-align:center;margin-top:18px"><button id="pos-history-btn-ns" type="button" onclick="window.posOpenHistory&amp;&amp;window.posOpenHistory()" style="padding:10px 24px;border-radius:8px;font-size:14px;font-weight:bold;cursor:pointer;background:#7C3AED;color:#fff;border:1px solid #A78BFA">&#128196; View Bill History<span style="margin-left:7px;padding:1px 6px;border:1px solid rgba(255,255,255,0.7);border-radius:4px;font-size:11px;font-weight:700;opacity:0.9">F9</span></button></div><script src="/zenithstatic/js/pos-terminal.js?v=154"></script>]]></text></render-mode>
 
 
 
@@ -4566,7 +4642,14 @@ window.printThermalReceipt=function() {
 
 
 
-    var d = window._rd, cs = d.cs || '₹', h = '';
+// Receipt values are plain text. Clone/escape at the HTML boundary, preserving numbers.
+function receiptText(value){
+    if(typeof value==='string')return value.replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});
+    if(Array.isArray(value))return value.map(receiptText);
+    if(value&&typeof value==='object'){var result={};Object.keys(value).forEach(function(k){result[k]=receiptText(value[k]);});return result;}
+    return value;
+}
+    var d = receiptText(window._rd), cs = d.cs || '₹', h = '';
 
 
 
@@ -4678,11 +4761,11 @@ window.printThermalReceipt=function() {
 
 
 
-    h += '<div class="rw"><span class="lb">Subtotal</span><span class="vl">' + cs + d.subtotal + '</span></div>';
+    h += '<div class="rw"><span class="lb">Taxable (after discount)</span><span class="vl">' + cs + d.subtotal + '</span></div>';
 
 
 
-    if (d.hasDiscount) h += '<div class="rw"><span class="lb">Discount</span><span class="vl">-' + cs + d.discount + '</span></div>';
+    if (d.hasDiscount) h += '<div class="rw"><span class="lb">Discount included</span><span class="vl">' + cs + d.discount + '</span></div>';
 
 
 
@@ -6209,7 +6292,7 @@ body.Terminal .nb-layout:hover{background:#F4F7FC}
       <div class="nb-customer__head">
         <div class="nb-customer__av"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
         <div class="nb-customer__id">
-          <h3 class="nb-customer__name" id="pos-cust-name">${(txn.customerName)!'Walk-in Customer'}</h3>
+          <h3 class="nb-customer__name" id="pos-cust-name">${((txn.customerName)!'Walk-in Customer')?html}</h3>
           <span class="nb-customer__type">Customer</span>
         </div>
         <button id="pos-customer-btn" type="button" onclick="window.posOpenCustomer&amp;&amp;window.posOpenCustomer()" class="nb-customer__change" title="Attach / change the customer on this bill">Change</button>
@@ -6231,10 +6314,10 @@ body.Terminal .nb-layout:hover{background:#F4F7FC}
     <section class="nb-summary">
       <div class="nb-summary__head"><span class="nb-summary__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 8h10"/><path d="M7 12h10"/><path d="M7 16h10"/></svg></span><h3>Bill Summary</h3></div>
       <dl class="nb-summary__list">
-        <div class="nb-summary__row"><dt>Subtotal (${(cartItems?size)!0} item<#if ((cartItems?size)!0) != 1>s</#if>)</dt><dd>${(currSymbol)!'&#8377;'}${zinr.inr(ec.l10n.format((txn.subtotal)!cartAmt, '#,##0.00'))}</dd></div>
-        <div class="nb-summary__row"><dt>Discount</dt><dd>${(currSymbol)!'&#8377;'}${zinr.inr(ec.l10n.format(cartDisc, '#,##0.00'))} <button class="nb-summary__edit" type="button" onclick="window.posDiscount&amp;&amp;window.posDiscount()" title="Edit discount / round off (F1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></button></dd></div>
-        <div class="nb-summary__row"><dt>Tax Total</dt><dd>${(currSymbol)!'&#8377;'}${zinr.inr(ec.l10n.format((txn.totalTaxAmount)!0, '#,##0.00'))}</dd></div>
-        <div class="nb-summary__row"><dt>Round Off</dt><dd>${(currSymbol)!'&#8377;'}${zinr.inr(ec.l10n.format((txn.roundOff)!0, '#,##0.00'))}</dd></div>
+        <div class="nb-summary__row"><dt id="pos-side-item-count">Subtotal (${(cartItems?size)!0} item<#if ((cartItems?size)!0) != 1>s</#if>)</dt><dd id="pos-side-subtotal">${(currSymbol)!'&#8377;'}${zinr.inr(ec.l10n.format((txn.subtotal)!cartAmt, '#,##0.00'))}</dd></div>
+        <div class="nb-summary__row"><dt>Discount</dt><dd><span id="pos-side-discount">${(currSymbol)!'&#8377;'}${zinr.inr(ec.l10n.format(cartDisc, '#,##0.00'))}</span> <button class="nb-summary__edit" type="button" onclick="window.posDiscount&amp;&amp;window.posDiscount()" title="Edit discount / round off (F1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></button></dd></div>
+        <div class="nb-summary__row"><dt>Tax Total</dt><dd id="pos-side-tax">${(currSymbol)!'&#8377;'}${zinr.inr(ec.l10n.format((txn.totalTaxAmount)!0, '#,##0.00'))}</dd></div>
+        <div class="nb-summary__row"><dt>Round Off</dt><dd id="pos-side-round">${(currSymbol)!'&#8377;'}${zinr.inr(ec.l10n.format((txn.roundOff)!0, '#,##0.00'))}</dd></div>
       </dl>
     </section>
   </aside>
@@ -6262,6 +6345,7 @@ body.Terminal .nb-layout:hover{background:#F4F7FC}
 
         <form id="cartInlineAddForm" method="post" action="Terminal/addItem" style="display:none">
             <input type="hidden" name="posTerminalId" value="${(session.terminalId)!''}"/>
+            <input type="hidden" name="posOrganizationPartyId" value="${(session.organizationPartyId)!''}"/>
 
 
 
@@ -6832,13 +6916,13 @@ body.Terminal .nb-layout:hover{background:#F4F7FC}
 <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
 
 
-<script src="/zenithstatic/js/pos-terminal.js?v=150"></script>
+<script src="/zenithstatic/js/pos-terminal.js?v=154"></script>
 
 
 
 <script>(function(){
 function applyFocus(on){var r=document.getElementById('pos-terminal-root');if(!r)return;document.body.classList.toggle('pos-focus',on);if(on){r.style.position='fixed';r.style.top='0';r.style.left='0';r.style.right='0';r.style.bottom='0';r.style.zIndex='9999';r.style.background='#fff';}else{['position','top','left','right','bottom','zIndex','background'].forEach(function(k){r.style[k]='';});}}
-function f(){var r=document.getElementById('pos-terminal-root');if(!r)return;var foc=document.body.classList.contains('pos-focus');var t=foc?0:r.getBoundingClientRect().top;var h=window.innerHeight-t;if(h<360)h=360;r.style.height=h+'px';var lg=document.getElementById('posKbLegend');if(lg)lg.style.display=(window.innerHeight<1100?'none':'');var fi=document.getElementById('fsBtnIcon');if(fi)fi.innerHTML=foc?'&#x2715;':'&#x26F6;';}
+function f(){var r=document.getElementById('pos-terminal-root');if(!r)return;var foc=document.body.classList.contains('pos-focus');var t=foc?0:r.getBoundingClientRect().top;var h=window.innerHeight-t;if(h<360)h=360;r.style.height=h+'px';var lg=document.getElementById('posKbLegend');if(lg)lg.style.display=(window.innerHeight<1100?'none':'');var fi=document.getElementById('fsBtnIcon');if(fi){fi.innerHTML=foc?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5"/></svg>';fi.setAttribute('aria-hidden','true');}}
 window.posFitTerminal=f;
 window.posToggleFocus=function(){var on=!document.body.classList.contains('pos-focus');try{on?localStorage.setItem('posFocus','1'):localStorage.removeItem('posFocus');}catch(e){}applyFocus(on);if(on){try{(document.documentElement.requestFullscreen||function(){}).call(document.documentElement);}catch(e){}}else{try{if(document.fullscreenElement&&document.exitFullscreen)document.exitFullscreen();}catch(e){}}f();setTimeout(f,80);setTimeout(f,250);};
 window.posToggleLayout=function(){var toNormal=!document.body.classList.contains('pos-mode-normal');var mode=toNormal?'normal':'advanced';document.body.classList.toggle('pos-mode-normal',toNormal);document.body.classList.toggle('pos-mode-advanced',!toNormal);try{localStorage.setItem('posLayoutMode',mode);}catch(e){}var lb=document.querySelector('#pos-layout-toggle .plt-label');if(lb)lb.textContent=(toNormal?'Normal':'Advanced');f();setTimeout(f,100);setTimeout(f,320);};

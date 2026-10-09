@@ -1,0 +1,84 @@
+{
+  "uiBaselineCommit": "4dd5f348fc70c69100caf94001a532876fd5b976",
+  "screens": [
+    {
+      "file": "component/zenith-erp-pos/screen/zenith/pos/Pos/BillAuditReport.xml",
+      "executionDefinitionsUnchanged": true,
+      "formsUnchangedExceptDocumentedCashInputTypes": true
+    },
+    {
+      "file": "component/zenith-erp-pos/screen/zenith/pos/Pos/CashEntry.xml",
+      "executionDefinitionsUnchanged": true,
+      "formsUnchangedExceptDocumentedCashInputTypes": true
+    },
+    {
+      "file": "component/zenith-erp-pos/screen/zenith/pos/Pos/CreditBills.xml",
+      "executionDefinitionsUnchanged": true,
+      "formsUnchangedExceptDocumentedCashInputTypes": true
+    },
+    {
+      "file": "component/zenith-erp-pos/screen/zenith/pos/Pos/DailySummary.xml",
+      "executionDefinitionsUnchanged": true,
+      "formsUnchangedExceptDocumentedCashInputTypes": true
+    },
+    {
+      "file": "component/zenith-erp-pos/screen/zenith/pos/Pos/Dashboard.xml",
+      "executionDefinitionsUnchanged": true,
+      "formsUnchangedExceptDocumentedCashInputTypes": true
+    },
+    {
+      "file": "component/zenith-erp-pos/screen/zenith/pos/Pos/Expenses.xml",
+      "executionDefinitionsUnchanged": true,
+      "formsUnchangedExceptDocumentedCashInputTypes": true
+    },
+    {
+      "file": "component/zenith-erp-pos/screen/zenith/pos/Pos/Kitchen.xml",
+      "executionDefinitionsUnchanged": true,
+      "formsUnchangedExceptDocumentedCashInputTypes": true
+    },
+    {
+      "file": "component/zenith-erp-pos/screen/zenith/pos/Pos/Kitchen/Tables.xml",
+      "executionDefinitionsUnchanged": true,
+      "formsUnchangedExceptDocumentedCashInputTypes": true
+    },
+    {
+      "file": "component/zenith-erp-pos/screen/zenith/pos/Pos/PosSessions.xml",
+      "executionDefinitionsUnchanged": true,
+      "formsUnchangedExceptDocumentedCashInputTypes": true
+    },
+    {
+      "file": "component/zenith-erp-pos/screen/zenith/pos/Pos/PosTerminals.xml",
+      "executionDefinitionsUnchanged": true,
+      "formsUnchangedExceptDocumentedCashInputTypes": true
+    },
+    {
+      "file": "component/zenith-erp-pos/screen/zenith/pos/Pos/PosTransactions.xml",
+      "executionDefinitionsUnchanged": true,
+      "formsUnchangedExceptDocumentedCashInputTypes": true
+    },
+    {
+      "file": "component/zenith-erp-pos/screen/zenith/pos/Pos/ReceiptConfig.xml",
+      "executionDefinitionsUnchanged": true,
+      "formsUnchangedExceptDocumentedCashInputTypes": true
+    },
+    {
+      "file": "component/zenith-erp-pos/screen/zenith/pos/Pos/Reports.xml",
+      "executionDefinitionsUnchanged": true,
+      "formsUnchangedExceptDocumentedCashInputTypes": true
+    },
+    {
+      "file": "component/zenith-erp-pos/screen/zenith/pos/Pos/Stock.xml",
+      "executionDefinitionsUnchanged": true,
+      "formsUnchangedExceptDocumentedCashInputTypes": true
+    },
+    {
+      "file": "component/zenith-erp-pos/screen/zenith/pos/Pos/Wastage.xml",
+      "executionDefinitionsUnchanged": true,
+      "formsUnchangedExceptDocumentedCashInputTypes": true
+    }
+  ],
+  "componentFiles": 928,
+  "normalizedApplicationSha256": "e2faa84e5a83f620cf8e2ab748e4a58d021d0991b98e62b4d4016c256cb98698",
+  "runtimeMismatches": [],
+  "productionAccess": false
+}

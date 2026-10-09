@@ -1,0 +1,24 @@
+{
+  "latestMaster": "ba5143a3d1d5e97d2182ff7ba535f36862690a2f",
+  "normalizedApplicationSha256": "e2faa84e5a83f620cf8e2ab748e4a58d021d0991b98e62b4d4016c256cb98698",
+  "componentFiles": 928,
+  "nativePos": {
+    "checks": 487,
+    "pages": 56,
+    "layouts": 100,
+    "failed": 0,
+    "browserExceptions": 0
+  },
+  "nativeReferenceUi": {
+    "checks": 319,
+    "layouts": 84,
+    "failed": 0,
+    "browserExceptions": 0,
+    "billingTablesUnchanged": 12
+  },
+  "productionWrites": false,
+  "productionDatabaseNoOpProof": "Owner report pending; website access is not database evidence",
+  "framework": "Public native rebuild; byte identity with production not claimed",
+  "merged": false,
+  "deployed": false
+}

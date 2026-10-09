@@ -5,6 +5,9 @@
         render-mode="xsl-fo" standalone="true">
 
     <actions>
+        <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[:]" out-map="_printAccess"/>
+        <if condition="!_printAccess.allowed"><script>throw new org.moqui.context.ArtifactAuthorizationException('POS print access denied.')</script></if>
+
         <script>context.zinr = com.zenith.Fmt.INSTANCE</script>
         <script><![CDATA[
             def zinr = context.zinr

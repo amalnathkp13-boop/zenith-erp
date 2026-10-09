@@ -1,0 +1,118 @@
+<?xml version='1.0' encoding='utf-8'?>
+<entity-facade-xml type="demo">
+  <moqui.basic.EnumerationType enumTypeId="PosWastageReason" description="POS Stock Wastage Reason" />
+  <moqui.basic.Enumeration enumId="WrDamage" enumTypeId="PosWastageReason" description="Damaged" sequenceNum="1" />
+  <moqui.basic.Enumeration enumId="WrExpiry" enumTypeId="PosWastageReason" description="Expired" sequenceNum="2" />
+  <moqui.basic.Enumeration enumId="WrSpoilage" enumTypeId="PosWastageReason" description="Spoiled" sequenceNum="3" />
+  <moqui.basic.Enumeration enumId="WrTheft" enumTypeId="PosWastageReason" description="Theft/Pilferage" sequenceNum="4" />
+  <moqui.basic.Enumeration enumId="WrBreakage" enumTypeId="PosWastageReason" description="Breakage" sequenceNum="5" />
+  <moqui.basic.Enumeration enumId="WrSample" enumTypeId="PosWastageReason" description="Sample/Tasting" sequenceNum="6" />
+  <moqui.basic.Enumeration enumId="WrOther" enumTypeId="PosWastageReason" description="Other" sequenceNum="7" />
+  <moqui.basic.StatusType statusTypeId="PosSession" description="POS Session" />
+  <moqui.basic.StatusItem statusId="PsOpen" statusTypeId="PosSession" description="Open" sequenceNum="1" />
+  <moqui.basic.StatusItem statusId="PsClosed" statusTypeId="PosSession" description="Closed" sequenceNum="2" />
+  <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="PsOpen" toStatusId="PsClosed" transitionName="Close Session" />
+  <moqui.basic.StatusType statusTypeId="PosTransaction" description="POS Transaction" />
+  <moqui.basic.StatusItem statusId="PtCreated" statusTypeId="PosTransaction" description="Created" sequenceNum="1" />
+  <moqui.basic.StatusItem statusId="PtCompleted" statusTypeId="PosTransaction" description="Completed" sequenceNum="2" />
+  <moqui.basic.StatusItem statusId="PtVoided" statusTypeId="PosTransaction" description="Voided" sequenceNum="3" />
+  <moqui.basic.StatusItem statusId="PtHeld" statusTypeId="PosTransaction" description="Held" sequenceNum="4" />
+  <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="PtCreated" toStatusId="PtCompleted" transitionName="Complete" />
+  <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="PtCreated" toStatusId="PtVoided" transitionName="Void" />
+  <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="PtCreated" toStatusId="PtHeld" transitionName="Hold" />
+  <moqui.basic.EnumerationType enumTypeId="PosCashReason" description="POS Cash Entry Reason" />
+  <moqui.basic.Enumeration enumId="CeDeposit" enumTypeId="PosCashReason" description="Owner/Partner Deposit" />
+  <moqui.basic.Enumeration enumId="CeBankDeposit" enumTypeId="PosCashReason" description="Bank Deposit" />
+  <moqui.basic.Enumeration enumId="CeWithdrawal" enumTypeId="PosCashReason" description="Owner/Partner Withdrawal" />
+  <moqui.basic.Enumeration enumId="CePettyCash" enumTypeId="PosCashReason" description="Petty Cash" />
+  <moqui.basic.Enumeration enumId="CeChange" enumTypeId="PosCashReason" description="Change Fund" />
+  <moqui.basic.Enumeration enumId="CeRefund" enumTypeId="PosCashReason" description="Customer Refund" />
+  <moqui.basic.Enumeration enumId="CeAdvance" enumTypeId="PosCashReason" description="Customer Advance" />
+  <moqui.basic.Enumeration enumId="CeOther" enumTypeId="PosCashReason" description="Other" />
+  <moqui.basic.StatusType statusTypeId="PosHeld" description="POS Held Transaction" />
+  <moqui.basic.StatusItem statusId="PhHeld" statusTypeId="PosHeld" description="On Hold" sequenceNum="1" />
+  <moqui.basic.StatusItem statusId="PhRecalled" statusTypeId="PosHeld" description="Recalled" sequenceNum="2" />
+  <moqui.basic.StatusItem statusId="PhVoided" statusTypeId="PosHeld" description="Voided" sequenceNum="3" />
+  <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="PhHeld" toStatusId="PhRecalled" transitionName="Recall" />
+  <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="PhHeld" toStatusId="PhVoided" transitionName="Void" />
+  <moqui.service.job.ServiceJob jobName="zenith_PosOrphanCartVoid_daily" description="Void orphaned PtCreated POS carts on long-closed sessions (safety net)" serviceName="zenith.pos.PosServices.void#OrphanedPosCarts" cronExpression="0 45 1 * * ?" paused="N" />
+  <moqui.basic.StatusType statusTypeId="PosReturn" description="POS Return" />
+  <moqui.basic.StatusItem statusId="PrCreated" statusTypeId="PosReturn" description="Created" sequenceNum="1" />
+  <moqui.basic.StatusItem statusId="PrCompleted" statusTypeId="PosReturn" description="Completed" sequenceNum="2" />
+  <moqui.basic.StatusItem statusId="PrCancelled" statusTypeId="PosReturn" description="Cancelled" sequenceNum="3" />
+  <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="PrCreated" toStatusId="PrCompleted" transitionName="Complete" />
+  <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="PrCreated" toStatusId="PrCancelled" transitionName="Cancel" />
+  <moqui.basic.EnumerationType enumTypeId="PosCashMgmtType" description="POS Cash Management Type" />
+  <moqui.basic.Enumeration enumId="PcmFloatIn" enumTypeId="PosCashMgmtType" description="Float In" sequenceNum="1" />
+  <moqui.basic.Enumeration enumId="PcmFloatOut" enumTypeId="PosCashMgmtType" description="Float Out" sequenceNum="2" />
+  <moqui.basic.Enumeration enumId="PcmBankDrop" enumTypeId="PosCashMgmtType" description="Bank Drop" sequenceNum="3" />
+  <moqui.basic.Enumeration enumId="PcmSafeCount" enumTypeId="PosCashMgmtType" description="Safe Count" sequenceNum="4" />
+  <moqui.basic.Enumeration enumId="PcmPettyCash" enumTypeId="PosCashMgmtType" description="Petty Cash" sequenceNum="5" />
+  <moqui.basic.EnumerationType enumTypeId="PrinterType" description="Printer Type" />
+  <moqui.basic.Enumeration enumId="PrtThermal" enumTypeId="PrinterType" description="Thermal Receipt" sequenceNum="1" />
+  <moqui.basic.Enumeration enumId="PrtLaser" enumTypeId="PrinterType" description="Laser/Inkjet" sequenceNum="2" />
+  <moqui.basic.Enumeration enumId="PrtLabel" enumTypeId="PrinterType" description="Label Printer" sequenceNum="3" />
+  <moqui.basic.EnumerationType enumTypeId="QrPaymentType" description="QR Payment Type" />
+  <moqui.basic.Enumeration enumId="QrUpi" enumTypeId="QrPaymentType" description="UPI QR" sequenceNum="1" />
+  <moqui.basic.Enumeration enumId="QrPaytm" enumTypeId="QrPaymentType" description="Paytm QR" sequenceNum="2" />
+  <moqui.basic.Enumeration enumId="QrPhonePe" enumTypeId="QrPaymentType" description="PhonePe QR" sequenceNum="3" />
+  <moqui.basic.Enumeration enumId="QrGeneric" enumTypeId="QrPaymentType" description="Generic QR" sequenceNum="4" />
+  <moqui.basic.Enumeration enumId="QrWechat" enumTypeId="QrPaymentType" description="WeChat Pay" sequenceNum="5" />
+  <moqui.basic.Enumeration enumId="QrAlipay" enumTypeId="QrPaymentType" description="Alipay" sequenceNum="6" />
+  <moqui.basic.StatusType statusTypeId="QrPayment" description="QR Payment Status" />
+  <moqui.basic.StatusItem statusId="QpGenerated" statusTypeId="QrPayment" description="QR Generated" sequenceNum="1" />
+  <moqui.basic.StatusItem statusId="QpPending" statusTypeId="QrPayment" description="Awaiting Payment" sequenceNum="2" />
+  <moqui.basic.StatusItem statusId="QpConfirmed" statusTypeId="QrPayment" description="Payment Confirmed" sequenceNum="3" />
+  <moqui.basic.StatusItem statusId="QpFailed" statusTypeId="QrPayment" description="Failed" sequenceNum="4" />
+  <moqui.basic.StatusItem statusId="QpExpired" statusTypeId="QrPayment" description="Expired" sequenceNum="5" />
+  <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="QpGenerated" toStatusId="QpPending" transitionName="Scan" />
+  <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="QpPending" toStatusId="QpConfirmed" transitionName="Confirm" />
+  <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="QpPending" toStatusId="QpFailed" transitionName="Fail" />
+  <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="QpGenerated" toStatusId="QpExpired" transitionName="Expire" />
+  <moqui.basic.StatusType statusTypeId="KotStatus" description="KOT Status" />
+  <moqui.basic.StatusItem statusId="KotDraft" statusTypeId="KotStatus" description="Draft" sequenceNum="0" />
+  <moqui.basic.StatusItem statusId="KotNew" statusTypeId="KotStatus" description="New" sequenceNum="1" />
+  <moqui.basic.StatusItem statusId="KotPreparing" statusTypeId="KotStatus" description="Preparing" sequenceNum="2" />
+  <moqui.basic.StatusItem statusId="KotReady" statusTypeId="KotStatus" description="Ready" sequenceNum="3" />
+  <moqui.basic.StatusItem statusId="KotServed" statusTypeId="KotStatus" description="Served" sequenceNum="4" />
+  <moqui.basic.StatusItem statusId="KotCancelled" statusTypeId="KotStatus" description="Cancelled" sequenceNum="5" />
+  <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="KotNew" toStatusId="KotPreparing" transitionName="Start Preparing" />
+  <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="KotPreparing" toStatusId="KotReady" transitionName="Ready" />
+  <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="KotReady" toStatusId="KotServed" transitionName="Served" />
+  <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="KotNew" toStatusId="KotCancelled" transitionName="Cancel" />
+  <moqui.basic.StatusType statusTypeId="RestaurantTable" description="Table Status" />
+  <moqui.basic.StatusItem statusId="TblAvailable" statusTypeId="RestaurantTable" description="Available" sequenceNum="1" />
+  <moqui.basic.StatusItem statusId="TblOccupied" statusTypeId="RestaurantTable" description="Occupied" sequenceNum="2" />
+  <moqui.basic.StatusItem statusId="TblReserved" statusTypeId="RestaurantTable" description="Reserved" sequenceNum="3" />
+  <moqui.basic.StatusItem statusId="TblCleaning" statusTypeId="RestaurantTable" description="Cleaning" sequenceNum="4" />
+  <zenith.erp.pos.PosExpenseCategory categoryId="PEC_RENT" categoryName="Rent" />
+  <zenith.erp.pos.PosExpenseCategory categoryId="PEC_ELECTRIC" categoryName="Electricity" />
+  <zenith.erp.pos.PosExpenseCategory categoryId="PEC_SALARY" categoryName="Salary" />
+  <zenith.erp.pos.PosExpenseCategory categoryId="PEC_SUPPLIES" categoryName="Supplies" />
+  <zenith.erp.pos.PosExpenseCategory categoryId="PEC_TRANSPORT" categoryName="Transport" />
+  <zenith.erp.pos.PosExpenseCategory categoryId="PEC_FOOD" categoryName="Food &amp; Beverages" />
+  <zenith.erp.pos.PosExpenseCategory categoryId="PEC_REPAIR" categoryName="Repairs &amp; Maintenance" />
+  <zenith.erp.pos.PosExpenseCategory categoryId="PEC_PACKING" categoryName="Packing Material" />
+  <zenith.erp.pos.PosExpenseCategory categoryId="PEC_MISC" categoryName="Miscellaneous" />
+  <moqui.basic.EnumerationType enumTypeId="PosPriceSource" description="POS Price Source" />
+  <moqui.basic.Enumeration enumId="PpsMrp" enumTypeId="PosPriceSource" description="MRP (Maximum Retail Price)" sequenceNum="1" />
+  <moqui.basic.Enumeration enumId="PpsListPrice" enumTypeId="PosPriceSource" description="Selling Price (List Price)" sequenceNum="2" />
+  <moqui.basic.Enumeration enumId="PpsDiscountMrp" enumTypeId="PosPriceSource" description="Discount from MRP" sequenceNum="3" />
+  <moqui.basic.Enumeration enumId="PpsDiscountList" enumTypeId="PosPriceSource" description="Discount from List Price" sequenceNum="4" />
+  <moqui.basic.Enumeration enumId="PpsMarkupList" enumTypeId="PosPriceSource" description="Markup on List Price" sequenceNum="5" />
+  <moqui.basic.Enumeration enumId="PpsFixedProduct" enumTypeId="PosPriceSource" description="Fixed per-product price for this mode" sequenceNum="6" />
+  <zenith.erp.pos.PosSalesMode salesModeId="RETAIL" modeName="Retail" modeCode="RTL" priceSource="PpsMrp" isTaxInclusive="N" requireCustomer="N" invoicePrefix="RTL" colorCode="#1976D2" isDefault="Y" isActive="Y" description="Standard retail sales to walk-in customers (price + GST)" />
+  <zenith.erp.pos.PosSalesMode salesModeId="WHOLESALE" modeName="Wholesale" modeCode="WSL" priceSource="PpsFixedProduct" discountPercent="0" isTaxInclusive="N" requireCustomer="Y" minOrderAmount="500" invoicePrefix="WSL" colorCode="#388E3C" isDefault="N" isActive="Y" description="Wholesale sales at an explicit per-product price" />
+  <zenith.erp.pos.PosSalesMode salesModeId="EMPLOYEE" modeName="Employee" modeCode="EMP" priceSource="PpsFixedProduct" discountPercent="0" isTaxInclusive="N" requireCustomer="Y" invoicePrefix="EMP" colorCode="#7B1FA2" isDefault="N" isActive="Y" description="Employee purchase at an explicit per-product price (price + GST)" />
+  <moqui.basic.StatusType statusTypeId="OfflineTransaction" description="Offline Transaction" />
+  <moqui.basic.StatusItem statusId="OtPending" statusTypeId="OfflineTransaction" description="Pending Sync" sequenceNum="1" />
+  <moqui.basic.StatusItem statusId="OtSyncing" statusTypeId="OfflineTransaction" description="Syncing" sequenceNum="2" />
+  <moqui.basic.StatusItem statusId="OtSynced" statusTypeId="OfflineTransaction" description="Synced" sequenceNum="3" />
+  <moqui.basic.StatusItem statusId="OtFailed" statusTypeId="OfflineTransaction" description="Sync Failed" sequenceNum="4" />
+  <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="OtPending" toStatusId="OtSyncing" transitionName="Start Sync" />
+  <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="OtSyncing" toStatusId="OtSynced" transitionName="Synced" />
+  <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="OtSyncing" toStatusId="OtFailed" transitionName="Failed" />
+  <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="OtFailed" toStatusId="OtPending" transitionName="Retry" />
+  <moqui.service.job.ServiceJob jobName="zenith_SalesAlerts_cycle" description="Near-real-time new-sale alerts for opted-in users (every 3 min)" serviceName="zenith.pos.SalesAlertServices.send#SalesAlerts" cronExpression="0 0/3 * * * ?" paused="N" />
+  <moqui.security.user.NotificationTopic topic="SalesAlert" description="A new sale was completed" persistOnSend="Y" showAlert="Y" />
+</entity-facade-xml>

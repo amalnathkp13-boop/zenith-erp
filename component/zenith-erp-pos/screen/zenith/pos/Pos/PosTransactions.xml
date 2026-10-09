@@ -9,15 +9,15 @@
         <!-- ZE-SHOP: scope to the globally-selected shop's sessions (null = All Shops) -->
         <script>_shopSessions = null; try { def _sc = ec.service.sync().name("zenith.base.ShopServices.get#ActiveShopScope").parameter("includePosScope", true).call(); _shopSessions = _sc?.sessionIds } catch (Exception _e) {}</script>
         <entity-find entity-name="zenith.erp.pos.PosTransactionView" list="txnList">
-            <search-form-inputs default-order-by="-entryDate"/>
+            <search-form-inputs skip-fields="organizationPartyId,ownerPartyId" default-order-by="-entryDate"/>
             <!-- ZE-SALES-014 f/u: org-isolate CSV/XLSX export (standalone render bypasses the MANTLE_ACTIVE_ORG authz filter) -->
-            <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+            <econdition field-name="organizationPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
             <econdition field-name="sessionId" operator="in" from="_shopSessions" ignore-if-empty="true"/><!-- ZE-SHOP -->
         </entity-find>
     </actions>
 
     <widgets>
-        <render-mode><text type="html,qvt" template="true"><![CDATA[<details id="posHelp_transactions" open style="background:#e8f0fe;border:1px solid #4285f4;border-left:6px solid #1a73e8;border-radius:10px;padding:10px 16px;margin:8px 12px 4px 12px;font-family:Segoe UI,Arial,sans-serif"><summary style="cursor:pointer;font-weight:800;font-size:15px;color:#174ea6;outline:none">&#128203; Transactions &mdash; quick help <span style="font-weight:600;color:#5f6368;font-size:12px">(click to hide / show)</span></summary><div style="font-size:13px;color:#202124;line-height:1.9;margin-top:8px">This is the record of <b>every bill</b> you have made &mdash; sales and returns.<br><b>1</b>&nbsp;Use the column filters (Date, Txn Number, Customer, Status) and press <b>Find</b> to locate a bill.<br><b>2</b>&nbsp;Click a bill&#39;s blue <b>ID</b> to open it and view or correct it.<br><b>3</b>&nbsp;Buttons at the top jump to Billing, Daily Summary or Reports. Use the <b>CSV</b> button to export the list.</div></details>]]></text></render-mode>
+        <render-mode><text type="html,qvt" template="true"><![CDATA[<details id="posHelp_transactions" class="pos-reference-help" style="background:#e8f0fe;border:1px solid #4285f4;border-left:6px solid #1a73e8;border-radius:10px;padding:10px 16px;margin:8px 12px 4px 12px;font-family:Segoe UI,Arial,sans-serif"><summary style="cursor:pointer;font-weight:800;font-size:15px;color:#174ea6;outline:none">&#128203; Transactions &mdash; quick help <span style="font-weight:600;color:#5f6368;font-size:12px">(click to hide / show)</span></summary><div style="font-size:13px;color:#202124;line-height:1.9;margin-top:8px">This is the record of <b>every bill</b> you have made &mdash; sales and returns.<br><b>1</b>&nbsp;Use the column filters (Date, Txn Number, Customer, Status) and press <b>Find</b> to locate a bill.<br><b>2</b>&nbsp;Click a bill&#39;s blue <b>ID</b> to open it and view or correct it.<br><b>3</b>&nbsp;Buttons at the top jump to Billing, Daily Summary or Reports. Use the <b>CSV</b> button to export the list.</div></details>]]></text></render-mode>
         <container style="q-pa-md">
             <label text="All POS Transactions" type="h5" style="text-weight-bold q-mb-md q-mt-none"/>
             <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-md z-txntable z-listchrome">

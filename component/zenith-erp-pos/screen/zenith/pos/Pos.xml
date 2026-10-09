@@ -5,6 +5,23 @@
 
     <always-actions>
         <set field="html_title" value="Point of Sale"/>
+        <script><![CDATA[
+            // Protect direct JSON/transition and detail requests before child actions can read or write.
+            // The separately installed disposable fixture initializer has its own platform-admin gate.
+            def p = ec.web.parameters
+            def fixtureInit = System.getProperty('pos.qa.disposable') == 'true' && ec.user.isInGroup('ADMIN') &&
+                ec.web.request.pathInfo?.endsWith('/PosQaAcceptance/initialize')
+            if (!fixtureInit) {
+                def access = ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess').parameters([
+                    transactionId:p.editTxId ?: p.settleTxId ?: p.transactionId ?: p.lastCompletedId,
+                    sessionId:p.sessionId, terminalId:p.terminalId, heldId:p.heldId,
+                    productId:p.productId, customerPartyId:p.customerPartyId,
+                    templateId:p.templateId, cashEntryId:p.cashEntryId,
+                    expenseId:p.expenseId, wastageId:p.wastageId, facilityId:p.facilityId, printerId:p.printerId, kotId:p.kotId, waiterId:p.waiterId, qrPaymentId:p.qrPaymentId]).call()
+                if (!access?.allowed) throw new org.moqui.context.ArtifactAuthorizationException('You do not have access to this POS organization or record.')
+                context.posOrganizationPartyId = access.organizationPartyId
+            }
+        ]]></script>
     </always-actions>
 
     <subscreens default-item="Dashboard">
@@ -39,6 +56,9 @@
         <!-- ZE-POS-NAV single-row: render only the active POS subscreen's CONTENT here; the submodule tab bar is
              the global #z-subnav / #zq-subnav (one authoritative, route-driven, overflow-scrolling row). The old
              framework tab menu (#pos-tabs-menu, from subscreens-panel type=tab) was a duplicate second row. -->
-        <subscreens-active/>
+        <container style="z-pos-page">
+            <render-mode><text type="html,qvt" template="true"><![CDATA[<input type="hidden" id="pos-offline-org" value="${(posOrganizationPartyId!'')?html}"/>]]></text></render-mode>
+            <subscreens-active/>
+        </container>
     </widgets>
 </screen>

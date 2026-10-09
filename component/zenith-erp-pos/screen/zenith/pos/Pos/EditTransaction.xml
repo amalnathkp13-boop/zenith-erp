@@ -233,7 +233,7 @@
                                             <econdition field-name="productTypeEnumId" operator="in"
                                                 value="PtAsset,PtDigital,PtFinGood"/>
                                             <!-- Org isolation: only this org's products (admin with no active org sees all). -->
-                                            <econdition field-name="ownerPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+                                            <econdition field-name="ownerPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
                                         </entity-find></entity-options></drop-down></default-field></field>
                                 <field name="quantity"><default-field title="Quantity"><text-line size="6" default-value="1"/></default-field></field>
                                 <field name="unitPrice"><default-field title="Unit Price (₹, blank=list price)"><text-line size="10"/></default-field></field>

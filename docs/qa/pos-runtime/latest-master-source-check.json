@@ -1,0 +1,15 @@
+{
+  "pr": 27,
+  "latestMaster": "44983553d87503d8119c5903161fa5753f38a1f9",
+  "sourceCandidateHead": "86704d1d50d2fe2fea286ca76d1ede7e0cbd4057",
+  "previousCandidate": "fe33129e5cc6fb513845fd29633823ca4e01bb9a",
+  "ownedApplicationFilesUnchanged": 49,
+  "sharedAssetRegistrationsReconciled": true,
+  "nativeRuntimeEvidenceMaster": "d9dca975d4f22a74470ae0a3b8bebe16fc57b1a3",
+  "runtimeRetestAfterFinalRebase": false,
+  "newMasterChanges": "Owner merged Purchase reference UI #56 after the previous audit. Candidate-owned application files remain unchanged; shared Purchase assets retained.",
+  "pending": [
+    "Required GitHub CI blocked before job startup by repository billing",
+    "Owner financial/deployment acceptance where applicable"
+  ]
+}

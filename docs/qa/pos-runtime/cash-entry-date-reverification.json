@@ -1,0 +1,59 @@
+{
+  "masterBaseline": "44983553d87503d8119c5903161fa5753f38a1f9",
+  "testedApplicationHead": "f2ede48cac12de11ad9b7bbf1456a494c5d8d86b",
+  "testedBillingParentHead": "628d4d4136c3f199cfe015d07ecbc6a8fff2c85c",
+  "productionAccess": false,
+  "framework": "Rebuilt public Windows/H2 runtime; QA-only qvt.ftl/xsl-fo.ftl aliases; not pinned Linux/PostgreSQL acceptance",
+  "teardown": {
+    "httpPort": 18085,
+    "productionAccess": false,
+    "independentIfExistsReconnectFailed": true,
+    "tcpPort": 19097,
+    "listenersRemaining": 0,
+    "stoppedProcess": 15824
+  },
+  "scope": "Focused Cash Entry filter regression, executed in child #59 with identical #27 execution definitions; does not relabel the historical 522-check parent run",
+  "rootCause": "User-local filter dates were parsed in the JVM timezone; inclusive second-resolution end omitted fractional-second entries",
+  "correction": "User-timezone midnight to exclusive next local midnight; calendar date increment handles DST",
+  "checks": [
+    {
+      "name": "qapps: native search filters persisted rows",
+      "pass": true
+    },
+    {
+      "name": "qapps: Reset restores saved rows",
+      "pass": true
+    },
+    {
+      "name": "qapps: user-local DST day includes midnight and final millisecond but excludes next day",
+      "pass": true
+    },
+    {
+      "name": "qapps: boundary fixture spans a 25-hour DST day",
+      "pass": true
+    },
+    {
+      "name": "apps: native search filters persisted rows",
+      "pass": true
+    },
+    {
+      "name": "apps: Reset restores saved rows",
+      "pass": true
+    },
+    {
+      "name": "apps: user-local DST day includes midnight and final millisecond but excludes next day",
+      "pass": true
+    },
+    {
+      "name": "apps: boundary fixture spans a 25-hour DST day",
+      "pass": true
+    }
+  ],
+  "uiSuiteChecks": 323,
+  "uiSuiteLayouts": 84,
+  "financialTablesUnchanged": 12,
+  "reportSha256": "4ab5ab8cf43e19872ea13c08682ce1ad75b158c8dd67a44ffc5ae5f262847fa9",
+  "pending": [
+    "Owner aggregate acceptance and exact-head pinned acceptance remain mandatory"
+  ]
+}

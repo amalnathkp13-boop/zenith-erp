@@ -219,6 +219,8 @@
     <entity entity-name="PosPayment" package="zenith.erp.pos" short-alias="PosPayments">
         <field name="paymentId" type="id" is-pk="true"/>
         <field name="transactionId" type="id"/>
+        <field name="collectionSessionId" type="id"><description>Drawer receiving this tender; nullable for legacy payments. May differ from the sale session for later credit collection.</description></field>
+        <relationship type="one" title="Collection" related="zenith.erp.pos.PosSession"><key-map field-name="collectionSessionId" related="sessionId"/></relationship>
         <field name="paymentMethod" type="text-short"/>
         <field name="amount" type="currency-amount"/>
         <field name="digitalTransactionId" type="text-medium"><description>UPI/digital payment reference</description></field>

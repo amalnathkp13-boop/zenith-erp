@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Install only in a new loopback memory runtime; never deploy this helper. -->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd" default-menu-include="false">
+    <always-actions><script><![CDATA[
+        if (System.getProperty('purchase.pricing.qa.disposable') != 'true' ||
+            ec.web.request.serverPort != 18085 ||
+            !['127.0.0.1','0:0:0:0:0:0:0:1','::1'].contains(ec.web.request.remoteAddr) ||
+            !ec.user.isInGroup('ADMIN')) throw new org.moqui.context.ArtifactAuthorizationException('Disposable administrator only')
+    ]]></script></always-actions>
+    <transition name="initialize"><actions><script><![CDATA[
+        if (ec.entity.find('mantle.party.Party').condition('partyId','POS_UI_QA').disableAuthz().count()) {
+            ec.web.response.setStatus(409); ec.web.sendJsonResponse([initialized:false]); return
+        }
+        ec.entity.makeDataLoader().location('component://zenith-erp-pos/PosUiQaFixture.xml').load()
+        ec.user.setPreference('ACTIVE_ORGANIZATION','POS_UI_QA')
+        // Synthetic cash-book boundaries in the fixture user's US/Central DST fall-back day.
+        if (ec.user.timeZone.ID != 'US/Central') throw new IllegalStateException('Expected public fixture timezone')
+        def start = ec.l10n.parseTimestamp('2026-11-01 00:00:00','yyyy-MM-dd HH:mm:ss')
+        def end = ec.l10n.parseTimestamp('2026-11-02 00:00:00','yyyy-MM-dd HH:mm:ss')
+        [START:start, LAST:new java.sql.Timestamp(end.time - 1), NEXT:end].each { label, stamp ->
+            ec.entity.makeValue('zenith.erp.pos.PosCashEntry').setAll([cashEntryId:'POS_UI_QA_' + label,
+                organizationPartyId:'POS_UI_QA', entryType:'CashIn', entryDate:stamp, amount:1,
+                description:'POS_UI_QA_BOUNDARY_' + label]).create()
+        }
+        ec.web.sendJsonResponse([initialized:!ec.message.hasError()])
+    ]]></script></actions><default-response type="none"/></transition>
+    <widgets>
+        <label text="Disposable POS UI verification" type="h1"/>
+        <form-single name="PosUiQaInit" transition="initialize">
+            <field name="submitBtn"><default-field><submit text="Initialize disposable fixtures"/></default-field></field>
+        </form-single>
+    </widgets>
+</screen>

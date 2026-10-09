@@ -42,7 +42,7 @@
             <econdition field-name="productTypeEnumId" value="PtAsset"/>
             <order-by field-name="productName"/>
             <!-- ZE-SALES-014 f/u: org-isolate (standalone render bypasses the MANTLE_ACTIVE_ORG authz filter) -->
-            <econdition field-name="ownerPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+            <econdition field-name="ownerPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
         </entity-find>
 
         <script><![CDATA[

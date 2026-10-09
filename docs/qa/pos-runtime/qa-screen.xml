@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Disposable QA helper only; never installed in a production runtime. -->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd" default-menu-include="false">
+<transition name="initialize"><actions><script><![CDATA[
+    if (System.getProperty('pos.qa.disposable')!='true' || !ec.user.isInGroup('ADMIN')) {
+        ec.web.response.setStatus(403);ec.web.sendJsonResponse([denied:true]);return
+    }
+    if (ec.entity.find('mantle.party.Party').condition('partyId','POS_QA_A').disableAuthz().count()) {
+        ec.web.response.setStatus(409);ec.web.sendJsonResponse([denied:true]);return
+    }
+    def baseline=[modes:ec.entity.find('zenith.erp.pos.PosSalesMode').count(),sessionStatuses:ec.entity.find('moqui.basic.StatusItem').condition('statusTypeId','PosSession').count()]
+    ec.entity.makeDataLoader().location('component://zenith-erp-pos/PosQaTypes.xml').load()
+    ec.entity.makeDataLoader().location('component://zenith-erp-pos/PosQaFixture.xml').load()
+    ec.service.sync().name('zenith.inventory.InventoryStockServices.adjust#AssetOnHand').parameters([organizationPartyId:'POS_QA_A',productId:'POS_QA_A_STOCK',quantityDiff:100,reason:'Disposable POS opening fixture',facilityId:'POS_QA_A_FAC']).call()
+    def demo=ec.entity.find('moqui.security.UserAccount').condition('userId','EX_JOHN_DOE').one()
+    ['POS_QA_MANAGER','POS_QA_CASHIER','POS_QA_MANAGER_B'].each { id ->
+        def user=ec.entity.find('moqui.security.UserAccount').condition('userId',id).one()
+        ['currentPassword','passwordSalt','passwordHashType','passwordBase64'].each { user.set(it,demo.get(it)) }
+        user.disabled='N';user.requirePasswordChange='N';user.update()
+    }
+    ec.web.sendJsonResponse([initialized:true,normalSeedBaseline:baseline])
+]]></script></actions><default-response type="none"/></transition>
+<transition name="invoke"><actions><script><![CDATA[
+    if (System.getProperty('pos.qa.disposable')!='true' || !['pos.qa','pos.b.qa','pos.cashier.qa'].contains(ec.user.username)) {
+        ec.web.response.setStatus(403);ec.web.sendJsonResponse([denied:true]);return
+    }
+    def calls=[
+        gift:['zenith.pos.PosServices.pay#WithGiftCard',['transactionId','cardNumber','amount']],
+        points:['zenith.pos.PosServices.redeem#LoyaltyPoints',['transactionId','customerPartyId','pointsToRedeem']],
+        handover:['zenith.pos.PosServices.handover#Shift',['fromSessionId','toSessionId','actualCash']],
+        importProduct:['zenith.pos.PosServices.upsert#PosProduct',['sku','productName','listPrice','mrp','unit']],
+        scale:['zenith.pos.PosServices.configure#WeighingScale',['terminalId','connectionType','portName','baudRate','dataFormat']],
+        open:['zenith.pos.PosServices.open#PosSession',['terminalId','openingCash']],
+        close:['zenith.pos.PosServices.close#PosSession',['sessionId','closingCash']],
+        cart:['zenith.pos.PosServices.create#PosTransaction',['sessionId','transactionType','customerName','destinationRegionGeoId']],
+        add:['zenith.pos.PosServices.add#PosTransactionItem',['transactionId','productId','quantity','unitPrice','discountPercent','salesModeId','taxOn']],
+        remove:['zenith.pos.PosServices.remove#PosTransactionItem',['transactionId','itemSeqId']],
+        pay:['zenith.pos.PosServices.process#PosPayment',['transactionId','paymentMethod','amount','referenceNumber','collectionSessionId']],
+        complete:['zenith.pos.PosServices.complete#PosTransaction',['transactionId']],
+        credit:['zenith.pos.PosServices.complete#PosTransactionCredit',['transactionId','customerName','customerPhone']],
+        settle:['zenith.pos.PosServices.settle#PosCredit',['transactionId','paymentMethod','amount','referenceNumber','collectionSessionId']],
+        hold:['zenith.pos.PosServices.hold#Transaction',['transactionId','holdReason']],
+        recall:['zenith.pos.PosServices.recall#Transaction',['heldId','sessionId']],
+        void:['zenith.pos.PosServices.void#PosTransaction',['transactionId']],
+        receipt:['zenith.pos.PosServices.get#PosReceiptData',['transactionId']],
+        sync:['zenith.pos.PosSyncServices.sync#PosTransactionInvoice',['transactionId']],
+        reprice:['zenith.pos.PosServices.reprice#PosTransaction',['transactionId','salesModeId','taxOn']],
+        mode:['zenith.pos.PosServices.set#PosTransactionItemMode',['transactionId','itemSeqId','salesModeId','taxOn']],
+        price:['zenith.pos.PosServices.set#PosModePrice',['productId','salesModeId','price','thresholdQty']],
+        catalog:['zenith.pos.PosServices.export#PosCatalog',['organizationPartyId','terminalId']],
+        offline:['zenith.pos.PosServices.sync#OfflineTransactions',['transactions','terminalId']],
+        cashEntry:['zenith.pos.PosServices.record#PosCashEntry',['sessionId','entryType','amount','entryDate','reason','description','referenceNumber']],
+        cash:['zenith.pos.PosServices.record#CashMovement',['sessionId','transactionTypeEnumId','amount','reason']]
+    ]
+    def call=calls[ec.web.parameters.op]
+    if (!call) { ec.web.response.setStatus(400);ec.web.sendJsonResponse([denied:true]);return }
+    def params=[:];call[1].each { if(ec.web.parameters.containsKey(it)) params[it]=ec.web.parameters[it] }
+    if (params.transactions instanceof String) params.transactions=new groovy.json.JsonSlurper().parseText(params.transactions)
+    def result=ec.service.sync().name(call[0]).parameters(params).call()
+    def publicResult=[:]
+    ['productId','created','weighingScaleConfigId','sessionId','transactionId','itemSeqId','paymentId','heldId','cashEntryId','cashMgmtId','invoiceId','skipped','outstanding','fullyPaid','paidAmount','synced','syncedCount','syncedIds','failedCount','failed','errors','receipt','receiptData','products','customers','catalogJson','success'].each { if(result?.containsKey(it))publicResult[it]=result[it] }
+    def errors=ec.message.hasError() ? [ec.message.getErrorsString()] : []
+    ec.message.clearErrors()
+    ec.web.sendJsonResponse([result:publicResult,errors:errors])
+]]></script></actions><default-response type="none"/></transition>
+<transition name="scope"><actions><script><![CDATA[
+    if (System.getProperty('pos.qa.disposable')!='true' || ec.user.username!='pos.qa') {
+        ec.web.response.setStatus(403);ec.web.sendJsonResponse([denied:true]);return
+    }
+    def value=ec.web.parameters.org
+    if (!['POS_QA_A','POS_QA_B','NONE'].contains(value)) {
+        ec.web.response.setStatus(400);ec.web.sendJsonResponse([denied:true]);return
+    }
+    ec.user.setPreference('ACTIVE_ORGANIZATION',value=='NONE'?null:value)
+    ec.web.sendJsonResponse([scope:value])
+]]></script></actions><default-response type="none"/></transition>
+<transition name="reportClock"><actions><script><![CDATA[
+    if(System.getProperty('pos.qa.disposable')!='true' || ec.user.username!='pos.qa') {
+        ec.web.response.setStatus(403);ec.web.sendJsonResponse([denied:true]);return
+    }
+    def bill=ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',ec.web.parameters.transactionId).one()
+    if(!bill || bill.organizationPartyId!='POS_QA_A' || bill.statusId!='PtCompleted') {
+        ec.web.response.setStatus(403);ec.web.sendJsonResponse([denied:true]);return
+    }
+    def priorMillis=bill.entryDate.time
+    def mode=ec.web.parameters.mode
+    if(mode in ['early','late']) {
+        def clock=mode=='early'?'00:30:00.000':'23:59:59.999'
+        bill.entryDate=ec.l10n.parseTimestamp('2040-01-02 '+clock,'yyyy-MM-dd HH:mm:ss.SSS')
+    } else if(mode=='restore' && ec.web.parameters.originalMillis?.toString()==~ /[0-9]+/) {
+        bill.entryDate=new java.sql.Timestamp(Long.parseLong(ec.web.parameters.originalMillis.toString()))
+    } else {ec.web.response.setStatus(400);ec.web.sendJsonResponse([denied:true]);return}
+    bill.update()
+    ec.web.sendJsonResponse([changed:true,priorMillis:priorMillis])
+]]></script></actions><default-response type="none"/></transition>
+</screen>

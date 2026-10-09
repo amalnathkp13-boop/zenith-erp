@@ -131,9 +131,9 @@
                         <div>
                             <label style="display:block;font-size:12.5px;font-weight:600;color:#111827;margin-bottom:6px">Copies per product</label>
                             <div style="display:flex;align-items:stretch;border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;height:38px">
-                                <button type="button" id="bl-copies-dec" style="width:36px;background:#fff;border:none;border-right:1px solid #E5E7EB;color:#6B7280;cursor:pointer;display:flex;align-items:center;justify-content:center"><span class="material-icons" style="font-size:18px">remove</span></button>
+                                <button type="button" id="bl-copies-dec" aria-label="Decrease copies" title="Decrease copies" style="width:36px;background:#fff;border:none;border-right:1px solid #E5E7EB;color:#6B7280;cursor:pointer;display:flex;align-items:center;justify-content:center"><span class="material-icons" style="font-size:18px">remove</span></button>
                                 <input id="bl-copies" type="number" min="1" max="200" value="1" style="width:52px;text-align:center;border:none;outline:none;font-size:14px;color:#111827"/>
-                                <button type="button" id="bl-copies-inc" style="width:36px;background:#fff;border:none;border-left:1px solid #E5E7EB;color:#6B7280;cursor:pointer;display:flex;align-items:center;justify-content:center"><span class="material-icons" style="font-size:18px">add</span></button>
+                                <button type="button" id="bl-copies-inc" aria-label="Increase copies" title="Increase copies" style="width:36px;background:#fff;border:none;border-left:1px solid #E5E7EB;color:#6B7280;cursor:pointer;display:flex;align-items:center;justify-content:center"><span class="material-icons" style="font-size:18px">add</span></button>
                             </div>
                         </div>
                     </div>

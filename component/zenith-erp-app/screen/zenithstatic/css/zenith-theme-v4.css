@@ -1428,7 +1428,8 @@ body.zq-nav .q-drawer { display:none !important; }
 body.zq-nav .q-page-container { padding-left:224px !important; transition:padding-left .15s ease; }
 body.zq-nav.zq-side-collapsed .q-page-container { padding-left:62px !important; }
 /* light-restyle the Quasar header + push it right of the sidebar */
-body.zq-nav .q-header { left:224px !important; right:0 !important; width:auto !important; background:#fff !important; color:var(--z-ink,#2C2A3F) !important; border-bottom:1px solid var(--z-border,#E4DFF3) !important; box-shadow:0 1px 2px rgba(70,61,122,.05); z-index:2600 !important; }
+/* Fixed module tabs require a fixed header, including when Quasar reverses its reveal animation. */
+body.zq-nav .q-header { transform:none !important; left:224px !important; right:0 !important; width:auto !important; background:#fff !important; color:var(--z-ink,#2C2A3F) !important; border-bottom:1px solid var(--z-border,#E4DFF3) !important; box-shadow:0 1px 2px rgba(70,61,122,.05); z-index:2600 !important; }
 /* Moqui's test/dev skins use an ID selector for #top; match that specificity so the
    shared ZetaERP header stays white on disposable local tenants too. */
 body.zq-nav #top { background:#fff !important; color:var(--z-ink,#2C2A3F) !important; }
@@ -1702,7 +1703,7 @@ body.zq-nav .zenith-card > .row.items-center.justify-between > .q-pa-sm { displa
    technique the .cust-nc-src triggers use. */
 .sup-fo-native{position:absolute !important;width:1px !important;height:1px !important;padding:0 !important;margin:-1px !important;border:0 !important;overflow:hidden !important;clip:rect(0 0 0 0) !important;opacity:0 !important;pointer-events:none !important;min-height:0 !important}
 /* per-module sub-nav tabs (below the header; top set precisely by JS to header height) */
-#zq-subnav { position:fixed; top:51px; left:224px; right:0; height:40px; z-index:2500; background:#fff; border-bottom:1px solid var(--z-border,#E4DFF3); overflow-x:auto; overflow-y:hidden; white-space:nowrap; display:none; align-items:center; padding:0 6px; scrollbar-width:thin; scrollbar-color:#DCD3F2 transparent; }
+#zq-subnav { position:fixed; top:var(--zq-header-height,51px); left:224px; right:0; height:40px; z-index:2500; background:#fff; border-bottom:1px solid var(--z-border,#E4DFF3); overflow-x:auto; overflow-y:hidden; white-space:nowrap; display:none; align-items:center; padding:0 6px; scrollbar-width:thin; scrollbar-color:#DCD3F2 transparent; }
 #zq-subnav.show { display:flex; }
 body.zq-side-collapsed #zq-subnav { left:62px; }
 #zq-subnav::-webkit-scrollbar { height:6px; }
@@ -1711,10 +1712,9 @@ body.zq-side-collapsed #zq-subnav { left:62px; }
 #zq-subnav .zqsub-tab { display:inline-block; padding:9px 13px; text-decoration:none; color:#5A5273; font-size:13px; font-weight:600; border-bottom:2.5px solid transparent; flex:0 0 auto; }
 #zq-subnav .zqsub-tab:hover { color:var(--z-primary,#7C3AED); background:#F8F5FE; }
 #zq-subnav .zqsub-tab.on { background:#F5F3FF; border-top-left-radius:6px; border-top-right-radius:6px; color:var(--z-primary,#7C3AED); border-bottom-color:var(--z-primary,#7C3AED); font-weight:800; }
-/* when the sub-nav is visible, push the page content down to clear BOTH bars:
-   header reservation (~48px) + the fixed 40px #zq-subnav. 48px alone only cleared the
-   header, so the sub-nav floated over content and clipped the first line (ZE-QAPPS-SUBNAV). */
-body.zq-nav.zq-has-subnav .q-page-container { padding-top:88px !important; }
+/* Reserve the same measured height used by the fixed header and tabs on every module. */
+body.zq-nav .q-page-container { padding-top:var(--zq-header-height,51px) !important; }
+body.zq-nav.zq-has-subnav .q-page-container { padding-top:calc(var(--zq-header-height,51px) + var(--zq-subnav-height,40px)) !important; }
 
 /* theme-match: Quasar hardcodes .text-primary/.bg-primary to blue #1976d2 — force the violet brand on /qapps */
 .q-layout .text-primary { color:var(--z-primary,#7C3AED) !important; }
@@ -2571,7 +2571,7 @@ body.zq-nav .z-fitlist .q-field__messages{display:none}
 /* ================= My Subscription redesign (My_subscription.png) — TenantDashboard, both surfaces ================= */
 /* Keep the live light header on My Subscription; framework dev/test tints use #top and !important. */
 body:not(.body--dark):has(.mysub-wrap) #top{background:#fff!important}
-body.zq-nav:has(.mysub-wrap) .q-layout .q-page-container{padding-left:224px!important;padding-top:var(--zq-mysub-header-height,51px)!important}
+body.zq-nav:has(.mysub-wrap) .q-layout .q-page-container{padding-left:224px!important;padding-top:var(--zq-header-height,51px)!important}
 body.zq-nav.zq-side-collapsed:has(.mysub-wrap) .q-layout .q-page-container{padding-left:62px!important}
 body.zq-nav:has(.mysub-wrap) .q-drawer__backdrop{display:none!important}
 body.zq-nav.q-body--prevent-scroll:has(.mysub-wrap):has(.q-drawer--mobile):not(:has(.q-dialog)){position:static!important;overflow:auto!important}
@@ -3658,8 +3658,6 @@ body.zq-nav .q-btn i[class]:not([class~="fa"]):not([class~="glyphicon"]):not([cl
 }
 
 /* Sales keeps the existing ERP controls while reserving their measured height. */
-#zq-subnav.show[data-mod="sales"]{top:var(--zq-sales-header-height,51px)!important}
-body.zq-nav:has(#zq-subnav.show[data-mod="sales"]) .q-page-container{padding-top:calc(var(--zq-sales-header-height,51px) + 40px)!important}
 @media (max-width:1200px){
   body.zq-nav:has(#zq-subnav.show[data-mod="sales"]) .q-header .q-toolbar{display:grid!important;grid-template-columns:44px minmax(0,1fr) auto;gap:6px;padding:6px}
   body.zq-nav:has(#zq-subnav.show[data-mod="sales"]) #zq-topextra{display:contents}
@@ -3797,11 +3795,12 @@ body.zq-nav.q-body--prevent-scroll:has(#zq-subnav.show[data-mod="sales"]):has(.q
 .zc-contacts-list-page .q-card__actions>h5{flex:1 0 100%;margin:0;line-height:1.4}
 .zc-contacts-list-page .q-card__actions>.q-space{display:none}
 
+/* Bootstrap's header stays in document flow and sticks above all ERP module content. */
+/* The framework's 100% body height otherwise ends its sticky boundary at one viewport. */
+body:has(> #z-sidebar):not(.z-side-off){height:auto;min-height:100vh}
+body:has(> #z-sidebar):not(.z-side-off) #top{position:sticky;top:0;z-index:1000}
+@media(max-width:900px){body:has(> #z-sidebar):not(.z-side-off) #top{z-index:1100}}
 /* Contacts keeps the existing ERP controls while reserving their measured height. */
-/* Keep Quasar's reveal-on-scroll header joined to the fixed Contacts tabs. */
-body.zq-nav:has(#zq-subnav.show[data-mod="Contacts"]) .q-header{transform:none!important}
-#zq-subnav.show[data-mod="Contacts"]{top:var(--zq-contacts-header-height,51px)!important}
-body.zq-nav:has(#zq-subnav.show[data-mod="Contacts"]) .q-page-container{padding-top:calc(var(--zq-contacts-header-height,51px) + 40px)!important}
 @media (max-width:1200px){
   body.zq-nav:has(#zq-subnav.show[data-mod="Contacts"]) .q-header .q-toolbar{display:grid!important;grid-template-columns:44px minmax(0,1fr) auto;gap:6px;padding:6px}
   body.zq-nav:has(#zq-subnav.show[data-mod="Contacts"]) #zq-topextra{display:contents}
@@ -3928,4 +3927,38 @@ body:has(.inv-dashboard) .navbar > .container-fluid :is(a,button,input,select,te
     body:has(.inv-dashboard) #z-search .z-kbd,
     body:has(.inv-dashboard) #z-ownerview .zov-sep,
     body:has(.inv-dashboard) #z-ownerview .zov-org { display:none; }
+}
+
+.z-pos-page .z-termtable{max-width:100%;overflow-x:auto}
+.z-pos-page .z-termtable .q-table,.z-pos-page .z-termtable table{min-width:1450px;width:100%}
+.z-pos-page .z-termtable .q-field{min-width:100px}
+.z-pos-page .z-termtable .td:nth-child(2) .q-field{min-width:180px}
+.z-pos-page .z-termtable .td:nth-child(3) .q-field{min-width:220px}
+.z-pos-page .z-icobadge .material-icons{display:inline-flex;align-items:center;justify-content:center}
+.z-pos-page .zlc-foot-right{flex-wrap:wrap;max-width:100%}
+.z-pos-page .form-control,.z-pos-page textarea{max-width:100%;box-sizing:border-box}
+.z-pos-page .form-group,.z-pos-page .q-field{min-width:0}
+.z-pos-page .smode-grid > *{min-width:0}
+.z-pos-page .zenith-card{min-width:0;max-width:100%}
+/* Keep the cart reachable when the wrapped toolbars and payment area exceed the viewport. */
+.z-pos-page #pos-terminal-root{overflow-y:auto!important;overflow-x:hidden!important}
+.z-pos-page #pos-terminal-root > .nb-header{display:block!important;flex:0 0 auto!important;height:fit-content!important;align-self:start!important}
+.z-pos-page #pos-terminal-root > .nb-actionbar,.z-pos-page #pos-terminal-root > #posHelp_terminal{flex-shrink:0!important}
+.z-pos-page #pos-terminal-root .pos-main-layout{flex-shrink:0!important;min-height:300px!important}
+.z-pos-page #pos-terminal-root .pos-cart{min-height:240px!important}
+body.Terminal:not(.pos-mode-normal) .z-pos-page #pos-terminal-root{grid-template-rows:max-content max-content max-content minmax(240px,1fr) max-content max-content max-content max-content max-content!important}
+.z-pos-page #fsBtnIcon{display:inline-flex;align-items:center;justify-content:center}
+.z-pos-page #fsBtnIcon svg{width:18px;height:18px}
+@media(max-width:767px){
+  .z-pos-page .row > [class*="col-"]{width:100%;max-width:100%;min-width:0;float:none;box-sizing:border-box}
+  body.Terminal:not(.pos-mode-normal) .z-pos-page #pos-terminal-root{grid-template-columns:minmax(0,1fr)!important;grid-template-areas:"hd" "ab" "hb" "cat" "cart" "strip" "search" "total" "pay" "leg"!important;grid-template-rows:max-content max-content max-content max-content minmax(240px,1fr) max-content max-content max-content max-content max-content!important}
+  body.Terminal:not(.pos-mode-normal) .z-pos-page .pos-left-panel,body.Terminal:not(.pos-mode-normal) .z-pos-page .pos-cart{margin-left:16px!important;margin-right:16px!important}
+  body.Terminal:not(.pos-mode-normal) .z-pos-page .pos-product-grid{max-height:240px;flex:none!important}
+  body.Terminal:not(.pos-mode-normal) .z-pos-page .pos-sum-total{margin-left:16px!important;flex-wrap:wrap;gap:8px}
+  body.Terminal:not(.pos-mode-normal) .z-pos-page .pos-paywrap:has(> .pos-discount-btn){flex-wrap:wrap!important}
+  body.Terminal:not(.pos-mode-normal) .z-pos-page .pos-paywrap:has(> .pos-discount-btn) > button,body.Terminal:not(.pos-mode-normal) .z-pos-page .pos-paywrap:has(> .pos-discount-btn) > form,body.Terminal:not(.pos-mode-normal) .z-pos-page .pos-paywrap:has(> .pos-discount-btn) > div > button,body.Terminal:not(.pos-mode-normal) .z-pos-page .pos-paywrap:has(> .pos-discount-btn) > div > form{flex:1 1 calc(50% - 6px)!important}
+}
+@media(max-width:560px){
+  .z-pos-page .zlc-foot{flex-wrap:wrap}
+  .z-pos-page .zlc-foot-right{justify-content:flex-start}
 }

@@ -257,7 +257,7 @@
   </div>
   <#if k.items?has_content>
   <ul class="kb-ocard__items">
-    <#list k.items as it><li><span>${it.name}</span><span class="kb-ocard__q">&#215; ${it.qty}</span></li></#list>
+    <#list k.items as it><li><span>${it.name?html}</span><span class="kb-ocard__q">&#215; ${it.qty}</span></li></#list>
   </ul>
   </#if>
   <div class="kb-ocard__f"><button type="button" class="kb-oprint" onclick="kbPrintKot('${k.id}')"><@ic 'printer' 13/> Print</button></div>
@@ -325,9 +325,9 @@
         <div class="kb-grid" id="kb-grid">
           <#list menuItems as m>
             <article class="kb-card" data-id="${m.id}" data-name="${m.name?html}" data-price="${m.price}" data-cat="${m.cat}">
-              <div class="kb-card__img">${m.initial}</div>
+              <div class="kb-card__img">${m.initial?html}</div>
               <div class="kb-card__b">
-                <div class="kb-card__name">${m.name}</div>
+                <div class="kb-card__name">${m.name?html}</div>
                 <div class="kb-card__row">
                   <span class="kb-card__price">${m.priceStr}</span>
                   <button type="button" class="kb-add" onclick="kbAdd('${m.id}')"><@ic 'plus' 12/> Add</button>

@@ -46,7 +46,7 @@ services:
       # CI does not provision OpenSearch. Disable its client explicitly for the loader and HTTP JVM;
       # search-backed screens stay outside the render-smoke scope.
       - elasticsearch_url=
-      - JAVA_TOOL_OPTIONS=-Xms512m -Xmx1792m -Dsales.qa.disposable=true -Dbitronix.tm.serverId=zetaerp-staging -Duser.timezone=Asia/Kolkata -Ddefault_time_zone=Asia/Kolkata
+      - JAVA_TOOL_OPTIONS=-Xms512m -Xmx1792m -Dsales.qa.disposable=true -Dpos.qa.disposable=true -Dbitronix.tm.serverId=zetaerp-staging -Duser.timezone=Asia/Kolkata -Ddefault_time_zone=Asia/Kolkata
     ports:
       - "8080:8080"
     mem_limit: 2560m

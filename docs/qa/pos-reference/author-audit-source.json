@@ -1,0 +1,17 @@
+{
+  "basePr": 27,
+  "baseHead": "242f7cf7932d17c482b7d467f15de1ab4b7bfd95",
+  "testedUiApplicationHead": "e9a48c699779498f30443b76427a82c939b9f209",
+  "screens": 15,
+  "executionDefinitionsUnchanged": true,
+  "nativeFormsUnchangedExceptCashInputType": true,
+  "posServicesAndEntitiesUnchanged": true,
+  "sourceAuditOnly": true,
+  "nativeEvidence": "senior-review-reverification.json",
+  "pending": [
+    "Parent #27 must land before this PR can target master",
+    "Required CI cannot start until repository owner billing is resolved",
+    "Team approval of shared-theme runtime evidence"
+  ],
+  "runtimeComponentTreeUnchangedAfterRestack": true
+}

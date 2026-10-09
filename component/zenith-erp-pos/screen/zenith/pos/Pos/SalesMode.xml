@@ -253,7 +253,7 @@
                     <default-field title=""><label text="" type="span"/></default-field></field>
                 <field name="deleteBtn">
                     <conditional-field name="mode_delete_write" condition="modCanWrite" title="">
-                    <link url="deleteMode" text="" icon="fa fa-trash" btn-type="danger"
+                    <link url="deleteMode" text="Delete" icon="fa fa-trash" btn-type="danger"
                           parameter-map="[salesModeId:salesModeId]"
                           confirmation="Delete this sales mode?"/>
                     </conditional-field>
@@ -305,7 +305,7 @@
                     <default-field title=""><label text="" type="span"/></default-field></field>
                 <field name="deleteBtn">
                     <conditional-field name="orgrule_delete_write" condition="modCanWrite" title="">
-                    <link url="deleteOrgRule" text="" icon="fa fa-trash" btn-type="danger"
+                    <link url="deleteOrgRule" text="Delete" icon="fa fa-trash" btn-type="danger"
                           parameter-map="[salesModeId:salesModeId]" confirmation="Remove this rule?"/>
                     </conditional-field>
                     <default-field title=""><label text="" type="span"/></default-field></field>
@@ -343,7 +343,7 @@
                 </default-field></field>
                 <field name="removeBtn">
                     <conditional-field name="tm_remove_write" condition="modCanWrite" title="">
-                    <link url="removeTerminal" text="" icon="fa fa-unlink" btn-type="danger"
+                    <link url="removeTerminal" text="Remove" icon="fa fa-unlink" btn-type="danger"
                           parameter-map="[terminalId:tm.terminalId, salesModeId:tm.salesModeId]"
                           confirmation="Remove this assignment?"/>
                     </conditional-field>

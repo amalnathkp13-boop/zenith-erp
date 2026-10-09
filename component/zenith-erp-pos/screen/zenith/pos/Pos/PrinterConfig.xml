@@ -47,7 +47,7 @@
 
     <actions>
         <entity-find entity-name="zenith.erp.pos.PrinterConfiguration" list="allPrinters">
-            <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+            <econdition field-name="organizationPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
             <order-by field-name="printerName"/>
         </entity-find>
         <entity-find entity-name="moqui.basic.Enumeration" list="printerTypeEnums">
@@ -55,12 +55,12 @@
             <order-by field-name="sequenceNum"/>
         </entity-find>
         <entity-find entity-name="zenith.erp.pos.PosTerminal" list="allTerminals">
-            <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+            <econdition field-name="organizationPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
             <order-by field-name="terminalName"/>
         </entity-find>
         <entity-find entity-name="zenith.erp.pos.PosReceiptTemplate" list="receiptTemplates">
             <econdition field-name="isActive" value="Y"/>
-            <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+            <econdition field-name="organizationPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
             <order-by field-name="templateName"/>
         </entity-find>
         <script><![CDATA[
@@ -220,9 +220,9 @@
                     <field name="ipAddress"><header-field title="IP Address"/><default-field title="IP Address"><text-line size="14"/></default-field></field>
                     <field name="port"><header-field title="Port"/><default-field title="Port"><text-line size="6"/></default-field></field>
                     <field name="terminalId"><header-field title="Terminal"/><default-field title="Terminal">
-                        <drop-down allow-empty="true"><entity-options key="${terminalId}" text="${terminalName}"><entity-find entity-name="zenith.erp.pos.PosTerminal"><econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/><order-by field-name="terminalName"/></entity-find></entity-options></drop-down></default-field></field>
+                        <drop-down allow-empty="true"><entity-options key="${terminalId}" text="${terminalName}"><entity-find entity-name="zenith.erp.pos.PosTerminal"><econdition field-name="organizationPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/><order-by field-name="terminalName"/></entity-find></entity-options></drop-down></default-field></field>
                     <field name="receiptTemplateId"><header-field title="Template"/><default-field title="Template">
-                        <drop-down allow-empty="true"><entity-options key="${templateId}" text="${templateName}"><entity-find entity-name="zenith.erp.pos.PosReceiptTemplate"><econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/><order-by field-name="templateName"/></entity-find></entity-options></drop-down></default-field></field>
+                        <drop-down allow-empty="true"><entity-options key="${templateId}" text="${templateName}"><entity-find entity-name="zenith.erp.pos.PosReceiptTemplate"><econdition field-name="organizationPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/><order-by field-name="templateName"/></entity-find></entity-options></drop-down></default-field></field>
                     <field name="isActive"><header-field title="Status"/><default-field title="Status">
                         <drop-down><option key="Y" text="Yes"/><option key="N" text="No"/></drop-down></default-field></field>
                     <field name="submitBtn"><header-field title="Actions"/><default-field title="Actions"><submit text="Update"/></default-field></field>

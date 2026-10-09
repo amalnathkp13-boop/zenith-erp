@@ -21,7 +21,7 @@ on:
         required: true
         default: none
         type: choice
-        options: [none, ui, security, sales, tax]
+        options: [none, ui, security, sales, tax, pos]
   pull_request:
     branches: [master]
   push:                 # on-merge runs: re-check the merged result on master (no PR comment on push)
@@ -89,11 +89,11 @@ jobs:
       - name: Validate optional verification inputs
         run: |
           set -euo pipefail
-          case "$CONTACTS_PROFILE" in none|ui|security|sales|tax) ;; *) echo "::error::Unknown verification profile"; exit 1;; esac
+          case "$CONTACTS_PROFILE" in none|ui|security|sales|tax|pos) ;; *) echo "::error::Unknown verification profile"; exit 1;; esac
           if [ -n "$CANDIDATE_SHA" ]; then
             [[ "$CANDIDATE_SHA" =~ ^[a-f0-9]{40}$ ]] || { echo "::error::Candidate must be an exact commit SHA"; exit 1; }
           elif [ "$CONTACTS_PROFILE" != none ]; then
-            echo "::error::A Contacts profile requires an exact candidate SHA"; exit 1
+            echo "::error::A module profile requires an exact candidate SHA"; exit 1
           fi
 
       - name: Checkout pinned candidate
@@ -114,6 +114,26 @@ jobs:
           fi
           test -d "$SOURCE/component"
           echo "CONTACTS_QA_SOURCE_DIR=$SOURCE" >> "$GITHUB_ENV"
+
+      - name: Select POS verification for POS changes
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          enabled=false
+          if [ "$CONTACTS_PROFILE" = pos ]; then
+            enabled=true
+          elif [ "$CONTACTS_PROFILE" = none ] && [ -f "$CONTACTS_QA_SOURCE_DIR/docs/qa/pos-runtime/verify-runtime.cjs" ]; then
+            if [ "$EVENT_NAME" = pull_request ]; then
+              gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --jq '.[].filename' > "$RUNNER_TEMP/pos-changed-files.txt"
+              if grep -Eq '^(component/zenith-erp-pos/|docs/qa/pos-runtime/|component/zenith-erp-app/screen/zenithstatic/(js/pos-|css/zenith-theme-v4.css))' "$RUNNER_TEMP/pos-changed-files.txt"; then enabled=true; fi
+            elif [ "$EVENT_NAME" = push ]; then
+              enabled=true
+            fi
+          fi
+          echo "POS_QA_ENABLED=$enabled" >> "$GITHUB_ENV"
+          if [ "$enabled" = true ]; then echo 'CONTACTS_PROFILE=pos' >> "$GITHUB_ENV"; fi
 
       - name: Download the clean staging image
         run: gh release download "$IMAGE_RELEASE" --repo "$GITHUB_REPOSITORY" --pattern "$IMAGE_ASSET" --dir "$RUNNER_TEMP"
@@ -280,6 +300,17 @@ jobs:
           p.write_text(s.replace(old,old+'<subscreens-item name="TaxQaAcceptance" location="component://zenith-erp-tax/screen/zenith/tax/TaxQaAcceptance.xml" menu-include="false"/>',1))
           PY
           docker cp "$RUNNER_TEMP/tax-parent.xml" "$CID:/opt/moqui/runtime/component/zenith-erp-tax/screen/zenith/tax.xml"
+
+      - name: Install disposable POS verification helper
+        if: env.POS_QA_ENABLED == 'true'
+        run: |
+          set -euo pipefail
+          QA_DIR="$CONTACTS_QA_SOURCE_DIR/docs/qa/pos-runtime"
+          test -f "$QA_DIR/verify-runtime.cjs"
+          CID=$(docker compose -f "$COMPOSE" ps -q moqui)
+          docker cp "$QA_DIR/fixture.xml" "$CID:/opt/moqui/runtime/component/zenith-erp-pos/PosQaFixture.xml"
+          docker cp "$QA_DIR/fixture-types.xml" "$CID:/opt/moqui/runtime/component/zenith-erp-pos/PosQaTypes.xml"
+          docker cp "$QA_DIR/qa-screen.xml" "$CID:/opt/moqui/runtime/component/zenith-erp-pos/screen/zenith/pos/Pos/PosQaAcceptance.xml"
 
       - name: Load discovered seed, demo and isolation fixtures in one invocation
         # Exploded Moqui runtime: java -cp . MoquiStart from /opt/moqui; java at /opt/java/openjdk/bin/java.
@@ -487,12 +518,16 @@ jobs:
           DBID=$(docker compose -f "$COMPOSE" ps -q db)
           docker exec "$DBID" psql -U moqui -d moqui -P pager=off -c \
             "SELECT transaction_id, sales_mode_id, subtotal, total_tax_amount, grand_total, payable_amount, round_off, status_id, transaction_number FROM pos_transaction WHERE transaction_id IN ('$A','$B','$C','$D') ORDER BY entry_date;" 2>&1 || true
+          # These captured ids belong only to the disposable billing fixtures. POS and
+          # Invoice ids have independent sequences and may coincide after async sync.
+          docker exec "$DBID" psql -U moqui -d moqui -P pager=off -c \
+            "SELECT reference_type, reference_id, tax_name, sum(tax_amount) AS tax_amount FROM tax_line_detail WHERE reference_id IN ('$A','$B','$C','$D') GROUP BY reference_type, reference_id, tax_name ORDER BY reference_id, reference_type, tax_name;" 2>&1 || true
           FAILED=0
           chk(){ r=$(docker exec "$DBID" psql -U moqui -d moqui -tAc "$2" 2>/dev/null | tr -d '[:space:]'); [ "$r" = "t" ] || { echo "::error::billing assert FAILED: $1 (got '$r')"; FAILED=1; }; }
           # A — RETAIL cash, CITEST_BW18 (mrp 100, GST18): grand 118, CGST 9 + SGST 9
           chk "A header (grand 118 / tax 18 / sub 100 / payable 118 / completed / bill#)" "SELECT (grand_total=118.00 AND total_tax_amount=18.00 AND subtotal=100.00 AND payable_amount=118 AND status_id='PtCompleted' AND transaction_number IS NOT NULL) FROM pos_transaction WHERE transaction_id='$A';"
           chk "A line (retail unit_price=100, qty 1)" "SELECT (unit_price=100.00 AND quantity=1) FROM pos_transaction_item WHERE transaction_id='$A';"
-          chk "A CGST=9 + SGST=9 (intra-state)" "SELECT ((SELECT coalesce(sum(tax_amount),0) FROM tax_line_detail WHERE reference_id='$A' AND tax_name='CGST')=9.00 AND (SELECT coalesce(sum(tax_amount),0) FROM tax_line_detail WHERE reference_id='$A' AND tax_name='SGST')=9.00);"
+          chk "A CGST=9 + SGST=9 (intra-state)" "SELECT ((SELECT coalesce(sum(tax_amount),0) FROM tax_line_detail WHERE reference_type='PosTransactionItem' AND reference_id='$A' AND tax_name='CGST')=9.00 AND (SELECT coalesce(sum(tax_amount),0) FROM tax_line_detail WHERE reference_type='PosTransactionItem' AND reference_id='$A' AND tax_name='SGST')=9.00);"
           # B — WHOLESALE cash, CITEST_BW12 x3 (mode 180, GST12): grand 604.80, payable 605, roundOff 0.20
           chk "B header (grand 604.80 / tax 64.80 / sub 540 / payable 605 / roundoff 0.20)" "SELECT (grand_total=604.80 AND total_tax_amount=64.80 AND subtotal=540.00 AND payable_amount=605 AND round_off=0.20 AND status_id='PtCompleted') FROM pos_transaction WHERE transaction_id='$B';"
           chk "B line (wholesale unit_price=180, qty 3)" "SELECT (unit_price=180.00 AND quantity=3) FROM pos_transaction_item WHERE transaction_id='$B';"
@@ -503,6 +538,26 @@ jobs:
           chk "D header (grand 118 / payable 118 / completed)" "SELECT (grand_total=118.00 AND payable_amount=118 AND status_id='PtCompleted') FROM pos_transaction WHERE transaction_id='$D';"
           chk "D split tenders (2 rows summing 118.00)" "SELECT ((SELECT count(*) FROM pos_payment WHERE transaction_id='$D')=2 AND (SELECT sum(amount) FROM pos_payment WHERE transaction_id='$D')=118.00);"
           [ "$FAILED" = "0" ] && echo "OK — billing math matches golden baseline (modes RETAIL/WHOLESALE/EMPLOYEE, slabs 5/12/18%, whole-rupee rounding, split reconcile)" || { echo "::error::one or more billing math asserts failed"; exit 1; }
+
+      - name: Verify POS functions, isolation and responsive UI
+        if: env.POS_QA_ENABLED == 'true'
+        env:
+          POS_QA_BASE: http://localhost:8080
+          POS_QA_OUT: ${{ runner.temp }}/pos-profile
+        run: |
+          set -euo pipefail
+          export NODE_PATH="$GITHUB_WORKSPACE/node_modules"
+          export POS_QA_CHROME=$(node -e 'process.stdout.write(require("puppeteer").executablePath())')
+          node "$CONTACTS_QA_SOURCE_DIR/docs/qa/pos-runtime/verify-runtime.cjs"
+
+      - name: Save POS verification evidence
+        if: always() && env.POS_QA_ENABLED == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pos-${{ inputs.candidate_sha || github.sha }}
+          path: ${{ runner.temp }}/pos-profile
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Verify Sales functions, isolation and responsive UI
         # Reconciled from PR #23: runs the Sales QA suite against the running app. Dispatch-only +
@@ -625,5 +680,24 @@ jobs:
         with:
           name: tax-teardown-${{ inputs.candidate_sha }}
           path: ${{ runner.temp }}/tax-cleanup
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Assert POS disposable database teardown
+        if: always() && env.POS_QA_ENABLED == 'true'
+        run: |
+          set -euo pipefail
+          PROJECT=$(docker compose -f "$COMPOSE" config --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["name"])')
+          test -z "$(docker ps -aq --filter "label=com.docker.compose.project=$PROJECT")"
+          test -z "$(docker volume ls -q --filter "label=com.docker.compose.project=$PROJECT")"
+          mkdir -p "$RUNNER_TEMP/pos-cleanup"
+          printf '{"containersRemaining":0,"volumesRemaining":0,"databaseStorage":"removed with disposable tmpfs container"}\n' > "$RUNNER_TEMP/pos-cleanup/teardown.json"
+
+      - name: Save POS teardown proof
+        if: always() && env.POS_QA_ENABLED == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pos-teardown-${{ inputs.candidate_sha || github.sha }}
+          path: ${{ runner.temp }}/pos-cleanup
           if-no-files-found: error
           retention-days: 14

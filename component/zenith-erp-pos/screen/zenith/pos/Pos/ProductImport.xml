@@ -159,7 +159,7 @@
         <entity-find entity-name="mantle.product.Product" list="recentProducts" limit="20">
             <econdition field-name="productTypeEnumId" value="PtAsset"/>
             <!-- Org isolation: only this org's products (admin with no active org sees all). -->
-            <econdition field-name="ownerPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+            <econdition field-name="ownerPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
             <order-by field-name="-lastUpdatedStamp"/>
         </entity-find>
     </actions>

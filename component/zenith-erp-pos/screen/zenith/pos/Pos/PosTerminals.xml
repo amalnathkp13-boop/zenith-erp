@@ -35,13 +35,13 @@
         <set field="hasActiveOrg" from="activeOrgId != null &amp;&amp; activeOrgId != '_NA_'"/>
         <entity-find entity-name="zenith.erp.pos.PosTerminal" list="terminalList">
             <!-- ZE-POS-TERM-VIS: explicit org scope (belt-and-suspenders with ZTF_POSTERMINAL). -->
-            <econdition field-name="organizationPartyId" from="activeOrgId" ignore-if-empty="true"/>
+            <econdition field-name="organizationPartyId" from="(activeOrgId) ?: '__NO_ORGANIZATION__'"/>
             <order-by field-name="terminalName"/>
         </entity-find>
         <!-- ZE-SHOP: facilities a terminal may bind to — this org's stores/warehouses (a no-org super-admin sees all). -->
         <entity-find entity-name="mantle.facility.Facility" list="orgFacilities">
             <econdition field-name="facilityTypeEnumId" operator="in" value="FcTpWarehouse,FcTpStore,FcTpRetailStore"/>
-            <econdition field-name="ownerPartyId" from="hasActiveOrg ? activeOrgId : null" ignore-if-empty="true"/>
+            <econdition field-name="ownerPartyId" from="(hasActiveOrg ? activeOrgId : null) ?: '__NO_ORGANIZATION__'"/>
             <order-by field-name="facilityName"/>
         </entity-find>
         <script><![CDATA[
@@ -58,7 +58,7 @@
     </actions>
 
     <widgets>
-        <render-mode><text type="html,qvt" template="true"><![CDATA[<details id="posHelp_terminals" open style="background:#e8f0fe;border:1px solid #4285f4;border-left:6px solid #1a73e8;border-radius:10px;padding:10px 16px;margin:8px 12px 4px 12px;font-family:Segoe UI,Arial,sans-serif"><summary style="cursor:pointer;font-weight:800;font-size:15px;color:#174ea6;outline:none">&#128421; Terminals &mdash; quick help <span style="font-weight:600;color:#5f6368;font-size:12px">(click to hide / show)</span></summary><div style="font-size:13px;color:#202124;line-height:1.9;margin-top:8px">Each billing counter / till is a <b>terminal</b>.<br><b>1</b>&nbsp;<b>Add Terminal</b> for every device that bills, and mark it active.<br><b>2</b>&nbsp;Sessions and sales are tracked separately for each terminal.</div></details>]]></text></render-mode>
+        <render-mode><text type="html,qvt" template="true"><![CDATA[<details id="posHelp_terminals" class="pos-reference-help" style="background:#e8f0fe;border:1px solid #4285f4;border-left:6px solid #1a73e8;border-radius:10px;padding:10px 16px;margin:8px 12px 4px 12px;font-family:Segoe UI,Arial,sans-serif"><summary style="cursor:pointer;font-weight:800;font-size:15px;color:#174ea6;outline:none">&#128421; Terminals &mdash; quick help <span style="font-weight:600;color:#5f6368;font-size:12px">(click to hide / show)</span></summary><div style="font-size:13px;color:#202124;line-height:1.9;margin-top:8px">Each billing counter / till is a <b>terminal</b>.<br><b>1</b>&nbsp;<b>Add Terminal</b> for every device that bills, and mark it active.<br><b>2</b>&nbsp;Sessions and sales are tracked separately for each terminal.</div></details>]]></text></render-mode>
         <container style="q-pa-md">
             <!-- Page header: title + subtitle (left), Add Terminal solid CTA (right) -->
             <container style="zsec-hdr row items-center justify-between q-mb-lg">

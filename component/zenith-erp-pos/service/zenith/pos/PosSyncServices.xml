@@ -84,7 +84,7 @@
                 def docType = (((txn.totalTaxAmount ?: 0) as BigDecimal) > 0) ? "Tax Invoice" : "Bill of Supply"
                 ec.service.sync().name("update#mantle.account.invoice.Invoice").parameters([
                     invoiceId:iid, customInvoiceNumber:txn.transactionNumber, gstInvoiceNumber:txn.transactionNumber,
-                    financialYearPrefix:fy?.fyLabel, totalTaxableAmount:txn.subtotal, totalTaxAmount:txn.totalTaxAmount,
+                    financialYearPrefix:fy?.fyLabel, invoiceTotal:txn.grandTotal, unpaidTotal:txn.grandTotal, totalTaxableAmount:txn.subtotal, totalTaxAmount:txn.totalTaxAmount,
                     roundOffAmount:txn.roundOff, documentType:docType, statusId:"InvoiceFinalized", facilityId:_shopFac]).call()
 
                 // Deplete per line, but ONLY for products marked inventoryTracked (an opening count was entered).
