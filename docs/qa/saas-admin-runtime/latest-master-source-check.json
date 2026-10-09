@@ -1,13 +1,13 @@
 {
   "pr": 50,
-  "latestMaster": "17ffe46d8a61e67b1ea7aa4ff0fe4dfc92db346e",
-  "sourceCandidateHead": "bdfba6fc5bd7ffc2eb087baf242f879aba008462",
-  "previousCandidate": "2d577662ba4ef19b193181989c1f78da706218fc",
+  "latestMaster": "44983553d87503d8119c5903161fa5753f38a1f9",
+  "sourceCandidateHead": "26ddd47e8aa1c8f13066970547538efe52233427",
+  "previousCandidate": "b1bddcddd7752699cb8684ce8ff18300de9cd9a4",
   "ownedApplicationFilesUnchanged": 13,
   "sharedAssetRegistrationsReconciled": true,
   "nativeRuntimeEvidenceMaster": "d9dca975d4f22a74470ae0a3b8bebe16fc57b1a3",
   "runtimeRetestAfterFinalRebase": false,
-  "newMasterChanges": "Merged own Pricing, Barcode, Shops and My Subscription UI plus inventory digital-asset serial tracking; candidate-owned execution files unchanged.",
+  "newMasterChanges": "Owner merged Purchase reference UI #56 after the previous audit. Candidate-owned application files remain unchanged; shared Purchase assets retained.",
   "pending": [
     "Required GitHub CI blocked before job startup by repository billing",
     "Owner financial/deployment acceptance where applicable"
