@@ -1,0 +1,1132 @@
+{
+  "results": [
+    {
+      "shell": "apps",
+      "width": 320,
+      "scroll": 320,
+      "root": {
+        "left": 15,
+        "right": 305,
+        "width": 290
+      },
+      "overflow": [],
+      "cramped": [],
+      "popup": {
+        "left": 29,
+        "right": 289,
+        "scroll": 320
+      }
+    },
+    {
+      "shell": "apps",
+      "width": 360,
+      "scroll": 360,
+      "root": {
+        "left": 15,
+        "right": 345,
+        "width": 330
+      },
+      "overflow": [],
+      "cramped": [],
+      "popup": {
+        "left": 29,
+        "right": 289,
+        "scroll": 360
+      }
+    },
+    {
+      "shell": "apps",
+      "width": 390,
+      "scroll": 390,
+      "root": {
+        "left": 15,
+        "right": 375,
+        "width": 360
+      },
+      "overflow": [],
+      "cramped": [],
+      "popup": {
+        "left": 29,
+        "right": 289,
+        "scroll": 390
+      }
+    },
+    {
+      "shell": "apps",
+      "width": 600,
+      "scroll": 600,
+      "root": {
+        "left": 15,
+        "right": 585,
+        "width": 570
+      },
+      "overflow": [],
+      "cramped": [],
+      "popup": {
+        "left": 39,
+        "right": 299,
+        "scroll": 600
+      }
+    },
+    {
+      "shell": "apps",
+      "width": 768,
+      "scroll": 768,
+      "root": {
+        "left": 15,
+        "right": 753,
+        "width": 738
+      },
+      "overflow": [],
+      "cramped": [],
+      "popup": {
+        "left": 39,
+        "right": 299,
+        "scroll": 768
+      }
+    },
+    {
+      "shell": "apps",
+      "width": 820,
+      "scroll": 820,
+      "root": {
+        "left": 15,
+        "right": 805,
+        "width": 790
+      },
+      "overflow": [],
+      "cramped": [],
+      "popup": {
+        "left": 39,
+        "right": 299,
+        "scroll": 820
+      }
+    },
+    {
+      "shell": "apps",
+      "width": 1024,
+      "scroll": 1024,
+      "root": {
+        "left": 239,
+        "right": 1009,
+        "width": 770
+      },
+      "overflow": [],
+      "cramped": [],
+      "popup": {
+        "left": 263,
+        "right": 523,
+        "scroll": 1024
+      }
+    },
+    {
+      "shell": "apps",
+      "width": 1280,
+      "scroll": 1280,
+      "root": {
+        "left": 239,
+        "right": 1265,
+        "width": 1026
+      },
+      "overflow": [],
+      "cramped": [],
+      "popup": {
+        "left": 593.1875,
+        "right": 853.1875,
+        "scroll": 1280
+      }
+    },
+    {
+      "shell": "apps",
+      "width": 1366,
+      "scroll": 1366,
+      "root": {
+        "left": 239,
+        "right": 1351,
+        "width": 1112
+      },
+      "overflow": [],
+      "cramped": [],
+      "popup": {
+        "left": 679.1875,
+        "right": 939.1875,
+        "scroll": 1366
+      }
+    },
+    {
+      "shell": "apps",
+      "width": 1440,
+      "scroll": 1440,
+      "root": {
+        "left": 239,
+        "right": 1425,
+        "width": 1186
+      },
+      "overflow": [],
+      "cramped": [],
+      "popup": {
+        "left": 753.1875,
+        "right": 1013.1875,
+        "scroll": 1440
+      }
+    },
+    {
+      "shell": "apps",
+      "width": 1920,
+      "scroll": 1920,
+      "root": {
+        "left": 239,
+        "right": 1905,
+        "width": 1666
+      },
+      "overflow": [],
+      "cramped": [],
+      "popup": {
+        "left": 1233.1875,
+        "right": 1493.1875,
+        "scroll": 1920
+      }
+    },
+    {
+      "shell": "apps",
+      "width": 2560,
+      "scroll": 2560,
+      "root": {
+        "left": 239,
+        "right": 2545,
+        "width": 2306
+      },
+      "overflow": [],
+      "cramped": [],
+      "popup": {
+        "left": 1873.1875,
+        "right": 2133.1875,
+        "scroll": 2560
+      }
+    },
+    {
+      "shell": "apps",
+      "width": 320,
+      "mode": "long-labels-and-totals",
+      "geometry": {
+        "client": 290,
+        "scroll": 290,
+        "document": 320,
+        "overflow": [
+          {
+            "cls": "zdh-no",
+            "tag": "DIV",
+            "client": 67,
+            "scroll": 100
+          },
+          {
+            "cls": "zdh-no",
+            "tag": "DIV",
+            "client": 67,
+            "scroll": 101
+          },
+          {
+            "cls": "zdh-no",
+            "tag": "DIV",
+            "client": 67,
+            "scroll": 101
+          },
+          {
+            "cls": "zdh-no",
+            "tag": "DIV",
+            "client": 67,
+            "scroll": 102
+          },
+          {
+            "cls": "zdh-no",
+            "tag": "DIV",
+            "client": 59,
+            "scroll": 92
+          },
+          {
+            "cls": "zdh-no",
+            "tag": "DIV",
+            "client": 59,
+            "scroll": 95
+          },
+          {
+            "cls": "zdh-no",
+            "tag": "DIV",
+            "client": 59,
+            "scroll": 95
+          }
+        ]
+      },
+      "pass": true
+    },
+    {
+      "shell": "apps",
+      "width": 320,
+      "mode": "customize-half",
+      "geometry": [
+        {
+          "left": 29,
+          "right": 291,
+          "client": 262,
+          "scroll": 262
+        },
+        {
+          "left": 29,
+          "right": 291,
+          "client": 262,
+          "scroll": 262
+        },
+        {
+          "left": 29,
+          "right": 291,
+          "client": 262,
+          "scroll": 262
+        },
+        {
+          "left": 29,
+          "right": 291,
+          "client": 262,
+          "scroll": 262
+        },
+        {
+          "left": 29,
+          "right": 291,
+          "client": 262,
+          "scroll": 262
+        }
+      ],
+      "pass": true
+    },
+    {
+      "shell": "apps",
+      "width": 320,
+      "mode": "customize-third",
+      "geometry": [
+        {
+          "left": 29,
+          "right": 291,
+          "client": 262,
+          "scroll": 262
+        },
+        {
+          "left": 29,
+          "right": 291,
+          "client": 262,
+          "scroll": 262
+        },
+        {
+          "left": 29,
+          "right": 291,
+          "client": 262,
+          "scroll": 262
+        },
+        {
+          "left": 29,
+          "right": 291,
+          "client": 262,
+          "scroll": 262
+        },
+        {
+          "left": 29,
+          "right": 291,
+          "client": 262,
+          "scroll": 262
+        }
+      ],
+      "pass": true
+    },
+    {
+      "shell": "apps",
+      "width": 768,
+      "mode": "customize-half",
+      "geometry": [
+        {
+          "left": 39,
+          "right": 729,
+          "client": 690,
+          "scroll": 690
+        },
+        {
+          "left": 39,
+          "right": 729,
+          "client": 690,
+          "scroll": 690
+        },
+        {
+          "left": 39,
+          "right": 729,
+          "client": 690,
+          "scroll": 690
+        },
+        {
+          "left": 39,
+          "right": 729,
+          "client": 690,
+          "scroll": 690
+        },
+        {
+          "left": 39,
+          "right": 729,
+          "client": 690,
+          "scroll": 690
+        }
+      ],
+      "pass": true
+    },
+    {
+      "shell": "apps",
+      "width": 768,
+      "mode": "customize-third",
+      "geometry": [
+        {
+          "left": 39,
+          "right": 729,
+          "client": 690,
+          "scroll": 690
+        },
+        {
+          "left": 39,
+          "right": 729,
+          "client": 690,
+          "scroll": 690
+        },
+        {
+          "left": 39,
+          "right": 729,
+          "client": 690,
+          "scroll": 690
+        },
+        {
+          "left": 39,
+          "right": 729,
+          "client": 690,
+          "scroll": 690
+        },
+        {
+          "left": 39,
+          "right": 729,
+          "client": 690,
+          "scroll": 690
+        }
+      ],
+      "pass": true
+    },
+    {
+      "shell": "apps",
+      "width": 1024,
+      "mode": "customize-half",
+      "geometry": [
+        {
+          "left": 263,
+          "right": 985,
+          "client": 722,
+          "scroll": 722
+        },
+        {
+          "left": 263,
+          "right": 985,
+          "client": 722,
+          "scroll": 722
+        },
+        {
+          "left": 263,
+          "right": 985,
+          "client": 722,
+          "scroll": 722
+        },
+        {
+          "left": 263,
+          "right": 985,
+          "client": 722,
+          "scroll": 722
+        },
+        {
+          "left": 263,
+          "right": 985,
+          "client": 722,
+          "scroll": 722
+        }
+      ],
+      "pass": true
+    },
+    {
+      "shell": "apps",
+      "width": 1024,
+      "mode": "customize-third",
+      "geometry": [
+        {
+          "left": 263,
+          "right": 985,
+          "client": 722,
+          "scroll": 722
+        },
+        {
+          "left": 263,
+          "right": 985,
+          "client": 722,
+          "scroll": 722
+        },
+        {
+          "left": 263,
+          "right": 985,
+          "client": 722,
+          "scroll": 722
+        },
+        {
+          "left": 263,
+          "right": 985,
+          "client": 722,
+          "scroll": 722
+        },
+        {
+          "left": 263,
+          "right": 985,
+          "client": 722,
+          "scroll": 722
+        }
+      ],
+      "pass": true
+    },
+    {
+      "shell": "apps",
+      "width": 1440,
+      "mode": "customize-half",
+      "geometry": [
+        {
+          "left": 263,
+          "right": 825,
+          "client": 562,
+          "scroll": 562
+        },
+        {
+          "left": 839,
+          "right": 1401,
+          "client": 562,
+          "scroll": 562
+        },
+        {
+          "left": 263,
+          "right": 825,
+          "client": 562,
+          "scroll": 562
+        },
+        {
+          "left": 839,
+          "right": 1401,
+          "client": 562,
+          "scroll": 562
+        },
+        {
+          "left": 263,
+          "right": 825,
+          "client": 562,
+          "scroll": 562
+        }
+      ],
+      "pass": true
+    },
+    {
+      "shell": "apps",
+      "width": 1440,
+      "mode": "customize-third",
+      "geometry": [
+        {
+          "left": 263,
+          "right": 632.328125,
+          "client": 369,
+          "scroll": 369
+        },
+        {
+          "left": 646.328125,
+          "right": 1015.65625,
+          "client": 369,
+          "scroll": 369
+        },
+        {
+          "left": 1029.65625,
+          "right": 1398.984375,
+          "client": 369,
+          "scroll": 369
+        },
+        {
+          "left": 263,
+          "right": 632.328125,
+          "client": 369,
+          "scroll": 369
+        },
+        {
+          "left": 646.328125,
+          "right": 1015.65625,
+          "client": 369,
+          "scroll": 369
+        }
+      ],
+      "pass": true
+    },
+    {
+      "shell": "qapps",
+      "width": 320,
+      "scroll": 320,
+      "root": {
+        "left": 3.5625,
+        "right": 316,
+        "width": 312.4375
+      },
+      "overflow": [],
+      "cramped": [],
+      "popup": {
+        "left": 16,
+        "right": 276,
+        "scroll": 320
+      }
+    },
+    {
+      "shell": "qapps",
+      "width": 360,
+      "scroll": 360,
+      "root": {
+        "left": 2,
+        "right": 356,
+        "width": 354
+      },
+      "overflow": [],
+      "cramped": [],
+      "popup": {
+        "left": 16,
+        "right": 276,
+        "scroll": 360
+      }
+    },
+    {
+      "shell": "qapps",
+      "width": 390,
+      "scroll": 390,
+      "root": {
+        "left": 2,
+        "right": 386,
+        "width": 384
+      },
+      "overflow": [],
+      "cramped": [],
+      "popup": {
+        "left": 16,
+        "right": 276,
+        "scroll": 390
+      }
+    },
+    {
+      "shell": "qapps",
+      "width": 600,
+      "scroll": 600,
+      "root": {
+        "left": 2,
+        "right": 596,
+        "width": 594
+      },
+      "overflow": [],
+      "cramped": [],
+      "popup": {
+        "left": 26,
+        "right": 286,
+        "scroll": 600
+      }
+    },
+    {
+      "shell": "qapps",
+      "width": 768,
+      "scroll": 768,
+      "root": {
+        "left": 8,
+        "right": 756,
+        "width": 748
+      },
+      "overflow": [],
+      "cramped": [],
+      "popup": {
+        "left": 32,
+        "right": 292,
+        "scroll": 768
+      }
+    },
+    {
+      "shell": "qapps",
+      "width": 820,
+      "scroll": 820,
+      "root": {
+        "left": 8,
+        "right": 808,
+        "width": 800
+      },
+      "overflow": [],
+      "cramped": [],
+      "popup": {
+        "left": 32,
+        "right": 292,
+        "scroll": 820
+      }
+    },
+    {
+      "shell": "qapps",
+      "width": 1024,
+      "scroll": 1024,
+      "root": {
+        "left": 260.328125,
+        "right": 1012,
+        "width": 751.671875
+      },
+      "overflow": [],
+      "cramped": [],
+      "popup": {
+        "left": 256,
+        "right": 516,
+        "scroll": 1024
+      }
+    },
+    {
+      "shell": "qapps",
+      "width": 1280,
+      "scroll": 1280,
+      "root": {
+        "left": 232,
+        "right": 1272,
+        "width": 1040
+      },
+      "overflow": [],
+      "cramped": [],
+      "popup": {
+        "left": 600.1875,
+        "right": 860.1875,
+        "scroll": 1280
+      }
+    },
+    {
+      "shell": "qapps",
+      "width": 1366,
+      "scroll": 1366,
+      "root": {
+        "left": 232,
+        "right": 1358,
+        "width": 1126
+      },
+      "overflow": [],
+      "cramped": [],
+      "popup": {
+        "left": 686.1875,
+        "right": 946.1875,
+        "scroll": 1366
+      }
+    },
+    {
+      "shell": "qapps",
+      "width": 1440,
+      "scroll": 1440,
+      "root": {
+        "left": 232,
+        "right": 1432,
+        "width": 1200
+      },
+      "overflow": [],
+      "cramped": [],
+      "popup": {
+        "left": 760.1875,
+        "right": 1020.1875,
+        "scroll": 1440
+      }
+    },
+    {
+      "shell": "qapps",
+      "width": 1920,
+      "scroll": 1920,
+      "root": {
+        "left": 232,
+        "right": 1912,
+        "width": 1680
+      },
+      "overflow": [],
+      "cramped": [],
+      "popup": {
+        "left": 1240.1875,
+        "right": 1500.1875,
+        "scroll": 1920
+      }
+    },
+    {
+      "shell": "qapps",
+      "width": 2560,
+      "scroll": 2560,
+      "root": {
+        "left": 232,
+        "right": 2552,
+        "width": 2320
+      },
+      "overflow": [],
+      "cramped": [],
+      "popup": {
+        "left": 1880.1875,
+        "right": 2140.1875,
+        "scroll": 2560
+      }
+    },
+    {
+      "shell": "qapps",
+      "width": 320,
+      "mode": "long-labels-and-totals",
+      "geometry": {
+        "client": 314,
+        "scroll": 314,
+        "document": 320,
+        "overflow": [
+          {
+            "cls": "zdh-no",
+            "tag": "DIV",
+            "client": 79,
+            "scroll": 100
+          },
+          {
+            "cls": "zdh-no",
+            "tag": "DIV",
+            "client": 79,
+            "scroll": 101
+          },
+          {
+            "cls": "zdh-no",
+            "tag": "DIV",
+            "client": 79,
+            "scroll": 101
+          },
+          {
+            "cls": "zdh-no",
+            "tag": "DIV",
+            "client": 79,
+            "scroll": 102
+          },
+          {
+            "cls": "zdh-no",
+            "tag": "DIV",
+            "client": 73,
+            "scroll": 92
+          },
+          {
+            "cls": "zdh-no",
+            "tag": "DIV",
+            "client": 73,
+            "scroll": 95
+          },
+          {
+            "cls": "zdh-no",
+            "tag": "DIV",
+            "client": 73,
+            "scroll": 95
+          }
+        ]
+      },
+      "pass": true
+    },
+    {
+      "shell": "qapps",
+      "width": 320,
+      "mode": "customize-half",
+      "geometry": [
+        {
+          "left": 16,
+          "right": 302,
+          "client": 286,
+          "scroll": 286
+        },
+        {
+          "left": 16,
+          "right": 302,
+          "client": 286,
+          "scroll": 286
+        },
+        {
+          "left": 16,
+          "right": 302,
+          "client": 286,
+          "scroll": 286
+        },
+        {
+          "left": 16,
+          "right": 302,
+          "client": 286,
+          "scroll": 286
+        },
+        {
+          "left": 16,
+          "right": 302,
+          "client": 286,
+          "scroll": 286
+        }
+      ],
+      "pass": true
+    },
+    {
+      "shell": "qapps",
+      "width": 320,
+      "mode": "customize-third",
+      "geometry": [
+        {
+          "left": 16,
+          "right": 302,
+          "client": 286,
+          "scroll": 286
+        },
+        {
+          "left": 16,
+          "right": 302,
+          "client": 286,
+          "scroll": 286
+        },
+        {
+          "left": 16,
+          "right": 302,
+          "client": 286,
+          "scroll": 286
+        },
+        {
+          "left": 16,
+          "right": 302,
+          "client": 286,
+          "scroll": 286
+        },
+        {
+          "left": 16,
+          "right": 302,
+          "client": 286,
+          "scroll": 286
+        }
+      ],
+      "pass": true
+    },
+    {
+      "shell": "qapps",
+      "width": 768,
+      "mode": "customize-half",
+      "geometry": [
+        {
+          "left": 32,
+          "right": 732,
+          "client": 700,
+          "scroll": 700
+        },
+        {
+          "left": 32,
+          "right": 732,
+          "client": 700,
+          "scroll": 700
+        },
+        {
+          "left": 32,
+          "right": 732,
+          "client": 700,
+          "scroll": 700
+        },
+        {
+          "left": 32,
+          "right": 732,
+          "client": 700,
+          "scroll": 700
+        },
+        {
+          "left": 32,
+          "right": 732,
+          "client": 700,
+          "scroll": 700
+        }
+      ],
+      "pass": true
+    },
+    {
+      "shell": "qapps",
+      "width": 768,
+      "mode": "customize-third",
+      "geometry": [
+        {
+          "left": 32,
+          "right": 732,
+          "client": 700,
+          "scroll": 700
+        },
+        {
+          "left": 32,
+          "right": 732,
+          "client": 700,
+          "scroll": 700
+        },
+        {
+          "left": 32,
+          "right": 732,
+          "client": 700,
+          "scroll": 700
+        },
+        {
+          "left": 32,
+          "right": 732,
+          "client": 700,
+          "scroll": 700
+        },
+        {
+          "left": 32,
+          "right": 732,
+          "client": 700,
+          "scroll": 700
+        }
+      ],
+      "pass": true
+    },
+    {
+      "shell": "qapps",
+      "width": 1024,
+      "mode": "customize-half",
+      "geometry": [
+        {
+          "left": 256,
+          "right": 988,
+          "client": 732,
+          "scroll": 732
+        },
+        {
+          "left": 256,
+          "right": 988,
+          "client": 732,
+          "scroll": 732
+        },
+        {
+          "left": 256,
+          "right": 988,
+          "client": 732,
+          "scroll": 732
+        },
+        {
+          "left": 256,
+          "right": 988,
+          "client": 732,
+          "scroll": 732
+        },
+        {
+          "left": 256,
+          "right": 988,
+          "client": 732,
+          "scroll": 732
+        }
+      ],
+      "pass": true
+    },
+    {
+      "shell": "qapps",
+      "width": 1024,
+      "mode": "customize-third",
+      "geometry": [
+        {
+          "left": 256,
+          "right": 988,
+          "client": 732,
+          "scroll": 732
+        },
+        {
+          "left": 256,
+          "right": 988,
+          "client": 732,
+          "scroll": 732
+        },
+        {
+          "left": 256,
+          "right": 988,
+          "client": 732,
+          "scroll": 732
+        },
+        {
+          "left": 256,
+          "right": 988,
+          "client": 732,
+          "scroll": 732
+        },
+        {
+          "left": 256,
+          "right": 988,
+          "client": 732,
+          "scroll": 732
+        }
+      ],
+      "pass": true
+    },
+    {
+      "shell": "qapps",
+      "width": 1440,
+      "mode": "customize-half",
+      "geometry": [
+        {
+          "left": 256,
+          "right": 825,
+          "client": 569,
+          "scroll": 569
+        },
+        {
+          "left": 839,
+          "right": 1408,
+          "client": 569,
+          "scroll": 569
+        },
+        {
+          "left": 256,
+          "right": 825,
+          "client": 569,
+          "scroll": 569
+        },
+        {
+          "left": 839,
+          "right": 1408,
+          "client": 569,
+          "scroll": 569
+        },
+        {
+          "left": 256,
+          "right": 825,
+          "client": 569,
+          "scroll": 569
+        }
+      ],
+      "pass": true
+    },
+    {
+      "shell": "qapps",
+      "width": 1440,
+      "mode": "customize-third",
+      "geometry": [
+        {
+          "left": 256,
+          "right": 629.984375,
+          "client": 374,
+          "scroll": 374
+        },
+        {
+          "left": 643.984375,
+          "right": 1017.96875,
+          "client": 374,
+          "scroll": 374
+        },
+        {
+          "left": 1031.96875,
+          "right": 1405.953125,
+          "client": 374,
+          "scroll": 374
+        },
+        {
+          "left": 256,
+          "right": 629.984375,
+          "client": 374,
+          "scroll": 374
+        },
+        {
+          "left": 643.984375,
+          "right": 1017.96875,
+          "client": 374,
+          "scroll": 374
+        }
+      ],
+      "pass": true
+    }
+  ],
+  "errors": [],
+  "failures": []
+}
