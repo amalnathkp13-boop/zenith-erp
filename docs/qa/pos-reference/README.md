@@ -51,3 +51,9 @@ component inventory supersede the historical counts in `review-reverification.js
 Its own UI diff preserves the billing parent's Payment Wise timezone correction;
 that intentional report behavior is verified and reviewed in #27. Required CI and
 owner billing/device acceptance remain separate deployment gates.
+
+## Shared Quasar fix extracted to #68
+
+The duplicate global Quasar header override has been removed from this POS UI branch; its inherited Contacts override is preserved. Shared Quasar scroll reversal and measured offsets are now owned by independent PR #68, based on current master, with a real-QHeader negative control and partial-scroll tests. After #68 lands, preserve theme v280/nav v33 when rebasing #27 and this child.
+
+The older shared-header evidence above is historical; it does not cover the new partial-reversal fix. This child still carries the previously reviewed Bootstrap sticky-header change, which needs its own cross-module owner sign-off. #68 does not introduce that Bootstrap behavior. No POS forms/services or billing implementation changed in this extraction.
