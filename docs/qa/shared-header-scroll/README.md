@@ -12,7 +12,7 @@ Scope: Quasar shared chrome only. No services, entities, queries, forms, transit
 # Run from a clone with Playwright available. Do not point this runner at production.
 # QA_WEBROOT is a local framework screen/webroot directory containing libs/vue and libs/quasar.
 QA_WEBROOT=/path/to/runtime/base-component/webroot/screen/webroot \
-QA_BASE_REF=44983553d87503d8119c5903161fa5753f38a1f9 \
+QA_BASE_REF=9a9b053533ebbe916127430a5fe1b466e382e4e6 \
 QA_OUTPUT=/tmp/shared-header-proof \
 node docs/qa/shared-header-scroll/check.cjs
 ```
@@ -29,3 +29,9 @@ Optional `QA_CHROME` selects an installed Chrome executable; `QA_GIT` selects Gi
 This isolated shell test is intentionally separate from Moqui end-to-end, billing, database, printer or device acceptance. Required staging-acceptance and repo-guards must also pass on the final PR head. The maintainer must verify the real deployed shell after the normal ordered deployment; merge alone does not update production.
 
 The older #59 header evidence tested full down/return scrolling. It did not require the genuine Quasar shell or cover small reverse scrolls, so it is not used as proof for this fix.
+
+## Native runtime verification
+
+Fresh disposable Moqui runtime overlaid with all 1,004 tracked component files from the rebased candidate; comparison found zero differences after CRLF/LF normalization. Seventy-two native renders covered 18 routes on both `/apps` and genuine `/qapps`, at 1440 and 710 pixels. The native Quasar assertions require `.q-header` and `#zq-subnav`; 19 naturally scrollable layouts exercised down and small upward scrolling. Short pages are recorded as render/layout checks, not scroll coverage.
+
+All 115 native checks passed with zero browser exceptions. Focused Terminal geometry matched master on both entry surfaces. Independent SELECT-only fingerprints of 18 financial/subscription tables matched before and after navigation; business POSTs were blocked, including Terminal catalog prefetch. This is a read-only UI no-op check, not billing/device acceptance. The disposable JVM was stopped, both listeners closed, and an independent `IFEXISTS=TRUE` reconnect failed, confirming no surviving fixture database.

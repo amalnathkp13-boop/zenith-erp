@@ -21,15 +21,15 @@ const routes = [
   'Crm/Leads', 'pos/Dashboard', 'Inventory/InventoryDashboard', 'manufacturing/WorkOrders',
   'Accounting/AcctgDashboard', 'payroll/PayrollRuns', 'expenses/MyExpenses', 'project/Projects',
   'Stores/FindStore', 'tax/TaxDashboard', 'pricing/PricingDashboard', 'barcode/BarcodeDashboard',
-  'saas/TenantDashboard'
+  'my-subscription'
 ];
 const widths = [1440, 1200, 1024, 900, 710, 375];
 const baseline = { css: before('css/zenith-theme-v4.css'), js: before('js/qapps-nav.js') };
 const candidate = { css: current('css/zenith-theme-v4.css'), js: current('js/qapps-nav.js') };
 const xml = fs.readFileSync(path.join(repo, 'component/zenith-erp-app/screen/zenith/ZenithApp.xml'), 'utf8');
 const baseXml = execFileSync(git, ['show', baseRef + ':component/zenith-erp-app/screen/zenith/ZenithApp.xml'], { cwd: repo, encoding: 'utf8' });
-assert.equal(xml.replace(/(theme-v4\.css|qapps-nav\.js)\?v=\d+/g, '$1?v=VERSION'),
-  baseXml.replace(/(theme-v4\.css|qapps-nav\.js)\?v=\d+/g, '$1?v=VERSION'), 'XML changes must be asset versions only');
+const normalizedXml = s => s.replace(/\r\n/g, '\n').replace(/(theme-v4\.css|qapps-nav\.js)\?v=\d+/g, '$1?v=VERSION');
+assert(normalizedXml(xml) === normalizedXml(baseXml), 'XML changes must be asset versions only');
 assert.equal((xml.match(/theme-v4\.css\?v=280/g) || []).length, 2, 'Both theme registrations updated');
 const bootstrapStyle = baseXml.slice(baseXml.lastIndexOf('<style>', baseXml.indexOf('#z-sidebar{')), baseXml.indexOf('</style>', baseXml.indexOf('#z-sidebar{')) + 8);
 const requests = [];
@@ -44,7 +44,7 @@ function fixture(variant, bootstrap, cashier) {
       '<div id="apps-root"><q-layout view="hHh LpR fFf"><q-header reveal bordered id="top" class="bg-black text-white"><q-toolbar><q-btn dense flat icon="menu"></q-btn><q-space></q-space></q-toolbar></q-header><q-page-container><q-page><main id="qa-content"><button id="qa-control">Read-only control</button>' + Array.from({length:15}, (_,i)=>'<section class="qa-card"><h2>Scroll verification '+(i+1)+'</h2><p>Synthetic UI fixture. No customer or billing data.</p></section>').join('') + '</main></q-page></q-page-container></q-layout></div>'}
     <script src="/vendor/vue/vue.js"></script><script src="/vendor/quasar/quasar.umd.min.js"></script>
     <script>
-    function refreshContent(){document.getElementById('${bootstrap ? 'content' : 'qa-content'}').classList.toggle('mysub-wrap',location.pathname.includes('/saas/'));}
+    function refreshContent(){document.getElementById('${bootstrap ? 'content' : 'qa-content'}').classList.toggle('mysub-wrap',location.pathname.includes('/my-subscription'));}
     ${bootstrap ? '' : "new Vue({el:'#apps-root'});"} refreshContent();
     document.addEventListener('click',function(e){var a=e.target.closest('a');if(a&&a.getAttribute('href')?.startsWith('/qapps/zenith')){e.preventDefault();history.pushState({},'',a.getAttribute('href'));refreshContent();}});
     document.addEventListener('click',function(e){if(e.target.id==='qa-control')document.body.dataset.controlClicked='true';});
@@ -145,7 +145,7 @@ async function stable(page, name) {
     await page.locator('.q-header .q-toolbar>button').first().click();
     await page.waitForFunction(() => document.body.classList.contains('zq-side-open'));
     await page.locator('#zq-side-toggle').click(); await stable(page, 'Sidebar collapse recalculates header');
-    await page.evaluate(() => { history.pushState({}, '', '/qapps/zenith/saas/TenantDashboard'); document.querySelector('#qa-content').classList.add('mysub-wrap'); });
+    await page.evaluate(() => { history.pushState({}, '', '/qapps/zenith/my-subscription'); document.querySelector('#qa-content').classList.add('mysub-wrap'); });
     await page.waitForFunction(() => !document.querySelector('#zq-subnav').classList.contains('show'));
     await stable(page, 'SPA My Subscription hides tabs and reserves wrapped header');
     await page.goto(origin + '/qapps/zenith/pos/Dashboard?cashier=true');

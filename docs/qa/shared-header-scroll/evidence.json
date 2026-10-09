@@ -1,5 +1,5 @@
 {
-  "baseCommit": "44983553d87503d8119c5903161fa5753f38a1f9",
+  "baseCommit": "9a9b053533ebbe916127430a5fe1b466e382e4e6",
   "scope": "Isolated real Vue/Quasar shell; not a Moqui end-to-end or billing test",
   "passed": 624,
   "moduleTabSets": 16,
@@ -31,5 +31,30 @@
     "component/zenith-erp-app/screen/zenith/ZenithApp.xml": "cce514f723cfd404d90d18ebcf8cd2fc6557c92d75e6ee44d62da1cb08d12fab"
   },
   "guards": "All four local repository guards passed",
-  "cleanup": "Loopback fixture server and browser stopped; no database or tenant rows created by isolated runner"
+  "cleanup": "Loopback fixture server and browser stopped; no database or tenant rows created by isolated runner",
+  "frameworkVersions": {
+    "Quasar": "1.22.10"
+  },
+  "nativeRuntime": {
+    "renders": 72,
+    "checks": 115,
+    "nativeScrolledLayouts": 19,
+    "browserExceptions": 0,
+    "financialSubscriptionTablesCompared": 18,
+    "beforeAfterEqual": true,
+    "allBusinessWriteRequestsBlocked": true,
+    "focusedTerminalGeometryUnchanged": true,
+    "componentFilesCompared": 1004,
+    "componentMismatches": 0,
+    "surfaces": [
+      "apps",
+      "qapps"
+    ],
+    "widths": [
+      1440,
+      710
+    ],
+    "database": "Named disposable memory H2; no production database access",
+    "teardown": "JVM stopped, HTTP/database ports closed, fresh IFEXISTS reconnect failed"
+  }
 }
