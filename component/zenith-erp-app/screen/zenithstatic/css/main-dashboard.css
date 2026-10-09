@@ -4,13 +4,15 @@
   --home-bg:#F8F9FC; --home-border:#E5E7EB; --home-primary:#7C3AED;
   color:#111827; font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   font-size:12.5px; line-height:1.5; padding:20px 24px 32px; background:var(--home-bg); min-height:calc(100vh - 100px);
+  container:home / inline-size;
 }
 #homeDashboard * {box-sizing:border-box}
 #homeDashboard a {text-decoration:none}
 #homeDashboard a:focus-visible,#homeDashboard button:focus-visible,#homeDashboard summary:focus-visible,#homeDashboard input:focus-visible {outline:2px solid #7C3AED;outline-offset:3px}
 #homeDashboard .home-page-header {display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:20px;flex-wrap:wrap}
 #homeDashboard h1 {font-size:20px;font-weight:600;line-height:1.4;margin:0;color:#111827}
-#homeDashboard .home-title p {font-size:12px;color:#6B7280;margin:2px 0 0}
+#homeDashboard .home-title p {font-size:12px;color:#6B7280;margin:2px 0 0;white-space:normal;overflow-wrap:anywhere}
+#homeDashboard .home-title{min-width:0;max-width:100%;overflow-wrap:anywhere}
 #homeDashboard .home-header-controls {display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 #homeDashboard .home-outline {display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid var(--home-border);border-radius:8px;background:#fff;font-size:12px;font-weight:500;color:#111827;cursor:pointer;list-style:none;white-space:nowrap}
 #homeDashboard summary::-webkit-details-marker {display:none}
@@ -101,7 +103,7 @@
 #homeDashboard .home-modules .zenith-module-card {box-shadow:none!important;border:1px solid #E5E7EB;border-radius:8px;font-size:12px;font-weight:500;min-height:50px}
 #homeDashboard .zdh-ins {border:1px solid var(--home-border);border-left-width:3px;box-shadow:none}
 #homeDashboard .home-notice {padding:10px 14px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;margin-bottom:14px}
-#homeDashboard .home-widget-controls {display:flex;gap:4px;margin-bottom:8px}
+#homeDashboard .home-widget-controls {display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
 #homeDashboard .home-widget-controls button {font:inherit;font-size:11px;border:1px solid var(--home-border);background:#fff;border-radius:6px;padding:4px 8px;cursor:pointer;color:#6D28D9}
 #homeDashboard #homeLayoutStatus {font-size:12px;color:#6B7280;margin:8px 0 0}
 body:has(#homeDashboard) #zq-subnav,body:has(#homeDashboard) #z-subnav {display:none!important}
@@ -129,8 +131,34 @@ body:has(#homeDashboard) #z-ownerview {max-width:180px;overflow:hidden;white-spa
 body:has(#homeDashboard) #z-search {width:140px;min-width:100px;float:none;margin:0;flex-shrink:1}
 body:has(#homeDashboard) #z-avatar {float:none;margin:0 0 0 auto;flex-shrink:0}
 body:has(#homeDashboard) .navbar-collapse #homePrimaryNav {margin:0 auto 0 0;flex-shrink:0}
-@media(max-width:1279px){#homePrimaryNav{display:none}#homeDashboard .zdh-snap{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:1399px){#homePrimaryNav{display:none}}
+@media(max-width:1279px){#homeDashboard .zdh-snap{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:1023px){#homeDashboard .home-header-controls{width:100%}#homeDashboard .zdh-orow{grid-template-columns:1fr}#homeDashboard .zsc-row{grid-template-columns:repeat(2,minmax(0,1fr))}#homeDashboard .dash-widget[data-size]{width:100%}}
 @media(max-width:599px){#homeDashboard{padding:16px 14px 24px}#homeDashboard .zsc-row,#homeDashboard .zdh-snap{grid-template-columns:1fr}#homeDashboard .home-period{padding:6px 9px;font-size:11px}#homeDashboard .zdh-qa{grid-template-columns:repeat(2,minmax(0,1fr))}#homeDashboard .zdh-qc{min-height:100px}#homeDashboard .zdash-dr-pop{right:auto;left:0}#homeDashboard .home-page-header{gap:12px}#homeDashboard .zdh-ocard,#homeDashboard .zdh-card{padding:16px}#homeDashboard #homeActivityChart,#homeDashboard #homeActivityChart svg{height:220px}body:has(#homeDashboard) #zq-search{display:none!important}}
 @media(prefers-reduced-motion:reduce){#homeDashboard .zdh-qc{transition:none}#homeDashboard .zdh-qc:hover{transform:none}}
 @media(max-width:599px){body:has(#homeDashboard) #zq-ownerview,body:has(#homeDashboard) #z-ownerview{max-width:130px}body:has(#homeDashboard) #z-search{display:none!important}}
+
+/* Size cards against the space remaining beside the navigation drawer. */
+@container home (max-width:1050px){
+  #homeDashboard .zdh-snap{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@container home (max-width:800px){
+  #homeDashboard .home-header-controls{width:100%;position:relative}
+  #homeDashboard .zdash-dr{position:static}
+  #homeDashboard .zdash-dr-pop{left:0;right:auto;max-width:100%;top:calc(100% + 8px)}
+  #homeDashboard .zdh-orow{grid-template-columns:1fr}
+  #homeDashboard .zsc-row{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #homeDashboard .dash-widget[data-size]{width:100%}
+}
+@container home (max-width:520px){
+  #homeDashboard .zsc-row,#homeDashboard .zdh-snap{grid-template-columns:1fr}
+  #homeDashboard .home-periods{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));width:100%}
+  #homeDashboard .home-period{padding:6px 4px;white-space:normal;text-align:center;display:flex;align-items:center;justify-content:center}
+  #homeDashboard .home-widget-controls{flex-wrap:wrap}
+  #homeDashboard .zdh-qa{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+/* Large totals and translated labels must fit inside their existing rows. */
+#homeDashboard .home-txn-right,#homeDashboard .zdh-tval{max-width:48%;min-width:0;overflow-wrap:anywhere}
+#homeDashboard .zdh-amt,#homeDashboard .bh-mv{min-width:0;overflow-wrap:anywhere;white-space:normal}
+#homeDashboard .bh-mn{min-width:0;overflow-wrap:anywhere}
+#homeDashboard .zdh-row>.zdh-amt{max-width:45%}
