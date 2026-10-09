@@ -13,6 +13,15 @@
         }
         ec.entity.makeDataLoader().location('component://zenith-erp-pos/PosUiQaFixture.xml').load()
         ec.user.setPreference('ACTIVE_ORGANIZATION','POS_UI_QA')
+        // Synthetic cash-book boundaries in the fixture user's US/Central DST fall-back day.
+        if (ec.user.timeZone.ID != 'US/Central') throw new IllegalStateException('Expected public fixture timezone')
+        def start = ec.l10n.parseTimestamp('2026-11-01 00:00:00','yyyy-MM-dd HH:mm:ss')
+        def end = ec.l10n.parseTimestamp('2026-11-02 00:00:00','yyyy-MM-dd HH:mm:ss')
+        [START:start, LAST:new java.sql.Timestamp(end.time - 1), NEXT:end].each { label, stamp ->
+            ec.entity.makeValue('zenith.erp.pos.PosCashEntry').setAll([cashEntryId:'POS_UI_QA_' + label,
+                organizationPartyId:'POS_UI_QA', entryType:'CashIn', entryDate:stamp, amount:1,
+                description:'POS_UI_QA_BOUNDARY_' + label]).create()
+        }
         ec.web.sendJsonResponse([initialized:!ec.message.hasError()])
     ]]></script></actions><default-response type="none"/></transition>
     <widgets>

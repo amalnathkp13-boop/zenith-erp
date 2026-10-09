@@ -41,6 +41,12 @@ async function hit(locator){await locator.scrollIntoViewIfNeeded();return locato
    const expected=query(`SELECT DESCRIPTION FROM POS_CASH_ENTRY WHERE ORGANIZATION_PARTY_ID='POS_UI_QA' AND DESCRIPTION='POS_UI_QA ${shell} CashIn'`);
    const filtered=await page.locator('#CashEntryList_table').innerText();check(`${shell}: native search filters persisted rows`,expected.length===1&&filtered.includes(expected[0].description)&&!filtered.includes('POS_UI_QA '+shell+' CashOut'));
    const reset=page.locator('#CashFilter_resetBtn');check(`${shell}: Reset is reachable`,await hit(reset));await reset.click();await page.waitForTimeout(400);check(`${shell}: Reset restores saved rows`,await page.locator('#CashFilter [name=searchText]').inputValue()===''&&(await page.locator('#CashEntryList_table').innerText()).includes('POS_UI_QA '+shell+' CashOut'));
+   await page.locator('#CashFilter [name=filterDate]').fill('2026-11-01');await page.locator('#CashFilter [name=filterThruDate]').fill('2026-11-01');await page.locator('#CashFilter [type=submit]').click();await page.waitForTimeout(400);
+   const boundaries=await page.locator('#CashEntryList_table').innerText();
+   check(`${shell}: user-local DST day includes midnight and final millisecond but excludes next day`,boundaries.includes('POS_UI_QA_BOUNDARY_START')&&boundaries.includes('POS_UI_QA_BOUNDARY_LAST')&&!boundaries.includes('POS_UI_QA_BOUNDARY_NEXT'));
+   const stamps=query("SELECT CASH_ENTRY_ID,ENTRY_DATE FROM POS_CASH_ENTRY WHERE CASH_ENTRY_ID IN ('POS_UI_QA_START','POS_UI_QA_NEXT') ORDER BY CASH_ENTRY_ID");
+   check(`${shell}: boundary fixture spans a 25-hour DST day`,stamps.length===2&&Math.abs(Date.parse(stamps[1].entry_date)-Date.parse(stamps[0].entry_date))===25*60*60*1000);
+   await open(page,shell,'CashEntry');
    const cashBefore=query("SELECT CASH_ENTRY_ID FROM POS_CASH_ENTRY WHERE ORGANIZATION_PARTY_ID='POS_UI_QA'").length;
    await page.locator('#CashInForm [name=amount]').fill('-1');await page.locator('#CashInForm [type=submit]').click();await page.waitForTimeout(400);check(`${shell}: invalid Cash In creates no row`,query("SELECT CASH_ENTRY_ID FROM POS_CASH_ENTRY WHERE ORGANIZATION_PARTY_ID='POS_UI_QA'").length===cashBefore);
    await open(page,shell,'Kitchen/Tables');await page.locator('#tm-editbtn').waitFor();

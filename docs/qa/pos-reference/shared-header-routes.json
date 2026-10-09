@@ -1,0 +1,222 @@
+[
+  {
+    "module": "Overview",
+    "route": "Dashboard"
+  },
+  {
+    "module": "Accounting",
+    "route": "Accounting/AcctgDashboard"
+  },
+  {
+    "module": "analytics",
+    "route": "analytics/AnalyticsDashboard"
+  },
+  {
+    "module": "approvals",
+    "route": "approvals/MyApprovals"
+  },
+  {
+    "module": "assets",
+    "route": "assets/AssetDashboard"
+  },
+  {
+    "module": "attendance",
+    "route": "attendance/MyAttendance"
+  },
+  {
+    "module": "barcode",
+    "route": "barcode/BarcodeDashboard"
+  },
+  {
+    "module": "Contacts",
+    "route": "Contacts/ContactsDashboard"
+  },
+  {
+    "module": "Crm",
+    "route": "Crm/Leads"
+  },
+  {
+    "module": "discuss",
+    "route": "discuss/Channels"
+  },
+  {
+    "module": "Distribution",
+    "route": "Distribution/DistributionDashboard"
+  },
+  {
+    "module": "documents",
+    "route": "documents/DocumentList"
+  },
+  {
+    "module": "ecommerce",
+    "route": "ecommerce/EcomOrders"
+  },
+  {
+    "module": "events",
+    "route": "events/AllEvents"
+  },
+  {
+    "module": "expenses",
+    "route": "expenses/MyExpenses"
+  },
+  {
+    "module": "fieldservice",
+    "route": "fieldservice/Tasks"
+  },
+  {
+    "module": "fleet",
+    "route": "fleet/FleetDashboard"
+  },
+  {
+    "module": "Franchise",
+    "route": "Franchise/Agreements"
+  },
+  {
+    "module": "giftcard",
+    "route": "giftcard/GiftCardDashboard"
+  },
+  {
+    "module": "helpdesk",
+    "route": "helpdesk/Tickets"
+  },
+  {
+    "module": "Hr",
+    "route": "Hr/HrDashboard"
+  },
+  {
+    "module": "integrations",
+    "route": "integrations/PortalConfig"
+  },
+  {
+    "module": "Inventory",
+    "route": "Inventory/InventoryDashboard"
+  },
+  {
+    "module": "loyalty",
+    "route": "loyalty/LoyaltyDashboard"
+  },
+  {
+    "module": "maintenance",
+    "route": "maintenance/MaintenanceDashboard"
+  },
+  {
+    "module": "manufacturing",
+    "route": "manufacturing/WorkOrders"
+  },
+  {
+    "module": "marketing",
+    "route": "marketing/Campaigns"
+  },
+  {
+    "module": "omnichannel",
+    "route": "omnichannel/OmnichannelDashboard"
+  },
+  {
+    "module": "payroll",
+    "route": "payroll/PayrollRuns"
+  },
+  {
+    "module": "plm",
+    "route": "plm/EngineeringChangeOrders"
+  },
+  {
+    "module": "pos",
+    "route": "pos/Dashboard"
+  },
+  {
+    "module": "pricing",
+    "route": "pricing/PricingDashboard"
+  },
+  {
+    "module": "project",
+    "route": "project/Projects"
+  },
+  {
+    "module": "promotions",
+    "route": "promotions/PromotionsDashboard"
+  },
+  {
+    "module": "Purchase",
+    "route": "Purchase/GoodsReceipt"
+  },
+  {
+    "module": "quality",
+    "route": "quality/Inspections"
+  },
+  {
+    "module": "recruitment",
+    "route": "recruitment/Applications"
+  },
+  {
+    "module": "rental",
+    "route": "rental/RentalAssets"
+  },
+  {
+    "module": "returns",
+    "route": "returns/ReturnDashboard"
+  },
+  {
+    "module": "saas-admin",
+    "route": "saas-admin/Dashboard"
+  },
+  {
+    "module": "my-subscription",
+    "route": "my-subscription"
+  },
+  {
+    "module": "sales",
+    "route": "sales/SalesDashboard"
+  },
+  {
+    "module": "sign",
+    "route": "sign/SignatureRequests"
+  },
+  {
+    "module": "Stores",
+    "route": "Stores/FindStore"
+  },
+  {
+    "module": "studio",
+    "route": "studio/CustomFields"
+  },
+  {
+    "module": "subscriptions",
+    "route": "subscriptions/AllSubscriptions"
+  },
+  {
+    "module": "tax",
+    "route": "tax/TaxDashboard"
+  },
+  {
+    "module": "timeoff",
+    "route": "timeoff/MyLeaves"
+  },
+  {
+    "module": "timesheets",
+    "route": "timesheets/MyTimesheets"
+  },
+  {
+    "module": "website",
+    "route": "website/Sites"
+  },
+  {
+    "module": "workshop",
+    "route": "workshop/ServiceJobs"
+  },
+  {
+    "module": "Settings",
+    "route": "Settings"
+  },
+  {
+    "module": "MyPassword",
+    "route": "MyPassword"
+  },
+  {
+    "module": "MySecurity",
+    "route": "MySecurity"
+  },
+  {
+    "module": "MyNotifications",
+    "route": "MyNotifications"
+  }
+]
