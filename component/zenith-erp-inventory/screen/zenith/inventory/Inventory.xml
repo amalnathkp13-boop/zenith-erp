@@ -44,6 +44,7 @@
     <transition name="goEcommerce"><default-response url="../ecommerce/EcomOrders"/></transition>
 
     <widgets>
+        <container id="inventoryModule" style="inventory-module">
         <container style="inv-module-shortcuts row items-center justify-end q-px-md q-pt-md q-gutter-sm">
             <section name="gate_sales_1" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('sales'))"><widgets><link url="goSales" text="Sales" icon="fa fa-line-chart" btn-type="primary" style="q-btn--dense"/></widgets></section>
             <section name="gate_purchase_2" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('purchase'))"><widgets><link url="goPurchase" text="Purchase" icon="fa fa-shopping-cart" btn-type="info" style="q-btn--dense"/></widgets></section>
@@ -53,5 +54,6 @@
             <section name="gate_ecommerce_6" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('ecommerce'))"><widgets><link url="goEcommerce" text="eCommerce" icon="fa fa-globe" style="q-btn--dense"/></widgets></section>
         </container>
         <subscreens-active/>
+        </container>
     </widgets>
 </screen>
