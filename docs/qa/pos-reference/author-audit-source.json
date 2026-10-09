@@ -1,0 +1,14 @@
+{
+  "basePr": 27,
+  "baseHead": "9a80e5f62d090743266dda13849d85116ae2d42c",
+  "testedUiApplicationHead": "66d754e2bd3c98a632852047d7282963987c62dd",
+  "screens": 15,
+  "executionDefinitionsUnchanged": true,
+  "nativeFormsUnchangedExceptCashInputType": true,
+  "posServicesAndEntitiesUnchanged": true,
+  "runtimeRetestPerformed": false,
+  "pending": [
+    "Parent #27 must land before this PR can target master",
+    "Required CI cannot start until repository owner billing is resolved"
+  ]
+}
