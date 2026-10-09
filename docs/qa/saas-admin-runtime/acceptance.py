@@ -128,7 +128,7 @@ status,raw,_=request('/apps/zenith/Contacts/FindContact');record('past-dated man
 login('john.doe');passed('expire ended manual access','expire',dict(tenantId='SAASADMIN_QA_S'))
 record('ended grant and tenant expire together',sql("select t.status_id||'|'||s.status_id from saas_tenant t join saas_subscription s on s.tenant_id=t.tenant_id where s.subscription_id='"+sub+"'")=='SaasTenantSuspended|SubExpired')
 before=snapshot();passed('expiry replay','expire',dict(tenantId='SAASADMIN_QA_S'));record('expiry replay is a no-op',before==snapshot())
-before=snapshot();passed('legacy payment cannot revive manual expiry','reactivate',dict(tenantId='SAASADMIN_QA_S'));record('expired manual account remains suspended after legacy payment callback',before==snapshot())
+before=snapshot();denied('unconfirmed legacy payment cannot revive manual expiry','reactivate',dict(tenantId='SAASADMIN_QA_S'));record('expired manual account remains suspended after legacy payment callback',before==snapshot())
 passed('extend expired access via new assignment','assign',params)
 record('expired tenant restored with exactly one active grant',sql("select count(*) from saas_subscription where tenant_id='SAASADMIN_QA_S' and status_id='SubActive'")=='1' and sql("select status_id from saas_tenant where tenant_id='SAASADMIN_QA_S'")=='SaasTenantActive')
 record('user accounts and credentials unchanged after synthetic fixture toggle restore',security==sql("select md5(string_agg((to_jsonb(x)-'last_updated_stamp')::text,'|' order by user_id)) from user_account x"))

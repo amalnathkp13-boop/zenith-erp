@@ -69,4 +69,10 @@
 <!-- Fixed platform settings key required by Razorpay services; synthetic, empty operator in this fresh DB. -->
 <mantle.party.Party partyId="ZETAERP" partyTypeEnumId="PtyOrganization"/>
 <mantle.party.Organization partyId="ZETAERP" organizationName="Disposable QA platform settings"/>
+<!-- Protected org selector exists only in this fresh synthetic QA database. -->
+<mantle.party.Party partyId="100000" partyTypeEnumId="PtyOrganization"/>
+<mantle.party.Organization partyId="100000" organizationName="Synthetic protected organization"/>
+<zenith.erp.saas.SaasTenant tenantId="SAASADMIN_QA_PROTECTED" organizationPartyId="100000" tenantName="Synthetic protected account" subdomain="saasadminqaprotected" planId="GROWTH" statusId="SaasTenantActive" currencyUomId="INR"/>
+<zenith.erp.saas.SaasSubscription subscriptionId="SAASADMIN_QA_PROTECTED" tenantId="SAASADMIN_QA_PROTECTED" planId="GROWTH" statusId="SubActive" billingCycle="Manual" startDate="2026-09-01" endDate="2026-10-01" autoRenew="N" amount="0" currencyUomId="INR"/>
+<zenith.erp.saas.SaasTenantConfig tenantId="SAASADMIN_QA_PROTECTED" configKey="MANUAL_PLAN_SUBSCRIPTION" configValue="SAASADMIN_QA_PROTECTED"/>
 </entity-facade-xml>

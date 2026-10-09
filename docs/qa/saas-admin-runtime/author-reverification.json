@@ -1,0 +1,40 @@
+{
+  "masterBaseline": "17ffe46d8a61e67b1ea7aa4ff0fe4dfc92db346e",
+  "testedApplicationHead": "67fa5e9be6d5aad5f291394cff883896456d0fd1",
+  "componentTree": "ac0d79985a176db57d02190212698a30a863c62c",
+  "componentFiles": 1002,
+  "runtimeMismatches": 0,
+  "productionAccess": false,
+  "serviceChecks": 76,
+  "browserChecks": 22,
+  "layouts": 8,
+  "reportHashes": {
+    "services-summary.json": "3698eb636626999773b8d1252f93fba725c5bdbd1cbfc0c8312fec45d3848d26",
+    "browser-reverification.json": "e5571a442e9a861a2713a8282db1cff2265f27b893956a9bd0e59acd430f1f1e"
+  },
+  "securityContracts": [
+    "org 100000 assignment denied before writes",
+    "org 100000 expiry no-op even with stale manual pointer",
+    "forged forms leave protected rows unchanged on both surfaces",
+    "actual synthetic assignments on both surfaces verified through independent JDBC",
+    "financial tables, foreign subscription and protected rows unchanged",
+    "current master #44 owner/access and payment verification retained; #54 never applied"
+  ],
+  "nativeLimitations": [
+    "Public rebuilt Windows/H2 framework, not pinned Linux/PostgreSQL image",
+    "Public framework sometimes emitted raw multi-extension FreeMarker. Native QA config explicitly registers qvt.ftl and xsl-fo.ftl renderers; no shipped framework/application change. First failed browser run retained locally."
+  ],
+  "teardown": {
+    "listenersRemaining": 0,
+    "httpPort": 18085,
+    "productionAccess": false,
+    "independentIfExistsReconnectFailed": true,
+    "stoppedProcess": 14324,
+    "tcpPort": 19097
+  },
+  "pending": [
+    "Required GitHub CI cannot start until repository owner billing is resolved",
+    "Pinned Linux/PostgreSQL acceptance",
+    "Owner MARUTHI before/after aggregate acceptance before deployment"
+  ]
+}
