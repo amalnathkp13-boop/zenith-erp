@@ -1,7 +1,7 @@
 {
   "basePr": 27,
-  "baseHead": "9a80e5f62d090743266dda13849d85116ae2d42c",
-  "testedUiApplicationHead": "66d754e2bd3c98a632852047d7282963987c62dd",
+  "baseHead": "fe33129e5cc6fb513845fd29633823ca4e01bb9a",
+  "testedUiApplicationHead": "ef7e2126928023a3d5cef49530f9af2b2925f40d",
   "screens": 15,
   "executionDefinitionsUnchanged": true,
   "nativeFormsUnchangedExceptCashInputType": true,
