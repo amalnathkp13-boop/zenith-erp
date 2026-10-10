@@ -300,7 +300,7 @@
         <script><![CDATA[
             if (html_stylesheets == null) html_stylesheets = []
             html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=281')
-            html_stylesheets.add('/zenithstatic/css/sidebar-manager.css?v=2')
+html_stylesheets.add('/zenithstatic/css/sidebar-manager.css?v=3')
             html_stylesheets.add('/zenithstatic/css/my-subscription-reference.css?v=1')
             html_stylesheets.add('/zenithstatic/css/saas-admin.css?v=4')
             html_stylesheets.add('/zenithstatic/css/product-catalog.css?v=1')

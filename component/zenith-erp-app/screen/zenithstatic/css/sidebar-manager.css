@@ -47,8 +47,48 @@ body.zsm-open { overflow:hidden; }
 .zsm-row.is-drop-target { border-top:3px solid #7C3AED; padding-top:3px; }
 .zsm-handle { flex:0 0 20px; color:#9A93AD; font-size:18px !important; cursor:grab; }
 .zsm-row.is-dragging .zsm-handle { cursor:grabbing; }
-.zsm-icon { display:grid; place-items:center; flex:0 0 34px; width:34px; height:34px; border-radius:8px; color:#6D28D9; background:#F1EBFF; }
+.zsm-icon { display:grid; place-items:center; flex:0 0 34px; width:34px; height:34px; border-radius:8px; color:var(--zsm-icon-color,#6D28D9); background:var(--zsm-icon-bg,#F1EBFF); }
 .zsm-icon .material-icons { font-size:20px; }
+/* Keep the drawer and both existing sidebars on the same module palette. */
+:is(.zsm-row[data-id="/Dashboard"], .zsm-row[data-id="/pos"], .zsm-row[data-id="/pos/Terminal"],
+    #z-sidebar .zs-link[data-match="/Dashboard"], #z-sidebar .zs-link[data-match="/pos"],
+    #z-sidebar .zs-link[data-match="/pos/Terminal"], #z-sidebar .zs-link[data-match="/__more"],
+    #z-sidebar .zs-link[data-match="/saas-admin"],
+    #zq-sidebar .zqs-link[data-match="/Dashboard"], #zq-sidebar .zqs-link[data-match="/pos"],
+    #zq-sidebar .zqs-link[data-match="/pos/Terminal"], #zq-sidebar .zqs-link[data-match="/__more"])
+{ --zsm-icon-color:#6D28D9; --zsm-icon-bg:#F1EBFF; }
+:is(.zsm-row[data-id="/Contacts"], .zsm-row[data-id="/Purchase"], .zsm-row[data-id="/manufacturing"],
+    .zsm-row[data-id="/Accounting"], .zsm-row[data-id="/barcode"],
+    #z-sidebar .zs-link[data-match="/Contacts"], #z-sidebar .zs-link[data-match="/Purchase"],
+    #z-sidebar .zs-link[data-match="/manufacturing"], #z-sidebar .zs-link[data-match="/Accounting"],
+    #z-sidebar .zs-link[data-match="/barcode"],
+    #zq-sidebar .zqs-link[data-match="/Contacts"], #zq-sidebar .zqs-link[data-match="/Purchase"],
+    #zq-sidebar .zqs-link[data-match="/manufacturing"], #zq-sidebar .zqs-link[data-match="/Accounting"],
+    #zq-sidebar .zqs-link[data-match="/barcode"])
+{ --zsm-icon-color:#2563EB; --zsm-icon-bg:#E7F0FF; }
+:is(.zsm-row[data-id="/sales"], .zsm-row[data-id="/tax"], .zsm-row[data-id="/Stores"],
+    #z-sidebar .zs-link[data-match="/sales"], #z-sidebar .zs-link[data-match="/tax"],
+    #z-sidebar .zs-link[data-match="/Stores"],
+    #zq-sidebar .zqs-link[data-match="/sales"], #zq-sidebar .zqs-link[data-match="/tax"],
+    #zq-sidebar .zqs-link[data-match="/Stores"])
+{ --zsm-icon-color:#059669; --zsm-icon-bg:#DDF7EC; }
+:is(.zsm-row[data-id="/Crm"], .zsm-row[data-id="/expenses"],
+    #z-sidebar .zs-link[data-match="/Crm"], #z-sidebar .zs-link[data-match="/expenses"],
+    #zq-sidebar .zqs-link[data-match="/Crm"], #zq-sidebar .zqs-link[data-match="/expenses"])
+{ --zsm-icon-color:#DC3B3B; --zsm-icon-bg:#FDE9E8; }
+:is(.zsm-row[data-id="/Inventory"], .zsm-row[data-id="/project"], .zsm-row[data-id="/pricing"],
+    .zsm-row[data-id="/payroll"],
+    #z-sidebar .zs-link[data-match="/Inventory"], #z-sidebar .zs-link[data-match="/project"],
+    #z-sidebar .zs-link[data-match="/pricing"], #z-sidebar .zs-link[data-match="/payroll"],
+    #zq-sidebar .zqs-link[data-match="/Inventory"], #zq-sidebar .zqs-link[data-match="/project"],
+    #zq-sidebar .zqs-link[data-match="/pricing"], #zq-sidebar .zqs-link[data-match="/payroll"])
+{ --zsm-icon-color:#C96A0A; --zsm-icon-bg:#FFF1DF; }
+#z-sidebar .zs-link[data-match] > .material-icons,
+#zq-sidebar .zqs-link[data-match] > .material-icons {
+    display:grid; place-items:center; flex:0 0 28px; width:28px; height:28px;
+    border-radius:8px; color:var(--zsm-icon-color,#6D28D9);
+    background:var(--zsm-icon-bg,#F1EBFF);
+}
 .zsm-row-text { flex:1; min-width:0; overflow-wrap:anywhere; line-height:1.25; }
 .zsm-row-text strong { font-size:13px; font-weight:650; }
 .zsm-move { display:flex; flex:0 0 auto; }
