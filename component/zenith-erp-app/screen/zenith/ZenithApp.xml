@@ -269,7 +269,7 @@
             html_stylesheets.add('/zenithstatic/css/product-catalog.css?v=1')
             html_stylesheets.add('/zenithstatic/css/receiving-stock.css?v=14')
             html_stylesheets.add('/zenithstatic/css/gate-passes.css?v=12')
-            html_stylesheets.add('/zenithstatic/css/shops-reference.css?v=1')
+            html_stylesheets.add('/zenithstatic/css/shops-reference.css?v=2')
             html_stylesheets.add('/zenithstatic/css/purchase-operations.css?v=2')
             html_stylesheets.add('/zenithstatic/css/contacts-dashboard.css?v=1')
             html_stylesheets.add('/zenithstatic/css/edit-customer-group.css?v=1')
@@ -278,7 +278,7 @@
             html_stylesheets.add('/zenithstatic/css/purchase-rfq.css?v=2')
             html_stylesheets.add('/zenithstatic/css/purchase-job-work.css?v=2')
             html_stylesheets.add('/zenithstatic/css/purchase-vendor-bills.css?v=1')
-            html_stylesheets.add('/zenithstatic/css/pos-reference.css?v=1')
+            html_stylesheets.add('/zenithstatic/css/pos-reference.css?v=3')
             html_stylesheets.add('/zenithstatic/css/main-dashboard.css?v=6')
             html_stylesheets.add('/zenithstatic/css/pricing-history.css?v=1')
             html_stylesheets.add('/zenithstatic/css/stock-transfers.css?v=1')
@@ -1187,14 +1187,14 @@
             <link rel="stylesheet" href="/zenithstatic/css/barcode-reference.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/receiving-stock.css?v=14"/>
             <link rel="stylesheet" href="/zenithstatic/css/gate-passes.css?v=12"/>
-            <link rel="stylesheet" href="/zenithstatic/css/shops-reference.css?v=1"/>
+            <link rel="stylesheet" href="/zenithstatic/css/shops-reference.css?v=2"/>
             <link rel="stylesheet" href="/zenithstatic/css/contacts-dashboard.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/edit-customer-group.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/pricing-price-lists.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/purchase-rfq.css?v=2"/>
             <link rel="stylesheet" href="/zenithstatic/css/purchase-job-work.css?v=2"/>
             <link rel="stylesheet" href="/zenithstatic/css/purchase-vendor-bills.css?v=1"/>
-            <link rel="stylesheet" href="/zenithstatic/css/pos-reference.css?v=1"/>
+            <link rel="stylesheet" href="/zenithstatic/css/pos-reference.css?v=3"/>
             <link rel="stylesheet" href="/zenithstatic/css/main-dashboard.css?v=6"/>
             <link rel="stylesheet" href="/zenithstatic/css/pricing-history.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/stock-transfers.css?v=1"/>

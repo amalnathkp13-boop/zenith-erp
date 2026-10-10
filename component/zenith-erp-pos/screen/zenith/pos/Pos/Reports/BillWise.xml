@@ -197,7 +197,7 @@
             </container>
 
             <!-- Bill table -->
-            <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-md">
+            <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-md z-txntable">
                 <form-list name="BillWiseList" list="billList" list-entry="bill" skip-form="true">
                     <row-actions>
                         <script><![CDATA[

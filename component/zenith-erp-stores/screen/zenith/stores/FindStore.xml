@@ -115,6 +115,7 @@
 
         <!-- ===== Table (native filters, columns, export and pagination) ===== -->
         <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-lg z-listchrome shops-reference-list">
+            <render-mode><text type="html,qvt"><![CDATA[<span class="zlc-ph" data-ph="Search store name, code or city" style="display:none"></span>]]></text></render-mode>
             <form-list name="StoresForm" list="stores" list-entry="st" skip-form="true" header-dialog="true"
                        select-columns="true" show-csv-button="true">
                 <row-actions><script><![CDATA[
