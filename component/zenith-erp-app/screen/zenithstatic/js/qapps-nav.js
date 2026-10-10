@@ -384,6 +384,8 @@
         // re-apply active highlight on SPA route changes (URL is swapped without a full reload)
         var last = location.pathname;
         setInterval(function () { if (location.pathname !== last) { last = location.pathname; applyActive(); updateSubnav(); try { if (sessionStorage.getItem('zqGotoModules')) { sessionStorage.removeItem('zqGotoModules'); scrollToModules(); } } catch (_e) {} } }, 400);
+        document.documentElement.classList.add('zq-nav-ready');
+        document.documentElement.classList.remove('zq-shell-boot');
         return true;
     }
 

@@ -263,7 +263,7 @@
         ]]></script>
         <script><![CDATA[
             if (html_stylesheets == null) html_stylesheets = []
-            html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=281')
+            html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=282')
             html_stylesheets.add('/zenithstatic/css/my-subscription-reference.css?v=1')
             html_stylesheets.add('/zenithstatic/css/saas-admin.css?v=4')
             html_stylesheets.add('/zenithstatic/css/product-catalog.css?v=1')
@@ -297,7 +297,7 @@
             html_stylesheets.add('https://fonts.googleapis.com/icon?family=Material+Icons')
             if (footer_scripts == null) footer_scripts = []
             footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=12')
-            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=33')
+            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=34')
             footer_scripts.add('/zenithstatic/js/pricing-price-lists.js?v=1')
             footer_scripts.add('/zenithstatic/js/purchase-rfq.js?v=1')
             footer_scripts.add('/zenithstatic/js/purchase-job-work.js?v=1')
@@ -315,6 +315,7 @@
             html_stylesheets.add('/zenithstatic/css/barcode-module.css?v=1')
             html_stylesheets.add('/zenithstatic/css/barcode-reference.css?v=1')
             if (html_scripts == null) html_scripts = []
+            html_scripts.add('/zenithstatic/js/qapps-shell-boot.js?v=1')
             // ZE-DASH-0402: neutralise the stock framework "notifications disabled" nag toast (Safari fires it
             // on every load). HEAD script so it runs before WebrootVue's mounted() hook. Both surfaces.
             html_scripts.add('/zenithstatic/js/notif-nag-fix.js?v=2')
@@ -1179,7 +1180,7 @@
             <link rel="preconnect" href="https://fonts.googleapis.com"/>
             <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"/>
             <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
-            <link rel="stylesheet" href="/zenithstatic/css/zenith-theme-v4.css?v=281"/>
+            <link rel="stylesheet" href="/zenithstatic/css/zenith-theme-v4.css?v=282"/>
             <link rel="stylesheet" href="/zenithstatic/css/my-subscription-reference.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/saas-admin.css?v=4"/>
             <link rel="stylesheet" href="/zenithstatic/css/product-catalog.css?v=1"/>

@@ -1424,6 +1424,10 @@ body:not(.Terminal) #content { padding-bottom: 96px; }
    <style>/<script>, so the CSS must live here in the loaded theme sheet). Everything is gated on
    body.zq-nav (added by the JS) so it never affects /apps.
    =================================================================================================== */
+/* The shared Quasar shell mounts before its tenant-aware navigation. Keep that transient
+   framework layout out of sight until the replacement is fully initialized. */
+html.zq-shell-boot:not(.zq-nav-ready) body .q-layout{visibility:hidden!important}
+html.zq-shell-boot:not(.zq-nav-ready) body::after{content:"Loading workspace…";position:fixed;inset:0;z-index:4000;display:grid;place-items:center;background:#f8f9fc;color:#463d7a;font:600 15px/1.4 Inter,"Segoe UI",sans-serif;pointer-events:none}
 body.zq-nav .q-drawer { display:none !important; }
 body.zq-nav .q-page-container { padding-left:224px !important; transition:padding-left .15s ease; }
 body.zq-nav.zq-side-collapsed .q-page-container { padding-left:62px !important; }
