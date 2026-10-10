@@ -1,0 +1,45 @@
+/* Sales Dashboard reference layout. All selectors stay inside this screen. */
+.sales-dashboard-page{color:#172033;min-width:0}
+.sales-dashboard-page .sd-heading{display:inline-block;vertical-align:top;width:34%;min-width:285px;margin:0 0 20px!important}
+.sales-dashboard-page .sd-heading h3{font-size:25px!important;line-height:1.2;color:#172033!important;font-weight:700!important}
+.sales-dashboard-page .sd-heading p{font-size:12px;line-height:1.5;color:#667085!important;margin-top:6px!important}
+.sales-dashboard-page .sd-toolbar.zenith-card{display:inline-block;vertical-align:top;width:65%!important;max-width:none!important;margin:0 0 20px!important;padding:0!important;background:transparent!important;border:0!important;box-shadow:none!important;overflow:visible!important}
+.sales-dashboard-page .sd-toolbar>div:first-child{display:flex!important;align-items:center;justify-content:flex-end;gap:6px!important;flex-wrap:wrap;margin:0!important}
+.sales-dashboard-page .sd-datebar{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:7px}
+.sales-dashboard-page .sd-datebar .material-icons{font-size:15px;line-height:1}
+.sales-dashboard-page .sd-datebar .sd-customize{display:inline-flex;align-items:center;gap:5px;min-height:34px;padding:7px 10px;border:1px solid #e5e7eb;border-radius:7px;background:#fff;color:#344054;text-decoration:none;font-size:11px;font-weight:600}
+.sales-dashboard-page .sd-datebar .sd-presets{display:inline-flex;align-items:center;border:1px solid #e5e7eb;border-radius:7px;background:#fff;overflow:hidden}
+.sales-dashboard-page .sd-presets .zdash-chip{border:0!important;border-right:1px solid #e5e7eb!important;border-radius:0!important;margin:0}
+.sales-dashboard-page .sd-presets .zdash-chip:last-child{border-right:0!important}
+.sales-dashboard-page .sd-more-periods{position:relative;font-size:11px}
+.sales-dashboard-page .sd-more-periods>summary{cursor:pointer;list-style:none;min-height:34px;padding:8px 9px;border:1px solid #e5e7eb;border-radius:7px;background:#fff;color:#475467;font-weight:600}
+.sales-dashboard-page .sd-more-periods>summary::-webkit-details-marker{display:none}
+.sales-dashboard-page .sd-more-periods>div{position:absolute;right:0;top:calc(100% + 5px);z-index:70;min-width:120px;display:grid;gap:4px;padding:6px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;box-shadow:0 8px 22px rgba(16,24,40,.12)}
+.sales-dashboard-page .sd-toolbar .zdash-chip,.sales-dashboard-page .sd-toolbar .zdash-dr-sum{border:1px solid #e5e7eb;background:#fff;color:#475467;border-radius:7px;font-size:11px;font-weight:600;min-height:34px;display:inline-flex;align-items:center;padding:7px 10px;white-space:nowrap}
+.sales-dashboard-page .sd-toolbar .zdash-chip.on{background:#4f28b9;color:#fff;border-color:#4f28b9}
+.sales-dashboard-page .sd-toolbar .zdash-dr-pop{min-height:0}
+.sales-dashboard-page .sd-metric-card{min-height:148px;padding:18px!important;border:1px solid #eceef2!important;box-shadow:0 1px 3px rgba(16,24,40,.04)!important}
+.sales-dashboard-page .sd-metric-main{display:grid;grid-template-columns:56px minmax(0,1fr) 42px;align-items:center;gap:12px}
+.sales-dashboard-page .sd-metric-icon{width:56px;height:56px;border-radius:11px;display:flex;align-items:center;justify-content:center}
+.sales-dashboard-page .sd-metric-icon .material-icons{font-size:29px;line-height:1}
+.sales-dashboard-page .sd-green{background:#eaf8ed;color:#16a34a}
+.sales-dashboard-page .sd-orange{background:#fff4e6;color:#f59e0b}
+.sales-dashboard-page .sd-blue{background:#e9f5ff;color:#1684dc}
+.sales-dashboard-page .sd-rose{background:#fff0f5;color:#e83e79}
+.sales-dashboard-page .sd-metric-copy{min-width:0}
+.sales-dashboard-page .sd-metric-copy p{font-size:11px!important;letter-spacing:.035em;color:#667085!important;white-space:nowrap}
+.sales-dashboard-page .sd-metric-copy h4{font-size:23px!important;line-height:1.3!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sales-dashboard-page .sd-metric-spark{justify-self:end;min-width:0}
+.sales-dashboard-page .sd-metric-card>.sd-metric-main+*{display:block;margin:10px 0 0 68px}
+.sales-dashboard-page .zenith-card{border-color:#eceef2;box-shadow:0 1px 3px rgba(16,24,40,.04)!important}
+.sales-dashboard-page .zenith-card h6{color:#172033!important;font-size:16px!important;font-weight:650!important}
+.sales-dashboard-page .sd-forecast{background:#fff!important}
+.sales-dashboard-page .sd-forecast .row>[class*="col-"]:nth-child(1)>div{background:#f2eeff!important}
+.sales-dashboard-page .sd-forecast .row>[class*="col-"]:nth-child(2)>div{background:#eef8ff!important}
+.sales-dashboard-page .sd-forecast .row>[class*="col-"]:nth-child(3)>div{background:#eef8f2!important}
+.sales-dashboard-page .sd-forecast .row>[class*="col-"]:nth-child(4)>div{background:#fff7ec!important}
+.sales-dashboard-page #dashboard-cta{text-align:left!important;padding:22px!important;background-image:linear-gradient(115deg,#0b4fb0,#19b9d0)!important}
+.sales-dashboard-page #dashboard-cta>a.q-link{display:inline-block;width:calc(50% - 12px);margin:0 7px 0 0;vertical-align:top}
+.sales-dashboard-page #dashboard-cta>a.q-link .q-btn{width:100%!important;display:inline-flex;margin:0!important;color:#342080!important;background:#fff!important}
+@media(max-width:1199px){.sales-dashboard-page .sd-heading,.sales-dashboard-page .sd-toolbar.zenith-card{display:block;width:100%!important}.sales-dashboard-page .sd-toolbar>div:first-child{justify-content:flex-start}}
+@media(max-width:600px){.sales-dashboard-page .sd-metric-main{grid-template-columns:50px minmax(0,1fr) 34px;gap:8px}.sales-dashboard-page .sd-metric-icon{width:50px;height:50px}.sales-dashboard-page .sd-metric-copy h4{font-size:19px!important}.sales-dashboard-page #dashboard-cta>a.q-link{width:100%;margin:0 0 8px}}
