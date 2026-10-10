@@ -127,6 +127,42 @@
         ]]></script>
     </always-actions>
 
+    <transition name="getSidebarConfiguration" read-only="true" begin-transaction="false">
+        <actions><script><![CDATA[
+            def result = ec.service.sync().name('zenith.app.SidebarServices.get#SidebarConfiguration')
+                .parameters([:]).call()
+            ec.web.sendJsonResponse([allowedIds:result.allowedIds ?: [], preference:result.preference ?: ''])
+        ]]></script></actions>
+        <default-response type="none"/>
+    </transition>
+
+    <transition name="saveSidebarConfiguration">
+        <actions><script><![CDATA[
+            def reject = { int code, String message ->
+                def response = ec.web.response
+                response.setStatus(code)
+                response.setContentType('application/json')
+                response.setCharacterEncoding('UTF-8')
+                response.writer.write(groovy.json.JsonOutput.toJson([saved:false, error:message]))
+                response.writer.flush()
+            }
+            if (!'POST'.equalsIgnoreCase(ec.web.request.method)) {
+                reject(405, 'Use POST to save sidebar settings.')
+            } else if (!ec.web.request.getParameter('payload')) {
+                reject(400, 'Sidebar settings are required.')
+            } else {
+                def result = ec.service.sync().name('zenith.app.SidebarServices.save#SidebarConfiguration')
+                    .parameter('payload', ec.web.request.getParameter('payload')).call()
+                if (result?.error) {
+                    reject(400, result.error)
+                } else {
+                    ec.web.sendJsonResponse([saved:true, preference:result.preference])
+                }
+            }
+        ]]></script></actions>
+        <default-response type="none"/>
+    </transition>
+
     <transition name="askCopilot" read-only="true" begin-transaction="false">
         <actions>
             <script><![CDATA[
@@ -264,6 +300,7 @@
         <script><![CDATA[
             if (html_stylesheets == null) html_stylesheets = []
             html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=281')
+            html_stylesheets.add('/zenithstatic/css/sidebar-manager.css?v=2')
             html_stylesheets.add('/zenithstatic/css/my-subscription-reference.css?v=1')
             html_stylesheets.add('/zenithstatic/css/saas-admin.css?v=4')
             html_stylesheets.add('/zenithstatic/css/product-catalog.css?v=1')
@@ -298,6 +335,7 @@
             if (footer_scripts == null) footer_scripts = []
             footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=12')
             footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=33')
+            footer_scripts.add('/zenithstatic/js/sidebar-manager.js?v=1')
             footer_scripts.add('/zenithstatic/js/pricing-price-lists.js?v=1')
             footer_scripts.add('/zenithstatic/js/purchase-rfq.js?v=1')
             footer_scripts.add('/zenithstatic/js/purchase-job-work.js?v=1')
