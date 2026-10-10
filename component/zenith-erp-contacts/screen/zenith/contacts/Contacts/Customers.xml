@@ -271,7 +271,7 @@
                 </div>
               </details>
               <span class="sup-fspacer"></span>
-              <a href="?showDisabled=<#if _sd == 'Y'>N<#else>Y</#if>&amp;partyTypeEnumId=${_t}&amp;statusFilter=${_st}" class="sup-switch-link<#if _sd == 'Y'> sup-switch-on</#if>">Show Disabled</a>
+              <a href="?showDisabled=<#if _sd == 'Y'><#else>Y</#if>&amp;partyTypeEnumId=${_t}&amp;statusFilter=${_st}" class="sup-switch-link<#if _sd == 'Y'> sup-switch-on</#if>">Show Disabled</a>
             </div>
         ]]></text></render-mode>
         <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-md sup-compact contacts-list-card">
@@ -349,9 +349,8 @@
                 <field name="cinSearch"><header-field title="CIN Search"><text-line size="22"/></header-field><default-field><hidden/></default-field></field>
                 <field name="emailSearch"><header-field title="Email Search"><text-line size="30"/></header-field><default-field><hidden/></default-field></field>
                 <field name="phoneSearch"><header-field title="Phone Search"><text-line size="15"/></header-field><default-field><hidden/></default-field></field>
-                <!-- ZE-CUST-LIST: Show Disabled also in Find Options so the inline toggle's param round-trips. -->
-                <field name="showDisabled"><header-field title="Show Disabled"><drop-down no-current-selected-key="N"><option key="N" text="No"/><option key="Y" text="Yes (include disabled)"/></drop-down></header-field><default-field><hidden/></default-field></field>
-                <field name="statusFilter"><header-field title="Status"><drop-down allow-empty="true"><option key="active" text="Active"/><option key="inactive" text="Inactive"/></drop-down></header-field><default-field><hidden/></default-field></field>
+                <!-- Status and Show Disabled are controlled by the compact toolbar above. Declaring them
+                     again as list header fields rendered a redundant full-width active-filter row. -->
 
                 <field name="name">
                     <header-field title="Customer Name" show-order-by="true"/>
