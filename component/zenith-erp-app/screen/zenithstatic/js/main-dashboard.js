@@ -4,6 +4,15 @@
   var initialized = new WeakSet();
   var navRoot;
   var notificationObserver;
+  function syncSidebarOffset() {
+    var root = document.getElementById('homeDashboard');
+    if (!root) { document.documentElement.style.removeProperty('--home-sidebar-top'); return; }
+    var headerOffset = window.innerWidth <= 900 ? 104 : 64;
+    var top = Math.max(0, headerOffset - Math.max(0, window.scrollY || 0));
+    document.documentElement.style.setProperty('--home-sidebar-top', top + 'px');
+  }
+  window.addEventListener('scroll', syncSidebarOffset, { passive: true });
+  window.addEventListener('resize', syncSidebarOffset);
   // Outline icons from the supplied dashboard reference; SVG stays crisp at the header's actual size.
   function outlineIcon(name) {
     var paths = {
@@ -85,6 +94,7 @@
   }
   function boot() {
     var root = document.getElementById('homeDashboard');
+    syncSidebarOffset();
     chrome(root);
     if (!root || initialized.has(root)) return;
     var chart = root.querySelector('#homeActivityChart');

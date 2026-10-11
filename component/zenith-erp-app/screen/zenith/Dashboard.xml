@@ -278,6 +278,24 @@
             // Keep the chosen tab when Today, This Week or This Month share the same bounds.
             def _presetStarts = [today:_todayStr, week:_weekStartStr, month:_monthStartStr, year:_dwYearStart]
             if (_presetStarts.containsKey(dateMode) && dashDate == _presetStarts[dateMode] && dashDateTo == _todayStr) presetActive = dateMode
+            // A one-day range for today is the Today preset, including when the current week starts today.
+            if (dashDate == _todayStr && dashDateTo == _todayStr) presetActive = 'today'
+            // Custom ranges that exactly match a calendar period also select its preset.
+            if (dashDate && dateMode == 'custom' && presetActive == 'custom') {
+                def _rangeFrom = java.time.LocalDate.parse(dashDate), _rangeTo = java.time.LocalDate.parse(dashDateTo)
+                def _rangeWeekCal = java.util.Calendar.getInstance(); _rangeWeekCal.setTime(java.sql.Timestamp.valueOf(_rangeFrom.toString()+' 00:00:00'))
+                _rangeWeekCal.set(java.util.Calendar.DAY_OF_WEEK, _rangeWeekCal.getFirstDayOfWeek())
+                def _rangeWeekStart = java.time.LocalDate.parse(_sdf.format(_rangeWeekCal.getTime()))
+                def _monthFirst = _rangeFrom.withDayOfMonth(1)
+                def _yearFirst = _rangeFrom.withDayOfYear(1)
+                def _currentMonthFirst = java.time.LocalDate.parse(_monthStartStr)
+                def _currentYearFirst = java.time.LocalDate.parse(_dwYearStart)
+                def _currentWeekFirst = java.time.LocalDate.parse(_weekStartStr)
+                if (_rangeFrom == _rangeWeekStart && (_rangeTo == _rangeWeekStart.plusDays(6) || (_rangeFrom == _currentWeekFirst && _rangeTo.toString() == _todayStr))) presetActive = 'week'
+                if (_rangeFrom == _monthFirst && (_rangeTo == _rangeFrom.withDayOfMonth(_rangeFrom.lengthOfMonth()) || (_rangeFrom == _currentMonthFirst && _rangeTo.toString() == _todayStr))) presetActive = 'month'
+                if (_rangeFrom == _yearFirst && (_rangeTo == _rangeFrom.withMonth(12).withDayOfMonth(31) || (_rangeFrom == _currentYearFirst && _rangeTo.toString() == _todayStr))) presetActive = 'year'
+                if (_rangeFrom.toString() == _todayStr && _rangeTo.toString() == _todayStr) presetActive = 'today'
+            }
             showCustom = (((dateMode ?: '') == 'custom') || (presetActive == 'custom'))
             urlCustom = dashDate ? ("?dateMode=custom&dashDate="+dashDate+"&dashDateTo="+dashDateTo) : "?dateMode=custom"
             acRangeLabel = dashDate ? (dashDate == dashDateTo ? dashDate : (dashDate + ' to ' + dashDateTo)) : ''
@@ -287,7 +305,7 @@
             homeNextRangeUrl = ''
             if (dashDate) {
                 def _from = java.time.LocalDate.parse(dashDate), _to = java.time.LocalDate.parse(dashDateTo)
-                homeRangeLabel = _from.format(_from.year == _to.year ? _controlDay : _controlEnd) + ' – ' + _to.format(_controlEnd)
+                homeRangeLabel = _from == _to ? _from.format(_controlEnd) : (_from.format(_from.year == _to.year ? _controlDay : _controlEnd) + ' – ' + _to.format(_controlEnd))
                 def _rangeDays = java.time.temporal.ChronoUnit.DAYS.between(_from, _to) + 1
                 homeNextRangeUrl = '?dateMode=custom&dashDate=' + _from.plusDays(_rangeDays) + '&dashDateTo=' + _to.plusDays(_rangeDays)
             }

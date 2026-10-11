@@ -279,7 +279,7 @@
             html_stylesheets.add('/zenithstatic/css/purchase-job-work.css?v=2')
             html_stylesheets.add('/zenithstatic/css/purchase-vendor-bills.css?v=1')
             html_stylesheets.add('/zenithstatic/css/pos-reference.css?v=1')
-            html_stylesheets.add('/zenithstatic/css/main-dashboard.css?v=8')
+            html_stylesheets.add('/zenithstatic/css/main-dashboard.css?v=12')
             html_stylesheets.add('/zenithstatic/css/pricing-history.css?v=1')
             html_stylesheets.add('/zenithstatic/css/stock-transfers.css?v=1')
             html_stylesheets.add('/zenithstatic/css/stock-levels.css?v=2')
@@ -320,7 +320,7 @@
             html_scripts.add('/zenithstatic/js/notif-nag-fix.js?v=2')
             html_scripts.add('/zenithstatic/js/zenith-charts.js?v=3')
             html_scripts.add('/zenithstatic/js/inventory-dashboard.js?v=1')
-            html_scripts.add('/zenithstatic/js/main-dashboard.js?v=4')
+            html_scripts.add('/zenithstatic/js/main-dashboard.js?v=5')
             html_scripts.add('/zenithstatic/js/stock-levels.js?v=1')
             html_scripts.add('/zenithstatic/js/expiry-risk.js?v=3')
             html_scripts.add('/zenithstatic/js/stock-adjustments.js?v=7')
@@ -1196,7 +1196,7 @@
             <link rel="stylesheet" href="/zenithstatic/css/purchase-job-work.css?v=2"/>
             <link rel="stylesheet" href="/zenithstatic/css/purchase-vendor-bills.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/pos-reference.css?v=1"/>
-            <link rel="stylesheet" href="/zenithstatic/css/main-dashboard.css?v=8"/>
+            <link rel="stylesheet" href="/zenithstatic/css/main-dashboard.css?v=12"/>
             <link rel="stylesheet" href="/zenithstatic/css/pricing-history.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/stock-transfers.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/stock-levels.css?v=2"/>

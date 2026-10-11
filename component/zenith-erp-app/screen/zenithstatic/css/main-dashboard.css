@@ -128,11 +128,14 @@ body:has(#homeDashboard) .q-toolbar>button:first-child {width:32px!important;min
 body:has(#homeDashboard) .q-toolbar>button:not(:first-child) {display:none!important}
 body:has(#homeDashboard) .q-toolbar>.q-space,body:has(#homeDashboard) #zq-toolbtns {display:none!important}
 body:has(#homeDashboard) #zq-topextra {display:contents}
-body:has(#homeDashboard) #zq-sidebar,body:has(#homeDashboard) #z-sidebar {top:64px;border-right:1px solid #E5E7EB;background:#fff}
+body:has(#homeDashboard) :is(#zq-sidebar,#z-sidebar) {position:fixed!important;left:0!important;top:var(--home-sidebar-top,64px)!important;bottom:0!important;height:auto!important;overflow:visible!important;border-right:1px solid #E5E7EB;background:#fff}
+body:has(#homeDashboard) :is(#zq-sidebar,#z-sidebar) :is(.zqs-collapse,.zs-collapse) {position:absolute;top:16px;right:-14px;width:28px;height:28px;padding:0;border:1px solid #D8CCF8;border-radius:50%;background:#fff;color:#6D28D9;font-size:14px;font-weight:700;line-height:1;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px #24174A26;z-index:4000;cursor:pointer}
+body:has(#homeDashboard) :is(#zq-sidebar,#z-sidebar) :is(.zqs-collapse,.zs-collapse):hover {background:#F5F3FF;border-color:#A78BFA;color:#5B21B6}
+body:has(#homeDashboard) :is(#zq-sidebar,#z-sidebar) :is(.zqs-scroll,.zs-scroll) {min-height:0;overscroll-behavior:contain}
 body:has(#homeDashboard) .zqs-brand,body:has(#homeDashboard) .zs-brand {display:none}
 body:has(#homeDashboard) .q-footer {position:relative!important;left:auto!important;right:auto!important;bottom:auto!important;transform:none!important;margin-left:224px;width:calc(100% - 224px)}
 body.zq-side-collapsed:has(#homeDashboard) .q-footer {margin-left:62px;width:calc(100% - 62px)}
-body:has(#homeDashboard) :is(#zq-ownerview,#z-ownerview) {display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;margin:0 8px 0 16px;float:none;flex:0 1 auto;max-width:260px;background:#F8F9FC;border:1px solid #E5E7EB;border-radius:9px;font-size:14px;font-weight:400;white-space:nowrap;overflow:visible;color:#111827}
+body:has(#homeDashboard) :is(#zq-ownerview,#z-ownerview) {display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;margin:0 12px 0 44px;float:none;flex:0 1 auto;width:284px;max-width:284px;background:#F8F9FC;border:1px solid #E5E7EB;border-radius:9px;font-size:14px;font-weight:400;white-space:nowrap;overflow:visible;color:#111827}
 body:has(#homeDashboard) :is(.zqov-sep,.zov-sep) {display:none}
 body:has(#homeDashboard) :is(.zqov-org,.zov-org) {color:#111827!important;font-weight:400;min-width:0;overflow:hidden;text-overflow:ellipsis}
 body:has(#homeDashboard) :is(.zqov-org,.zov-org)::before {content:'('}
@@ -141,7 +144,7 @@ body:has(#homeDashboard) :is(#zq-ownerview,#z-ownerview)>.material-icons {font-s
 body:has(#homeDashboard) :is(#zq-ownerview,#z-ownerview)>.material-icons:first-of-type,body:has(#homeDashboard) :is(.zqsr-box,.zsr-box)>.material-icons {display:none}
 #homeOwnerIcon {width:14px;height:14px;flex:none;color:#6B7280}
 #homeSearchIcon {width:16px;height:16px;flex:none;color:#9CA3AF}
-body:has(#homeDashboard) :is(#zq-search,#z-search) {width:175px;min-width:140px;flex:0 0 175px;float:none;margin:0 0 0 auto;border:0;background:none}
+body:has(#homeDashboard) :is(#zq-search,#z-search) {width:220px;min-width:180px;flex:0 0 220px;float:none;margin:0 0 0 auto;border:0;background:none}
 body:has(#homeDashboard) :is(.zqsr-box,.zsr-box) {box-sizing:border-box;width:100%!important;max-width:none!important;height:38px;padding:0 12px!important;gap:6px;background:#F8F9FC!important;border:1px solid #E5E7EB!important;border-radius:10px!important}
 body:has(#homeDashboard) :is(#zq-search,#z-search) input {min-width:0;flex:1 1 0;width:0;font-size:14px}
 body:has(#homeDashboard) .z-kbd {background:#fff;border-color:#E5E7EB;font-size:10px;font-weight:400;min-width:30px;margin:0;padding:0 3px}
@@ -154,13 +157,13 @@ body:has(#homeDashboard) :is(#zq-search,#z-search):focus-within :is(.zqsr-box,.z
 #homePrimaryNav a[aria-current] {background:#7C3AED;color:#fff!important;font-weight:600}
 #homeBrand {display:flex;align-items:center;gap:8px;flex:none;color:#7C3AED!important;text-decoration:none;font-size:16px;font-weight:700}
 #homeBrand .home-logo {display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:#7C3AED;color:#fff;font-size:12px;font-weight:700}
-#homeMenuButton {display:flex;align-items:center;justify-content:center;flex:none;width:32px;height:32px;padding:0;margin-right:7px;border:0;border-radius:8px;background:transparent;color:#111827;cursor:pointer}
+#homeMenuButton {display:flex;align-items:center;justify-content:center;flex:none;width:32px;height:32px;padding:0;margin-right:17px;border:0;border-radius:8px;background:transparent;color:#111827;cursor:pointer}
 #homeMenuButton svg {width:18px;height:18px}
-#homeUtilities {display:flex;align-items:center;gap:8px;flex:none;margin-left:4px}
-#homeUtilities a {position:relative;display:flex;align-items:center;justify-content:center;width:40px;height:38px;border-radius:8px;color:#6B7280!important;text-decoration:none}
+#homeUtilities {display:flex;align-items:center;gap:20px;flex:none;margin-left:4px}
+#homeUtilities a {position:relative;display:flex;align-items:center;justify-content:center;width:44px;height:38px;border-radius:8px;color:#6B7280!important;text-decoration:none}
 #homeUtilities a:hover,#homeMenuButton:hover {background:#F8F9FC}
 #homeUtilities svg {width:20px;height:20px;color:#6B7280}
-#homeUtilities .home-avatar {width:38px;height:38px;border-radius:50%;background:#7C3AED;color:#fff!important;font-size:13px;font-weight:600;margin:0}
+#homeUtilities .home-avatar {width:42px;height:42px;border-radius:50%;background:#7C3AED;color:#fff!important;font-size:13px;font-weight:600;margin:0}
 #homeUtilities .home-notification-dot {position:absolute;top:6px;right:7px;width:5px;height:5px;border-radius:50%;background:#EF4444}
 #homeUtilities .home-notification-dot[hidden] {display:none}
 #homeBrand:focus-visible,body:has(#homeDashboard) :is(#homePrimaryNav,#homeUtilities) a:focus-visible,body:has(#homeDashboard) #homeMenuButton:focus-visible {outline:2px solid #7C3AED;outline-offset:2px}
@@ -170,12 +173,19 @@ body:has(#homeDashboard) #zq-sidebar .zqs-link .material-icons {font-size:16px!i
 body:has(#homeDashboard) #zq-sidebar .zqs-cat {font-size:10px;letter-spacing:.5px;color:#9CA3AF;margin-top:12px}
 /* Keep the Bootstrap shell on one line without its duplicate application toolbar. */
 body:has(#homeDashboard) .navbar-header,body:has(#homeDashboard) #z-avatar {display:none!important}
-body:has(#homeDashboard) .navbar>.container-fluid {padding:0 16px}
+body:has(#homeDashboard) .navbar>.container-fluid {padding:0 24px}
 body:has(#homeDashboard) #navbar-buttons {display:flex!important;align-items:center;gap:8px;min-height:64px;height:64px!important;padding:0;margin:0;border:0;box-shadow:none;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 body:has(#homeDashboard) .navbar-collapse>#header-menus,body:has(#homeDashboard) .navbar-collapse>#navbar-menu-crumbs,body:has(#homeDashboard) .navbar-collapse>.navbar-text,body:has(#homeDashboard) .navbar-collapse>.navbar-btn,body:has(#homeDashboard) .navbar-collapse>.btn-group,body:has(#homeDashboard) .navbar-collapse>#history-menu {display:none!important}
 body:has(#homeDashboard) .navbar-collapse #homePrimaryNav {margin:0 auto 0 0;flex-shrink:0}
 @media(max-width:1399px){#homePrimaryNav{display:none}}
 @media(min-width:1400px) and (max-width:1600px){#homePrimaryNav a{padding:7px 10px}}
+@media(min-width:1400px) and (max-width:1600px){
+  body:has(#homeDashboard) :is(#zq-ownerview,#z-ownerview){width:220px;max-width:220px;margin-left:24px;margin-right:8px}
+  body:has(#homeDashboard) :is(#zq-search,#z-search){width:190px;min-width:160px;flex-basis:190px}
+  #homeUtilities{gap:12px}
+  #homeUtilities a{width:38px;height:38px}
+  #homeUtilities .home-avatar{width:38px;height:38px}
+}
 @media(max-width:1279px){#homeDashboard .zdh-snap{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:1023px){#homeDashboard .home-header-controls{width:100%}#homeDashboard .zdh-orow{grid-template-columns:1fr}#homeDashboard .zsc-row{grid-template-columns:repeat(2,minmax(0,1fr))}#homeDashboard .dash-widget[data-size]{width:100%}}
 @media(max-width:599px){#homeDashboard{padding:16px 14px 32px}#homeDashboard .zsc-row,#homeDashboard .zdh-snap{grid-template-columns:1fr}#homeDashboard .home-period{padding:6px 9px;font-size:11px}#homeDashboard .zdh-qa{grid-template-columns:repeat(2,minmax(0,1fr))}#homeDashboard .zdh-qc{min-height:100px}#homeDashboard .zdash-dr-pop{right:auto;left:0}#homeDashboard .home-page-header{gap:12px}#homeDashboard .zdh-ocard,#homeDashboard .zdh-card{padding:16px}#homeDashboard #homeActivityChart,#homeDashboard #homeActivityChart svg{height:220px}}
@@ -185,7 +195,7 @@ body:has(#homeDashboard) .navbar-collapse #homePrimaryNav {margin:0 auto 0 0;fle
   body:has(#homeDashboard) .navbar>.container-fluid {padding:0}
   body.zq-nav:has(#homeDashboard) .q-header {height:104px!important}
   body:has(#homeDashboard) .q-page-container {padding-top:104px!important}
-  body:has(#homeDashboard) #zq-sidebar,body:has(#homeDashboard) #z-sidebar {top:104px}
+  body:has(#homeDashboard) :is(#zq-sidebar,#z-sidebar) {top:var(--home-sidebar-top,104px)!important}
   body:has(#homeDashboard) #z-side-burger {visibility:hidden}
   body:has(#homeDashboard) :is(#homeMenuButton,.q-toolbar>button:first-child) {grid-row:1;grid-column:1}
   body:has(#homeDashboard) :is(#homeMenuButton,.q-toolbar>button:first-child) {margin:0!important}
