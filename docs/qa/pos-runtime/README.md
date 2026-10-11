@@ -55,10 +55,13 @@ deployment claim. Never reuse a database containing customer records.
   invoice totals, tax detail and audit. No production issued bill is amended.
 - Tenant service/detail/receipt denial, CSRF, cashier permissions, child report
   rendering, one search-add POST, active till layouts and both app shells. Normal
-  and Advanced layouts retain cart height, contain wrapped headers and scroll
-  to both the cart and payment controls at five widths; the fullscreen icon uses SVG.
+  and Advanced layouts retain cart access and contain wrapped headers at five widths.
+  Desktop terminals keep the outer page fixed and payment controls visible, while
+  narrow layouts retain their scrolling fallback; the fullscreen icon uses SVG.
   AJAX cart add/remove updates the side Bill Summary, names remain literal text,
   and Advanced mobile checkout stacks the catalog/cart and wraps readable payment buttons.
+- Tax-off item addition is checked with a synthetic terminal that has no valid supply
+  state, proving the disabled GST path adds a line without requiring GST state validation.
 
 Render checks do not certify every business operation in a screen. Physical QZ
 printers, scales, handheld scanners, external payment providers and Safari dark
