@@ -14,11 +14,11 @@
             def _wk = ['insights','kpis','snapshot','activity','modules']
             ec.user.setPreference('HOME_DASH_HIDDEN', _wk.findAll { !context.get('w_' + it) }.join(','))
         ]]></script></actions>
-        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo]"/>
+        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dateMode:dateMode]"/>
     </transition>
     <transition name="resetDashLayout">
         <actions><script>ec.user.setPreference('HOME_DASH_HIDDEN', null); ec.user.setPreference('HOME_DASH_ORDER', null); ec.user.setPreference('HOME_DASH_SIZE', null)</script></actions>
-        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo]"/>
+        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dateMode:dateMode]"/>
     </transition>
     <transition name="changeDashDate"><default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dateMode:'custom']"/></transition>
     <transition name="saveDashOrder" method="post">
@@ -247,9 +247,9 @@
             def _cw = java.util.Calendar.getInstance(); _cw.setTime(_now); _cw.set(java.util.Calendar.DAY_OF_WEEK, _cw.getFirstDayOfWeek()); def _weekStartStr = _sdf.format(_cw.getTime())
             def _cm = java.util.Calendar.getInstance(); _cm.setTime(_now); _cm.set(java.util.Calendar.DAY_OF_MONTH,1); def _monthStartStr = _sdf.format(_cm.getTime())
             def _c30 = java.util.Calendar.getInstance(); _c30.setTime(_now); _c30.add(java.util.Calendar.DAY_OF_MONTH,-29); def _last30Str = _sdf.format(_c30.getTime())
-            urlAll = "?"; urlToday = "?dashDate="+_todayStr+"&dashDateTo="+_todayStr
-            urlWeek = "?dashDate="+_weekStartStr+"&dashDateTo="+_todayStr
-            urlMonth = "?dashDate="+_monthStartStr+"&dashDateTo="+_todayStr
+            urlAll = "?"; urlToday = "?dateMode=today&dashDate="+_todayStr+"&dashDateTo="+_todayStr
+            urlWeek = "?dateMode=week&dashDate="+_weekStartStr+"&dashDateTo="+_todayStr
+            urlMonth = "?dateMode=month&dashDate="+_monthStartStr+"&dashDateTo="+_todayStr
             url30 = "?dashDate="+_last30Str+"&dashDateTo="+_todayStr
             presetActive = 'all'
             if (dashDate) {
@@ -264,11 +264,24 @@
             // ZE-DATEWISE: This Year preset + "Date-wise" custom-range tab (self-contained; var-name-agnostic)
             def _dwSdf = new java.text.SimpleDateFormat("yyyy-MM-dd"); def _dwNow = ec.user.nowTimestamp; def _dwToday = _dwSdf.format(_dwNow)
             def _dwYc = java.util.Calendar.getInstance(); _dwYc.setTime(_dwNow); _dwYc.set(java.util.Calendar.MONTH,0); _dwYc.set(java.util.Calendar.DAY_OF_MONTH,1); def _dwYearStart = _dwSdf.format(_dwYc.getTime())
-            urlYear = "?dashDate="+_dwYearStart+"&dashDateTo="+_dwToday
+            urlYear = "?dateMode=year&dashDate="+_dwYearStart+"&dashDateTo="+_dwToday
             if (dashDate && dashDateTo == _dwToday && dashDate == _dwYearStart) presetActive = 'year'
+            // Keep the chosen tab when Today, This Week or This Month share the same bounds.
+            def _presetStarts = [today:_todayStr, week:_weekStartStr, month:_monthStartStr, year:_dwYearStart]
+            if (_presetStarts.containsKey(dateMode) && dashDate == _presetStarts[dateMode] && dashDateTo == _todayStr) presetActive = dateMode
             showCustom = (((dateMode ?: '') == 'custom') || (presetActive == 'custom'))
             urlCustom = dashDate ? ("?dateMode=custom&dashDate="+dashDate+"&dashDateTo="+dashDateTo) : "?dateMode=custom"
             acRangeLabel = dashDate ? (dashDate == dashDateTo ? dashDate : (dashDate + ' to ' + dashDateTo)) : 'All time'
+            def _controlDay = java.time.format.DateTimeFormatter.ofPattern('dd MMM', java.util.Locale.ENGLISH)
+            def _controlEnd = java.time.format.DateTimeFormatter.ofPattern('dd MMM yyyy', java.util.Locale.ENGLISH)
+            homeRangeLabel = 'All time'
+            homeNextRangeUrl = ''
+            if (dashDate) {
+                def _from = java.time.LocalDate.parse(dashDate), _to = java.time.LocalDate.parse(dashDateTo)
+                homeRangeLabel = _from.format(_from.year == _to.year ? _controlDay : _controlEnd) + ' – ' + _to.format(_controlEnd)
+                def _rangeDays = java.time.temporal.ChronoUnit.DAYS.between(_from, _to) + 1
+                homeNextRangeUrl = '?dateMode=custom&dashDate=' + _from.plusDays(_rangeDays) + '&dashDateTo=' + _to.plusDays(_rangeDays)
+            }
 
             // ZE-DASH SALES ANALYST (2026-08): two client-switchable views — Weekly (sales ₹ per day, current week)
             // and Today Hourly (sales ₹ per hour today). Metric = finalised InvoiceSales invoiceTotal (SAME basis as
@@ -326,7 +339,7 @@
             w_modules = showModules ? 'Y' : ''
             dashOrderCsv = (ec.user.getPreference('HOME_DASH_ORDER') ?: '')
             dashSizeCsv = (ec.user.getPreference('HOME_DASH_SIZE') ?: '')
-            urlSettings = dashDate ? ("?dashDate="+dashDate+"&dashDateTo="+dashDateTo+"&showSettings=1") : "?showSettings=1"
+            urlSettings = dashDate ? ("?dashDate="+dashDate+"&dashDateTo="+dashDateTo+"&showSettings=1" + (_presetStarts.containsKey(dateMode) ? "&dateMode="+dateMode : '')) : "?showSettings=1"
         ]]></script>
 
         <!-- Supplemental panels share organization-scoped balances and avoid counting linked POS invoices twice. -->
@@ -547,17 +560,19 @@
 <header class="home-page-header">
   <div class="home-title"><h1>${homeGreeting}, <span aria-hidden="true">👋</span></h1><p>${(homeOrgName!'Select an organization')?html} · Business overview</p></div>
   <div class="home-header-controls">
-    <a href="${urlSettings?html}" class="home-outline"><span class="material-icons" aria-hidden="true">tune</span>Customize</a>
-    <details class="zdash-dr"><summary class="home-outline"><span class="material-icons" aria-hidden="true">calendar_today</span>${(dashDate?has_content)?string(acRangeLabel,'All time')}<span aria-hidden="true">⌄</span></summary>
+    <a href="${urlSettings?html}" class="home-outline home-customize"><span class="material-icons" aria-hidden="true">tune</span>Customize</a>
+    <details class="zdash-dr"><summary class="home-outline home-date"><span class="material-icons" aria-hidden="true">calendar_today</span>${homeRangeLabel?html}<span class="material-icons home-date-caret" aria-hidden="true">expand_more</span></summary>
       <form method="get" action="${homeRoute?html}" class="zdash-dr-pop">
         <input type="hidden" name="dateMode" value="custom"/>
         <label class="zdash-dr-row">From<input type="date" name="dashDate" value="${dashDate}" required="required"/></label>
         <label class="zdash-dr-row">To<input type="date" name="dashDateTo" value="${dashDateTo}" required="required"/></label>
         <button type="submit" class="zdash-dr-apply">Apply range</button>
+        <a href="${urlAll?html}" class="home-all-time">All time</a>
       </form>
     </details>
+    <#if homeNextRangeUrl?has_content><a href="${homeNextRangeUrl?html}" class="home-outline home-next-range" aria-label="Next date range" title="Next date range"><span class="material-icons" aria-hidden="true">chevron_right</span></a><#else><button type="button" class="home-outline home-next-range" disabled="disabled" aria-label="Next date range" title="Choose a date range first"><span class="material-icons" aria-hidden="true">chevron_right</span></button></#if>
     <nav class="home-periods" aria-label="Dashboard date range">
-      <#list [{'key':'all','label':'All time','url':urlAll},{'key':'today','label':'Today','url':urlToday},{'key':'week','label':'This Week','url':urlWeek},{'key':'month','label':'This Month','url':urlMonth},{'key':'year','label':'This Year','url':urlYear}] as period>
+      <#list [{'key':'today','label':'Today','url':urlToday},{'key':'week','label':'This Week','url':urlWeek},{'key':'month','label':'This Month','url':urlMonth},{'key':'year','label':'This Year','url':urlYear}] as period>
       <a href="${period.url?html}" class="home-period${(presetActive==period.key)?string(' on','')}"<#if presetActive==period.key> aria-current="date"</#if>>${period.label}</a>
       </#list>
     </nav>
@@ -578,7 +593,7 @@
                     </form-single>
                     <container style="row q-gutter-sm q-mt-sm">
                         <link url="resetDashLayout" text="Reset to Default" icon="fa fa-undo" btn-type="warning"/>
-                        <link url="." text="Close" btn-type="flat" parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, showSettings:'0']"/>
+                        <link url="." text="Close" btn-type="flat" parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dateMode:dateMode, showSettings:'0']"/>
                     </container>
                 </container>
             </widgets>

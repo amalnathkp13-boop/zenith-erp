@@ -3,10 +3,36 @@
   'use strict';
   var initialized = new WeakSet();
   var navRoot;
+  var notificationObserver;
+  // Outline icons from the supplied dashboard reference; SVG stays crisp at the header's actual size.
+  function outlineIcon(name) {
+    var paths = {
+      menu: '<path d="M3 6h18M3 12h18M3 18h18"/>',
+      owner: '<path d="M3 7v4a1 1 0 001 1h3m10-5v4a1 1 0 01-1 1h-3m-4 0v5a1 1 0 001 1h2"/><circle cx="12" cy="4" r="2"/>',
+      search: '<circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>',
+      calendar_today: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+      settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>',
+      notifications_none: '<path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/>',
+      tune: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06"/>',
+      expand_more: '<path d="M6 9l6 6 6-6"/>',
+      chevron_right: '<path d="M9 18l6-6-6-6"/>'
+    };
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('fill', 'none'); svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', '2');
+    svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('focusable', 'false'); svg.setAttribute('class', 'home-glyph'); svg.innerHTML = paths[name] || '';
+    return svg;
+  }
+  function clearChrome() {
+    ['homePrimaryNav', 'homeBrand', 'homeMenuButton', 'homeUtilities', 'homeOwnerIcon', 'homeSearchIcon'].forEach(function (id) {
+      var element = document.getElementById(id); if (element) element.remove();
+    });
+    if (notificationObserver) notificationObserver.disconnect();
+    notificationObserver = null; navRoot = null;
+  }
   function chrome(root) {
     var nav = document.getElementById('homePrimaryNav');
-    if (nav && navRoot !== root) { nav.remove(); nav = null; }
-    if (!root) { if (nav) nav.remove(); return; }
+    if (nav && navRoot !== root) { clearChrome(); nav = null; }
+    if (!root) { clearChrome(); return; }
     if (nav) return;
     var search = document.getElementById('zq-search') || document.getElementById('z-search');
     if (!search) return;
@@ -20,6 +46,41 @@
       nav.appendChild(link);
     });
     search.before(nav);
+    var spa = location.pathname.startsWith('/qapps/');
+    var host = search.parentNode;
+    var owner = document.getElementById(spa ? 'zq-ownerview' : 'z-ownerview');
+    if (owner) { var ownerIcon = outlineIcon('owner'); ownerIcon.id = 'homeOwnerIcon'; owner.prepend(ownerIcon); }
+    var searchIcon = outlineIcon('search'); searchIcon.id = 'homeSearchIcon'; search.querySelector('.zqsr-box,.zsr-box').prepend(searchIcon);
+    var brand = document.createElement('a'); brand.id = 'homeBrand'; brand.href = (spa ? '/qapps/' : '/apps/') + 'zenith/Dashboard';
+    brand.setAttribute('aria-label', 'ZcERP dashboard');
+    var logo = document.createElement('span'); logo.className = 'home-logo'; logo.textContent = 'Zc'; brand.appendChild(logo);
+    var name = document.createElement('span'); name.textContent = 'ZcERP'; brand.appendChild(name); host.prepend(brand);
+    if (!spa) {
+      var menu = document.createElement('button'); menu.id = 'homeMenuButton'; menu.type = 'button'; menu.setAttribute('aria-label', 'Toggle sidebar');
+      menu.appendChild(outlineIcon('menu'));
+      menu.addEventListener('click', function () { var toggle = document.getElementById(innerWidth > 900 ? 'z-side-toggle' : 'z-side-burger'); if (toggle) toggle.click(); });
+      host.prepend(menu);
+    }
+    var input = search.querySelector('input');
+    if (input) { input.placeholder = 'Search…'; input.setAttribute('aria-label', 'Search modules and screens'); }
+    var tools = document.createElement('nav'); tools.id = 'homeUtilities'; tools.setAttribute('aria-label', 'Account tools');
+    function utility(icon, href, label) {
+      var link = document.createElement('a'); link.href = href; link.title = label; link.setAttribute('aria-label', label);
+      link.appendChild(outlineIcon(icon));
+      tools.appendChild(link); return link;
+    }
+    utility('calendar_today', '/apps/my/User/Calendar/MyCalendar', 'Calendar');
+    var settings = (cfg.nav || []).find(function (item) { return item.label === 'Settings'; });
+    if (settings) utility('settings', settings.url.replace('/apps/', spa ? '/qapps/' : '/apps/'), 'Settings');
+    var bell = utility('notifications_none', '/apps/my/User/Notifications', 'Notifications');
+    var sourceBadge = document.querySelector('#navbar_notification_count, #zq-toolbtns .zqtb-badge');
+    var dot = document.createElement('span'); dot.className = 'home-notification-dot'; dot.hidden = true; bell.appendChild(dot);
+    function notificationCount() { dot.hidden = !sourceBadge || !(Number(sourceBadge.textContent.trim()) > 0); }
+    notificationCount();
+    if (sourceBadge) { notificationObserver = new MutationObserver(notificationCount); notificationObserver.observe(sourceBadge, { childList: true, characterData: true, subtree: true }); }
+    var sourceAvatar = document.querySelector('#z-avatar, #zq-toolbtns .zqtb-avatar');
+    if (sourceAvatar) { var avatar = sourceAvatar.cloneNode(true); avatar.removeAttribute('id'); avatar.className = 'home-avatar'; tools.appendChild(avatar); }
+    search.after(tools);
     navRoot = root;
   }
   function boot() {
@@ -32,6 +93,11 @@
     initialized.add(root);
     var config;
     try { config = JSON.parse(root.dataset.config); } catch (error) { status.textContent = 'Dashboard settings could not be loaded.'; return; }
+    root.querySelectorAll('.home-header-controls .material-icons').forEach(function (glyph) {
+      var svg = outlineIcon(glyph.textContent.trim());
+      if (glyph.classList.contains('home-date-caret')) svg.classList.add('home-date-caret');
+      glyph.replaceWith(svg);
+    });
     if (config.redirect && /^\/apps\/zenith\//.test(config.redirect)) {
       window.location.replace(config.redirect.replace('/apps/', location.pathname.startsWith('/qapps/') ? '/qapps/' : '/apps/'));
       return;
