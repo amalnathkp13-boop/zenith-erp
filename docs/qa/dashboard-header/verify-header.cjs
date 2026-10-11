@@ -31,6 +31,16 @@ fs.mkdirSync(output, { recursive: true });
       await page.locator('#homeActivityChart svg').waitFor();
       assert.deepEqual(await page.locator('#homePrimaryNav a').allTextContents(), ['Dashboard', 'Sales', 'Purchase', 'Accounting', 'Inventory', 'HR', 'Reports', 'Settings']);
       assert.deepEqual(await page.locator('.home-period').allTextContents(), ['Today', 'This Week', 'This Month', 'This Year']);
+      assert.equal((await page.locator('.home-date-label').innerText()).includes('–'), true, 'Dashboard opens with the current week date range');
+      assert.equal(await page.getByText('All time', { exact: true }).count(), 0, 'All time is removed from the date controls');
+      assert.equal(await page.locator('.zdh-qa a', { hasText: 'New Sales Order' }).getAttribute('href'), `/${shell}/zenith/sales/CreateOrder`);
+      assert.equal(await page.locator('.zsc-row .zsc', { hasText: 'Total Receivables' }).getAttribute('href'), `/${shell}/zenith/pos/CreditBills`);
+      await page.locator('.zdh-qa a', { hasText: 'New Sales Order' }).click();
+      await page.waitForURL('**/sales/CreateOrder');
+      await page.goto(root); await page.locator('#homeUtilities').waitFor();
+      await page.locator('.zsc-row .zsc', { hasText: 'Total Receivables' }).click();
+      await page.waitForURL('**/pos/CreditBills');
+      await page.goto(root); await page.locator('#homeUtilities').waitFor();
       for (const width of [320, 390, 600, 768, 900, 1024, 1280, 1440, 1907, 2560]) {
         await page.setViewportSize({ width, height: 1000 });
         await input.fill('stock');
@@ -98,8 +108,15 @@ fs.mkdirSync(output, { recursive: true });
       await page.locator('.home-date').waitFor(); assert((await page.locator('.home-date').innerText()).includes('30 Dec 2025 – 02 Jan 2026'));
       await page.locator('.home-next-range').click(); await page.waitForURL('**/*dashDateTo=2026-01-06*');
       assert.equal(new URL(page.url()).searchParams.get('dashDate'), '2026-01-03');
-      await page.locator('.home-period', { hasText: 'This Week' }).click();
-      await page.locator('.home-period.on', { hasText: 'This Week' }).waitFor();
+      for (const [label, mode] of [['Today','today'], ['This Week','week'], ['This Month','month'], ['This Year','year']]) {
+        const preset = page.locator('.home-period', { hasText: label });
+        const expected = new URL(await preset.getAttribute('href'), page.url());
+        await preset.click();
+        await page.waitForURL(url => url.searchParams.get('dateMode') === mode);
+        await page.locator('.home-period.on', { hasText: label }).waitFor();
+        assert.equal(new URL(page.url()).searchParams.get('dashDate'), expected.searchParams.get('dashDate'), `${label} updates the start date`);
+        assert.equal(new URL(page.url()).searchParams.get('dashDateTo'), expected.searchParams.get('dashDateTo'), `${label} updates the end date`);
+      }
       await page.locator('.home-customize').click(); await page.waitForURL('**/*showSettings=1*');
       await page.locator('.home-widget-controls').first().waitFor();
       assert.equal(await page.locator('#homePrimaryNav').count(), 1, 'No duplicate chrome on dashboard reload');

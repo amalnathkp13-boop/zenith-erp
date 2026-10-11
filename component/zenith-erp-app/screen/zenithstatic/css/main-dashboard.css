@@ -14,20 +14,20 @@
 #homeDashboard .home-title p {font-size:12px;color:#6B7280;margin:2px 0 0;white-space:normal;overflow-wrap:anywhere}
 #homeDashboard .home-title{min-width:0;max-width:100%;overflow-wrap:anywhere}
 #homeDashboard .home-header-controls {display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-#homeDashboard .home-outline {display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:6px 16px;border:1px solid var(--home-border);border-radius:10px;background:#fff;font-size:14px;font-weight:400;color:#111827;cursor:pointer;list-style:none;white-space:nowrap}
+#homeDashboard .home-outline {display:inline-flex;align-items:center;justify-content:center;gap:7px;height:34px;padding:5px 14px;border:1px solid var(--home-border);border-radius:9px;background:#fff;font-size:13px;font-weight:400;color:#111827;cursor:pointer;list-style:none;white-space:nowrap}
 #homeDashboard summary::-webkit-details-marker {display:none}
 #homeDashboard .home-outline .material-icons {font-size:16px;color:#7C3AED}
 #homeDashboard .home-outline svg {width:16px;height:16px;flex:none;color:#7C3AED}
 #homeDashboard .home-customize svg,#homeDashboard .home-next-range svg,#homeDashboard .home-outline svg.home-date-caret {color:#6B7280}
-#homeDashboard .home-customize {min-width:126px}
+#homeDashboard .home-customize {min-width:118px}
 #homeDashboard .home-customize .material-icons,#homeDashboard .home-next-range .material-icons,#homeDashboard .home-outline .home-date-caret {color:#6B7280}
-#homeDashboard .home-date {min-width:225px}
+#homeDashboard .home-date {min-width:214px}
 #homeDashboard .home-date-caret {margin-left:auto}
-#homeDashboard .home-next-range {width:36px;padding:0}
+#homeDashboard .home-next-range {width:34px;padding:0}
 #homeDashboard .home-next-range:disabled {cursor:default;color:#9CA3AF}
 #homeDashboard .home-all-time {display:inline-block;margin-left:12px;color:#7C3AED}
 #homeDashboard .home-periods {display:flex;flex-wrap:wrap}
-#homeDashboard .home-period {display:flex;align-items:center;justify-content:center;height:36px;padding:6px 18px;border:1px solid var(--home-border);border-left:0;background:#fff;color:#6B7280;font-size:14px;font-weight:400;white-space:nowrap}
+#homeDashboard .home-period {display:flex;align-items:center;justify-content:center;height:34px;padding:5px 16px;border:1px solid var(--home-border);border-left:0;background:#fff;color:#6B7280;font-size:13px;font-weight:400;white-space:nowrap}
 #homeDashboard .home-period:first-child {border-left:1px solid var(--home-border);border-radius:10px 0 0 10px}
 #homeDashboard .home-period:last-child {border-radius:0 10px 10px 0}
 #homeDashboard .home-period.on {background:#7C3AED;color:#fff;border-color:#7C3AED}
@@ -149,17 +149,17 @@ body:has(#homeDashboard) :is(#zq-search-results,#z-search-results) {left:auto;ri
 body:has(#homeDashboard) #zq-search-results a.sel {background:#F5F3FF;color:#7C3AED}
 body:has(#homeDashboard) :is(#zq-search,#z-search):focus-within :is(.zqsr-box,.zsr-box) {border-color:#7C3AED!important}
 #homePrimaryNav {display:flex;gap:0;align-items:center;margin:0 auto 0 0;white-space:nowrap;flex:none}
-#homePrimaryNav a {padding:7px 16px;font-size:15px;font-weight:400;color:#6B7280!important;border-radius:10px;text-decoration:none}
+#homePrimaryNav a {padding:7px 15px;font-size:14px;font-weight:400;color:#6B7280!important;border-radius:10px;text-decoration:none}
 #homePrimaryNav a:hover {background:#F8F9FC;color:#111827}
 #homePrimaryNav a[aria-current] {background:#7C3AED;color:#fff!important;font-weight:600}
-#homeBrand {display:flex;align-items:center;gap:8px;flex:none;color:#7C3AED!important;text-decoration:none;font-size:18px;font-weight:700}
+#homeBrand {display:flex;align-items:center;gap:8px;flex:none;color:#7C3AED!important;text-decoration:none;font-size:16px;font-weight:700}
 #homeBrand .home-logo {display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:#7C3AED;color:#fff;font-size:12px;font-weight:700}
 #homeMenuButton {display:flex;align-items:center;justify-content:center;flex:none;width:32px;height:32px;padding:0;margin-right:7px;border:0;border-radius:8px;background:transparent;color:#111827;cursor:pointer}
 #homeMenuButton svg {width:18px;height:18px}
 #homeUtilities {display:flex;align-items:center;gap:8px;flex:none;margin-left:4px}
 #homeUtilities a {position:relative;display:flex;align-items:center;justify-content:center;width:40px;height:38px;border-radius:8px;color:#6B7280!important;text-decoration:none}
 #homeUtilities a:hover,#homeMenuButton:hover {background:#F8F9FC}
-#homeUtilities svg {width:22px;height:22px;color:#6B7280}
+#homeUtilities svg {width:20px;height:20px;color:#6B7280}
 #homeUtilities .home-avatar {width:38px;height:38px;border-radius:50%;background:#7C3AED;color:#fff!important;font-size:13px;font-weight:600;margin:0}
 #homeUtilities .home-notification-dot {position:absolute;top:6px;right:7px;width:5px;height:5px;border-radius:50%;background:#EF4444}
 #homeUtilities .home-notification-dot[hidden] {display:none}
