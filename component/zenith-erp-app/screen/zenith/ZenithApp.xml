@@ -293,6 +293,7 @@
             html_stylesheets.add('/zenithstatic/css/demand-forecast.css?v=5')
             html_stylesheets.add('/zenithstatic/css/pricing-dashboard.css?v=2')
             html_stylesheets.add('/zenithstatic/css/pricing-reference.css?v=1')
+            html_stylesheets.add('/zenithstatic/css/sales-forecast.css?v=5')
             html_stylesheets.add('/zenithstatic/css/inventory-responsive.css?v=2')
             html_stylesheets.add('https://fonts.googleapis.com/icon?family=Material+Icons')
             if (footer_scripts == null) footer_scripts = []
