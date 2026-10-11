@@ -12,8 +12,6 @@
   function init(root) {
     var side=document.querySelector('#zq-sidebar .zqs-scroll,#z-sidebar .zs-scroll');
     if(side&&!movedLinks.length){Array.from(side.querySelectorAll('a')).filter(function(a){return /\/zenith\/(pricing|barcode|tax|expenses)(\/|$)/i.test(new URL(a.href,location.href).pathname);}).forEach(function(a){movedLinks.push({node:a,parent:a.parentNode,next:a.nextSibling});side.appendChild(a);});}
-    var labels={StockLevels:'Stock',FindReceipt:'Receive Stock',StockTransfers:'Stock Transfer',StockAdjustments:'Stock Adjustment',GatePasses:'Gate Entry',CreateCatalogue:'Product List',ExpiryDashboard:'Expiry',DemandForecast:'Sales Forecast'};
-    document.querySelectorAll('#zq-subnav a,#z-subnav a').forEach(function(a){var key=new URL(a.href,location.href).pathname.split('/').pop();if(labels[key]&&a.textContent!==labels[key]){a.dataset.catalogOriginalLabel=a.textContent;a.textContent=labels[key];}});
     var input=root.querySelector('input[name="catalogSearch"]');
     if(input){input.placeholder='Search by item code, product name, barcode...'; input.setAttribute('aria-label','Search products by item code, name or barcode');}
     root.querySelectorAll('.prod-code').forEach(function(a){a.title=a.textContent.trim();});
@@ -57,7 +55,7 @@
     rowActions(root);
   }
   var scheduled=false;
-  function scan(){scheduled=false;var root=document.getElementById('productCatalog');if(root)init(root);else {document.querySelectorAll('[data-catalog-original-label]').forEach(function(a){a.textContent=a.dataset.catalogOriginalLabel;delete a.dataset.catalogOriginalLabel;});movedLinks.reverse().forEach(function(m){if(m.parent.isConnected)m.parent.insertBefore(m.node,m.next&&m.next.parentNode===m.parent?m.next:null);});movedLinks=[];}}
+  function scan(){scheduled=false;var root=document.getElementById('productCatalog');if(root)init(root);else {movedLinks.reverse().forEach(function(m){if(m.parent.isConnected)m.parent.insertBefore(m.node,m.next&&m.next.parentNode===m.parent?m.next:null);});movedLinks=[];}}
   function schedule(){if(!scheduled){scheduled=true;requestAnimationFrame(scan);}}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',schedule);else schedule();
   new MutationObserver(schedule).observe(document.documentElement,{childList:true,subtree:true});
