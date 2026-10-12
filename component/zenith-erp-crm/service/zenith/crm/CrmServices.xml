@@ -8,7 +8,12 @@
         <actions>
             <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" out-map="crmAccess" in-map="[moduleId:'crm']"/>
             <set field="activeOrg" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
-            <set field="allowed" from="crmAccess.canWrite == true &amp;&amp; activeOrg &amp;&amp; activeOrg != '_NA_'"/>
+            <script><![CDATA[
+                def moduleGroups = (ec.user.userGroupIdSet ?: []).findAll { it?.startsWith('ZENITH_') && it != 'ZENITH_ALL' }
+                def cashierOnly = !ec.user.isInGroup('ADMIN') && !ec.user.isInGroup('ZENITH_ADMIN') &&
+                        moduleGroups.size() == 1 && moduleGroups.contains('ZENITH_CASHIER')
+                allowed = crmAccess.canWrite == true && !cashierOnly && activeOrg && activeOrg != '_NA_'
+            ]]></script>
         </actions>
     </service>
 
@@ -25,7 +30,13 @@
             <script><![CDATA[
                 def activeOrg = ec.user.getPreference('ACTIVE_ORGANIZATION')
                 allowed = false
-                if (activeOrg && activeOrg != '_NA_') {
+                def supported = [
+                    'zenith.erp.crm.Lead':['leadId','organizationPartyId'],
+                    'zenith.erp.crm.CustomerSegment':['segmentId','organizationPartyId'],
+                    'mantle.sales.opportunity.SalesOpportunity':['salesOpportunityId','organizationPartyId'],
+                    'mantle.party.Party':['partyId','ownerPartyId']
+                ]
+                if (activeOrg && activeOrg != '_NA_' && supported[entityName] == [idField,orgField]) {
                     allowed = ec.entity.find(entityName).condition(idField, idValue).disableAuthz().list()
                             .any { it.get(orgField) == activeOrg }
                 }
@@ -71,6 +82,7 @@
             <set field="email" from="email?.trim()?.toLowerCase(java.util.Locale.ROOT)"/>
             <set field="mobile" from="mobile?.trim()"/>
             <if condition="!firstName"><return error="true" message="First name is required."/></if>
+            <if condition="email &amp;&amp; !(email ==~ /[^\s@]+@[^\s@]+\.[^\s@]+/)"><return error="true" message="Enter a valid email address."/></if>
             <if condition="estimatedAmount != null &amp;&amp; estimatedAmount &lt; 0"><return error="true" message="Estimated value cannot be negative."/></if>
             <if condition="rating &amp;&amp; !['Hot','Warm','Cold'].contains(rating)"><return error="true" message="Choose a valid lead rating."/></if>
             <service-call name="create#zenith.erp.crm.Lead" out-map="ldOut"
@@ -145,6 +157,7 @@
                 if (leadUpdate.containsKey('mobile')) leadUpdate.mobile = leadUpdate.mobile?.trim()
             ]]></script>
             <if condition="!leadUpdate.firstName &amp;&amp; leadUpdate.containsKey('firstName')"><return error="true" message="First name is required."/></if>
+            <if condition="leadUpdate.email &amp;&amp; !(leadUpdate.email ==~ /[^\s@]+@[^\s@]+\.[^\s@]+/)"><return error="true" message="Enter a valid email address."/></if>
             <service-call name="update#zenith.erp.crm.Lead" in-map="leadUpdate"/>
             <service-call name="zenith.crm.CrmServices.score#Lead" in-map="[leadId:leadId]"/>
         </actions>
@@ -434,6 +447,7 @@
             <parameter name="segmentName"/>
             <parameter name="description"/>
             <parameter name="segmentTypeEnumId"/>
+            <parameter name="isAutoEvaluate"/>
             <parameter name="isActive"/>
         </in-parameters>
         <actions>
@@ -442,6 +456,15 @@
             <service-call name="zenith.crm.CrmServices.assert#CrmRecord" out-map="segmentAccess"
                           in-map="[entityName:'zenith.erp.crm.CustomerSegment', idField:'segmentId', idValue:segmentId, orgField:'organizationPartyId']"/>
             <if condition="!segmentAccess.allowed"><return error="true" message="Segment not found for your organization."/></if>
+            <if condition="isAutoEvaluate == 'Y'"><return error="true" message="Automatic evaluation is not available; use Evaluate Now."/></if>
+            <if condition="segmentTypeEnumId">
+                <entity-find-one entity-name="moqui.basic.Enumeration" value-field="segmentType">
+                    <field-map field-name="enumId" from="segmentTypeEnumId"/>
+                </entity-find-one>
+                <if condition="!segmentType || segmentType.enumTypeId != 'CustomerSegmentType'">
+                    <return error="true" message="Choose a valid segment type."/>
+                </if>
+            </if>
             <service-call name="update#zenith.erp.crm.CustomerSegment" in-map="context"/>
         </actions>
     </service>
