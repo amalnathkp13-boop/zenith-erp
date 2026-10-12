@@ -21,7 +21,7 @@
         '/Contacts': ['Contacts', 'ContactsDashboard:Dashboard', 'FindContact:All Contacts', 'Customers:Customers', 'Vendors:Suppliers', 'CustomerGroups:Customer Groups', 'MergeContacts:Merge'],
         '/sales': ['Sales', 'SalesDashboard:Dashboard', 'FindQuotation:Quotations', 'FindOrder:Orders', 'FindDeliveryChallan:Delivery Challans', 'FindInvoice:Invoices', 'FindCreditNote:Credit / Debit Notes', 'PosSalesRegister:POS Sales', 'WarrantyPolicies:Warranty', 'Commissions:Commissions', 'SalesForecast:Forecast'],
         '/Purchase': ['Purchase', 'GoodsReceipt:Goods Receipt (GRN)', 'FindPurchaseOrder:Purchase Orders', 'FindPurchaseInvoice:Vendor Bills (ITC)', 'CreatePurchaseInvoice:Log Vendor Bill', 'PurchaseInvoices:Purchase Invoices', 'PurchaseReturns:Purchase Returns', 'JobWorkChallan:Job Work Challan', 'RfqList:RFQs', 'Gstr2bRecon:GSTR-2B Recon', 'VendorEvaluation:Vendor Evaluation'],
-        '/Crm': ['CRM', 'Leads:Leads', 'Pipeline:Pipeline', 'Activities:Activities', 'Segments:Segments'],
+        '/Crm': ['CRM', 'Dashboard:Dashboard', 'Leads:Leads', 'Pipeline:Pipeline', 'Activities:Activities', 'Segments:Segments'],
         '/pos': ['POS', 'Dashboard:Dashboard', 'OwnerDashboard:Overview', 'Terminal:Billing Terminal', 'PosTransactions:Transactions', 'DailySummary:Daily Summary', 'PosSessions:Sessions', 'PosTerminals:Terminals', 'CreditBills:Credit Bills', 'CashEntry:Cash Entry', 'Expenses:Expenses', 'Wastage:Wastage', 'Stock:Stock', 'Reports:Reports', 'BillAuditReport:Audit Report', 'ProductPricing:Product Prices', 'PriceOverrides:Price Overrides', 'DiscountSettings:Discount', 'SalesMode:Sales Mode', 'Barcodes:Barcodes', 'BarcodeLabels:Barcode Labels', 'ProductImport:Import', 'ReceiptConfig:Receipts', 'PrinterConfig:Printers', 'Kitchen:Kitchen', 'BillNumberRegister:Bill Register', 'OfflineMode:Offline Mode'],
         '/Inventory': ['Inventory', 'InventoryDashboard:Dashboard', 'FindProduct:Products', 'FindFacility:Warehouse', 'StockLevels:Stock Levels', 'FindReceipt:Receiving', 'StockTransfers:Stock Transfers', 'StockAdjustments:Stock Adjustments', 'GatePasses:Gate Passes', 'CreateCatalogue:Catalogues', 'ExpiryDashboard:Expiry Risk', 'SerialNumbers:Serial Numbers', 'DemandForecast:Demand Forecast'],
         '/manufacturing': ['Manufacturing', 'WorkOrders:Work Orders', 'BillOfMaterials:Bill of Materials', 'WorkCenters:Work Centers', 'JobWork:Job Work', 'MrpPlanning:MRP Planning', 'ProductionSchedule:Production Schedule'],
@@ -67,7 +67,7 @@
         { head: 'SALES & CRM', items: [
             { mod: 'sales', match: '/sales', icon: 'trending_up', label: 'Sales', href: '/qapps/zenith/sales/SalesDashboard' },
             { mod: 'purchase', match: '/Purchase', icon: 'shopping_cart', label: 'Purchase', href: '/qapps/zenith/Purchase/RfqList' },
-            { mod: 'crm', match: '/Crm', icon: 'campaign', label: 'CRM', href: '/qapps/zenith/Crm/Leads' },
+            { mod: 'crm', match: '/Crm', icon: 'campaign', label: 'CRM', href: '/qapps/zenith/Crm/Dashboard' },
             { mod: 'pos', match: '/pos', icon: 'point_of_sale', label: 'POS', href: '/qapps/zenith/pos/Dashboard' },
             { mod: 'pos', match: '/pos/Terminal', icon: 'receipt_long', label: 'POS Billing', href: '/apps/zenith/pos/Terminal' },
             { mod: 'pricing', match: '/pricing', icon: 'sell', label: 'Pricing', href: '/qapps/zenith/pricing/PricingDashboard' }

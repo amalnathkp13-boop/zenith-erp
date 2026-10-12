@@ -6,18 +6,20 @@
     <transition name="logActivity">
         <service-call name="zenith.crm.CrmServices.log#Activity"/>
         <default-response url="."/>
+        <error-response url="."/>
     </transition>
     <!-- ZE-SEC-JSON f/u: org-scoped party picker (stock SimpleScreens searchPartyList leaks cross-tenant). -->
     <transition-include name="searchPartyList" location="component://zenith-erp-base/screen/include/PartyPicker.xml"/>
 
     <actions>
         <entity-find entity-name="zenith.erp.crm.CrmActivity" list="activityList">
-            <search-form-inputs default-order-by="-activityDate"/>
-            <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+            <search-form-inputs default-order-by="-activityDate" skip-fields="organizationPartyId"/>
+            <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION') ?: '__NO_ORGANIZATION__'"/>
         </entity-find>
     </actions>
 
     <widgets>
+        <container style="zcrm-intro"><label text="Activities" type="h3"/><label text="A history of calls, meetings, tasks and follow-ups recorded for this organization." type="p"/></container>
         <container-box><box-header title="CRM Activities"/><box-toolbar>
             <section name="LogActivity_write"><condition><expression>modCanWrite</expression></condition><widgets>
             <container-dialog id="LogActivityDialog" button-text="Log Activity">
@@ -49,6 +51,7 @@
             </widgets></section>
         </box-toolbar><box-body>
             <render-mode><text type="html,qvt"><![CDATA[<span class="zlc-ph" data-ph="Search Activities..." style="display:none"></span>]]></text></render-mode>
+            <section name="NoActivities" condition="activityList.isEmpty()"><widgets><container style="zcrm-empty"><label text="No activities match this search. Clear filters or log a new activity." type="p"/></container></widgets></section>
             <form-list name="ActivityListForm" list="activityList" skip-form="true" header-dialog="true"
                        show-csv-button="true" show-page-size="true">
                 <field name="activityDate">

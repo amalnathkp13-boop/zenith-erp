@@ -31,6 +31,11 @@ const PATHS = [
   '/apps/zenith',
   '/apps/zenith/Contacts/ContactsDashboard',
   '/apps/zenith/Contacts/FindContact',
+  '/apps/zenith/Crm/Dashboard',
+  '/apps/zenith/Crm/Leads',
+  '/apps/zenith/Crm/Pipeline',
+  '/apps/zenith/Crm/Activities',
+  '/apps/zenith/Crm/Segments',
   '/apps/zenith/Dashboard',
   '/apps/zenith/Inventory/InventoryDashboard',
   '/apps/zenith/Inventory/InventoryDashboard?dateMode=all',
@@ -40,6 +45,11 @@ const PATHS = [
   '/qapps/zenith',
   '/qapps/zenith/Contacts/ContactsDashboard',
   '/qapps/zenith/Contacts/FindContact',
+  '/qapps/zenith/Crm/Dashboard',
+  '/qapps/zenith/Crm/Leads',
+  '/qapps/zenith/Crm/Pipeline',
+  '/qapps/zenith/Crm/Activities',
+  '/qapps/zenith/Crm/Segments',
   '/qapps/zenith/Inventory/InventoryDashboard',
   '/qapps/zenith/Inventory/InventoryDashboard?dateMode=all',
   '/qapps/zenith/Inventory/DashboardDetails?listType=movements',
@@ -67,6 +77,12 @@ try {
       const resp = await page.goto(BASE + path, { waitUntil: 'networkidle2', timeout: 60000 });
       status = resp ? resp.status() : 0;
       await sleep(3000); // let Vue/Quasar and any img-onload bootstraps paint
+      if (path.includes('/Crm/')) {
+        await page.waitForSelector('.zcrm-page', { timeout: 15000 });
+        if (path.includes('/Crm/Dashboard') && await page.$('.zcrm-error')) {
+          throw new Error('CRM dashboard returned its data-error state');
+        }
+      }
       if (path.includes('/Inventory/InventoryDashboard')) {
         await page.waitForSelector('.inv-dashboard', { timeout: 15000 });
         // Guard the approved PR #17 presentation on both ERP surfaces. A KPI
@@ -112,6 +128,34 @@ try {
     if (!r.ok) failures++;
     console.log(`${r.ok ? 'PASS' : 'FAIL'}  [${r.status || '---'}]${r.errSig ? ' <error>' : ''}  ${path}${r.note ? '  ' + r.note : ''}${r.snippet ? '\n       ↳ ' + r.snippet : ''}`);
   }
+
+  // CRM stays in the existing shell at narrow widths, and one range choice drives
+  // every dashboard widget. These checks use the same synthetic staging tenant.
+  for (const surface of ['apps', 'qapps']) {
+    await page.setViewport({ width: 390, height: 844 });
+    for (const screen of ['Dashboard', 'Leads']) {
+      const path = `/${surface}/zenith/Crm/${screen}`;
+      try {
+        await page.goto(BASE + path, { waitUntil: 'networkidle2', timeout: 60000 });
+        await page.waitForSelector('.zcrm-page', { timeout: 15000 });
+        const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2);
+        if (overflow) throw new Error('horizontal page overflow at 390px');
+        console.log(`PASS  CRM ${surface} ${screen} mobile`);
+      } catch (error) {
+        failures++;
+        console.log(`FAIL  CRM ${surface} ${screen} mobile — ${error.message}`);
+      }
+    }
+    try {
+      await page.goto(`${BASE}/${surface}/zenith/Crm/Dashboard?period=week`, { waitUntil: 'networkidle2', timeout: 60000 });
+      await page.waitForFunction(() => document.body.innerText.includes('Showing: This week'), { timeout: 15000 });
+      console.log(`PASS  CRM ${surface} dashboard range`);
+    } catch (error) {
+      failures++;
+      console.log(`FAIL  CRM ${surface} dashboard range — ${error.message}`);
+    }
+  }
+  await page.setViewport({ width: 1400, height: 1000 });
 
   // Exercise the two existing date controls, including the legacy form that submits
   // to the module's default screen. These checks are read-only and need no stock data.
@@ -180,5 +224,5 @@ try {
   await browser.close();
 }
 
-console.log(`\n${failures === 0 ? 'SMOKE OK' : 'SMOKE FAILED'} — ${PATHS.length + 4 - failures}/${PATHS.length + 4} render and date-control checks passed.`);
+console.log(`\n${failures === 0 ? 'SMOKE OK' : 'SMOKE FAILED'} — ${PATHS.length + 10 - failures}/${PATHS.length + 10} render and interaction checks passed.`);
 process.exit(failures === 0 ? 0 : 1);
