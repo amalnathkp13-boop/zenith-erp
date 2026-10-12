@@ -58,8 +58,7 @@
     </actions>
 
     <widgets>
-        <render-mode><text type="html,qvt" template="true"><![CDATA[<details id="posHelp_terminals" class="pos-reference-help" style="background:#e8f0fe;border:1px solid #4285f4;border-left:6px solid #1a73e8;border-radius:10px;padding:10px 16px;margin:8px 12px 4px 12px;font-family:Segoe UI,Arial,sans-serif"><summary style="cursor:pointer;font-weight:800;font-size:15px;color:#174ea6;outline:none">&#128421; Terminals &mdash; quick help <span style="font-weight:600;color:#5f6368;font-size:12px">(click to hide / show)</span></summary><div style="font-size:13px;color:#202124;line-height:1.9;margin-top:8px">Each billing counter / till is a <b>terminal</b>.<br><b>1</b>&nbsp;<b>Add Terminal</b> for every device that bills, and mark it active.<br><b>2</b>&nbsp;Sessions and sales are tracked separately for each terminal.</div></details>]]></text></render-mode>
-        <container style="q-pa-md">
+        <container style="pos-terminals-reference q-pa-md">
             <!-- Page header: title + subtitle (left), Add Terminal solid CTA (right) -->
             <container style="zsec-hdr row items-center justify-between q-mb-lg">
                 <container style="column">
@@ -67,6 +66,7 @@
                     <label text="Manage and configure all POS terminals in your outlet" type="p" style="text-grey-7 q-mt-sm q-mb-none"/>
                 </container>
                 <section name="CreateTerminal_write"><condition><expression>modCanWrite</expression></condition><widgets>
+                <container style="pos-terminals-reference__actions">
                 <container style="z-newbtn-wrap">
                     <container-dialog id="CreateTerminalDialog" button-text="+ Add Terminal"
                         button-class="q-btn q-btn-item non-selectable no-outline q-btn--standard q-btn--rectangle bg-primary text-white q-btn--actionable q-focusable q-hoverable text-weight-bold q-px-md z-newbtn">
@@ -92,6 +92,13 @@
                             <field name="submitButton"><default-field title="Create"><submit/></default-field></field>
                         </form-single>
                     </container-dialog>
+                </container>
+                <render-mode><text type="html,qvt"><![CDATA[
+                    <details class="pos-terminals-reference__menu">
+                      <summary aria-label="More terminal options"><span class="material-icons">expand_more</span></summary>
+                      <div><a href="#pos-terminals-table">View terminals</a><a href="/apps/zenith/pos/PosTerminals">Refresh list</a></div>
+                    </details>
+                ]]></text></render-mode>
                 </container>
                 </widgets></section>
             </container>
@@ -141,7 +148,7 @@
             </container>
 
             <!-- Terminals table (inline-editable rows) -->
-            <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-md z-termtable">
+            <container id="pos-terminals-table" style="zenith-card bg-white shadow-2 border-radius-lg q-pa-md z-termtable">
                 <form-list name="TerminalList" list="terminalList" transition="updateTerminal">
                     <row-actions>
                         <set field="rowNum" from="(termCounter[0] = termCounter[0] + 1)"/>

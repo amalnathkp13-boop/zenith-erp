@@ -1,0 +1,81 @@
+/* POS Terminals work area only. Keep the shared sidebar and submodule navigation intact. */
+body:has(.pos-terminals-reference) #pos-module-nav { display: none !important; }
+.pos-terminals-reference { color: #161b42; max-width: 1640px; margin: 0 auto; padding: 24px 24px 30px !important; }
+.pos-terminals-reference .zsec-hdr { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 30px !important; }
+.pos-terminals-reference .zsec-hdr h3,
+.pos-terminals-reference .zsec-hdr .text-primary { color: #111839 !important; font-size: 23px !important; line-height: 1.25 !important; font-weight: 700 !important; margin: 0 !important; }
+.pos-terminals-reference .zsec-hdr p { color: #5b6387 !important; font-size: 13px !important; margin: 8px 0 0 !important; }
+.pos-terminals-reference__actions { display: flex; align-items: center; gap: 8px; }
+.pos-terminals-reference .z-newbtn-wrap :is(button, .q-btn, a.btn) { min-height: 44px; border-radius: 8px !important; box-shadow: 0 4px 10px #6732db25 !important; }
+.pos-terminals-reference__menu { position: relative; z-index: 5; }
+.pos-terminals-reference__menu summary { list-style: none; width: 42px; height: 44px; display: grid; place-items: center; border-radius: 8px; background: #6c29e9; color: #fff; cursor: pointer; box-shadow: 0 4px 10px #6732db25; }
+.pos-terminals-reference__menu summary::-webkit-details-marker { display: none; }
+.pos-terminals-reference__menu summary:focus-visible { outline: 2px solid #6c29e9; outline-offset: 3px; }
+.pos-terminals-reference__menu > div { position: absolute; right: 0; top: calc(100% + 6px); min-width: 152px; padding: 5px; border: 1px solid #e5e2ee; border-radius: 8px; background: #fff; box-shadow: 0 8px 24px #25204b20; }
+.pos-terminals-reference__menu a { display: block; padding: 8px 10px; color: #28305a; font-size: 12px; text-decoration: none; border-radius: 5px; }
+.pos-terminals-reference__menu a:hover { background: #f5f1ff; color: #6c29e9; }
+.pos-terminals-reference .z-statrow { display: grid !important; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; margin: 0 0 26px !important; }
+.pos-terminals-reference .z-statcell { min-width: 0; min-height: 127px; display: flex; align-items: center; padding: 18px 20px !important; border: 1px solid #e8e7f2 !important; border-radius: 12px; box-shadow: 0 2px 8px #161b4209; }
+.pos-terminals-reference .z-statinner { align-items: center; gap: 18px; }
+.pos-terminals-reference .z-statcard-violet { background: linear-gradient(115deg,#fbf9ff,#f8f5ff) !important; }
+.pos-terminals-reference .z-statcard-green { background: linear-gradient(115deg,#f8fefb,#f5fcf9) !important; }
+.pos-terminals-reference .z-statcard-orange { background: linear-gradient(115deg,#fffdfa,#fffaf2) !important; }
+.pos-terminals-reference .z-statcard-blue { background: linear-gradient(115deg,#f9fbff,#f5f9ff) !important; }
+.pos-terminals-reference .z-icobadge { width: 54px; height: 54px; flex: 0 0 54px; border-radius: 50%; display: grid; place-items: center; }
+.pos-terminals-reference .z-icobadge.primary { background: #ede2ff; color: #722ff0; }
+.pos-terminals-reference .z-icobadge.green { background: #e1f9ef; color: #129d76; }
+.pos-terminals-reference .z-icobadge.orange { background: #fff0d8; color: #ef9200; }
+.pos-terminals-reference .z-icobadge.blue { background: #e5efff; color: #2b71e7; }
+.pos-terminals-reference .z-icobadge .material-icons { font-size: 25px; }
+.pos-terminals-reference .z-statmeta { display: flex; flex-direction: column; gap: 2px; }
+.pos-terminals-reference .z-statlabel { color: #465177; font-size: 12px; font-weight: 600; }
+.pos-terminals-reference .z-statnum { color: #111839; font-size: 24px; font-weight: 800; line-height: 1.2; }
+.pos-terminals-reference .z-statdesc { color: #747e9f; font-size: 11px; }
+.pos-terminals-reference .z-termtable { border: 1px solid #e8e7f2; border-radius: 12px; box-shadow: 0 2px 10px #171b3d0c !important; padding: 0 !important; overflow-x: auto; background: #fff; }
+.pos-terminals-reference .z-termtable .table-scroll-wrapper { border-radius: 12px; }
+.pos-terminals-reference .z-termtable :is(table, .q-table) { width: 100% !important; min-width: 1200px !important; table-layout: fixed; border-collapse: collapse; }
+.pos-terminals-reference .z-termtable :is(th, .th) { height: 58px; padding: 12px 14px !important; background: #faf9ff; color: #313565; font-size: 12px; font-weight: 700; border-bottom: 1px solid #e8e7f2; text-align: left; }
+.pos-terminals-reference .z-termtable :is(td, .td) { height: 112px; padding: 15px 14px !important; vertical-align: middle; border-bottom: 1px solid #e9eaf0; color: #20264b; font-size: 12px; overflow: visible; }
+.pos-terminals-reference .z-termtable :is(tr, .tr):last-child :is(td, .td) { border-bottom: 0; }
+.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(1) { width: 17%; }
+.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(2) { width: 15%; }
+.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(3) { width: 18%; }
+.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(4) { width: 12%; }
+.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(5) { width: 12%; }
+.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(6) { width: 12%; }
+.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(7) { width: 7%; }
+.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(8) { width: 7%; }
+.pos-terminals-reference .z-termtable :is(td,.td):first-child { font-weight: 700; white-space: normal; }
+.pos-terminals-reference .z-termtable :is(td,.td):first-child .z-rownum { float: left; margin-right: 10px; margin-top: 1px; }
+.pos-terminals-reference .z-termtable .z-termsub { margin-left: 35px; color: #9ba2b8; font-size: 11px; font-weight: 400; }
+.pos-terminals-reference .z-termtable :is(input,select,.form-control,.select2-container,.q-field) { width: 100% !important; max-width: 100% !important; min-width: 0 !important; box-sizing: border-box; }
+.pos-terminals-reference .z-termtable :is(input,select,.form-control,.select2-selection--single,.q-field__control) { border-radius: 7px !important; border-color: #e0e3ed !important; background: #fff !important; color: #273055; }
+.pos-terminals-reference .z-termtable :is(input,select,.form-control) { min-height: 43px; font-size: 12px; }
+.pos-terminals-reference .z-termtable .select2-selection--single { height: 43px !important; }
+.pos-terminals-reference .z-termtable .select2-selection__rendered { line-height: 41px !important; }
+.pos-terminals-reference .z-termtable .q-field__control { height: 43px !important; min-height: 43px !important; }
+.pos-terminals-reference .z-termtable .q-field__native { min-height: 41px !important; padding: 0 8px !important; }
+.pos-terminals-reference .z-termtable .q-field__control-container { min-width: 0; }
+.pos-terminals-reference .z-termtable :is(.q-field__messages,.q-field__bottom) { display: none !important; }
+/* The shared horizontal-form rule leaves only a sliver of each edit control inside table cells. */
+body.zq-nav .pos-terminals-reference .z-termtable form.q-form .q-field:has(.q-field__label) { padding: 19px 0 0 !important; position: relative; }
+body.zq-nav .pos-terminals-reference .z-termtable form.q-form .q-field:has(.q-field__label) .q-field__label {
+  position: absolute !important; left: 0 !important; right: auto !important; top: 0 !important; bottom: auto !important;
+  width: auto !important; max-width: 100% !important; height: 18px !important; display: block !important;
+  transform: none !important; text-align: left !important; font-size: 11px !important; line-height: 18px !important;
+  color: #485485 !important; white-space: nowrap !important; overflow: visible !important;
+}
+#content .pos-terminals-reference .z-termtable .form-group { margin: 0 !important; }
+#content .pos-terminals-reference .z-termtable .form-group > .control-label { display: block; float: none; width: 100%; text-align: left; padding: 0 0 5px; color: #485485; font-size: 11px; line-height: 18px; }
+#content .pos-terminals-reference .z-termtable .form-group > [class*="col-"] { display: block; float: none; width: 100%; padding: 0; }
+.pos-terminals-reference .z-termtable :is(td,.td):last-child :is(button,.q-btn,.btn) { padding: 5px 8px !important; font-size: 11px !important; min-width: 0; }
+.pos-terminals-reference .z-termtable :is(td,.td):nth-child(7) :is(.q-field,select) { min-width: 64px !important; }
+@media (max-width: 1150px) {
+  .pos-terminals-reference .z-statrow { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media (max-width: 680px) {
+  .pos-terminals-reference { padding: 16px 12px 24px !important; }
+  .pos-terminals-reference .zsec-hdr { align-items: flex-start; flex-direction: column; }
+  .pos-terminals-reference .z-statrow { grid-template-columns: 1fr; gap: 10px; }
+  .pos-terminals-reference .z-statcell { min-height: 96px; }
+}
