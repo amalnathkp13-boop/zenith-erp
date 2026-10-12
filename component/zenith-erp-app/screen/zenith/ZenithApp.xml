@@ -306,16 +306,17 @@ html_stylesheets.add('/zenithstatic/css/sidebar-manager.css?v=3')
             html_stylesheets.add('/zenithstatic/css/product-catalog.css?v=1')
             html_stylesheets.add('/zenithstatic/css/receiving-stock.css?v=14')
             html_stylesheets.add('/zenithstatic/css/gate-passes.css?v=12')
-            html_stylesheets.add('/zenithstatic/css/shops-reference.css?v=1')
+            html_stylesheets.add('/zenithstatic/css/shops-reference.css?v=2')
             html_stylesheets.add('/zenithstatic/css/purchase-operations.css?v=2')
             html_stylesheets.add('/zenithstatic/css/contacts-dashboard.css?v=1')
             html_stylesheets.add('/zenithstatic/css/edit-customer-group.css?v=1')
             html_stylesheets.add('/zenithstatic/css/contacts-reference.css?v=1')
+            html_stylesheets.add('/zenithstatic/css/sales-dashboard-reference.css?v=1')
             html_stylesheets.add('/zenithstatic/css/pricing-price-lists.css?v=1')
             html_stylesheets.add('/zenithstatic/css/purchase-rfq.css?v=2')
             html_stylesheets.add('/zenithstatic/css/purchase-job-work.css?v=2')
             html_stylesheets.add('/zenithstatic/css/purchase-vendor-bills.css?v=1')
-            html_stylesheets.add('/zenithstatic/css/pos-reference.css?v=1')
+            html_stylesheets.add('/zenithstatic/css/pos-reference.css?v=3')
             html_stylesheets.add('/zenithstatic/css/main-dashboard.css?v=6')
             html_stylesheets.add('/zenithstatic/css/pricing-history.css?v=1')
             html_stylesheets.add('/zenithstatic/css/stock-transfers.css?v=1')
@@ -330,11 +331,12 @@ html_stylesheets.add('/zenithstatic/css/sidebar-manager.css?v=3')
             html_stylesheets.add('/zenithstatic/css/demand-forecast.css?v=5')
             html_stylesheets.add('/zenithstatic/css/pricing-dashboard.css?v=2')
             html_stylesheets.add('/zenithstatic/css/pricing-reference.css?v=1')
+            html_stylesheets.add('/zenithstatic/css/sales-forecast.css?v=5')
             html_stylesheets.add('/zenithstatic/css/inventory-responsive.css?v=2')
             html_stylesheets.add('https://fonts.googleapis.com/icon?family=Material+Icons')
             if (footer_scripts == null) footer_scripts = []
             footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=12')
-            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=33')
+            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=34')
             footer_scripts.add('/zenithstatic/js/sidebar-manager.js?v=1')
             footer_scripts.add('/zenithstatic/js/pricing-price-lists.js?v=1')
             footer_scripts.add('/zenithstatic/js/purchase-rfq.js?v=1')
@@ -965,6 +967,7 @@ html_stylesheets.add('/zenithstatic/css/sidebar-manager.css?v=3')
           <div class="zsub-grp" data-match="/Inventory"><span class="zsub-title">Inventory</span>
             <a class="zsub-tab" data-match="/Inventory/InventoryDashboard" href="/apps/zenith/Inventory/InventoryDashboard">Dashboard</a>
             <a class="zsub-tab" data-match="/Inventory/FindProduct" href="/apps/zenith/Inventory/FindProduct">Products</a>
+            <a class="zsub-tab" data-match="/Inventory/FindFacility" href="/apps/zenith/Inventory/FindFacility">Warehouse</a>
             <a class="zsub-tab" data-match="/Inventory/StockLevels" href="/apps/zenith/Inventory/StockLevels">Stock Levels</a>
             <a class="zsub-tab" data-match="/Inventory/FindReceipt" href="/apps/zenith/Inventory/FindReceipt">Receiving</a>
             <a class="zsub-tab" data-match="/Inventory/StockTransfers" href="/apps/zenith/Inventory/StockTransfers">Stock Transfers</a>
@@ -1106,7 +1109,7 @@ html_stylesheets.add('/zenithstatic/css/sidebar-manager.css?v=3')
                   }}catch(_e){}
                 /* ZE-NAV-ALIAS: a detail/edit screen (menu-include=false, e.g. EditStockTransfer) shares no URL prefix
                    with its list tab, so map it to the parent list route for active-state only (group resolved above). */
-                var relA=rel,_NA={'/Inventory/EditStockTransfer':'/Inventory/StockTransfers','/Inventory/EditStockAdjustment':'/Inventory/StockAdjustments'};
+                var relA=rel,_NA={'/Inventory/EditStockTransfer':'/Inventory/StockTransfers','/Inventory/EditStockAdjustment':'/Inventory/StockAdjustments','/Inventory/EditFacility':'/Inventory/FindFacility'};
                 for(var _ak in _NA){if(rel.indexOf(_ak)===0){relA=_NA[_ak]+rel.slice(_ak.length);break;}}
                 var tabs=[].slice.call(g.querySelectorAll('.zsub-tab')),t=null,tLen=-1;
                 tabs.forEach(function(a){var m=a.getAttribute('data-match')||'';if(m&&relA.indexOf(m)===0&&m.length>tLen){t=a;tLen=m.length;}});
@@ -1225,14 +1228,15 @@ html_stylesheets.add('/zenithstatic/css/sidebar-manager.css?v=3')
             <link rel="stylesheet" href="/zenithstatic/css/barcode-reference.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/receiving-stock.css?v=14"/>
             <link rel="stylesheet" href="/zenithstatic/css/gate-passes.css?v=12"/>
-            <link rel="stylesheet" href="/zenithstatic/css/shops-reference.css?v=1"/>
+            <link rel="stylesheet" href="/zenithstatic/css/shops-reference.css?v=2"/>
             <link rel="stylesheet" href="/zenithstatic/css/contacts-dashboard.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/edit-customer-group.css?v=1"/>
+            <link rel="stylesheet" href="/zenithstatic/css/sales-dashboard-reference.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/pricing-price-lists.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/purchase-rfq.css?v=2"/>
             <link rel="stylesheet" href="/zenithstatic/css/purchase-job-work.css?v=2"/>
             <link rel="stylesheet" href="/zenithstatic/css/purchase-vendor-bills.css?v=1"/>
-            <link rel="stylesheet" href="/zenithstatic/css/pos-reference.css?v=1"/>
+            <link rel="stylesheet" href="/zenithstatic/css/pos-reference.css?v=3"/>
             <link rel="stylesheet" href="/zenithstatic/css/main-dashboard.css?v=6"/>
             <link rel="stylesheet" href="/zenithstatic/css/pricing-history.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/stock-transfers.css?v=1"/>

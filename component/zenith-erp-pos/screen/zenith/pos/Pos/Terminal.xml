@@ -4039,6 +4039,20 @@
              "busy" test mirrors open#PosSession exactly: PsOpen session that has ≥1 PtCompleted transaction
              (an open-but-empty session is auto-closed on open, so it is NOT treated as busy). -->
         <set field="_blockedTerms" from="(terminalList ?: []).findAll{ _t -> ec.entity.find('zenith.erp.pos.PosSession').condition('terminalId', _t.terminalId).condition('statusId', 'PsOpen').list().any{ _s -> ec.entity.find('zenith.erp.pos.PosTransaction').condition('sessionId', _s.sessionId).condition('statusId', 'PtCompleted').count() > 0 } }.collect{ it.terminalId } as Set"/>
+        <!-- A recorded sale means the terminal cannot be silently recycled. Give the operator a
+             direct path to the existing, org-guarded session detail for a counted close. -->
+        <script><![CDATA[
+            busySessionLinks = []
+            (terminalList ?: []).findAll { _blockedTerms.contains(it.terminalId) }.each { term ->
+                def matching = ec.entity.find('zenith.erp.pos.PosSession')
+                    .condition('organizationPartyId', posOrg ?: '__NO_ORGANIZATION__')
+                    .condition('terminalId', term.terminalId).condition('statusId', 'PsOpen').list()
+                    .find { s -> ec.entity.find('zenith.erp.pos.PosTransaction')
+                        .condition('sessionId', s.sessionId).condition('statusId', 'PtCompleted').count() > 0 }
+                if (matching) busySessionLinks.add([terminalName:term.terminalName ?: term.terminalId,
+                    sessionId:matching.sessionId])
+            }
+        ]]></script>
         <set field="terminalList" from="(terminalList ?: []).findAll{ !_blockedTerms.contains(it.terminalId) }.collect{ [terminalId: it.terminalId, terminalName: (it.terminalName ?: it.terminalId)] } + (terminalList ?: []).findAll{ _blockedTerms.contains(it.terminalId) }.collect{ [terminalId: it.terminalId, terminalName: ((it.terminalName ?: it.terminalId) + ' (in use)')] }"/>
         <set field="defaultTerminalId" from="terminalList ? terminalList[0].terminalId : ''"/>
 
@@ -4442,6 +4456,16 @@
 
 
                         </form-single>
+                        <render-mode><text type="html,qvt,vuet" template="true"><![CDATA[
+                          <#if busySessionLinks?has_content>
+                          <div class="pos-busy-session-note" style="margin-top:18px;padding:14px;border:1px solid #f3d99c;border-radius:8px;background:#fffbeb;color:#664d03;font-size:13px;line-height:1.5">
+                            <strong>Terminal already in use?</strong> A shift with recorded sales must be reviewed and closed after the drawer is counted.
+                            <#list busySessionLinks as busy>
+                              <div style="margin-top:7px"><a href="/qapps/zenith/pos/EditSession?sessionId=${busy.sessionId?url('UTF-8')}" style="color:#5b3ac6;font-weight:700">Review ${busy.terminalName?html} session</a></div>
+                            </#list>
+                          </div>
+                          </#if>
+                        ]]></text></render-mode>
                         <render-mode><text type="html,qvt" template="true"><![CDATA[<img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="try{if(location.pathname.indexOf('/qapps/')===0){location.replace(location.href.replace('/qapps/','/apps/'));}}catch(e){}"/><div style="text-align:center;margin-top:18px"><button id="pos-history-btn-ns" type="button" onclick="window.posOpenHistory&amp;&amp;window.posOpenHistory()" style="padding:10px 24px;border-radius:8px;font-size:14px;font-weight:bold;cursor:pointer;background:#7C3AED;color:#fff;border:1px solid #A78BFA">&#128196; View Bill History<span style="margin-left:7px;padding:1px 6px;border:1px solid rgba(255,255,255,0.7);border-radius:4px;font-size:11px;font-weight:700;opacity:0.9">F9</span></button></div><script src="/zenithstatic/js/pos-terminal.js?v=154"></script>]]></text></render-mode>
 
 
