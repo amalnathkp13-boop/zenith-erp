@@ -6,6 +6,7 @@
     <transition name="anonymizeData">
         <service-call name="zenith.crm.CrmServices.anonymize#CustomerData" in-map="context"/>
         <default-response url="."/>
+        <error-response url="."/>
     </transition>
 
     <actions>
@@ -14,7 +15,7 @@
              org field; PartyDetailAndRole exposes both roleTypeId and ownerPartyId. -->
         <entity-find entity-name="mantle.party.PartyDetailAndRole" list="customers" limit="20">
             <econdition field-name="roleTypeId" value="Customer"/>
-            <econdition field-name="ownerPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+            <econdition field-name="ownerPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION') ?: '__NO_ORGANIZATION__'"/>
             <order-by field-name="firstName"/>
         </entity-find>
     </actions>

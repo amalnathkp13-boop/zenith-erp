@@ -1,0 +1,52 @@
+/* CRM only: preserve the shared ERP shell and the framework's form behavior. */
+.zcrm-page{min-width:0;padding:20px 24px 32px;background:#f8f9fc;color:#20243a;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.zcrm-page *{box-sizing:border-box}
+.zcrm-page .zcrm-cross-links{padding:0 0 14px!important;margin:0!important;gap:8px;flex-wrap:wrap}
+.zcrm-page .zcrm-cross-links a{min-height:32px;border:1px solid #e6e2f2;border-radius:8px;background:#fff;color:#57469d;box-shadow:none;padding:5px 10px;font-size:12px}
+.zcrm-page .zcrm-intro{margin:4px 0 18px}
+.zcrm-page .zcrm-intro h3{margin:0!important;font-size:22px!important;line-height:1.35;font-weight:650!important;color:#20243a}
+.zcrm-page .zcrm-intro p{margin:4px 0 0;color:#677085;font-size:13px;line-height:1.5}
+.zcrm-page .zcrm-intro>a{display:inline-flex;margin-top:8px;color:#6c44cf;font-size:12px}
+.zcrm-page :is(.panel,.q-card,.zenith-card){min-width:0;border:1px solid #e7e8ef;border-radius:12px;box-shadow:0 2px 8px rgba(32,36,58,.035);background:#fff}
+.zcrm-page :is(.panel-heading,.q-card__section){border-color:#ececf3}
+.zcrm-page :is(.panel-heading h3,.panel-heading h4,.q-card__section h3,.q-card__section h4){font-size:15px!important;font-weight:600;color:#22253d}
+.zcrm-page .zcrm-period{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 18px}
+.zcrm-page .zcrm-period>a,.zcrm-page .zcrm-quick-actions>a{display:inline-flex;align-items:center;min-height:34px;padding:6px 12px;border:1px solid #ddd8ed;border-radius:8px;background:#fff;color:#594c86;font-size:12px;font-weight:550;text-decoration:none}
+.zcrm-page .zcrm-period>a:hover,.zcrm-page .zcrm-quick-actions>a:hover{border-color:#8b63ea;background:#f7f4ff}
+.zcrm-page .zcrm-period>span{margin-left:auto;color:#697187;font-size:12px}
+.zcrm-page .zcrm-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:18px}
+.zcrm-page .zcrm-metric,.zcrm-page .zcrm-panel{min-width:0;background:#fff;border:1px solid #e7e8ef;border-radius:12px;box-shadow:0 2px 8px rgba(32,36,58,.035)}
+.zcrm-page .zcrm-metric{padding:17px 18px;display:flex;flex-direction:column;gap:3px}
+.zcrm-page .zcrm-metric>span:first-child{font-size:11px;font-weight:650;letter-spacing:.04em;text-transform:uppercase;color:#697187}
+.zcrm-page .zcrm-metric h4{margin:4px 0!important;color:#3f3177;font-size:25px!important;font-weight:700!important;line-height:1.25;overflow-wrap:anywhere}
+.zcrm-page .zcrm-muted{color:#8990a0;font-size:11px}
+.zcrm-page .zcrm-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.zcrm-page .zcrm-stage-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:0 0 18px}
+.zcrm-page .zcrm-stage-card{min-width:0;padding:13px 15px;background:#fff;border:1px solid #e7e8ef;border-radius:10px;display:flex;flex-direction:column;gap:4px}
+.zcrm-page .zcrm-stage-name{font-size:11px;font-weight:600;color:#686083}
+.zcrm-page .zcrm-stage-card strong{font-size:18px;font-weight:650;color:#3f3177}
+.zcrm-page .zcrm-panel{padding:18px}
+.zcrm-page .zcrm-panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+.zcrm-page .zcrm-panel-head h5{font-size:15px!important;font-weight:650!important;margin:0!important;color:#20243a}
+.zcrm-page .zcrm-panel-head a{white-space:nowrap;color:#6c44cf;font-size:12px}
+.zcrm-page .zcrm-breakdown-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid #eff0f4;min-width:0;font-size:12px}
+.zcrm-page .zcrm-breakdown-row:last-child{border-bottom:0}
+.zcrm-page .zcrm-breakdown-row>*{min-width:0;overflow-wrap:anywhere}
+.zcrm-page .zcrm-breakdown-row strong{font-weight:650;color:#3f3177;text-align:right}
+.zcrm-page .zcrm-breakdown-row a{font-weight:600;color:#5741a6}
+.zcrm-page .zcrm-empty{padding:20px;text-align:center;color:#687185;font-size:13px;line-height:1.5;background:#fafbfe;border:1px dashed #dcdfea;border-radius:10px}
+.zcrm-page .zcrm-empty p{margin:0}
+.zcrm-page .zcrm-list-count{font-size:12px;color:#697187;margin:2px 0 10px}
+.zcrm-page .zcrm-error{padding:16px;border:1px solid #fac9c9;border-radius:9px;background:#fff7f7;color:#9b3030}
+.zcrm-page .zcrm-error p{margin:0 0 8px}
+.zcrm-page .zcrm-quick-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+.zcrm-page :is(table,.q-table){width:100%;border-collapse:collapse;min-width:700px}
+.zcrm-page .panel-body{max-width:100%;overflow-x:auto}
+.zcrm-page :is(th,.q-table th){background:#f7f8fb;color:#5d6578;font-size:11px;font-weight:650;letter-spacing:.02em}
+.zcrm-page :is(td,.q-table td){font-size:12px;color:#273045;border-bottom:1px solid #eff0f4;vertical-align:middle}
+.zcrm-page :is(.table-responsive,.q-table__container){max-width:100%;overflow-x:auto}
+.zcrm-page :is(input,select,textarea,.q-field__control){border-radius:8px}
+.zcrm-page :is(button,a,input,select,textarea):focus-visible{outline:2px solid #7653d0;outline-offset:2px}
+@media(max-width:980px){.zcrm-page .zcrm-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.zcrm-page .zcrm-grid{grid-template-columns:1fr}}
+@media(max-width:640px){.zcrm-page{padding:14px 12px 24px}.zcrm-page .zcrm-intro h3{font-size:19px!important}.zcrm-page .zcrm-metrics{gap:8px}.zcrm-page .zcrm-metric{padding:13px}.zcrm-page .zcrm-metric h4{font-size:20px!important}.zcrm-page .zcrm-period>span{margin-left:0;width:100%}.zcrm-page .zcrm-panel{padding:14px}.zcrm-page .zcrm-cross-links{justify-content:flex-start!important}}
+@media(max-width:400px){.zcrm-page .zcrm-metrics{grid-template-columns:1fr}.zcrm-page .zcrm-period>a{flex:1 1 42%;justify-content:center}}

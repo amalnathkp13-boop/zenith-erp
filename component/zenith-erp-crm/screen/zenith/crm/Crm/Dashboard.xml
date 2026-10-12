@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
+        default-menu-title="Dashboard" default-menu-index="0">
+    <parameter name="period"/>
+    <actions>
+        <script><![CDATA[
+            import org.moqui.entity.EntityCondition
+
+            def choices = [week:'This week', month:'This month', quarter:'Last 90 days', all:'All time']
+            period = choices.containsKey(period?.toString()) ? period.toString() : 'month'
+            periodLabel = choices[period]
+            def today = java.time.LocalDate.parse(new java.text.SimpleDateFormat('yyyy-MM-dd').format(ec.user.nowTimestamp))
+            def startDay = period == 'week' ? today.minusDays(today.dayOfWeek.value - 1) :
+                    (period == 'month' ? today.withDayOfMonth(1) : (period == 'quarter' ? today.minusDays(89) : null))
+            def fromTime = startDay ? java.sql.Timestamp.valueOf(startDay.atStartOfDay()) : null
+            def endTime = java.sql.Timestamp.valueOf(today.plusDays(1).atStartOfDay())
+            def fromDate = startDay ? java.sql.Date.valueOf(startDay) : null
+            def endDate = java.sql.Date.valueOf(today.plusDays(1))
+            def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
+            dashboardError = null
+            leadRows = []; opportunityRows = []; activityRows = []; followupRows = []
+            stageRows = []; stageSummary = [:]; sourceSummary = [:]
+            leadStatusNames = [LeadNew:'New', LeadContacted:'Contacted', LeadQualified:'Qualified', LeadConverted:'Converted', LeadLost:'Lost']
+            leadCount = 0; activeLeadCount = 0; openOpportunityCount = 0
+            pipelineValue = 0G; activityCount = 0; followupDueCount = 0
+            if (org && org != '_NA_') {
+                try {
+                    def leadFind = ec.entity.find('zenith.erp.crm.LeadListView').condition('organizationPartyId', org)
+                    if (fromTime) leadFind.condition('createdDate', EntityCondition.GREATER_THAN_EQUAL_TO, fromTime)
+                    if (fromTime) leadFind.condition('createdDate', EntityCondition.LESS_THAN, endTime)
+                    leadRows = leadFind.orderBy('-createdDate').list()
+                    leadCount = leadRows.size()
+                    activeLeadCount = leadRows.count { !['LeadConverted','LeadLost'].contains(it.statusId) }
+                    leadRows.each { row ->
+                        def source = row.sourceName ?: 'Unknown / not set'
+                        sourceSummary[source] = (sourceSummary[source] ?: 0) + 1
+                    }
+
+                    stageRows = ec.entity.find('mantle.sales.opportunity.SalesOpportunityStage').orderBy('sequenceNum').list()
+                    stageRows.each { stage -> stageSummary[stage.opportunityStageId] = [name:stage.description, count:0, value:0G] }
+                    def oppFind = ec.entity.find('zenith.erp.crm.OpportunityListView').condition('organizationPartyId', org)
+                    if (fromDate) oppFind.condition('estimatedCloseDate', EntityCondition.GREATER_THAN_EQUAL_TO, fromDate)
+                    if (fromDate) oppFind.condition('estimatedCloseDate', EntityCondition.LESS_THAN, endDate)
+                    opportunityRows = oppFind.list()
+                    opportunityRows.each { row ->
+                        def bucket = stageSummary[row.opportunityStageId]
+                        if (bucket) { bucket.count++; bucket.value += (row.estimatedAmount ?: 0G) }
+                        if (!['SoClosedWon','SoClosedLost'].contains(row.opportunityStageId)) {
+                            openOpportunityCount++
+                            pipelineValue += (row.estimatedAmount ?: 0G)
+                        }
+                    }
+
+                    def activityFind = ec.entity.find('zenith.erp.crm.CrmActivity').condition('organizationPartyId', org)
+                    if (fromTime) activityFind.condition('activityDate', EntityCondition.GREATER_THAN_EQUAL_TO, fromTime)
+                    if (fromTime) activityFind.condition('activityDate', EntityCondition.LESS_THAN, endTime)
+                    activityRows = activityFind.orderBy('-activityDate').list()
+                    activityCount = activityRows.size()
+                    def followupFind = ec.entity.find('zenith.erp.crm.CrmActivity').condition('organizationPartyId', org)
+                            .condition('nextFollowUpDate', EntityCondition.LESS_THAN, endTime)
+                    if (fromTime) followupFind.condition('nextFollowUpDate', EntityCondition.GREATER_THAN_EQUAL_TO, fromTime)
+                    followupRows = followupFind.orderBy('nextFollowUpDate').list()
+                    followupDueCount = followupRows.size()
+                } catch (Exception e) {
+                    dashboardError = 'CRM data could not be loaded. Please retry or contact support.'
+                    leadRows = []; opportunityRows = []; activityRows = []; followupRows = []
+                    stageSummary = [:]; sourceSummary = [:]
+                    leadCount = 0; activeLeadCount = 0; openOpportunityCount = 0
+                    pipelineValue = 0G; activityCount = 0; followupDueCount = 0
+                }
+            }
+            hasActiveOrg = org && org != '_NA_'
+            recentLeads = leadRows.take(6)
+            recentActivities = activityRows.take(6)
+            sources = sourceSummary.collect { name, count -> [name:name, count:count] }
+                    .sort { a, b -> b.count <=> a.count }
+        ]]></script>
+    </actions>
+    <widgets>
+        <container style="zcrm-intro zcrm-dash-head">
+            <label text="CRM Dashboard" type="h3"/>
+            <label text="Leads, opportunities and follow-ups from your active organization." type="p"/>
+        </container>
+        <container style="zcrm-period">
+            <link url="." text="This week" parameter-map="[period:'week']"/>
+            <link url="." text="This month" parameter-map="[period:'month']"/>
+            <link url="." text="Last 90 days" parameter-map="[period:'quarter']"/>
+            <link url="." text="All time" parameter-map="[period:'all']"/>
+            <label text="Showing: ${periodLabel}" type="span"/>
+        </container>
+        <section name="crmMissingOrg" condition="!hasActiveOrg"><widgets>
+            <container style="zcrm-empty"><label text="Select an organization to view its CRM dashboard." type="p"/></container>
+        </widgets></section>
+        <section name="crmDashboardError" condition="dashboardError"><widgets>
+            <container style="zcrm-error"><label text="${dashboardError}" type="p"/><link url="." text="Retry"/></container>
+        </widgets></section>
+        <section name="crmDashboardData" condition="hasActiveOrg &amp;&amp; !dashboardError"><widgets>
+            <container style="zcrm-metrics">
+                <container style="zcrm-metric"><label text="New leads" type="span"/><label text="${leadCount}" type="h4"/><label text="Created in ${periodLabel.toLowerCase()}" type="span" style="zcrm-muted"/></container>
+                <container style="zcrm-metric"><label text="Active leads" type="span"/><label text="${activeLeadCount}" type="h4"/><label text="Not converted or lost" type="span" style="zcrm-muted"/></container>
+                <container style="zcrm-metric"><label text="Open opportunities" type="span"/><label text="${openOpportunityCount}" type="h4"/><label text="Expected to close in range" type="span" style="zcrm-muted"/></container>
+                <container style="zcrm-metric"><label text="Open pipeline value" type="span"/><label text="${currSymbol}${zinr.inr(ec.l10n.format(pipelineValue, '#,##,##0'))}" type="h4"/><label text="Estimated, not booked revenue" type="span" style="zcrm-muted"/></container>
+            </container>
+            <container style="zcrm-grid">
+                <container style="zcrm-panel"><container style="zcrm-panel-head"><label text="Pipeline by stage" type="h5"/><link url="../Pipeline" text="View pipeline"/></container>
+                    <section name="noStages" condition="opportunityRows.isEmpty()"><widgets><label text="No opportunities are expected to close in this date range." type="p" style="zcrm-empty"/></widgets></section>
+                    <section name="hasStages" condition="!opportunityRows.isEmpty()"><widgets>
+                        <section-iterate name="crmStages" list="stageRows" entry="stage"><widgets><container style="zcrm-breakdown-row"><label text="${stage.description}" type="span"/><label text="${stageSummary[stage.opportunityStageId].count} deals" type="span"/><label text="${currSymbol}${zinr.inr(ec.l10n.format(stageSummary[stage.opportunityStageId].value, '#,##,##0'))}" type="strong"/></container></widgets></section-iterate>
+                    </widgets></section>
+                </container>
+                <container style="zcrm-panel"><container style="zcrm-panel-head"><label text="Lead sources" type="h5"/><link url="../Leads" text="View leads"/></container>
+                    <section name="noSources" condition="sources.isEmpty()"><widgets><label text="No leads were created in this date range." type="p" style="zcrm-empty"/></widgets></section>
+                    <section name="hasSources" condition="!sources.isEmpty()"><widgets>
+                        <section-iterate name="crmSources" list="sources" entry="source"><widgets><container style="zcrm-breakdown-row"><label text="${source.name}" type="span"/><label text="${source.count} ${source.count == 1 ? 'lead' : 'leads'}" type="strong"/></container></widgets></section-iterate>
+                    </widgets></section>
+                </container>
+                <container style="zcrm-panel"><container style="zcrm-panel-head"><label text="Activities &amp; follow-ups" type="h5"/><link url="../Activities" text="View activities"/></container>
+                    <container style="zcrm-breakdown-row"><label text="Activities logged" type="span"/><label text="${activityCount}" type="strong"/></container>
+                    <container style="zcrm-breakdown-row"><label text="Follow-ups due in range" type="span"/><label text="${followupDueCount}" type="strong"/></container>
+                    <section name="noActivities" condition="recentActivities.isEmpty()"><widgets><label text="No activities logged in this date range. Log a call or meeting to start a history." type="p" style="zcrm-empty"/></widgets></section>
+                    <section-iterate name="crmRecentActivities" list="recentActivities" entry="act"><widgets><container style="zcrm-breakdown-row"><label text="${act.activityType}: ${act.subject}" type="span"/><label text="${ec.l10n.format(act.activityDate, 'dd MMM yyyy')}" type="span" style="zcrm-muted"/></container></widgets></section-iterate>
+                </container>
+                <container style="zcrm-panel"><container style="zcrm-panel-head"><label text="Recent leads" type="h5"/><link url="../Leads" text="All leads"/></container>
+                    <section name="noRecentLeads" condition="recentLeads.isEmpty()"><widgets><label text="No leads created in this date range. Add a lead from the Leads page." type="p" style="zcrm-empty"/></widgets></section>
+                    <section-iterate name="crmRecentLeads" list="recentLeads" entry="recentLead"><widgets><container style="zcrm-breakdown-row"><link url="../EditLead" text="${recentLead.firstName} ${recentLead.lastName ?: ''}" parameter-map="[leadId:recentLead.leadId]"/><label text="${recentLead.companyName ?: recentLead.sourceName ?: 'No company'} · ${leadStatusNames[recentLead.statusId] ?: 'Unknown status'} · ${recentLead.assignedToUserId ?: 'Unassigned'}" type="span" style="zcrm-muted"/><label text="${ec.l10n.format(recentLead.createdDate, 'dd MMM yyyy')}" type="span" style="zcrm-muted"/></container></widgets></section-iterate>
+                </container>
+            </container>
+            <container style="zcrm-quick-actions"><link url="../Leads" text="Manage leads"/><link url="../Pipeline" text="View pipeline"/><link url="../Activities" text="View activities"/><link url="../Segments" text="Customer segments"/></container>
+        </widgets></section>
+    </widgets>
+</screen>

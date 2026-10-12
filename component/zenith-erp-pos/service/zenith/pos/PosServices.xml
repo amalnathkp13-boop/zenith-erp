@@ -365,28 +365,27 @@
                     <field-map field-name="salesModeId" from="salesModeId"/></entity-find-one>
                 <if condition="_smode?.isTaxInclusive == 'Y'"><set field="_modeTaxIncl" from="'Y'"/></if>
             </if>
-            <!-- Calculate tax via tax engine -->
-            <service-call name="zenith.tax.TaxServices.calculate#Tax"
-                          in-map="[organizationPartyId:terminal.organizationPartyId,
-                                   items:[[productId:productId, productTaxCode:productTaxCode,
-                                           taxCategoryId:product?.taxCategoryId, quantity:mergeQty,
-                                           unitAmount:unitPrice, discountAmount:discAmt,
-                                           isTaxInclusive:_modeTaxIncl]],
-                                   originRegionGeoId:txn.originRegionGeoId,
-                                   destinationRegionGeoId:txn.destinationRegionGeoId,
-                                   transactionType:'SALE']"
-                          out-map="taxResult"/>
-            <set field="taxedItem" from="taxResult?.taxedItems ? taxResult.taxedItems[0] : null"/>
-            <set field="taxableAmount" from="taxedItem?.taxableAmount ?: (lineSubtotal - discAmt)" type="BigDecimal"/>
-            <set field="totalTaxAmount" from="taxedItem?.totalTaxAmount ?: BigDecimal.ZERO" type="BigDecimal"/>
-            <set field="lineTotal" from="taxableAmount + totalTaxAmount" type="BigDecimal"/>
-            <!-- ZE-TAX-PHANTOM/overcharge: honor the tax toggle at ADD time, exactly as reprice (~1532) and
-                 set#PosTransactionItemMode (~1596) already do. Without this an item added while tax is OFF kept the
-                 computed GST on totalTaxAmount -> it flowed to grandTotal/payable (a real over-charge) AND to the
-                 invoice header (the phantom). Zeroing here makes add consistent; tax-ON adds are unchanged. -->
-            <if condition="taxOn == 'N'">
-                <set field="totalTaxAmount" from="BigDecimal.ZERO" type="BigDecimal"/>
-                <set field="lineTotal" from="taxableAmount" type="BigDecimal"/>
+            <!-- A tax-free POS sale must not enter GST state validation or strip inclusive tax from the entered
+                 price. Initialize the line as tax-free, then replace these values only when tax is enabled. -->
+            <set field="taxedItem" from="null"/>
+            <set field="taxableAmount" from="lineSubtotal - discAmt" type="BigDecimal"/>
+            <set field="totalTaxAmount" from="BigDecimal.ZERO" type="BigDecimal"/>
+            <set field="lineTotal" from="taxableAmount" type="BigDecimal"/>
+            <if condition="taxOn != 'N'">
+                <service-call name="zenith.tax.TaxServices.calculate#Tax"
+                              in-map="[organizationPartyId:terminal.organizationPartyId,
+                                       items:[[productId:productId, productTaxCode:productTaxCode,
+                                               taxCategoryId:product?.taxCategoryId, quantity:mergeQty,
+                                               unitAmount:unitPrice, discountAmount:discAmt,
+                                               isTaxInclusive:_modeTaxIncl]],
+                                       originRegionGeoId:txn.originRegionGeoId,
+                                       destinationRegionGeoId:txn.destinationRegionGeoId,
+                                       transactionType:'SALE']"
+                              out-map="taxResult"/>
+                <set field="taxedItem" from="taxResult?.taxedItems ? taxResult.taxedItems[0] : null"/>
+                <set field="taxableAmount" from="taxedItem?.taxableAmount != null ? taxedItem.taxableAmount : (lineSubtotal - discAmt)" type="BigDecimal"/>
+                <set field="totalTaxAmount" from="taxedItem?.totalTaxAmount ?: BigDecimal.ZERO" type="BigDecimal"/>
+                <set field="lineTotal" from="taxableAmount + totalTaxAmount" type="BigDecimal"/>
             </if>
 
             <!-- A cashier-typed price (isDefaultPrice false) locks the line against quantity-break auto-pricing. -->

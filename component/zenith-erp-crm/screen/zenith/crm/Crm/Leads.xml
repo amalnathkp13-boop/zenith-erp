@@ -6,19 +6,21 @@
     <transition name="createLead">
         <service-call name="zenith.crm.CrmServices.create#Lead"/>
         <default-response url="."/>
+        <error-response url="."/>
     </transition>
     <transition name="editLead">
         <default-response url="../EditLead"/>
     </transition>
 
     <actions>
+        <entity-find-count entity-name="zenith.erp.crm.Lead" count-field="organizationLeadCount">
+            <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION') ?: '__NO_ORGANIZATION__'"/>
+        </entity-find-count>
         <entity-find entity-name="zenith.erp.crm.LeadListView" list="leadList">
-            <search-form-inputs default-order-by="-createdDate"/>
-            <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+            <search-form-inputs default-order-by="-createdDate" skip-fields="organizationPartyId"/>
+            <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION') ?: '__NO_ORGANIZATION__'"/>
         </entity-find>
         <service-call name="zenith.base.SecurityServices.get#ActiveOrgList" out-map="context"/>
-        <!-- ZE-INV-IV-070 f/u: a tenant has exactly one org; auto-fill it (the /qapps Vue m-drop-down renders the
-             get#ActiveOrgList list-options EMPTY, blocking New Lead). Super-admins (no active org) keep the picker. -->
         <set field="_ao" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
         <set field="_hasActiveOrg" from="(_ao != null &amp;&amp; _ao != '_NA_')"/>
         <if condition="_hasActiveOrg"><set field="organizationPartyId" from="_ao"/></if>
@@ -31,31 +33,25 @@
     </actions>
 
     <widgets>
-        <container-box><box-header title="Leads"/><box-toolbar>
+        <container style="zcrm-intro"><label text="Leads" type="h3"/><label text="Find, qualify, and follow up with potential customers." type="p"/></container>
+        <container-box><box-header title="Lead directory"/><box-toolbar>
             <section name="NewLead_write"><condition><expression>modCanWrite</expression></condition><widgets>
-            <container-dialog id="NewLeadDialog" button-text="New Lead">
+            <container-dialog id="NewLeadDialog" button-text="New Lead" condition="_hasActiveOrg">
                 <form-single name="NewLeadForm" transition="createLead">
-                    <field name="organizationPartyId">
-                        <!-- ZE-INV-IV-070 f/u: tenant -> hidden auto-fill; super-admin -> picker (see actions). -->
-                        <conditional-field name="orgAutoFill" condition="_hasActiveOrg"><hidden/></conditional-field>
-                        <default-field title="Organization">
-                        <drop-down>
-                            <list-options list="orgList" key="${partyId}" text="${organizationName}"/>
-                        </drop-down>
-                    </default-field></field>
+                    <field name="organizationPartyId"><default-field><hidden/></default-field></field>
                     <field name="firstName"><default-field title="First Name"><text-line size="20"/></default-field></field>
                     <field name="lastName"><default-field title="Last Name"><text-line size="20"/></default-field></field>
                     <field name="companyName"><default-field title="Company"><text-line size="30"/></default-field></field>
                     <field name="designation"><default-field><text-line size="20"/></default-field></field>
                     <field name="email"><default-field><text-line size="30"/></default-field></field>
-                    <field name="mobile"><default-field title="Mobile"><text-line size="15" default-value="+91"/></default-field></field>
+                    <field name="mobile"><default-field title="Mobile"><text-line size="15"/></default-field></field>
                     <field name="city"><default-field><text-line size="20"/></default-field></field>
-                    <field name="stateCode"><default-field title="State">
+                    <field name="regionCode"><default-field title="State">
                         <drop-down allow-empty="true">
                             <list-options list="stateList" key="${stateCode}" text="${stateCode} - ${stateName}"/>
                         </drop-down>
                     </default-field></field>
-                    <field name="gstin"><default-field title="GSTIN"><text-line size="20"/></default-field></field>
+                    <field name="taxRegistrationNumber"><default-field title="GSTIN"><text-line size="20"/></default-field></field>
                     <field name="leadSourceId"><default-field title="Source">
                         <drop-down allow-empty="true">
                             <list-options list="leadSources" key="${leadSourceId}" text="${description}"/>
@@ -70,8 +66,12 @@
                 </form-single>
             </container-dialog>
             </widgets></section>
+            <section name="NoOrg" condition="!_hasActiveOrg"><widgets><label text="Select an organization to create or view leads." type="span" style="text-grey-7"/></widgets></section>
         </box-toolbar><box-body>
             <render-mode><text type="html,qvt"><![CDATA[<span class="zlc-ph" data-ph="Search Leads..." style="display:none"></span>]]></text></render-mode>
+            <label text="${organizationLeadCount} leads in this organization" type="p" style="zcrm-list-count"/>
+            <section name="NoLeads" condition="leadList.isEmpty() &amp;&amp; organizationLeadCount == 0"><widgets><container style="zcrm-empty"><label text="No leads yet. Add the first lead to start tracking opportunities." type="p"/></container></widgets></section>
+            <section name="NoLeadMatches" condition="leadList.isEmpty() &amp;&amp; organizationLeadCount &gt; 0"><widgets><container style="zcrm-empty"><label text="No leads match this search. Clear the filters or try a different term." type="p"/></container></widgets></section>
             <form-list name="LeadListForm" list="leadList" skip-form="true" header-dialog="true"
                        show-csv-button="true" show-xlsx-button="true" show-page-size="true">
                 <field name="leadId">
@@ -85,10 +85,10 @@
                     <header-field title="Company"><text-find size="20" hide-options="true"/></header-field>
                     <default-field><display/></default-field>
                 </field>
-                <field name="email"><default-field><display/></default-field></field>
-                <field name="mobile"><default-field title="Phone"><display text="${mobile ?: phone ?: ''}"/></default-field></field>
-                <field name="city"><default-field><display/></default-field></field>
-                <field name="sourceName"><default-field title="Source"><display/></default-field></field>
+                <field name="email"><header-field><text-find size="25" hide-options="true"/></header-field><default-field><display/></default-field></field>
+                <field name="mobile"><header-field title="Phone"><text-find size="18" hide-options="true"/></header-field><default-field title="Phone"><display text="${mobile ?: phone ?: ''}"/></default-field></field>
+                <field name="city"><header-field><text-find size="18" hide-options="true"/></header-field><default-field><display/></default-field></field>
+                <field name="sourceName"><header-field title="Source"><text-find size="18" hide-options="true"/></header-field><default-field title="Source"><display/></default-field></field>
                 <field name="rating">
                     <header-field>
                         <drop-down allow-empty="true"><option key="Hot"/><option key="Warm"/><option key="Cold"/></drop-down>
