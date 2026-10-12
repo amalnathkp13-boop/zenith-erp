@@ -123,6 +123,11 @@
                 def _f2 = new java.text.SimpleDateFormat("dd MMM yyyy")
                 displayDate = _f1.format(java.sql.Date.valueOf(dashDate)) + " – " + _f2.format(java.sql.Date.valueOf(dashDateTo))
             }
+            def rangeStart = java.sql.Date.valueOf(dashDate)
+            def rangeEnd = java.sql.Date.valueOf(dashDateTo)
+            def rangeShort = new java.text.SimpleDateFormat("dd MMM")
+            def rangeLong = new java.text.SimpleDateFormat("dd MMM yyyy")
+            rangeDisplay = (dashDate.substring(0, 4) == dashDateTo.substring(0, 4) ? rangeShort : rangeLong).format(rangeStart) + " – " + rangeLong.format(rangeEnd)
 
             // ZE-DASH-04 (Owner View): mode-adaptive location filter — MUST be computed BEFORE the entity-finds
             // below (which read _locSessionIds). Locations = the tenant's retail-store FACILITIES (branch/Owner-View)
@@ -252,17 +257,17 @@
                 def productMap = [:]
                 itemList.each { item ->
                     def pid = item.productName ?: item.productId
-                    if (!productMap[pid]) productMap[pid] = [name: pid, qty: BigDecimal.ZERO, total: BigDecimal.ZERO]
-                    productMap[pid].qty = productMap[pid].qty + ((item.quantity ?: 0) as BigDecimal)
+                    if (!productMap[pid]) productMap[pid] = [name: pid, orders: new java.util.HashSet(), total: BigDecimal.ZERO]
+                    productMap[pid].orders.add(item.transactionId)
                     productMap[pid].total = productMap[pid].total + ((item.lineTotal ?: 0) as BigDecimal)
                 }
-                def sorted = productMap.values().sort { -(it.total as BigDecimal) }.take(10)
+                def sorted = productMap.values().sort { -(it.total as BigDecimal) }.take(5)
                 def maxP = sorted ? (sorted[0].total as BigDecimal) : BigDecimal.ONE
                 if (maxP == BigDecimal.ZERO) maxP = BigDecimal.ONE
                 sorted.eachWithIndex { p, idx ->
                     def pct = (p.total * 100 / maxP).intValue()
-                    topProductBars.add([name: p.name, total: zinr.inr(ec.l10n.format(p.total, '#,##0')),
-                        qty: zinr.inr(ec.l10n.format(p.qty, '#,##0')), pct: pct,
+                    topProductBars.add([name: p.name, total: '₹' + zinr.inr(ec.l10n.format(p.total, '#,##0.00')),
+                        orders: p.orders.size(), pct: pct,
                         color: barColors[idx % barColors.size()]])
                 }
             }
@@ -550,8 +555,16 @@
             def _pts2 = []
             for (int h=0; h<24; h++) { double x=_bx+(h*_plotW/23.0); double y=_by-(((hourlyBars[h].pct as int)/100.0)*_plotH); _pts2.add([x:x, y:y, has:hourlyBars[h].hasValue]) }
             def _f = { double v -> String.format('%.1f', v) }
-            def _lineStr = _pts2.collect { _f(it.x)+','+_f(it.y) }.join(' ')
-            def _areaStr = 'M'+_f(_pts2[0].x)+','+_f(_by)+' L'+_pts2.collect{ _f(it.x)+','+_f(it.y) }.join(' L')+' L'+_f(_pts2[-1].x)+','+_f(_by)+' Z'
+            // Smooth the hourly line without changing any actual sales values.
+            def _curve = new StringBuilder('M'+_f(_pts2[0].x)+','+_f(_pts2[0].y))
+            for (int i=0; i<_pts2.size()-1; i++) {
+                def p0 = _pts2[Math.max(0,i-1)], p1 = _pts2[i], p2 = _pts2[i+1], p3 = _pts2[Math.min(_pts2.size()-1,i+2)]
+                double c1x=p1.x+(p2.x-p0.x)/6.0, c1y=p1.y+(p2.y-p0.y)/6.0
+                double c2x=p2.x-(p3.x-p1.x)/6.0, c2y=p2.y-(p3.y-p1.y)/6.0
+                _curve.append(' C'+_f(c1x)+','+_f(c1y)+' '+_f(c2x)+','+_f(c2y)+' '+_f(p2.x)+','+_f(p2.y))
+            }
+            def _lineStr = _curve.toString()
+            def _areaStr = _lineStr+' L'+_f(_pts2[-1].x)+','+_f(_by)+' L'+_f(_pts2[0].x)+','+_f(_by)+' Z'
             def _dots = new StringBuilder(); _pts2.each { if (it.has) _dots.append('<circle cx="'+_f(it.x)+'" cy="'+_f(it.y)+'" r="3" fill="#3B82F6"/>') }
             def _grid = new StringBuilder()
             for (int t=0; t<=4; t++) { double frac=t/4.0; double yv=_by-frac*_plotH; def val=((hourlyMax?:1) as BigDecimal)*frac
@@ -562,8 +575,9 @@
             def _xl = new StringBuilder()
             for (int h=0; h<24; h+=2) { double x=_bx+(h*_plotW/23.0); _xl.append('<text x="'+_f(x)+'" y="'+_f(_by+15)+'" font-size="9" fill="#9CA3AF" text-anchor="middle">'+_hrLabels[h]+'</text>') }
             salesLineSvg = '<svg viewBox="0 0 '+((int)_CW)+' '+((int)_CH)+'" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;min-width:560px">'+
-                _grid.toString()+'<path d="'+_areaStr+'" fill="#3B82F6" fill-opacity="0.10"/>'+
-                '<polyline points="'+_lineStr+'" fill="none" stroke="#3B82F6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'+
+                '<defs><linearGradient id="posDashSalesFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#57A9F5" stop-opacity=".25"/><stop offset="100%" stop-color="#57A9F5" stop-opacity=".02"/></linearGradient></defs>'+
+                _grid.toString()+'<path d="'+_areaStr+'" fill="url(#posDashSalesFill)"/>'+
+                '<path d="'+_lineStr+'" fill="none" stroke="#57A9F5" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>'+
                 _dots.toString()+_xl.toString()+'</svg>'
 
             // ===== Recent transactions (last 5) — for the mockup's Recent Transactions table =====
@@ -590,7 +604,7 @@
   <div class="pos-dash-toolbar">
     <a class="pos-dash-customize" href="${urlSettings?html}">&#9881; Customize</a>
     <details class="pos-dash-range">
-      <summary>&#128197; ${displayDate?html} &#9662;</summary>
+      <summary>&#128197; ${rangeDisplay?html} &#9662;</summary>
       <form method="get" action=".">
         <input type="hidden" name="dateMode" value="custom"/>
         <input type="hidden" name="dashLoc" value="${(dashLoc!'')?html}"/>
@@ -647,7 +661,7 @@
   <div class="pos-dash-upper">
     <#if showHourly>
     <section class="pos-dash-panel pos-dash-sales">
-      <header><h2>Sales Analyst</h2><span>Hourly &nbsp; &#128197; ${displayDate?html}</span></header>
+      <header><h2>Sales Analyst</h2><div class="pos-dash-chart-controls"><span>Hourly &#9662;</span><span>&#128197; ${displayDate?html}</span></div></header>
       <div class="pos-dash-legend"><i></i> Sales (&#8377;)</div>
       <div class="pos-dash-chart">${salesLineSvg}</div>
     </section>
@@ -657,7 +671,7 @@
       <header><h2>Top Selling Products</h2><a href="/apps/zenith/pos/Reports">View all</a></header>
       <#if topProductBars?has_content>
       <#list topProductBars as p>
-      <div class="pos-dash-product"><b>${p_index+1}</b><span><strong>${p.name?html}</strong><small>${p.qty} sold</small></span><em>${p.total?html}</em></div>
+      <div class="pos-dash-product"><b>${p_index+1}</b><span><strong>${p.name?html}</strong><small>${p.orders} Orders</small></span><em>${p.total?html}</em></div>
       </#list>
       <#else><p class="pos-dash-empty">No sales in this date range</p></#if>
     </section>
