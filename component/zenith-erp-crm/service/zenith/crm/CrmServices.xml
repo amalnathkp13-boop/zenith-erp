@@ -387,7 +387,9 @@
                                           opportunityStageId:opportunityStageId,
                                           estimatedProbability:stage?.defaultProbability]"/>
 
-            <entity-find-one entity-name="mantle.sales.opportunity.SalesOpportunity" value-field="opp"/>
+            <entity-find-one entity-name="mantle.sales.opportunity.SalesOpportunity" value-field="opp">
+                <field-map field-name="salesOpportunityId"/>
+            </entity-find-one>
             <if condition="['SoClosedWon','SoClosedLost'].contains(opp.opportunityStageId) &amp;&amp; opp.opportunityStageId != opportunityStageId">
                 <return error="true" message="A closed opportunity cannot be moved to another stage."/>
             </if>
@@ -465,7 +467,20 @@
                     <return error="true" message="Choose a valid segment type."/>
                 </if>
             </if>
-            <service-call name="update#zenith.erp.crm.CustomerSegment" in-map="context"/>
+            <script><![CDATA[
+                segmentUpdate = [segmentId:segmentId]
+                ['segmentName','description','segmentTypeEnumId','isActive'].each { key ->
+                    if (context.containsKey(key)) segmentUpdate[key] = context[key]
+                }
+                if (segmentUpdate.containsKey('segmentName')) segmentUpdate.segmentName = segmentUpdate.segmentName?.trim()
+            ]]></script>
+            <if condition="segmentUpdate.containsKey('segmentName') &amp;&amp; !segmentUpdate.segmentName">
+                <return error="true" message="Segment name is required."/>
+            </if>
+            <if condition="segmentUpdate.isActive &amp;&amp; !['Y','N'].contains(segmentUpdate.isActive)">
+                <return error="true" message="Choose a valid active status."/>
+            </if>
+            <service-call name="update#zenith.erp.crm.CustomerSegment" in-map="segmentUpdate"/>
         </actions>
     </service>
 

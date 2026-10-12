@@ -46,16 +46,15 @@
     <widgets>
         <container style="zcrm-intro"><label text="Pipeline" type="h3"/><label text="Track opportunities by their actual sales stage and expected close date." type="p"/></container>
         <!-- Pipeline Summary -->
-        <container-row>
-            <iterate list="stages" entry="stg">
-                <row-col lg="2" condition="stageSummary.containsKey(stg.opportunityStageId)">
-                    <container-box><box-header title="${stg.description}"/><box-body>
-                        <label text="${stageSummary[stg.opportunityStageId].count} deals" type="div"/>
-                        <label text="${currSymbol}${zinr.inr(ec.l10n.format(stageSummary[stg.opportunityStageId].value, '#,##,##0'))}" type="div" style="text-primary"/>
-                    </box-body></container-box>
-                </row-col>
-            </iterate>
-        </container-row>
+        <container style="zcrm-stage-grid">
+            <section-iterate name="crmPipelineStages" list="stages" entry="stg"><widgets>
+                <container style="zcrm-stage-card">
+                    <label text="${stg.description}" type="span" style="zcrm-stage-name"/>
+                    <label text="${stageSummary[stg.opportunityStageId].count} deals" type="strong"/>
+                    <label text="${currSymbol}${zinr.inr(ec.l10n.format(stageSummary[stg.opportunityStageId].value, '#,##,##0'))}" type="span" style="zcrm-muted"/>
+                </container>
+            </widgets></section-iterate>
+        </container>
 
         <!-- Opportunities List -->
         <container-box><box-header title="Sales Opportunities"/><box-toolbar>

@@ -21,6 +21,10 @@
 .zcrm-page .zcrm-metric h4{margin:4px 0!important;color:#3f3177;font-size:25px!important;font-weight:700!important;line-height:1.25;overflow-wrap:anywhere}
 .zcrm-page .zcrm-muted{color:#8990a0;font-size:11px}
 .zcrm-page .zcrm-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.zcrm-page .zcrm-stage-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:0 0 18px}
+.zcrm-page .zcrm-stage-card{min-width:0;padding:13px 15px;background:#fff;border:1px solid #e7e8ef;border-radius:10px;display:flex;flex-direction:column;gap:4px}
+.zcrm-page .zcrm-stage-name{font-size:11px;font-weight:600;color:#686083}
+.zcrm-page .zcrm-stage-card strong{font-size:18px;font-weight:650;color:#3f3177}
 .zcrm-page .zcrm-panel{padding:18px}
 .zcrm-page .zcrm-panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
 .zcrm-page .zcrm-panel-head h5{font-size:15px!important;font-weight:650!important;margin:0!important;color:#20243a}

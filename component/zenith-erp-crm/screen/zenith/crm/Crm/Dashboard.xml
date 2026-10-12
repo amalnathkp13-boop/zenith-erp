@@ -73,7 +73,8 @@
             hasActiveOrg = org && org != '_NA_'
             recentLeads = leadRows.take(6)
             recentActivities = activityRows.take(6)
-            sources = sourceSummary.entrySet().sort { a, b -> b.value <=> a.value }
+            sources = sourceSummary.collect { name, count -> [name:name, count:count] }
+                    .sort { a, b -> b.count <=> a.count }
         ]]></script>
     </actions>
     <widgets>
@@ -105,24 +106,24 @@
                 <container style="zcrm-panel"><container style="zcrm-panel-head"><label text="Pipeline by stage" type="h5"/><link url="../Pipeline" text="View pipeline"/></container>
                     <section name="noStages" condition="opportunityRows.isEmpty()"><widgets><label text="No opportunities are expected to close in this date range." type="p" style="zcrm-empty"/></widgets></section>
                     <section name="hasStages" condition="!opportunityRows.isEmpty()"><widgets>
-                        <iterate list="stageRows" entry="stage"><container style="zcrm-breakdown-row"><label text="${stage.description}" type="span"/><label text="${stageSummary[stage.opportunityStageId].count} deals" type="span"/><label text="${currSymbol}${zinr.inr(ec.l10n.format(stageSummary[stage.opportunityStageId].value, '#,##,##0'))}" type="strong"/></container></iterate>
+                        <section-iterate name="crmStages" list="stageRows" entry="stage"><widgets><container style="zcrm-breakdown-row"><label text="${stage.description}" type="span"/><label text="${stageSummary[stage.opportunityStageId].count} deals" type="span"/><label text="${currSymbol}${zinr.inr(ec.l10n.format(stageSummary[stage.opportunityStageId].value, '#,##,##0'))}" type="strong"/></container></widgets></section-iterate>
                     </widgets></section>
                 </container>
                 <container style="zcrm-panel"><container style="zcrm-panel-head"><label text="Lead sources" type="h5"/><link url="../Leads" text="View leads"/></container>
                     <section name="noSources" condition="sources.isEmpty()"><widgets><label text="No leads were created in this date range." type="p" style="zcrm-empty"/></widgets></section>
                     <section name="hasSources" condition="!sources.isEmpty()"><widgets>
-                        <iterate list="sources" entry="source"><container style="zcrm-breakdown-row"><label text="${source.key}" type="span"/><label text="${source.value} leads" type="strong"/></container></iterate>
+                        <section-iterate name="crmSources" list="sources" entry="source"><widgets><container style="zcrm-breakdown-row"><label text="${source.name}" type="span"/><label text="${source.count} ${source.count == 1 ? 'lead' : 'leads'}" type="strong"/></container></widgets></section-iterate>
                     </widgets></section>
                 </container>
                 <container style="zcrm-panel"><container style="zcrm-panel-head"><label text="Activities &amp; follow-ups" type="h5"/><link url="../Activities" text="View activities"/></container>
                     <container style="zcrm-breakdown-row"><label text="Activities logged" type="span"/><label text="${activityCount}" type="strong"/></container>
                     <container style="zcrm-breakdown-row"><label text="Follow-ups due in range" type="span"/><label text="${followupDueCount}" type="strong"/></container>
                     <section name="noActivities" condition="recentActivities.isEmpty()"><widgets><label text="No activities logged in this date range. Log a call or meeting to start a history." type="p" style="zcrm-empty"/></widgets></section>
-                    <iterate list="recentActivities" entry="act"><container style="zcrm-breakdown-row"><label text="${act.activityType}: ${act.subject}" type="span"/><label text="${ec.l10n.format(act.activityDate, 'dd MMM yyyy')}" type="span" style="zcrm-muted"/></container></iterate>
+                    <section-iterate name="crmRecentActivities" list="recentActivities" entry="act"><widgets><container style="zcrm-breakdown-row"><label text="${act.activityType}: ${act.subject}" type="span"/><label text="${ec.l10n.format(act.activityDate, 'dd MMM yyyy')}" type="span" style="zcrm-muted"/></container></widgets></section-iterate>
                 </container>
                 <container style="zcrm-panel"><container style="zcrm-panel-head"><label text="Recent leads" type="h5"/><link url="../Leads" text="All leads"/></container>
                     <section name="noRecentLeads" condition="recentLeads.isEmpty()"><widgets><label text="No leads created in this date range. Add a lead from the Leads page." type="p" style="zcrm-empty"/></widgets></section>
-                    <iterate list="recentLeads" entry="recentLead"><container style="zcrm-breakdown-row"><link url="../EditLead" text="${recentLead.firstName} ${recentLead.lastName ?: ''}" parameter-map="[leadId:recentLead.leadId]"/><label text="${recentLead.companyName ?: recentLead.sourceName ?: 'No company'} · ${leadStatusNames[recentLead.statusId] ?: 'Unknown status'} · ${recentLead.assignedToUserId ?: 'Unassigned'}" type="span" style="zcrm-muted"/><label text="${ec.l10n.format(recentLead.createdDate, 'dd MMM yyyy')}" type="span" style="zcrm-muted"/></container></iterate>
+                    <section-iterate name="crmRecentLeads" list="recentLeads" entry="recentLead"><widgets><container style="zcrm-breakdown-row"><link url="../EditLead" text="${recentLead.firstName} ${recentLead.lastName ?: ''}" parameter-map="[leadId:recentLead.leadId]"/><label text="${recentLead.companyName ?: recentLead.sourceName ?: 'No company'} · ${leadStatusNames[recentLead.statusId] ?: 'Unknown status'} · ${recentLead.assignedToUserId ?: 'Unassigned'}" type="span" style="zcrm-muted"/><label text="${ec.l10n.format(recentLead.createdDate, 'dd MMM yyyy')}" type="span" style="zcrm-muted"/></container></widgets></section-iterate>
                 </container>
             </container>
             <container style="zcrm-quick-actions"><link url="../Leads" text="Manage leads"/><link url="../Pipeline" text="View pipeline"/><link url="../Activities" text="View activities"/><link url="../Segments" text="Customer segments"/></container>
