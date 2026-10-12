@@ -299,7 +299,7 @@
         ]]></script>
         <script><![CDATA[
             if (html_stylesheets == null) html_stylesheets = []
-            html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=282')
+            html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=283')
             html_stylesheets.add('/zenithstatic/css/sidebar-manager.css?v=3')
             html_stylesheets.add('/zenithstatic/css/my-subscription-reference.css?v=1')
             html_stylesheets.add('/zenithstatic/css/saas-admin.css?v=4')
@@ -887,8 +887,7 @@
              ungated (in-module groups only render on that module's URL, which the plan gate already blocks). -->
         <render-mode><text type="html" template="true"><![CDATA[
             <#if (navShow['sales'])!true><a class="zsub-tab" data-mod="sales" data-match="/sales" href="/apps/zenith/sales/SalesDashboard">Sales</a></#if>
-            <#if (navShow['pos'])!true><a class="zsub-tab" data-mod="pos" data-match="/pos/Dashboard" href="/apps/zenith/pos/Dashboard">POS</a>
-            <a class="zsub-tab" data-mod="pos" data-match="/pos/OwnerDashboard" href="/apps/zenith/pos/OwnerDashboard">Owner Overview</a></#if>
+            <#if (navShow['pos'])!true><a class="zsub-tab" data-mod="pos" data-match="/pos/Dashboard" href="/apps/zenith/pos/Dashboard">POS</a></#if>
             <#if (navShow['inventory'])!true><a class="zsub-tab" data-mod="inventory" data-match="/Inventory" href="/apps/zenith/Inventory/InventoryDashboard">Inventory</a></#if>
             <#if (navShow['accounting'])!true><a class="zsub-tab" data-mod="accounting" data-match="/Accounting" href="/apps/zenith/Accounting/AcctgDashboard">Accounting</a></#if>
             <#if (navShow['contacts'])!true><a class="zsub-tab" data-mod="contacts" data-match="/Contacts" href="/apps/zenith/Contacts/ContactsDashboard">Contacts</a></#if>
@@ -939,7 +938,6 @@
           </div>
           <div class="zsub-grp" data-match="/pos"><span class="zsub-title">POS</span>
             <a class="zsub-tab" data-match="/pos/Dashboard" href="/apps/zenith/pos/Dashboard">Dashboard</a>
-            <a class="zsub-tab" data-match="/pos/OwnerDashboard" href="/apps/zenith/pos/OwnerDashboard">Overview</a>
             <a class="zsub-tab" data-match="/pos/Terminal" href="/apps/zenith/pos/Terminal">Billing Terminal</a>
             <a class="zsub-tab" data-match="/pos/PosTransactions" href="/apps/zenith/pos/PosTransactions">Transactions</a>
             <a class="zsub-tab" data-match="/pos/DailySummary" href="/apps/zenith/pos/DailySummary">Daily Summary</a>
@@ -1222,7 +1220,7 @@
             <link rel="preconnect" href="https://fonts.googleapis.com"/>
             <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"/>
             <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
-            <link rel="stylesheet" href="/zenithstatic/css/zenith-theme-v4.css?v=282"/>
+            <link rel="stylesheet" href="/zenithstatic/css/zenith-theme-v4.css?v=283"/>
             <link rel="stylesheet" href="/zenithstatic/css/my-subscription-reference.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/saas-admin.css?v=4"/>
             <link rel="stylesheet" href="/zenithstatic/css/product-catalog.css?v=1"/>
