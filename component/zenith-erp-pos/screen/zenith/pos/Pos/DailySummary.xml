@@ -6,212 +6,243 @@
     <transition name="goReports"><default-response url="../Reports"/></transition>
     <transition name="goExpenses"><default-response url="../Expenses"/></transition>
     <transition name="goCashEntry"><default-response url="../CashEntry"/></transition>
-    <transition name="goTransactions"><default-response url="../PosTransactions"/></transition>
-    <transition name="goDashboard"><default-response url="../Dashboard"/></transition>
     <transition name="editTransaction"><default-response url="../EditTransaction"/></transition>
-    <transition name="goTerminal"><default-response url="../Terminal"/></transition>
-    <transition name="goPriceOverrides"><default-response url="../PriceOverrides"/></transition>
 
     <actions>
-        <set field="filterDate" from="filterDate ?: ec.l10n.format(ec.user.nowTimestamp, 'yyyy-MM-dd')"/>
-        <set field="dayStart" from="java.sql.Timestamp.valueOf(filterDate + ' 00:00:00')"/>
-        <set field="dayEnd" from="java.sql.Timestamp.valueOf(filterDate + ' 23:59:59')"/>
+        <script><![CDATA[
+            // Keep the date filter valid before it reaches the entity query.
+            def requestedDate = (ec.web.parameters.filterDate ?: '').toString()
+            def selectedDate
+            try { selectedDate = java.time.LocalDate.parse(requestedDate) }
+            catch (Exception ignored) { selectedDate = java.time.LocalDate.parse(ec.l10n.format(ec.user.nowTimestamp, 'yyyy-MM-dd')) }
+            filterDate = selectedDate.toString()
+            dayStart = ec.l10n.parseTimestamp(filterDate + ' 00:00:00', 'yyyy-MM-dd HH:mm:ss')
+            dayEnd = ec.l10n.parseTimestamp(selectedDate.plusDays(1).toString() + ' 00:00:00', 'yyyy-MM-dd HH:mm:ss')
+            priorStart = ec.l10n.parseTimestamp(selectedDate.minusDays(1).toString() + ' 00:00:00', 'yyyy-MM-dd HH:mm:ss')
+            orgId = posOrganizationPartyId ?: '__NO_ORGANIZATION__'
+            def shopScope = ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope')
+                .parameter('includePosScope', true).call()
+            shopSessionIds = shopScope?.sessionIds
+        ]]></script>
 
         <entity-find entity-name="zenith.erp.pos.PosTransaction" list="completedTxns">
+            <econdition field-name="organizationPartyId" from="orgId"/>
             <econdition field-name="statusId" value="PtCompleted"/>
             <econdition field-name="entryDate" operator="greater-equals" from="dayStart"/>
-            <econdition field-name="entryDate" operator="less-equals" from="dayEnd"/>
+            <econdition field-name="entryDate" operator="less" from="dayEnd"/>
+            <econdition field-name="sessionId" operator="in" from="shopSessionIds" ignore-if-empty="true"/>
             <order-by field-name="-entryDate"/>
-            <!-- ZE-SALES-014 f/u: org-isolate CSV/XLSX export (standalone render bypasses the MANTLE_ACTIVE_ORG authz filter) -->
-            <econdition field-name="organizationPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
+        </entity-find>
+        <entity-find entity-name="zenith.erp.pos.PosTransaction" list="priorTxns">
+            <econdition field-name="organizationPartyId" from="orgId"/>
+            <econdition field-name="statusId" value="PtCompleted"/>
+            <econdition field-name="entryDate" operator="greater-equals" from="priorStart"/>
+            <econdition field-name="entryDate" operator="less" from="dayStart"/>
+            <econdition field-name="sessionId" operator="in" from="shopSessionIds" ignore-if-empty="true"/>
         </entity-find>
 
         <script><![CDATA[
-            totalSales = BigDecimal.ZERO
-            totalReturns = BigDecimal.ZERO
-            totalTax = BigDecimal.ZERO
-            totalDiscount = BigDecimal.ZERO
-            saleCount = 0
-            returnCount = 0
-
-            completedTxns.each { t ->
-                if (t.transactionType == 'Return') {
-                    totalReturns += (t.grandTotal ?: 0) as BigDecimal
-                    returnCount++
-                } else {
-                    totalSales += (t.grandTotal ?: 0) as BigDecimal
-                    saleCount++
-                }
-                totalTax += (t.totalTaxAmount ?: 0) as BigDecimal
-                totalDiscount += (t.discountTotal ?: 0) as BigDecimal
+            def zero = BigDecimal.ZERO
+            def money = { n -> zinr.inr(ec.l10n.format((n ?: zero) as BigDecimal, '#,##0.00')) }
+            def sumFor = { rows, kind, field ->
+                rows.findAll { kind == null || (kind == 'Sale' ? it.transactionType != 'Return' : it.transactionType == 'Return') }
+                    .sum { ((it[field] ?: zero) as BigDecimal).abs() } ?: zero
             }
-            netSales = totalSales - totalReturns
-            avgTicket = saleCount > 0 ? (totalSales / saleCount) : BigDecimal.ZERO
+            def metricsFor = { rows ->
+                def sales = sumFor(rows, 'Sale', 'grandTotal')
+                def returns = sumFor(rows, 'Return', 'grandTotal')
+                def saleRows = rows.findAll { it.transactionType != 'Return' }
+                [sales:sales, returns:returns, net:sales - returns,
+                 tax:sumFor(saleRows, null, 'totalTaxAmount') - sumFor(rows.findAll { it.transactionType == 'Return' }, null, 'totalTaxAmount'),
+                 transactions:rows.size(),
+                 average:saleRows ? sales.divide(new BigDecimal(saleRows.size()), 2, java.math.RoundingMode.HALF_UP) : zero]
+            }
+            def current = metricsFor(completedTxns)
+            def previous = metricsFor(priorTxns)
+            def comparison = { now, before, isCount ->
+                def n = now as BigDecimal
+                def p = before as BigDecimal
+                if (p == zero) return [change:(n == zero ? '0.0%' : 'New'), direction:(n == zero ? 'flat' : 'up'),
+                                       previous:(isCount ? p.toInteger().toString() : money(p))]
+                def pct = n.subtract(p).abs().multiply(new BigDecimal('100')).divide(p.abs(), 1, java.math.RoundingMode.HALF_UP)
+                [change:pct.toPlainString() + '%', direction:(n > p ? 'up' : n < p ? 'down' : 'flat'),
+                 previous:(isCount ? p.toInteger().toString() : money(p))]
+            }
+            summaryCards = [
+                [key:'sales', label:'Total Sales', icon:'shopping_bag', tone:'green', count:false],
+                [key:'returns', label:'Returns', icon:'assignment_return', tone:'red', count:false],
+                [key:'net', label:'Net Sales', icon:'bar_chart', tone:'purple', count:false],
+                [key:'tax', label:'Tax Collected', icon:'account_balance_wallet', tone:'orange', count:false],
+                [key:'transactions', label:'Transactions', icon:'receipt_long', tone:'blue', count:true],
+                [key:'average', label:'Avg. Ticket', icon:'local_offer', tone:'violet', count:false]
+            ].collect { card ->
+                def delta = comparison(current[card.key], previous[card.key], card.count)
+                card + [value:(card.count ? current[card.key].toString() : money(current[card.key])),
+                        change:delta.change, direction:delta.direction, previous:delta.previous]
+            }
 
-            payMethodTotals = new LinkedHashMap()
-            completedTxns.each { t ->
-                def payments = ec.entity.find("zenith.erp.pos.PosPayment")
-                    .condition("transactionId", t.transactionId).list()
-                payments.each { p ->
-                    def method = p.paymentMethod ?: "Other"
-                    payMethodTotals[method] = (payMethodTotals[method] ?: BigDecimal.ZERO) + ((p.amount ?: 0) as BigDecimal)
+            // The payment chart describes tender received for completed sales on this date.
+            def saleIds = completedTxns.findAll { it.transactionType != 'Return' }.collect { it.transactionId }
+            def payments = saleIds ? ec.entity.find('zenith.erp.pos.PosPayment')
+                .condition('transactionId', 'in', saleIds).list() : []
+            def paymentTotals = [Cash:zero, UPI:zero, Card:zero, Other:zero]
+            payments.each { pay ->
+                def amount = (pay.amount ?: zero) as BigDecimal
+                if (amount > zero) {
+                    def method = pay.paymentMethod in ['Cash', 'UPI', 'Card'] ? pay.paymentMethod : 'Other'
+                    paymentTotals[method] += amount
                 }
             }
-            paymentBreakdown = payMethodTotals.collect { k, v -> [method:k, amount:v] }
-
-            // Hourly breakdown
-            hourlyMap = new LinkedHashMap()
-            (8..22).each { h -> hourlyMap[h] = [hour:h, label:"${String.format('%02d', h)}:00", count:0, amount:BigDecimal.ZERO] }
-            completedTxns.each { t ->
-                if (t.entryDate && t.transactionType != 'Return') {
-                    def cal = java.util.Calendar.getInstance()
-                    cal.setTime(t.entryDate)
-                    def h = cal.get(java.util.Calendar.HOUR_OF_DAY)
-                    if (hourlyMap.containsKey(h)) {
-                        hourlyMap[h].count++
-                        hourlyMap[h].amount += (t.grandTotal ?: 0) as BigDecimal
-                    }
-                }
+            paymentTotal = paymentTotals.values().sum() ?: zero
+            def paymentColors = [Cash:'#4169ef', UPI:'#08b96e', Card:'#722df4', Other:'#ff8b11']
+            paymentBreakdown = paymentTotals.collect { method, amount ->
+                [method:method, amount:money(amount), color:paymentColors[method],
+                 percent:paymentTotal > zero ? amount.multiply(new BigDecimal('100')).divide(paymentTotal, 2, java.math.RoundingMode.HALF_UP).toPlainString() : '0.00']
             }
-            hourlyData = hourlyMap.values().findAll { it.count > 0 }
+            def segments = []
+            def angle = 0.0d
+            paymentBreakdown.each { row ->
+                def next = angle + (row.percent as double)
+                segments.add(row.color + ' ' + String.format(java.util.Locale.US, '%.2f', angle) + '% ' +
+                    String.format(java.util.Locale.US, '%.2f', next) + '%')
+                angle = next
+            }
+            paymentGradient = paymentTotal > zero ? 'conic-gradient(' + segments.join(', ') + ')' : 'conic-gradient(#e9eaf4 0 100%)'
+            paymentTotalDisplay = money(paymentTotal)
+
+            // Keep all hours containing sales, with the reference's 09 AM–08 PM range as the minimum.
+            def saleTxns = completedTxns.findAll { it.transactionType != 'Return' && it.entryDate }
+            def hours = saleTxns.collect {
+                def cal = java.util.Calendar.getInstance(); cal.setTime(it.entryDate); cal.get(java.util.Calendar.HOUR_OF_DAY)
+            }
+            def startHour = hours ? Math.min(9, hours.min() as int) : 9
+            def endHour = hours ? Math.max(20, hours.max() as int) : 20
+            def hourly = (startHour..endHour).collect { h -> [hour:h, amount:zero] }
+            saleTxns.each { tx ->
+                def cal = java.util.Calendar.getInstance(); cal.setTime(tx.entryDate)
+                hourly[cal.get(java.util.Calendar.HOUR_OF_DAY) - startHour].amount += ((tx.grandTotal ?: zero) as BigDecimal).abs()
+            }
+            hasHourlySales = hourly.any { it.amount > zero }
+            def largest = hourly.collect { it.amount }.max() ?: zero
+            def scale = largest > zero ? largest.multiply(new BigDecimal('1.15')) : new BigDecimal('1000')
+            def compact = { value ->
+                if (value >= 100000) return '₹' + value.divide(new BigDecimal('100000'), 1, java.math.RoundingMode.HALF_UP) + 'L'
+                if (value >= 1000) return '₹' + value.divide(new BigDecimal('1000'), 1, java.math.RoundingMode.HALF_UP) + 'K'
+                return '₹' + value.setScale(0, java.math.RoundingMode.HALF_UP)
+            }
+            def plotLeft = 52.0d, plotRight = 728.0d, plotTop = 22.0d, plotBottom = 183.0d
+            chartTicks = (0..4).collect { i ->
+                def amount = scale.multiply(new BigDecimal(i)).divide(new BigDecimal('4'), 2, java.math.RoundingMode.HALF_UP)
+                [y:(plotBottom - i * (plotBottom - plotTop) / 4), label:compact(amount)]
+            }
+            chartPoints = []
+            hourly.eachWithIndex { slot, i ->
+                def x = plotLeft + i * (plotRight - plotLeft) / Math.max(1, hourly.size() - 1)
+                def y = plotBottom - (slot.amount.doubleValue() / scale.doubleValue()) * (plotBottom - plotTop)
+                def hourLabel = String.format('%02d', (slot.hour % 12 == 0 ? 12 : slot.hour % 12)) + (slot.hour < 12 ? ' AM' : ' PM')
+                chartPoints << [x:x, y:y, label:hourLabel, amountLabel:compact(slot.amount), hasValue:slot.amount > zero]
+            }
+            chartPolyline = chartPoints.collect { String.format(java.util.Locale.US, '%.1f,%.1f', it.x, it.y) }.join(' ')
+            chartArea = String.format(java.util.Locale.US, '%.1f,%.1f ', plotLeft, plotBottom) +
+                chartPolyline + String.format(java.util.Locale.US, ' %.1f,%.1f', plotRight, plotBottom)
+            recentTransactions = completedTxns.take(5).collect { tx ->
+                [id:tx.transactionId, number:(tx.transactionNumber ?: tx.transactionId),
+                 type:(tx.transactionType ?: 'Sale'),
+                 time:(tx.entryDate ? ec.l10n.format(tx.entryDate, 'hh:mm a') : '—'),
+                 customer:(tx.customerName ?: 'Walk-in Customer'),
+                 subtotal:money(tx.subtotal), tax:money(tx.totalTaxAmount),
+                 discount:money(tx.discountTotal), total:money(tx.grandTotal)]
+            }
         ]]></script>
     </actions>
 
     <widgets>
-        <render-mode><text type="html,qvt" template="true"><![CDATA[<details id="posHelp_dailysummary" class="pos-reference-help" style="background:#e8f0fe;border:1px solid #4285f4;border-left:6px solid #1a73e8;border-radius:10px;padding:10px 16px;margin:8px 12px 4px 12px;font-family:Segoe UI,Arial,sans-serif"><summary style="cursor:pointer;font-weight:800;font-size:15px;color:#174ea6;outline:none">&#128197; Daily Summary &mdash; quick help <span style="font-weight:600;color:#5f6368;font-size:12px">(click to hide / show)</span></summary><div style="font-size:13px;color:#202124;line-height:1.9;margin-top:8px">One day at a glance &mdash; total sales, returns, net, tax and how customers paid.<br><b>1</b>&nbsp;Pick a <b>date</b> and press <b>View</b>.<br><b>2</b>&nbsp;Use this for your <b>end-of-day closing</b> and to tally the cash drawer.</div></details>]]></text></render-mode>
-        <container style="q-pa-md">
-            <container style="row items-center justify-end q-gutter-sm q-mb-sm">
-                <link url="goTerminal" text="Billing" icon="fa fa-calculator" btn-type="success" style="q-btn--dense"/>
-                <link url="goTransactions" text="Transactions" icon="fa fa-list" btn-type="primary" style="q-btn--dense"/>
-                <link url="goReports" text="Reports" icon="fa fa-bar-chart" btn-type="warning" style="q-btn--dense"/>
-                <link url="goExpenses" text="Expenses" icon="fa fa-money" style="q-btn--dense"/>
-                <link url="goCashEntry" text="Cash Entry" icon="fa fa-exchange" style="q-btn--dense"/>
-                <link url="goPriceOverrides" text="Price Overrides" icon="fa fa-exchange" btn-type="danger" style="q-btn--dense"/>
-                <link url="goDashboard" text="Dashboard" icon="fa fa-dashboard" style="q-btn--dense"/>
-            </container>
-            <container style="row items-center justify-between q-mb-md">
-                <label text="Daily Summary" type="h6" style="text-weight-bold"/>
-                <form-single name="DateFilter" transition=".">
-                    <field name="filterDate"><default-field title="Date">
-                        <date-time type="date" default-value="${filterDate}"/>
-                    </default-field></field>
-                    <field name="searchBtn"><default-field title="">
-                        <submit text="View" icon="fa fa-search"/>
-                    </default-field></field>
-                </form-single>
-            </container>
+        <render-mode><text type="html,qvt" template="true"><![CDATA[
+<main class="pos-daily-summary-ref">
+  <div class="pos-daily-summary-ref__header">
+    <h1>Daily Summary</h1>
+    <form class="pos-daily-summary-ref__filter" action="/apps/zenith/pos/DailySummary" method="get">
+      <button type="submit" class="pos-daily-summary-ref__view"><span class="material-icons">search</span>View</button>
+      <label class="pos-daily-summary-ref__date"><span class="material-icons">calendar_today</span><span class="sr-only">Summary date</span><input type="date" name="filterDate" value="${filterDate?html}"/></label>
+    </form>
+  </div>
 
-            <!-- KPI Cards -->
-            <container-row>
-                <row-col lg="2" md="4" sm="6">
-                    <container style="zenith-card bg-white shadow-2 q-pa-md q-mb-md text-center border-radius-lg">
-                        <label text="Total Sales" style="text-grey-7 text-caption"/>
-                        <label text="${zinr.inr(ec.l10n.format(totalSales, '#,##0.00'))}" type="h5" style="text-weight-bold text-positive q-my-xs"/>
-                    </container>
-                </row-col>
-                <row-col lg="2" md="4" sm="6">
-                    <container style="zenith-card bg-white shadow-2 q-pa-md q-mb-md text-center border-radius-lg">
-                        <label text="Returns" style="text-grey-7 text-caption"/>
-                        <label text="${zinr.inr(ec.l10n.format(totalReturns, '#,##0.00'))}" type="h5" style="text-weight-bold text-negative q-my-xs"/>
-                    </container>
-                </row-col>
-                <row-col lg="2" md="4" sm="6">
-                    <container style="zenith-card bg-white shadow-2 q-pa-md q-mb-md text-center border-radius-lg">
-                        <label text="Net Sales" style="text-grey-7 text-caption"/>
-                        <label text="${zinr.inr(ec.l10n.format(netSales, '#,##0.00'))}" type="h5" style="text-weight-bold text-primary q-my-xs"/>
-                    </container>
-                </row-col>
-                <row-col lg="2" md="4" sm="6">
-                    <container style="zenith-card bg-white shadow-2 q-pa-md q-mb-md text-center border-radius-lg">
-                        <label text="Tax Collected" style="text-grey-7 text-caption"/>
-                        <label text="${zinr.inr(ec.l10n.format(totalTax, '#,##0.00'))}" type="h5" style="text-weight-bold text-orange-8 q-my-xs"/>
-                    </container>
-                </row-col>
-                <row-col lg="2" md="4" sm="6">
-                    <container style="zenith-card bg-white shadow-2 q-pa-md q-mb-md text-center border-radius-lg">
-                        <label text="Transactions" style="text-grey-7 text-caption"/>
-                        <label text="${saleCount + returnCount}" type="h5" style="text-weight-bold text-blue-8 q-my-xs"/>
-                        <label text="${saleCount} sales, ${returnCount} returns" style="text-grey-6 text-caption"/>
-                    </container>
-                </row-col>
-                <row-col lg="2" md="4" sm="6">
-                    <container style="zenith-card bg-white shadow-2 q-pa-md q-mb-md text-center border-radius-lg">
-                        <label text="Avg. Ticket" style="text-grey-7 text-caption"/>
-                        <label text="${zinr.inr(ec.l10n.format(avgTicket, '#,##0.00'))}" type="h5" style="text-weight-bold text-purple-8 q-my-xs"/>
-                    </container>
-                </row-col>
-            </container-row>
+  <section class="pos-daily-summary-ref__metrics" aria-label="Daily totals">
+    <#list summaryCards as card>
+    <article class="pos-daily-summary-ref__metric pos-daily-summary-ref__metric--${card.tone}">
+      <div class="pos-daily-summary-ref__metric-icon"><span class="material-icons">${card.icon}</span></div>
+      <div class="pos-daily-summary-ref__metric-copy">
+        <div class="pos-daily-summary-ref__metric-label">${card.label}</div>
+        <div class="pos-daily-summary-ref__metric-value">${card.value?html}</div>
+        <div class="pos-daily-summary-ref__delta pos-daily-summary-ref__delta--${card.direction}"><#if card.direction == 'up'>↑<#elseif card.direction == 'down'>↓<#else>•</#if> ${card.change?html}</div>
+        <div class="pos-daily-summary-ref__prior">vs yesterday ${card.previous?html}</div>
+      </div>
+    </article>
+    </#list>
+  </section>
 
-            <container-row>
-                <row-col lg="4" md="6" sm="12">
-                    <label text="Payment Breakdown" type="h6" style="text-weight-bold q-mb-sm"/>
-                    <container style="zenith-card bg-white shadow-2 q-pa-md q-mb-md border-radius-lg">
-                        <form-list name="PayMethodList" list="paymentBreakdown" skip-form="true">
-                            <field name="method"><default-field title="Payment Method">
-                                <display/>
-                            </default-field></field>
-                            <field name="amount"><default-field title="Amount">
-                                <display format="#,##0.00"/>
-                            </default-field></field>
-                        </form-list>
-                        <label text="No payments recorded" condition="!paymentBreakdown" style="text-grey-6 q-pa-md text-center"/>
-                    </container>
-                </row-col>
+  <section class="pos-daily-summary-ref__visuals" aria-label="Payment and sales charts">
+    <article class="pos-daily-summary-ref__panel pos-daily-summary-ref__payment">
+      <h2>Payment Breakdown</h2>
+      <div class="pos-daily-summary-ref__payment-body">
+        <div class="pos-daily-summary-ref__donut" style="background:${paymentGradient?html}">
+          <div class="pos-daily-summary-ref__donut-center"><strong>${paymentTotalDisplay?html}</strong><span>Total paid</span></div>
+        </div>
+        <div class="pos-daily-summary-ref__payment-list">
+          <#list paymentBreakdown as item>
+          <div class="pos-daily-summary-ref__payment-row"><span class="pos-daily-summary-ref__payment-name"><i style="background:${item.color}"></i>${item.method}</span><strong>${item.amount?html}</strong><span>${item.percent}%</span></div>
+          </#list>
+          <#if paymentTotal == 0><p class="pos-daily-summary-ref__empty-payments">No payments recorded for this date.</p></#if>
+        </div>
+      </div>
+    </article>
+    <article class="pos-daily-summary-ref__panel pos-daily-summary-ref__hourly">
+      <h2>Hourly Sales</h2>
+      <div class="pos-daily-summary-ref__chart-legend"><i></i>Sales (₹)</div>
+      <svg class="pos-daily-summary-ref__chart" viewBox="0 0 760 225" role="img" aria-label="Hourly sales chart">
+        <defs><linearGradient id="posDailySalesArea" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#7b3ff2" stop-opacity=".16"/><stop offset="100%" stop-color="#7b3ff2" stop-opacity="0"/></linearGradient></defs>
+        <#list chartTicks as tick><line x1="52" x2="728" y1="${tick.y}" y2="${tick.y}" class="pos-daily-summary-ref__grid"/><text x="43" y="${tick.y + 4}" text-anchor="end" class="pos-daily-summary-ref__axis">${tick.label}</text></#list>
+        <#if hasHourlySales><polygon points="${chartArea}" fill="url(#posDailySalesArea)"/><polyline points="${chartPolyline}" class="pos-daily-summary-ref__line"/><#list chartPoints as point><circle cx="${point.x}" cy="${point.y}" r="3.5" class="pos-daily-summary-ref__point"/><#if point.hasValue><text x="${point.x}" y="${point.y - 10}" text-anchor="middle" class="pos-daily-summary-ref__point-label">${point.amountLabel}</text></#if></#list>
+        <#else><text x="390" y="111" text-anchor="middle" class="pos-daily-summary-ref__no-sales">No sales this day</text></#if>
+        <#list chartPoints as point><text x="${point.x}" y="215" text-anchor="middle" class="pos-daily-summary-ref__axis pos-daily-summary-ref__hour-label">${point.label}</text></#list>
+      </svg>
+    </article>
+  </section>
 
-                <row-col lg="8" md="6" sm="12">
-                    <label text="Hourly Sales" type="h6" style="text-weight-bold q-mb-sm"/>
-                    <container style="zenith-card bg-white shadow-2 q-pa-md q-mb-md border-radius-lg">
-                        <form-list name="HourlySalesList" list="hourlyData" skip-form="true">
-                            <field name="label"><default-field title="Hour">
-                                <display/>
-                            </default-field></field>
-                            <field name="count"><default-field title="Transactions">
-                                <display/>
-                            </default-field></field>
-                            <field name="amount"><default-field title="Amount">
-                                <display format="#,##0.00"/>
-                            </default-field></field>
-                        </form-list>
-                        <label text="No sales this day" condition="!hourlyData" style="text-grey-6 q-pa-md text-center"/>
-                    </container>
-                </row-col>
-            </container-row>
-
-            <container style="row items-center justify-between q-mb-sm">
-                <label text="Transactions" type="h6" style="text-weight-bold"/>
-                <container style="row q-gutter-sm">
-                    <link url="goReports" text="Full Reports" icon="fa fa-bar-chart" btn-type="info" style="q-btn--dense"/>
-                    <link url="goExpenses" text="Expenses" icon="fa fa-money" btn-type="warning" style="q-btn--dense"/>
-                    <link url="goCashEntry" text="Cash Entry" icon="fa fa-exchange" btn-type="success" style="q-btn--dense"/>
-                </container>
-            </container>
-            <form-list name="CompletedTxnList" list="completedTxns" skip-form="true"
-                       show-csv-button="true" show-xlsx-button="true">
-                <field name="transactionNumber"><default-field title="Txn #">
-                    <link url="editTransaction" text="${transactionNumber}" parameter-map="[transactionId:transactionId]" link-type="anchor"/>
-                </default-field></field>
-                <field name="transactionType"><default-field title="Type">
-                    <display/>
-                </default-field></field>
-                <field name="entryDate"><default-field title="Time">
-                    <display format="HH:mm"/>
-                </default-field></field>
-                <field name="customerName"><default-field title="Customer">
-                    <display default-text="Walk-in"/>
-                </default-field></field>
-                <field name="subtotal"><default-field title="Subtotal">
-                    <display format="#,##0.00"/>
-                </default-field></field>
-                <field name="totalTaxAmount"><default-field title="Tax">
-                    <display format="#,##0.00"/>
-                </default-field></field>
-                <field name="discountTotal"><default-field title="Discount">
-                    <display format="#,##0.00"/>
-                </default-field></field>
-                <field name="grandTotal"><default-field title="Total">
-                    <display format="#,##0.00"/>
-                </default-field></field>
-            </form-list>
-        </container>
+  <section class="pos-daily-summary-ref__transactions" aria-label="Recent transactions">
+    <div class="pos-daily-summary-ref__transactions-header">
+      <h2>Transactions</h2>
+      <div class="pos-daily-summary-ref__actions">
+        <a href="/apps/zenith/pos/Reports" class="pos-daily-summary-ref__action pos-daily-summary-ref__action--reports"><span class="material-icons">bar_chart</span>Full Reports</a>
+        <a href="/apps/zenith/pos/Expenses" class="pos-daily-summary-ref__action pos-daily-summary-ref__action--expenses"><span class="material-icons">payments</span>Expenses</a>
+        <a href="/apps/zenith/pos/CashEntry" class="pos-daily-summary-ref__action pos-daily-summary-ref__action--cash"><span class="material-icons">sync_alt</span>Cash Entry</a>
+      </div>
+    </div>
+    <div class="pos-daily-summary-ref__table-scroll"><table>
+      <thead><tr><th>Txn #</th><th>Type</th><th>Time</th><th>Customer</th><th>Subtotal</th><th>Tax</th><th>Discount</th><th>Total</th></tr></thead>
+      <tbody>
+        <#list recentTransactions as tx>
+        <tr><td><a href="/apps/zenith/pos/EditTransaction?transactionId=${tx.id?url}">${tx.number?html}</a></td><td>${tx.type?html}</td><td>${tx.time?html}</td><td>${tx.customer?html}</td><td>${tx.subtotal?html}</td><td>${tx.tax?html}</td><td>${tx.discount?html}</td><td>${tx.total?html}</td></tr>
+        <#else><tr><td colspan="8" class="pos-daily-summary-ref__empty-row">No transactions for this date.</td></tr></#list>
+      </tbody>
+    </table></div>
+  </section>
+  <details class="pos-daily-summary-ref__exports">
+    <summary>View all transactions and export CSV or XLSX</summary>
+        ]]></text></render-mode>
+        <form-list name="CompletedTxnList" list="completedTxns" skip-form="true"
+                   show-csv-button="true" show-xlsx-button="true">
+            <field name="transactionNumber"><default-field title="Txn #">
+                <link url="editTransaction" text="${transactionNumber}" parameter-map="[transactionId:transactionId]" link-type="anchor"/>
+            </default-field></field>
+            <field name="transactionType"><default-field title="Type"><display/></default-field></field>
+            <field name="entryDate"><default-field title="Time"><display format="HH:mm"/></default-field></field>
+            <field name="customerName"><default-field title="Customer"><display default-text="Walk-in"/></default-field></field>
+            <field name="subtotal"><default-field title="Subtotal"><display format="#,##0.00"/></default-field></field>
+            <field name="totalTaxAmount"><default-field title="Tax"><display format="#,##0.00"/></default-field></field>
+            <field name="discountTotal"><default-field title="Discount"><display format="#,##0.00"/></default-field></field>
+            <field name="grandTotal"><default-field title="Total"><display format="#,##0.00"/></default-field></field>
+        </form-list>
+        <render-mode><text type="html,qvt" template="true"><![CDATA[</details></main>]]></text></render-mode>
     </widgets>
 </screen>
