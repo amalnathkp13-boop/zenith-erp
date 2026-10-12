@@ -5580,16 +5580,15 @@ body.Terminal .nb-layout{display:inline-flex!important;align-items:center;gap:6p
 body.Terminal .nb-layout svg{width:18px;height:18px;color:#4F46E5}
 body.Terminal .nb-layout:hover{background:#F4F7FC}
 
-/* On wide POS screens the shell fallback makes the whole terminal scroll and pins a 300px
-   minimum cart area. Let the billing workspace use the measured viewport height instead; the
-   cart and customer panel keep their own scroll areas, while payment controls stay in view. */
+/* Keep the desktop terminal inside the measured viewport. When the header and tender controls
+   need more room, scroll this root rather than shrinking the cart until its rows are unusable. */
 @media (min-width:1025px){
-  body.Terminal .z-pos-page #pos-terminal-root{overflow:hidden!important;min-height:0!important}
-  body.Terminal .z-pos-page #pos-terminal-root .pos-main-layout{flex:1 1 0%!important;flex-shrink:1!important;min-height:0!important}
-  body.Terminal .z-pos-page #pos-terminal-root .pos-cart,
+  body.Terminal .z-pos-page #pos-terminal-root{overflow-y:auto!important;overflow-x:hidden!important;min-height:0!important}
+  body.Terminal .z-pos-page #pos-terminal-root .pos-main-layout{flex:1 1 auto!important;flex-shrink:1!important;min-height:254px!important}
+  body.Terminal .z-pos-page #pos-terminal-root .pos-cart{min-height:180px!important}
   body.Terminal .z-pos-page #pos-terminal-root .nb-side{min-height:0!important}
   body.Terminal:not(.pos-mode-normal) .z-pos-page #pos-terminal-root .pos-left-panel{width:100%!important;max-width:none!important}
-  body.Terminal:not(.pos-mode-normal) .z-pos-page #pos-terminal-root{grid-template-rows:auto auto auto minmax(0,1fr) auto auto auto auto auto auto!important}
+  body.Terminal:not(.pos-mode-normal) .z-pos-page #pos-terminal-root{grid-template-rows:auto auto auto minmax(180px,1fr) auto auto auto auto auto auto!important}
 }
 
 /* Normal mode keeps the same controls and hierarchy but trims card chrome on shorter desktop

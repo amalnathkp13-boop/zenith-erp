@@ -18,7 +18,7 @@ The add service now initializes a tax-free line from the entered price less disc
 
 The shared POS page rule forced `#pos-terminal-root` to scroll and prevented `.pos-main-layout` from shrinking below 300px, even though the terminal already measures the viewport height. Normal mode therefore pushed the footer and payment controls below the fold.
 
-The terminal screen now overrides those rules only for the wide billing terminal. The main work area can shrink to the measured viewport, the Advanced catalog fills its left grid track, the cart and customer panel keep their own scroll areas, and the payment section stays in the terminal frame. Normal mode also reduces card and footer spacing on shorter desktop screens. The shared ERP header, navigation, and other POS screens are not changed. Narrow layouts keep their existing scrolling fallback.
+The terminal screen now keeps a bounded cart on wide billing terminals. The Advanced catalog fills its left grid track, while the terminal root scrolls internally if the header and payment controls need more than the measured viewport height. Normal mode also reduces card and footer spacing on shorter desktop screens. The shared ERP header, navigation, and other POS screens are not changed. Narrow layouts keep their existing scrolling fallback.
 
 ## SOP coverage
 
@@ -32,7 +32,7 @@ I inspected the shared training chat's text only and excluded its images and PR 
 
 ## Verification and limits
 
-The first staging acceptance run could not reach the tax-off regression: its synthetic terminal had no operating region, so organization authorization returned 403 before cart add. The fixture now supplies the valid region/state needed to resolve the disposable organization. The AJAX add request still omits customer and destination-state fields and runs with tax off, asserting a successful line add, the entered taxable amount, zero tax, and the expected payable amount. It closes its synthetic session and voids its unissued cart. Desktop layout assertions still cover the fixed outer terminal and reachable payment controls.
+The tax-off check uses the already-open disposable cart and its terminal with a valid operating region. Opening a second session for the same operator would retire the first unpaid cart, invalidating the rest of the acceptance suite. The AJAX add request still omits customer and destination-state fields and runs with tax off, asserting a successful line add, the entered taxable amount, zero tax, and the expected payable amount. The test then removes that line and confirms the cart is empty before the remaining billing checks. Desktop assertions require a usable cart height and reachable payment controls, with scrolling inside the viewport-sized terminal when needed.
 
 Source checks completed:
 
