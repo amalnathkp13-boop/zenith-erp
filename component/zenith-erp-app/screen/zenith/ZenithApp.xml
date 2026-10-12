@@ -311,6 +311,7 @@
             html_stylesheets.add('/zenithstatic/css/contacts-dashboard.css?v=1')
             html_stylesheets.add('/zenithstatic/css/edit-customer-group.css?v=1')
             html_stylesheets.add('/zenithstatic/css/contacts-reference.css?v=1')
+            html_stylesheets.add('/zenithstatic/css/crm-experience.css?v=1')
             html_stylesheets.add('/zenithstatic/css/sales-dashboard-reference.css?v=1')
             html_stylesheets.add('/zenithstatic/css/pricing-price-lists.css?v=1')
             html_stylesheets.add('/zenithstatic/css/purchase-rfq.css?v=2')
@@ -336,7 +337,7 @@
             html_stylesheets.add('https://fonts.googleapis.com/icon?family=Material+Icons')
             if (footer_scripts == null) footer_scripts = []
             footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=12')
-            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=36')
+            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=37')
             footer_scripts.add('/zenithstatic/js/sidebar-manager.js?v=1')
             footer_scripts.add('/zenithstatic/js/pricing-price-lists.js?v=1')
             footer_scripts.add('/zenithstatic/js/purchase-rfq.js?v=1')
@@ -846,7 +847,7 @@
             <#if (navCatSalesCrm)!true><div class="zs-cat" data-cat="1">SALES &amp; CRM</div></#if>
             <#if (navShow['sales'])!true><a class="zs-link" data-mod="sales" data-match="/sales" href="/apps/zenith/sales/SalesDashboard"><span class="material-icons">trending_up</span><span class="t">Sales</span></a></#if>
             <#if (navShow['purchase'])!true><a class="zs-link" data-mod="purchase" data-match="/Purchase" href="/apps/zenith/Purchase/RfqList"><span class="material-icons">shopping_cart</span><span class="t">Purchase</span></a></#if>
-            <#if (navShow['crm'])!true><a class="zs-link" data-mod="crm" data-match="/Crm" href="/apps/zenith/Crm/Leads"><span class="material-icons">campaign</span><span class="t">CRM</span></a></#if>
+            <#if (navShow['crm'])!true><a class="zs-link" data-mod="crm" data-match="/Crm" href="/apps/zenith/Crm/Dashboard"><span class="material-icons">campaign</span><span class="t">CRM</span></a></#if>
             <#if (navShow['pos'])!true><a class="zs-link" data-mod="pos" data-match="/pos" href="/apps/zenith/pos/Dashboard"><span class="material-icons">point_of_sale</span><span class="t">POS</span></a></#if>
             <#if (navShow['pos'])!true><a class="zs-link" data-mod="pos" data-match="/pos/Terminal" href="/apps/zenith/pos/Terminal"><span class="material-icons">receipt_long</span><span class="t">POS Billing</span></a></#if>
             <#if (navShow['pricing'])!true><a class="zs-link" data-mod="pricing" data-match="/pricing" href="/apps/zenith/pricing/PricingDashboard"><span class="material-icons">sell</span><span class="t">Pricing</span></a></#if>
@@ -932,6 +933,7 @@
             <a class="zsub-tab" data-match="/Purchase/VendorEvaluation" href="/apps/zenith/Purchase/VendorEvaluation">Vendor Evaluation</a>
           </div>
           <div class="zsub-grp" data-match="/Crm"><span class="zsub-title">CRM</span>
+            <a class="zsub-tab" data-match="/Crm/Dashboard" href="/apps/zenith/Crm/Dashboard">Dashboard</a>
             <a class="zsub-tab" data-match="/Crm/Leads" href="/apps/zenith/Crm/Leads">Leads</a>
             <a class="zsub-tab" data-match="/Crm/Pipeline" href="/apps/zenith/Crm/Pipeline">Pipeline</a>
             <a class="zsub-tab" data-match="/Crm/Activities" href="/apps/zenith/Crm/Activities">Activities</a>
@@ -1234,6 +1236,7 @@
             <link rel="stylesheet" href="/zenithstatic/css/contacts-dashboard.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/edit-customer-group.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/sales-dashboard-reference.css?v=1"/>
+            <link rel="stylesheet" href="/zenithstatic/css/crm-experience.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/pricing-price-lists.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/purchase-rfq.css?v=2"/>
             <link rel="stylesheet" href="/zenithstatic/css/purchase-job-work.css?v=2"/>

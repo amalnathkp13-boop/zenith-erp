@@ -7,16 +7,18 @@
     <transition name="createSegment">
         <service-call name="zenith.crm.CrmServices.create#CustomerSegment"/>
         <default-response url="../EditSegment"/>
+        <error-response url="."/>
     </transition>
 
     <actions>
         <entity-find entity-name="zenith.erp.crm.CustomerSegment" list="segments">
-            <search-form-inputs default-order-by="segmentName"/>
-            <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+            <search-form-inputs default-order-by="segmentName" skip-fields="organizationPartyId"/>
+            <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION') ?: '__NO_ORGANIZATION__'"/>
         </entity-find>
     </actions>
 
     <widgets>
+        <container style="zcrm-intro"><label text="Customer Segments" type="h3"/><label text="Organize real customers with manual membership or supported evaluation rules." type="p"/></container>
         <container style="row items-center justify-between q-mb-lg">
             <label text="Customer Segments" type="h4" style="text-weight-bold q-my-none"/>
             <section name="CreateSegment_write"><condition><expression>modCanWrite</expression></condition><widgets>
@@ -30,9 +32,6 @@
                                 <order-by field-name="sequenceNum"/>
                             </entity-find>
                         </entity-options></drop-down></default-field></field>
-                    <field name="isAutoEvaluate"><default-field title="Auto-Evaluate?">
-                        <drop-down><option key="N" text="No"/><option key="Y" text="Yes"/></drop-down>
-                    </default-field></field>
                     <field name="description"><default-field><text-area rows="2" cols="40"/></default-field></field>
                     <field name="submitBtn"><default-field title="Create"><submit/></default-field></field>
                 </form-single>
@@ -42,6 +41,7 @@
 
         <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-lg z-listchrome">
             <render-mode><text type="html,qvt"><![CDATA[<span class="zlc-ph" data-ph="Search Segments..." style="display:none"></span>]]></text></render-mode>
+            <section name="NoSegments" condition="segments.isEmpty()"><widgets><container style="zcrm-empty"><label text="No segments match this search. Clear filters or create a segment." type="p"/></container></widgets></section>
             <form-list name="SegmentsForm" list="segments" skip-form="true" header-dialog="true"
                        select-columns="true" show-csv-button="true">
                 <field name="segmentName"><header-field show-order-by="true"><text-find size="20"/></header-field>
@@ -59,7 +59,7 @@
                     </default-field></field>
                 <field name="memberCount"><header-field show-order-by="true"/>
                     <default-field title="Members"><display/></default-field></field>
-                <field name="isAutoEvaluate"><default-field title="Auto"><display/></default-field></field>
+                <field name="description"><default-field title="Description"><display/></default-field></field>
                 <field name="lastEvaluatedDate"><default-field title="Last Evaluated"><display format="dd-MMM-yyyy HH:mm"/></default-field></field>
                 <field name="isActive"><default-field title="Active"><display/></default-field></field>
                 <!-- ZE-PRC-004 sweep: Find submit button so the header-dialog filters can be applied (was a dead dialog). -->

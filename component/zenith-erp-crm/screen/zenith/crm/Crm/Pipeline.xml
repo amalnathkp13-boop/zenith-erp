@@ -4,30 +4,27 @@
         default-menu-title="Pipeline" default-menu-index="2">
 
     <transition name="createOpportunity">
-        <actions>
-            <!-- ZE-SB-013 (Tier 3): the linked account must belong to this org; also stamp org from the session
-                 rather than trusting the hidden field. -->
-            <if condition="ec.web.parameters.accountPartyId">
-                <service-call name="zenith.base.SecurityServices.assert#RecordOrgAccess" out-map="_ca"
-                              in-map="[entityName:'mantle.party.Party', idField:'partyId', idValue:ec.web.parameters.accountPartyId, orgField:'ownerPartyId']"/>
-                <if condition="!_ca.allowed"><return error="true" message="That account isn't part of your organization."/></if>
-            </if>
-            <service-call name="create#mantle.sales.opportunity.SalesOpportunity" in-map="context + [organizationPartyId:ec.user.getPreference('ACTIVE_ORGANIZATION')]"/>
-        </actions>
+        <service-call name="zenith.crm.CrmServices.create#Opportunity"/>
         <default-response url="."/>
         <error-response url="."/>
     </transition>
     <transition name="advanceStage">
         <service-call name="zenith.crm.CrmServices.advance#OpportunityStage"/>
         <default-response url="."/>
+        <error-response url="."/>
     </transition>
     <!-- ZE-SEC-JSON f/u: org-scoped party picker (stock SimpleScreens searchPartyList leaks cross-tenant). -->
     <transition-include name="searchPartyList" location="component://zenith-erp-base/screen/include/PartyPicker.xml"/>
 
     <actions>
+        <entity-find entity-name="zenith.erp.crm.OpportunityListView" list="summaryOppList">
+            <search-form-inputs default-order-by="stageSequence,-estimatedAmount" skip-fields="organizationPartyId"
+                                input-fields-map="ec.context + [pageIndex:null, pageSize:null]" paginate="false"/>
+            <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION') ?: '__NO_ORGANIZATION__'"/>
+        </entity-find>
         <entity-find entity-name="zenith.erp.crm.OpportunityListView" list="oppList">
-            <search-form-inputs default-order-by="stageSequence,-estimatedAmount"/>
-            <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+            <search-form-inputs default-order-by="stageSequence,-estimatedAmount" skip-fields="organizationPartyId"/>
+            <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION') ?: '__NO_ORGANIZATION__'"/>
         </entity-find>
         <entity-find entity-name="mantle.sales.opportunity.SalesOpportunityStage" list="stages">
             <order-by field-name="sequenceNum"/></entity-find>
@@ -37,7 +34,7 @@
         <iterate list="stages" entry="stg">
             <set field="stageSummary[stg.opportunityStageId]" from="[name:stg.description, count:0, value:0]"/>
         </iterate>
-        <iterate list="oppList" entry="opp">
+        <iterate list="summaryOppList" entry="opp">
             <if condition="opp.opportunityStageId &amp;&amp; stageSummary.containsKey(opp.opportunityStageId)">
                 <set field="s" from="stageSummary[opp.opportunityStageId]"/>
                 <set field="s.count" from="s.count + 1"/>
@@ -47,6 +44,7 @@
     </actions>
 
     <widgets>
+        <container style="zcrm-intro"><label text="Pipeline" type="h3"/><label text="Track opportunities by their actual sales stage and expected close date." type="p"/></container>
         <!-- Pipeline Summary -->
         <container-row>
             <iterate list="stages" entry="stg">
@@ -71,22 +69,19 @@
                         </drop-down>
                     </default-field></field>
                     <field name="estimatedAmount"><default-field title="Amount (${currSymbol})"><text-line size="12"/></default-field></field>
-                    <field name="estimatedProbability"><default-field title="Probability"><text-line size="6"/></default-field></field>
                     <field name="estimatedCloseDate"><default-field title="Expected Close"><date-time type="date"/></default-field></field>
                     <field name="opportunityStageId"><default-field title="Stage">
                         <drop-down>
                             <list-options list="stages" key="${opportunityStageId}" text="${description}"/>
                         </drop-down>
                     </default-field></field>
-                    <field name="currencyUomId"><default-field><hidden default-value="${companyCurrency}"/></default-field></field>
-                    <field name="pipelineId"><default-field><hidden default-value="DefaultPipeline"/></default-field></field>
-                    <field name="organizationPartyId"><default-field><hidden default-value="${ec.user.getPreference('ACTIVE_ORGANIZATION')}"/></default-field></field>
                     <field name="submitButton"><default-field title="Create"><submit/></default-field></field>
                 </form-single>
             </container-dialog>
             </widgets></section>
         </box-toolbar><box-body>
             <render-mode><text type="html,qvt"><![CDATA[<span class="zlc-ph" data-ph="Search Pipeline..." style="display:none"></span>]]></text></render-mode>
+            <section name="NoOpportunities" condition="oppList.isEmpty()"><widgets><container style="zcrm-empty"><label text="No opportunities match this search. Clear filters or create an opportunity." type="p"/></container></widgets></section>
             <form-list name="OppListForm" list="oppList" skip-form="true" header-dialog="true"
                        show-csv-button="true" show-xlsx-button="true" show-page-size="true">
                 <field name="salesOpportunityId">
@@ -123,6 +118,7 @@
                     <header-field title="Close Date" show-order-by="true"><date-find/></header-field>
                     <default-field><display format="dd/MM/yyyy"/></default-field>
                 </field>
+                <field name="assignedToUserId"><default-field title="Owner"><display/></default-field></field>
                 <field name="stageAction">
                     <conditional-field name="stageAction_write" condition="modCanWrite" title="Action">
                     <drop-down allow-empty="true" submit-on-change="true" transition="advanceStage"
