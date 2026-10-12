@@ -114,7 +114,7 @@
                             <option key="Completed" text="Completed"/>
                         </drop-down></default-field></field>
                     <field name="submitButton"><default-field title="">
-                        <submit text="Search" icon="fa fa-search"/></default-field></field>
+                        <submit text="Filter" icon="fa fa-filter"/></default-field></field>
                     <field name="resetBtn"><default-field title="">
                         <link url="." text="Reset" icon="refresh" btn-type="default"/></default-field></field>
                     <field-layout>

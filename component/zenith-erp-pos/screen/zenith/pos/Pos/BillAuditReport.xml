@@ -199,7 +199,7 @@
             </container>
 
             <!-- Audit table -->
-            <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-md">
+            <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-md z-txntable">
                 <container style="row items-center q-mb-md q-gutter-sm">
                     <label text="Bill Edit Audit Trail" type="h6" style="text-weight-bold q-my-none"/>
                     <label text="${(auditList?.size() ?: 0)} changes" type="span" style="zenith-badge nd primary"/>

@@ -93,7 +93,7 @@
                 def _palette = ['#7C3AED','#3B82F6','#EF4444','#10B981','#F59E0B','#6D28D9']
                 def _dir = { t -> (t == 'growing') ? ['#0E9F6E','&#8599; Going up'] : (t == 'softening' ? ['#DC2626','&#8600; Slowing down'] : ['#6B7280','&#8212; Holding steady']) }
                 def _b = new StringBuilder()
-                _b.append('<div style="font-size:0.9rem;">')
+                _b.append('<div class="zsf-category-scroll"><div class="zsf-category-table" style="font-size:0.9rem;">')
                 _b.append('<div style="display:flex;align-items:center;gap:12px;padding-bottom:6px;font-size:0.68rem;text-transform:uppercase;letter-spacing:.04em;color:#9a9aa8;font-weight:700;">')
                 _b.append('<div style="width:24%;">Group</div><div style="flex:1;">Share of next 7 days</div><div style="width:96px;text-align:right;">Next 7 days</div><div style="width:64px;text-align:right;">Per day</div><div style="width:132px;text-align:center;">Direction</div></div>')
                 catList.eachWithIndex { c, i ->
@@ -107,27 +107,35 @@
                     _b.append('<div style="width:132px;text-align:center;font-size:0.82rem;font-weight:600;color:' + dd[0] + ';">' + dd[1] + '</div>')
                     _b.append('</div>')
                 }
-                _b.append('</div>')
-                catChartHtml = _b.toString()
+                _b.append('</div></div>')
+                catChartHtml = catList ? _b.toString() : '<p class="zsf-empty">No product-group forecast is available yet.</p>'
                 // hero mini 7-day trend chart: last up-to-7 daily actuals as ascending --primary bars
                 def _hist7 = histList.findAll { it.actualAmount != null }.take(7).reverse()
                 if (_hist7.size() >= 2) {
                     def _hmax = _hist7.collect { (it.actualAmount ?: 0) as BigDecimal }.max()
                     def _hb = new StringBuilder()
-                    _hb.append('<div style="display:flex;align-items:flex-end;gap:5px;height:60px;padding-top:4px;">')
-                    _hist7.each { h ->
-                        def v = (h.actualAmount ?: 0) as BigDecimal
-                        def pct = (_hmax != null && _hmax > 0) ? (v * 100 / _hmax).setScale(0, java.math.RoundingMode.HALF_UP) : (0 as BigDecimal)
-                        _hb.append('<div style="flex:1;height:' + pct + '%;min-height:3px;background:#7C3AED;border-radius:3px 3px 0 0;opacity:.85;"></div>')
+                    if (_hmax > 0) {
+                        _hb.append('<div class="zsf-chart" role="img" aria-label="Sales recorded over the last seven days"><div class="zsf-chart-bars">')
+                        _hist7.each { h ->
+                            def v = (h.actualAmount ?: 0) as BigDecimal
+                            def pct = (v * 100 / _hmax).setScale(0, java.math.RoundingMode.HALF_UP)
+                            _hb.append('<div class="zsf-chart-col"><span class="zsf-chart-bar" style="height:' + pct + '%"></span></div>')
+                        }
+                        _hb.append('</div></div>')
+                    } else {
+                        _hb.append('<div class="zsf-chart-empty">No sales recorded in the last 7 days</div>')
                     }
-                    _hb.append('</div><div style="font-size:0.62rem;color:#9a9aa8;text-transform:uppercase;letter-spacing:.03em;margin-top:4px;">Last 7 days</div>')
+                    _hb.append('<div class="zsf-chart-caption">Last 7 days</div>')
                     heroChartHtml = _hb.toString()
+                } else {
+                    heroChartHtml = '<div class="zsf-chart-empty">Recent sales history is not available yet</div>'
                 }
             }
         ]]></script>
     </actions>
 
     <widgets>
+        <container style="zsf-page">
         <container style="zsec-hdr row items-start justify-between q-mb-md">
             <container style="column">
                 <label text="Sales Forecast" type="h4" style="text-primary text-weight-bold q-my-none"/>
@@ -147,18 +155,18 @@
         <section name="ForecastReady" condition="hasData"><widgets>
 
             <!-- HERO: the one answer, at a glance — 3 zones: KPI · narrative+mini-chart · status badge -->
-            <container style="zenith-card q-pa-lg bg-indigo-1 border-radius-lg shadow-1 q-mb-md">
-                <container style="row items-center justify-between no-wrap q-gutter-lg">
-                    <container style="column">
+            <container style="zenith-card zsf-hero q-pa-lg bg-indigo-1 border-radius-lg shadow-1 q-mb-md">
+                <container style="zsf-hero-inner">
+                    <container style="zsf-hero-kpi">
                         <label text="Expected sales · next 7 days" type="p" style="text-primary text-uppercase text-weight-bold text-caption q-mb-xs"/>
                         <label text="${sym}${zinr.inr(ec.l10n.format(fc.projectedNext7 ?: 0,'#,##,##0'))}" type="h2" style="text-primary text-weight-bolder q-my-none"/>
                         <label text="≈ ${sym}${zinr.inr(ec.l10n.format(perDay,'#,##,##0'))} on a normal day  ·  busiest ${fc.peakDay ?: 'day varies'}" type="p" style="text-grey-8 q-mb-none q-mt-xs"/>
                     </container>
-                    <container style="column col q-px-md">
+                    <container style="zsf-hero-narrative">
                         <label text="${leadLine}" type="p" style="text-grey-9 text-subtitle1 q-mt-none q-mb-sm"/>
                         <render-mode><text type="html,qvt,vuet">${heroChartHtml}</text></render-mode>
                     </container>
-                    <container style="column items-center text-center">
+                    <container style="zsf-hero-trend text-center">
                         <label text="${trendIco}" type="span" style="material-icons z-icobadge lg ${trendBadgeColor} q-mb-xs"/>
                         <label text="${trendNice}" type="p" style="text-weight-bolder text-dark q-my-none"/>
                         <label text="which way sales are heading" type="p" style="text-grey-6 text-caption q-mb-none"/>
@@ -167,7 +175,7 @@
             </container>
 
             <!-- Supporting stats: 3 insight cards with icon badges -->
-            <container-row>
+            <container style="zsf-insights"><container-row>
                 <row-col lg="4" md="4">
                     <container style="zenith-card q-pa-md bg-white shadow-1 border-radius-md q-mb-md row items-center no-wrap q-gutter-md">
                         <label text="groups" type="span" style="material-icons z-icobadge primary"/>
@@ -198,7 +206,7 @@
                         </container>
                     </container>
                 </row-col>
-            </container-row>
+            </container-row></container>
 
             <!-- SIGNATURE: product-group bar chart (replaces the dense 6-column table). Rendered as raw HTML
                  (render-mode) because proportional bar widths need real inline styles. -->
@@ -208,10 +216,8 @@
                 <render-mode><text type="html,qvt,vuet">${catChartHtml}</text></render-mode>
             </container>
 
-            <!-- Details, de-emphasized -->
-            <label text="Details" type="p" style="text-grey-6 text-uppercase text-weight-bold text-caption q-mt-lg q-mb-sm"/>
-            <container-row>
-                <row-col lg="5" md="12">
+            <container style="zsf-details"><container-row>
+                <row-col lg="6" md="12">
                     <container style="zenith-card q-pa-md bg-white shadow-1 border-radius-md q-mb-md">
                         <label text="Two-week outlook" type="span" style="text-primary text-weight-bold"/>
                         <form-list name="WeeklyList" list="weeklyList" skip-form="true">
@@ -221,7 +227,7 @@
                         </form-list>
                     </container>
                 </row-col>
-                <row-col lg="7" md="12">
+                <row-col lg="6" md="12">
                     <container style="zenith-card q-pa-md bg-white shadow-1 border-radius-md q-mb-md">
                         <label text="Track record — forecast vs actual" type="span" style="text-primary text-weight-bold"/>
                         <form-list name="ForecastList" list="histList" skip-form="true" show-page-size="true">
@@ -232,7 +238,7 @@
                         </form-list>
                     </container>
                 </row-col>
-            </container-row>
+            </container-row></container>
 
             <container style="bg-blue-1 q-pa-sm q-px-md border-radius-md q-mt-sm">
                 <label text="&quot;Expected&quot; is our best guess and &quot;likely between&quot; is the realistic range; &quot;how sure&quot; grows as the system learns from more days of your POS sales." type="p" style="text-grey-8 text-caption q-mb-none"/>
@@ -244,5 +250,6 @@
                 <label text="${plain}" type="p" style="text-grey-8 q-mt-sm q-mb-none"/>
             </container>
         </fail-widgets></section>
+        </container>
     </widgets>
 </screen>

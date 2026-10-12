@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
+    <!-- The navigation link itself supplies its label, icon, route and section. This map only
+         validates stable data-match IDs and their existing module permission at the write boundary. -->
+    <service verb="get" noun="SidebarConfiguration" authenticate="true" transaction="ignore">
+        <out-parameters>
+            <parameter name="allowedIds" type="List"/>
+            <parameter name="preference"/>
+        </out-parameters>
+        <actions><script><![CDATA[
+            def modules = [
+                '/Dashboard':null, '/Contacts':'contacts', '/sales':'sales', '/Purchase':'purchase',
+                '/Crm':'crm', '/pos':'pos', '/pos/Terminal':'pos', '/pricing':'pricing',
+                '/Inventory':'inventory', '/manufacturing':'manufacturing', '/project':'project',
+                '/Stores':null, '/barcode':'barcode', '/Accounting':'accounting', '/tax':'tax',
+                '/payroll':'payroll', '/expenses':'expenses'
+            ]
+            def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
+            def prefKey = 'ZC_SIDEBAR_V1_' + ((org && org != '_NA_') ? org : 'NO_ORG')
+            preference = ec.user.getPreference(prefKey) ?: ''
+            def isAdmin = ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN')
+            def groups = (ec.user.userGroupIdSet ?: []) as List
+            def zenithRoles = groups.findAll { it?.startsWith('ZENITH_') && it != 'ZENITH_ALL' }
+            def posOnly = !ec.user.isInGroup('ADMIN') && zenithRoles.size() == 1 && zenithRoles.contains('ZENITH_CASHIER')
+            def plan = null
+            def grants = null
+            boolean disabled = ec.artifactExecution.disableAuthz()
+            try {
+                if (org && org != '_NA_' && !ec.user.isInGroup('ADMIN')) {
+                    def tenant = ec.entity.find('zenith.erp.saas.SaasTenant')
+                        .condition('organizationPartyId', org).condition('statusId', 'SaasTenantActive').list()
+                    if (tenant) {
+                        plan = ec.entity.find('zenith.erp.saas.SaasPlanModule')
+                            .condition('planId', tenant[0].planId).list()
+                            .collect { it.moduleId?.toLowerCase() } as Set
+                    }
+                }
+                if (plan != null && !plan.contains('all') && !isAdmin && !posOnly && groups) {
+                    grants = ec.entity.find('moqui.security.ArtifactAuthz')
+                        .condition('userGroupId', 'in', groups)
+                        .condition('authzTypeEnumId', 'in', ['AUTHZT_ALLOW','AUTHZT_ALWAYS']).list()
+                        .findAll { it.artifactGroupId?.startsWith('Z_') }
+                        .collect { it.artifactGroupId.substring(2).toLowerCase() } as Set
+                }
+            } finally { if (!disabled) ec.artifactExecution.enableAuthz() }
+            allowedIds = modules.findAll { id, mod ->
+                if (posOnly) return id in ['/Dashboard','/pos','/pos/Terminal','/Inventory']
+                if (mod == null) return true
+                if (plan != null && !plan.contains('all') && !plan.contains(mod)) return false
+                if (grants != null && !grants.contains(mod)) return false
+                return true
+            }.keySet() as List
+        ]]></script></actions>
+    </service>
+
+    <service verb="save" noun="SidebarConfiguration" authenticate="true">
+        <in-parameters><parameter name="payload" required="true"/></in-parameters>
+        <out-parameters><parameter name="preference"/><parameter name="error"/></out-parameters>
+        <actions><script><![CDATA[
+            if (payload.toString().length() > 4096) { error = 'Sidebar settings are too large.'; return }
+            def parsed
+            try { parsed = new groovy.json.JsonSlurper().parseText(payload.toString()) }
+            catch (Exception e) { error = 'Invalid sidebar settings.'; return }
+            if (!(parsed instanceof Map) || parsed.version != 1 || !(parsed.order instanceof List)
+                    || !(parsed.hidden instanceof List)) {
+                error = 'Invalid sidebar settings.'; return
+            }
+            def config = ec.service.sync().name('zenith.app.SidebarServices.get#SidebarConfiguration')
+                .parameters([:]).call()
+            def allowed = (config.allowedIds ?: []) as Set
+            def order = parsed.order
+            def hidden = parsed.hidden
+            if (order.any { !(it instanceof String) || !allowed.contains(it) }
+                    || hidden.any { !(it instanceof String) || !allowed.contains(it) }
+                    || order.size() != (order as Set).size()
+                    || hidden.size() != (hidden as Set).size()) {
+                error = 'Sidebar contains an unavailable or duplicate module.'; return
+            }
+            def clean = groovy.json.JsonOutput.toJson([version:1, order:order, hidden:hidden])
+            def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
+            def key = 'ZC_SIDEBAR_V1_' + ((org && org != '_NA_') ? org : 'NO_ORG')
+            ec.user.setPreference(key, clean)
+            preference = clean
+        ]]></script></actions>
+    </service>
+</services>

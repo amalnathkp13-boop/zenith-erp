@@ -18,7 +18,7 @@
         <subscreens-item name="EditProduct" location="component://zenith-erp-inventory/screen/zenith/inventory/EditProduct.xml" menu-include="false"/>
         <subscreens-item name="CreateCatalogue" location="component://zenith-erp-inventory/screen/zenith/inventory/CreateCatalogue.xml" menu-title="Catalogues"/>
         
-        <subscreens-item name="FindFacility" location="component://zenith-erp-inventory/screen/zenith/inventory/FindFacility.xml"/>
+        <subscreens-item name="FindFacility" location="component://zenith-erp-inventory/screen/zenith/inventory/FindFacility.xml" menu-title="Warehouse"/>
         <subscreens-item name="EditFacility" location="component://zenith-erp-inventory/screen/zenith/inventory/EditFacility.xml" menu-include="false"/>
         
         <subscreens-item name="FindReceipt" location="component://zenith-erp-inventory/screen/zenith/inventory/FindReceipt.xml"/>

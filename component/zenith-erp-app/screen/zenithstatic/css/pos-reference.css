@@ -101,3 +101,99 @@ body.zq-nav #CashFilter .q-field--error { padding-bottom: 20px; }
     #content #CashFilter > fieldset > .row { grid-template-columns: minmax(0, 1fr); }
     .pos-reference-cash-header .z-btnrow { width: 100%; }
 }
+
+/* POS audit and sales-report filters: keep native fields/actions, but lay them out as a compact,
+   responsive filter toolbar. Their server-side parameter names and submit transitions stay intact. */
+body.zq-nav :is(#AuditFilter, #BillFilter, #ItemFilter, #PaymentFilter, #UserFilter, #CancelFilter, #EditedFilter).q-form > .row {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+    gap: 12px !important;
+    align-items: end !important;
+    margin: 0 !important;
+}
+body.zq-nav :is(#AuditFilter, #BillFilter, #ItemFilter, #PaymentFilter, #UserFilter, #CancelFilter, #EditedFilter).q-form > .row > [class*="col-"] {
+    width: auto !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    flex: none !important;
+}
+body.zq-nav :is(#AuditFilter, #BillFilter, #ItemFilter, #PaymentFilter, #UserFilter, #CancelFilter, #EditedFilter).q-form .q-ma-sm {
+    width: 100%;
+    margin: 0 !important;
+}
+body.zq-nav :is(#AuditFilter, #BillFilter, #ItemFilter, #PaymentFilter, #UserFilter, #CancelFilter, #EditedFilter).q-form .q-field:has(.q-field__label) {
+    position: relative;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    padding: 22px 0 0 !important;
+}
+body.zq-nav :is(#AuditFilter, #BillFilter, #ItemFilter, #PaymentFilter, #UserFilter, #CancelFilter, #EditedFilter).q-form .q-field:has(.q-btn) {
+    width: auto !important;
+    padding: 0 !important;
+    align-self: end;
+}
+body.zq-nav :is(#AuditFilter, #BillFilter, #ItemFilter, #PaymentFilter, #UserFilter, #CancelFilter, #EditedFilter).q-form .q-field:has(.q-btn) .q-btn { width: auto; }
+body.zq-nav :is(#AuditFilter, #BillFilter, #ItemFilter, #PaymentFilter, #UserFilter, #CancelFilter, #EditedFilter).q-form .q-field .q-field__label {
+    position: absolute !important;
+    inset: -22px auto auto 0 !important;
+    width: auto !important;
+    max-width: 100% !important;
+    height: 18px !important;
+    display: block !important;
+    transform: none !important;
+    text-align: left !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    font-size: 12px !important;
+    line-height: 18px !important;
+    color: var(--z-text-secondary, #6b7280) !important;
+}
+body.zq-nav :is(#AuditFilter, #BillFilter, #ItemFilter, #PaymentFilter, #UserFilter, #CancelFilter, #EditedFilter).q-form .q-field__control-container { padding-top: 0 !important; }
+body.zq-nav :is(#AuditFilter, #BillFilter, #ItemFilter, #PaymentFilter, #UserFilter, #CancelFilter, #EditedFilter).q-form .q-field--with-bottom { padding-bottom: 0; }
+body.zq-nav :is(#AuditFilter, #BillFilter, #ItemFilter, #PaymentFilter, #UserFilter, #CancelFilter, #EditedFilter).q-form .q-field--error { padding-bottom: 20px; }
+body.zq-nav #AuditFilter.q-form > .row:first-of-type { grid-template-columns: minmax(260px, 1fr) auto; }
+
+#content :is(#AuditFilter, #BillFilter, #ItemFilter, #PaymentFilter, #UserFilter, #CancelFilter, #EditedFilter) > fieldset > .row {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+    gap: 12px;
+    align-items: end;
+    margin: 0;
+}
+#content :is(#AuditFilter, #BillFilter, #ItemFilter, #PaymentFilter, #UserFilter, #CancelFilter, #EditedFilter) > fieldset > .row > div {
+    float: none;
+    width: auto;
+    max-width: none;
+    min-width: 0;
+    padding: 0;
+}
+#content :is(#AuditFilter, #BillFilter, #ItemFilter, #PaymentFilter, #UserFilter, #CancelFilter, #EditedFilter) .form-group { margin: 0; }
+#content :is(#AuditFilter, #BillFilter, #ItemFilter, #PaymentFilter, #UserFilter, #CancelFilter, #EditedFilter) .form-group > [class*="col-"] {
+    float: none;
+    width: 100% !important;
+    max-width: 100%;
+    padding: 0;
+}
+#content :is(#AuditFilter, #BillFilter, #ItemFilter, #PaymentFilter, #UserFilter, #CancelFilter, #EditedFilter) .form-group > .control-label {
+    float: none;
+    display: block;
+    width: auto;
+    margin: 0 0 5px;
+    padding: 0;
+    text-align: left;
+    font-size: 12px;
+    line-height: 18px;
+    color: var(--z-text-secondary, #6b7280);
+}
+#content :is(#AuditFilter, #BillFilter, #ItemFilter, #PaymentFilter, #UserFilter, #CancelFilter, #EditedFilter) :is(.form-control, .select2-container, .input-group) { width: 100% !important; }
+#content :is(#AuditFilter, #BillFilter, #ItemFilter, #PaymentFilter, #UserFilter, #CancelFilter, #EditedFilter) button { align-self: end; }
+
+@media (max-width: 767px) {
+    body.zq-nav :is(#AuditFilter, #BillFilter, #ItemFilter, #PaymentFilter, #UserFilter, #CancelFilter, #EditedFilter).q-form > .row,
+    #content :is(#AuditFilter, #BillFilter, #ItemFilter, #PaymentFilter, #UserFilter, #CancelFilter, #EditedFilter) > fieldset > .row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
