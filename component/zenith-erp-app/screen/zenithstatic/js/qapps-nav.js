@@ -23,7 +23,7 @@
         '/Purchase': ['Purchase', 'GoodsReceipt:Goods Receipt (GRN)', 'FindPurchaseOrder:Purchase Orders', 'FindPurchaseInvoice:Vendor Bills (ITC)', 'CreatePurchaseInvoice:Log Vendor Bill', 'PurchaseInvoices:Purchase Invoices', 'PurchaseReturns:Purchase Returns', 'JobWorkChallan:Job Work Challan', 'RfqList:RFQs', 'Gstr2bRecon:GSTR-2B Recon', 'VendorEvaluation:Vendor Evaluation'],
         '/Crm': ['CRM', 'Leads:Leads', 'Pipeline:Pipeline', 'Activities:Activities', 'Segments:Segments'],
         '/pos': ['POS', 'Dashboard:Dashboard', 'OwnerDashboard:Overview', 'Terminal:Billing Terminal', 'PosTransactions:Transactions', 'DailySummary:Daily Summary', 'PosSessions:Sessions', 'PosTerminals:Terminals', 'CreditBills:Credit Bills', 'CashEntry:Cash Entry', 'Expenses:Expenses', 'Wastage:Wastage', 'Stock:Stock', 'Reports:Reports', 'BillAuditReport:Audit Report', 'ProductPricing:Product Prices', 'PriceOverrides:Price Overrides', 'DiscountSettings:Discount', 'SalesMode:Sales Mode', 'Barcodes:Barcodes', 'BarcodeLabels:Barcode Labels', 'ProductImport:Import', 'ReceiptConfig:Receipts', 'PrinterConfig:Printers', 'Kitchen:Kitchen', 'BillNumberRegister:Bill Register', 'OfflineMode:Offline Mode'],
-        '/Inventory': ['Inventory', 'InventoryDashboard:Dashboard', 'FindProduct:Products', 'StockLevels:Stock Levels', 'FindReceipt:Receiving', 'StockTransfers:Stock Transfers', 'StockAdjustments:Stock Adjustments', 'GatePasses:Gate Passes', 'CreateCatalogue:Catalogues', 'ExpiryDashboard:Expiry Risk', 'SerialNumbers:Serial Numbers', 'DemandForecast:Demand Forecast'],
+        '/Inventory': ['Inventory', 'InventoryDashboard:Dashboard', 'FindProduct:Products', 'FindFacility:Warehouse', 'StockLevels:Stock Levels', 'FindReceipt:Receiving', 'StockTransfers:Stock Transfers', 'StockAdjustments:Stock Adjustments', 'GatePasses:Gate Passes', 'CreateCatalogue:Catalogues', 'ExpiryDashboard:Expiry Risk', 'SerialNumbers:Serial Numbers', 'DemandForecast:Demand Forecast'],
         '/manufacturing': ['Manufacturing', 'WorkOrders:Work Orders', 'BillOfMaterials:Bill of Materials', 'WorkCenters:Work Centers', 'JobWork:Job Work', 'MrpPlanning:MRP Planning', 'ProductionSchedule:Production Schedule'],
         '/Accounting': ['Accounting', 'AcctgDashboard:Dashboard', 'ChartOfAccounts:Chart of Accounts', 'ManualJournalEntry:Journal Entry', 'JournalHistory:Journal History', 'Invoices:Invoices (A/R & A/P)', 'Payments:Payments', 'TrialBalance:Trial Balance', 'ProfitAndLoss:Profit & Loss', 'CashFlowStatement:Cash Flow', 'AgingReport:AR/AP Aging', 'Budgets:Budgets', 'GstReports:GST Reports', 'Gstr3bReport:GSTR-3B', 'TdsRegister:TDS Register', 'MsmeAgingReport:MSME Aging', 'AutoBrs:Bank Feeds & BRS', 'Schedule3Statements:Schedule III', 'RecurringInvoices:Recurring Invoices', 'TallyExport:Tally Export', 'VoucherAudit:Voucher Audit', 'McaAuditLog:MCA Audit Log'],
         '/payroll': ['Payroll', 'PayrollRuns:Payroll Runs', 'SalaryStructures:Salary Structures', 'TaxDeclarations:Tax Declarations', 'SalaryAdvances:Salary Advances', 'CtcCalculator:CTC Calculator', 'StatutoryCompliance:Statutory Compliance', 'EpfRegister:EPF Register', 'EsiRegister:ESI Register'],
@@ -232,15 +232,49 @@
         sc.appendChild(box);
         var res = el('div'); res.id = 'zq-search-results'; sc.appendChild(res);
         wrap.appendChild(sc);
-        var idx = []; CATS.forEach(function (g) { g.items.forEach(function (it) { if (it.match !== '/__more') idx.push({ label: it.label, href: it.href }); }); });
+        // Index the rendered, plan-filtered navigation and its screens, rather than the raw module catalogue.
+        function searchIndex() {
+            var idx = [];
+            document.querySelectorAll('#zq-sidebar .zqs-link').forEach(function (link) {
+                if (link.style.display === 'none') return;
+                var match = link.getAttribute('data-match'), label = (link.querySelector('.t') || link).textContent.trim();
+                if (match === '/__more') return;
+                idx.push({ label: label, mod: '', href: link.getAttribute('href') });
+                var group = SUBNAV[match];
+                if (group) group.slice(1).forEach(function (screen) {
+                    var split = screen.indexOf(':'), route = screen.slice(0, split);
+                    idx.push({ label: screen.slice(split + 1), mod: group[0], href: (match === '/pos' && route === 'Terminal' ? '/apps/' : '/qapps/') + 'zenith' + match + '/' + route });
+                });
+            });
+            document.querySelectorAll('#dashAllModules a[href]').forEach(function (link) { idx.push({ label: link.textContent.trim(), mod: '', href: link.getAttribute('href') }); });
+            return idx;
+        }
+        var current = -1;
         function draw(q) { q = (q || '').trim().toLowerCase(); res.innerHTML = '';
+            current = -1;
             if (!q) { res.classList.remove('show'); return; }
-            var out = idx.filter(function (it) { return it.label.toLowerCase().indexOf(q) >= 0; }).slice(0, 10);
+            var seen = {};
+            var out = searchIndex().filter(function (it) {
+                var key = it.href + '|' + it.label;
+                if (seen[key] || (it.mod + ' ' + it.label).toLowerCase().indexOf(q) < 0) return false;
+                seen[key] = true; return true;
+            }).slice(0, 12);
             if (!out.length) { var em = el('div', 'zqsr-empty', 'No matches'); res.appendChild(em); res.classList.add('show'); return; }
             out.forEach(function (it) { var a = el('a'); a.href = it.href; a.appendChild(mi('arrow_forward')); a.appendChild(el('span', null, it.label)); res.appendChild(a); });
             res.classList.add('show'); }
         inp.addEventListener('input', function () { draw(inp.value); });
-        inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { var f = res.querySelector('a'); if (f) { e.preventDefault(); location.href = f.getAttribute('href'); } } else if (e.key === 'Escape') { inp.value = ''; res.classList.remove('show'); } });
+        inp.addEventListener('focus', function () { if (inp.value.trim()) draw(inp.value); });
+        inp.addEventListener('keydown', function (e) {
+            var links = res.querySelectorAll('a');
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault(); if (!links.length) return;
+                if (current >= 0) links[current].classList.remove('sel');
+                current = current < 0 ? (e.key === 'ArrowDown' ? 0 : links.length - 1) : (current + (e.key === 'ArrowDown' ? 1 : -1) + links.length) % links.length;
+                links[current].classList.add('sel'); links[current].scrollIntoView({ block: 'nearest' });
+            } else if (e.key === 'Enter') {
+                var selected = links[current] || links[0]; if (selected) { e.preventDefault(); location.href = selected.getAttribute('href'); }
+            } else if (e.key === 'Escape') { inp.value = ''; res.classList.remove('show'); inp.blur(); }
+        });
         document.addEventListener('click', function (e) { if (!sc.contains(e.target)) res.classList.remove('show'); });
         // ⌘K / Ctrl-K focuses the quick-search from anywhere (bound once; input is looked up live)
         if (!window.__zqSearchKbd) { window.__zqSearchKbd = 1; document.addEventListener('keydown', function (e) { if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key === 'k' || e.key === 'K')) { var si = document.getElementById('zq-search-input'); if (si) { e.preventDefault(); si.focus(); try { si.select(); } catch (_e) {} } } }); }
@@ -330,7 +364,7 @@
         // ZE-NAV-ALIAS: a detail/edit screen (menu-include=false, e.g. EditStockTransfer) shares no URL prefix with its
         // list tab, so no tab would highlight. Map it to the parent list route for active-state matching only (the group
         // still resolves via the /<module> prefix above, so this doesn't change which subnav renders).
-        var relA = rel, _NAV_ALIAS = { '/Inventory/EditStockTransfer': '/Inventory/StockTransfers', '/Inventory/EditStockAdjustment': '/Inventory/StockAdjustments' };
+        var relA = rel, _NAV_ALIAS = { '/Inventory/EditStockTransfer': '/Inventory/StockTransfers', '/Inventory/EditStockAdjustment': '/Inventory/StockAdjustments', '/Inventory/EditFacility': '/Inventory/FindFacility' };
         for (var _ak in _NAV_ALIAS) { if (rel.indexOf(_ak) === 0) { relA = _NAV_ALIAS[_ak] + rel.slice(_ak.length); break; } }
         // ZE-POS-NAV-ROLE: a POS-only cashier (posOnlyUser -> data-pos-only) sees only till-operational POS submodules;
         // hide the rest (visibility-only). Same cashier set as the /apps #z-subnav filter (ZenithApp.xml). Admin / Store
