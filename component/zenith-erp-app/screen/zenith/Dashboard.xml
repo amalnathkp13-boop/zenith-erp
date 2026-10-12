@@ -14,11 +14,11 @@
             def _wk = ['insights','kpis','snapshot','activity','modules']
             ec.user.setPreference('HOME_DASH_HIDDEN', _wk.findAll { !context.get('w_' + it) }.join(','))
         ]]></script></actions>
-        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo]"/>
+        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dateMode:dateMode]"/>
     </transition>
     <transition name="resetDashLayout">
         <actions><script>ec.user.setPreference('HOME_DASH_HIDDEN', null); ec.user.setPreference('HOME_DASH_ORDER', null); ec.user.setPreference('HOME_DASH_SIZE', null)</script></actions>
-        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo]"/>
+        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dateMode:dateMode]"/>
     </transition>
     <transition name="changeDashDate"><default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dateMode:'custom']"/></transition>
     <transition name="saveDashOrder" method="post">
@@ -58,7 +58,16 @@
                 if (!dashDate && dashDateTo) dashDate = dashDateTo
             } catch (Exception e) {
                 dashDate = ''; dashDateTo = ''
-                dateError = 'Choose valid dates in YYYY-MM-DD format. Showing all time.'
+                dateError = 'Choose valid dates in YYYY-MM-DD format. Showing this week.'
+            }
+            if (!dashDate && !dashDateTo) {
+                def _fallbackNow = ec.user.nowTimestamp
+                def _fallbackCalendar = java.util.Calendar.getInstance(); _fallbackCalendar.setTime(_fallbackNow)
+                _fallbackCalendar.set(java.util.Calendar.DAY_OF_WEEK, _fallbackCalendar.getFirstDayOfWeek())
+                def _fallbackFormat = new java.text.SimpleDateFormat('yyyy-MM-dd')
+                dashDate = _fallbackFormat.format(_fallbackCalendar.time)
+                dashDateTo = _fallbackFormat.format(_fallbackNow)
+                dateMode = 'week'
             }
             if (dashDate) {
                 if (!dashDateTo) dashDateTo = dashDate
@@ -116,7 +125,7 @@
             kpiCards = [
                 [lab:'Total Sales', disp:homeMoney(_finSales), icon:'trending_up', tintBg:'#FEF3C7', tintFg:'#D97706', url:'/apps/zenith/sales/FindInvoice', trend:_salesTrend, extra:'No. of Invoices: '+homeSales.count { homeInRange(it.invoiceDate) }, source:['Sales']],
                 [lab:'Total Payables', disp:homeMoney(_finPay), icon:'receipt_long', tintBg:'#FEE2E2', tintFg:'#DC2626', url:'/apps/zenith/Purchase/PurchaseInvoices', trend:null, extra:'Outstanding vendor balances', source:['Vendor bills']],
-                [lab:'Total Receivable', disp:homeMoney(_finRecv), icon:'account_balance_wallet', tintBg:'#DBEAFE', tintFg:'#3B82F6', url:'/apps/zenith/pos/CreditBills', trend:null, extra:'POS credits and sales invoices', source:['Sales','POS balances']],
+                [lab:'Total Receivables', disp:homeMoney(_finRecv), icon:'account_balance_wallet', tintBg:'#DBEAFE', tintFg:'#3B82F6', url:'/apps/zenith/pos/CreditBills', trend:null, extra:'POS credits and sales invoices', source:['Sales','POS balances']],
                 [lab:'Cash in Hand', disp:homeMoney(_finCash), icon:'payments', tintBg:'#D1FAE5', tintFg:'#059669', url:'/apps/zenith/pos/CashEntry', trend:null, extra:'Net cash sales and cash entries', source:['POS balances','Cash receipts','Cash entries']]
             ]
             kpiCards.each { it.available = activeOrgId && !it.source.any { source -> homeDataErrors.contains(source) } }
@@ -228,7 +237,7 @@
             // ZE-DASH restructure: compact 6-tile Quick Actions (icon grid) shown beside the chart. Same
             // plan/role gating as qaGroups (qaCan) so a tile only appears if the user can actually use it.
             homeTiles = []
-            if (qaCan('Z_POS','pos'))               homeTiles << [label:'New Sale',     icon:'add',           url:'/apps/zenith/pos/Terminal']
+            if (qaCan('Z_SALES','sales'))            homeTiles << [label:'New Sales Order', icon:'add', url:'/apps/zenith/sales/CreateOrder']
             if (qaCan('Z_PURCHASE','purchase'))     homeTiles << [label:'New Purchase', icon:'shopping_cart', url:'/apps/zenith/Purchase/CreatePurchaseOrder']
             if (qaCan('Z_SALES','sales'))           homeTiles << [label:'New Invoice',  icon:'description',   url:'/apps/zenith/sales/CreateInvoice']
             if (qaCan('Z_PURCHASE','purchase'))     homeTiles << [label:'New Bill',     icon:'request_quote', url:'/apps/zenith/Purchase/CreatePurchaseInvoice']
@@ -247,9 +256,9 @@
             def _cw = java.util.Calendar.getInstance(); _cw.setTime(_now); _cw.set(java.util.Calendar.DAY_OF_WEEK, _cw.getFirstDayOfWeek()); def _weekStartStr = _sdf.format(_cw.getTime())
             def _cm = java.util.Calendar.getInstance(); _cm.setTime(_now); _cm.set(java.util.Calendar.DAY_OF_MONTH,1); def _monthStartStr = _sdf.format(_cm.getTime())
             def _c30 = java.util.Calendar.getInstance(); _c30.setTime(_now); _c30.add(java.util.Calendar.DAY_OF_MONTH,-29); def _last30Str = _sdf.format(_c30.getTime())
-            urlAll = "?"; urlToday = "?dashDate="+_todayStr+"&dashDateTo="+_todayStr
-            urlWeek = "?dashDate="+_weekStartStr+"&dashDateTo="+_todayStr
-            urlMonth = "?dashDate="+_monthStartStr+"&dashDateTo="+_todayStr
+            urlToday = "?dateMode=today&dashDate="+_todayStr+"&dashDateTo="+_todayStr
+            urlWeek = "?dateMode=week&dashDate="+_weekStartStr+"&dashDateTo="+_todayStr
+            urlMonth = "?dateMode=month&dashDate="+_monthStartStr+"&dashDateTo="+_todayStr
             url30 = "?dashDate="+_last30Str+"&dashDateTo="+_todayStr
             presetActive = 'all'
             if (dashDate) {
@@ -264,11 +273,42 @@
             // ZE-DATEWISE: This Year preset + "Date-wise" custom-range tab (self-contained; var-name-agnostic)
             def _dwSdf = new java.text.SimpleDateFormat("yyyy-MM-dd"); def _dwNow = ec.user.nowTimestamp; def _dwToday = _dwSdf.format(_dwNow)
             def _dwYc = java.util.Calendar.getInstance(); _dwYc.setTime(_dwNow); _dwYc.set(java.util.Calendar.MONTH,0); _dwYc.set(java.util.Calendar.DAY_OF_MONTH,1); def _dwYearStart = _dwSdf.format(_dwYc.getTime())
-            urlYear = "?dashDate="+_dwYearStart+"&dashDateTo="+_dwToday
+            urlYear = "?dateMode=year&dashDate="+_dwYearStart+"&dashDateTo="+_dwToday
             if (dashDate && dashDateTo == _dwToday && dashDate == _dwYearStart) presetActive = 'year'
+            // Keep the chosen tab when Today, This Week or This Month share the same bounds.
+            def _presetStarts = [today:_todayStr, week:_weekStartStr, month:_monthStartStr, year:_dwYearStart]
+            if (_presetStarts.containsKey(dateMode) && dashDate == _presetStarts[dateMode] && dashDateTo == _todayStr) presetActive = dateMode
+            // A one-day range for today is the Today preset, including when the current week starts today.
+            if (dashDate == _todayStr && dashDateTo == _todayStr) presetActive = 'today'
+            // Custom ranges that exactly match a calendar period also select its preset.
+            if (dashDate && dateMode == 'custom' && presetActive == 'custom') {
+                def _rangeFrom = java.time.LocalDate.parse(dashDate), _rangeTo = java.time.LocalDate.parse(dashDateTo)
+                def _rangeWeekCal = java.util.Calendar.getInstance(); _rangeWeekCal.setTime(java.sql.Timestamp.valueOf(_rangeFrom.toString()+' 00:00:00'))
+                _rangeWeekCal.set(java.util.Calendar.DAY_OF_WEEK, _rangeWeekCal.getFirstDayOfWeek())
+                def _rangeWeekStart = java.time.LocalDate.parse(_sdf.format(_rangeWeekCal.getTime()))
+                def _monthFirst = _rangeFrom.withDayOfMonth(1)
+                def _yearFirst = _rangeFrom.withDayOfYear(1)
+                def _currentMonthFirst = java.time.LocalDate.parse(_monthStartStr)
+                def _currentYearFirst = java.time.LocalDate.parse(_dwYearStart)
+                def _currentWeekFirst = java.time.LocalDate.parse(_weekStartStr)
+                if (_rangeFrom == _rangeWeekStart && (_rangeTo == _rangeWeekStart.plusDays(6) || (_rangeFrom == _currentWeekFirst && _rangeTo.toString() == _todayStr))) presetActive = 'week'
+                if (_rangeFrom == _monthFirst && (_rangeTo == _rangeFrom.withDayOfMonth(_rangeFrom.lengthOfMonth()) || (_rangeFrom == _currentMonthFirst && _rangeTo.toString() == _todayStr))) presetActive = 'month'
+                if (_rangeFrom == _yearFirst && (_rangeTo == _rangeFrom.withMonth(12).withDayOfMonth(31) || (_rangeFrom == _currentYearFirst && _rangeTo.toString() == _todayStr))) presetActive = 'year'
+                if (_rangeFrom.toString() == _todayStr && _rangeTo.toString() == _todayStr) presetActive = 'today'
+            }
             showCustom = (((dateMode ?: '') == 'custom') || (presetActive == 'custom'))
             urlCustom = dashDate ? ("?dateMode=custom&dashDate="+dashDate+"&dashDateTo="+dashDateTo) : "?dateMode=custom"
-            acRangeLabel = dashDate ? (dashDate == dashDateTo ? dashDate : (dashDate + ' to ' + dashDateTo)) : 'All time'
+            acRangeLabel = dashDate ? (dashDate == dashDateTo ? dashDate : (dashDate + ' to ' + dashDateTo)) : ''
+            def _controlDay = java.time.format.DateTimeFormatter.ofPattern('dd MMM', java.util.Locale.ENGLISH)
+            def _controlEnd = java.time.format.DateTimeFormatter.ofPattern('dd MMM yyyy', java.util.Locale.ENGLISH)
+            homeRangeLabel = ''
+            homeNextRangeUrl = ''
+            if (dashDate) {
+                def _from = java.time.LocalDate.parse(dashDate), _to = java.time.LocalDate.parse(dashDateTo)
+                homeRangeLabel = _from == _to ? _from.format(_controlEnd) : (_from.format(_from.year == _to.year ? _controlDay : _controlEnd) + ' – ' + _to.format(_controlEnd))
+                def _rangeDays = java.time.temporal.ChronoUnit.DAYS.between(_from, _to) + 1
+                homeNextRangeUrl = '?dateMode=custom&dashDate=' + _from.plusDays(_rangeDays) + '&dashDateTo=' + _to.plusDays(_rangeDays)
+            }
 
             // ZE-DASH SALES ANALYST (2026-08): two client-switchable views — Weekly (sales ₹ per day, current week)
             // and Today Hourly (sales ₹ per hour today). Metric = finalised InvoiceSales invoiceTotal (SAME basis as
@@ -326,7 +366,7 @@
             w_modules = showModules ? 'Y' : ''
             dashOrderCsv = (ec.user.getPreference('HOME_DASH_ORDER') ?: '')
             dashSizeCsv = (ec.user.getPreference('HOME_DASH_SIZE') ?: '')
-            urlSettings = dashDate ? ("?dashDate="+dashDate+"&dashDateTo="+dashDateTo+"&showSettings=1") : "?showSettings=1"
+            urlSettings = dashDate ? ("?dashDate="+dashDate+"&dashDateTo="+dashDateTo+"&showSettings=1" + (_presetStarts.containsKey(dateMode) ? "&dateMode="+dateMode : '')) : "?showSettings=1"
         ]]></script>
 
         <!-- Supplemental panels share organization-scoped balances and avoid counting linked POS invoices twice. -->
@@ -547,8 +587,8 @@
 <header class="home-page-header">
   <div class="home-title"><h1>${homeGreeting}, <span aria-hidden="true">👋</span></h1><p>${(homeOrgName!'Select an organization')?html} · Business overview</p></div>
   <div class="home-header-controls">
-    <a href="${urlSettings?html}" class="home-outline"><span class="material-icons" aria-hidden="true">tune</span>Customize</a>
-    <details class="zdash-dr"><summary class="home-outline"><span class="material-icons" aria-hidden="true">calendar_today</span>${(dashDate?has_content)?string(acRangeLabel,'All time')}<span aria-hidden="true">⌄</span></summary>
+    <a href="${urlSettings?html}" class="home-outline home-customize"><span class="material-icons" aria-hidden="true">tune</span>Customize</a>
+    <details class="zdash-dr"><summary class="home-outline home-date"><span class="material-icons" aria-hidden="true">calendar_today</span><span class="home-date-label">${homeRangeLabel?html}</span><span class="material-icons home-date-caret" aria-hidden="true">expand_more</span></summary>
       <form method="get" action="${homeRoute?html}" class="zdash-dr-pop">
         <input type="hidden" name="dateMode" value="custom"/>
         <label class="zdash-dr-row">From<input type="date" name="dashDate" value="${dashDate}" required="required"/></label>
@@ -556,8 +596,9 @@
         <button type="submit" class="zdash-dr-apply">Apply range</button>
       </form>
     </details>
+    <#if homeNextRangeUrl?has_content><a href="${homeNextRangeUrl?html}" class="home-outline home-next-range" aria-label="Next date range" title="Next date range"><span class="material-icons" aria-hidden="true">chevron_right</span></a><#else><button type="button" class="home-outline home-next-range" disabled="disabled" aria-label="Next date range" title="Choose a date range first"><span class="material-icons" aria-hidden="true">chevron_right</span></button></#if>
     <nav class="home-periods" aria-label="Dashboard date range">
-      <#list [{'key':'all','label':'All time','url':urlAll},{'key':'today','label':'Today','url':urlToday},{'key':'week','label':'This Week','url':urlWeek},{'key':'month','label':'This Month','url':urlMonth},{'key':'year','label':'This Year','url':urlYear}] as period>
+      <#list [{'key':'today','label':'Today','url':urlToday},{'key':'week','label':'This Week','url':urlWeek},{'key':'month','label':'This Month','url':urlMonth},{'key':'year','label':'This Year','url':urlYear}] as period>
       <a href="${period.url?html}" class="home-period${(presetActive==period.key)?string(' on','')}"<#if presetActive==period.key> aria-current="date"</#if>>${period.label}</a>
       </#list>
     </nav>
@@ -578,7 +619,7 @@
                     </form-single>
                     <container style="row q-gutter-sm q-mt-sm">
                         <link url="resetDashLayout" text="Reset to Default" icon="fa fa-undo" btn-type="warning"/>
-                        <link url="." text="Close" btn-type="flat" parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, showSettings:'0']"/>
+                        <link url="." text="Close" btn-type="flat" parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dateMode:dateMode, showSettings:'0']"/>
                     </container>
                 </container>
             </widgets>
@@ -590,14 +631,14 @@
 <render-mode><text type="html,vuet,qvt" template="true"><![CDATA[
 <div class="zsc-row">
   <#list kpiCards as c>
-  <#if c.lab=='Total Receivable'><div class="zsc"><#else><a class="zsc" href="${c.url}"></#if>
+  <a class="zsc" href="${c.url}">
     <div class="zsc-top">
       <span class="zsc-lab">${c.lab}</span>
       <span class="material-icons zsc-ic" style="background:${c.tintBg};color:${c.tintFg}">${c.icon}</span>
     </div>
     <div class="zsc-num"><#if c.available>&#8377;${c.disp}<#else>Unavailable</#if></div>
     <div class="zsc-sub"><#if c.trend??><span class="zsc-chip ${(c.trend.dir=='up')?string('zsc-up','zsc-dn')}">${(c.trend.dir=='up')?string('&#9650; +','&#9660; ')}${c.trend.pct}%</span><span style="color:#9CA3AF">vs previous period</span><#else><span class="zsc-more">${c.extra?html}</span></#if></div>
-  <#if c.lab=='Total Receivable'><div class="home-receivable-links"><a href="/apps/zenith/sales/FindInvoice">Sales invoices</a><span> · </span><a href="/apps/zenith/pos/CreditBills">POS credits</a></div></div><#else></a></#if>
+  </a>
   </#list>
 </div>
 ]]></text></render-mode>

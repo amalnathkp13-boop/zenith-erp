@@ -116,13 +116,11 @@
                     <field name="thruDate"><default-field title="To">
                         <date-time type="date" default-value="${thruDate}"/></default-field></field>
                     <field name="submitButton"><default-field title="">
-                        <submit text="Search" icon="fa fa-search"/></default-field></field>
-                    <field name="filterBtn"><default-field title="">
                         <submit text="Filter" icon="fa fa-filter"/></default-field></field>
                     <field-layout>
                         <field-row>
                             <field-ref name="searchText"/><field-ref name="fromDate"/><field-ref name="thruDate"/>
-                            <field-ref name="submitButton"/><field-ref name="filterBtn"/>
+                            <field-ref name="submitButton"/>
                         </field-row>
                     </field-layout>
                 </form-single>
@@ -167,7 +165,7 @@
             </container>
 
             <!-- Item table -->
-            <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-md">
+            <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-md z-txntable">
                 <form-list name="ItemWiseList" list="itemWiseList" list-entry="p" skip-form="true">
                     <field name="productName"><header-field title="Product"/>
                         <default-field><label text="${p.productName}" type="span" style="text-dark text-weight-medium"/></default-field></field>

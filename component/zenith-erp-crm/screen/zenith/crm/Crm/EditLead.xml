@@ -7,38 +7,29 @@
 
     <transition name="updateLead">
         <actions>
-            <!-- Org-isolation: re-check ownership by PK before update (prevent cross-tenant IDOR edit) -->
-            <set field="activeOrg" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
-            <entity-find-one entity-name="zenith.erp.crm.Lead" value-field="curLead"/>
-            <if condition="curLead == null || (activeOrg &amp;&amp; curLead.organizationPartyId != activeOrg &amp;&amp; !ec.user.isInGroup('ADMIN'))">
-                <return error="true" message="Lead not found for your account."/>
-            </if>
-            <service-call name="update#zenith.erp.crm.Lead" in-map="context"/>
+            <service-call name="zenith.crm.CrmServices.update#Lead" in-map="context"/>
         </actions>
         <default-response url="."/>
+        <error-response url="."/>
     </transition>
     <transition name="convertLead">
         <actions>
-            <!-- Org-isolation: re-check ownership by PK before converting another tenant's lead -->
-            <set field="activeOrg" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
-            <entity-find-one entity-name="zenith.erp.crm.Lead" value-field="curLead"/>
-            <if condition="curLead == null || (activeOrg &amp;&amp; curLead.organizationPartyId != activeOrg &amp;&amp; !ec.user.isInGroup('ADMIN'))">
-                <return error="true" message="Lead not found for your account."/>
-            </if>
             <service-call name="zenith.crm.CrmServices.convert#Lead" in-map="context"/>
         </actions>
         <default-response url="."/>
+        <error-response url="."/>
     </transition>
     <transition name="logActivity">
         <service-call name="zenith.crm.CrmServices.log#Activity"/>
         <default-response url="."/>
+        <error-response url="."/>
     </transition>
 
     <actions>
         <entity-find-one entity-name="zenith.erp.crm.Lead" value-field="lead"/>
         <!-- Org-isolation: block IDOR read of another tenant's lead by guessing leadId -->
         <set field="activeOrg" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
-        <if condition="lead == null || (activeOrg &amp;&amp; lead.organizationPartyId != activeOrg &amp;&amp; !ec.user.isInGroup('ADMIN'))">
+        <if condition="lead == null || !activeOrg || activeOrg == '_NA_' || lead.organizationPartyId != activeOrg">
             <return error="true" message="Lead not found for your account."/>
         </if>
         <entity-find entity-name="zenith.erp.crm.LeadSource" list="leadSources">
@@ -52,6 +43,7 @@
     </actions>
 
     <widgets>
+        <container style="zcrm-intro"><label text="Lead details" type="h3"/><label text="Update qualification, contact details and the activity history." type="p"/><link url="../Leads" text="Back to leads"/></container>
         <container-row>
             <row-col lg="7">
                 <container-box><box-header title="Lead Details"/><box-toolbar>
@@ -66,7 +58,7 @@
                                 <option key="LeadNew" text="New"/>
                                 <option key="LeadContacted" text="Contacted"/>
                                 <option key="LeadQualified" text="Qualified"/>
-                                <option key="LeadConverted" text="Converted"/>
+                                <option key="LeadConverted" text="Converted (use Convert to Contact)"/>
                                 <option key="LeadLost" text="Lost"/>
                             </drop-down>
                         </default-field></field>
@@ -80,14 +72,14 @@
                         <field name="website"><default-field><text-line size="30"/></default-field></field>
                         <field name="address"><default-field><text-area rows="2" cols="50"/></default-field></field>
                         <field name="city"><default-field><text-line size="20"/></default-field></field>
-                        <field name="stateCode"><default-field title="State">
+                        <field name="regionCode"><default-field title="State">
                             <drop-down allow-empty="true">
                                 <list-options list="stateList" key="${stateCode}" text="${stateCode} - ${stateName}"/>
                             </drop-down>
                         </default-field></field>
-                        <field name="pincode"><default-field title="PIN Code"><text-line size="8"/></default-field></field>
-                        <field name="gstin"><default-field title="GSTIN"><text-line size="20"/></default-field></field>
-                        <field name="panNumber"><default-field title="PAN"><text-line size="12"/></default-field></field>
+                        <field name="postalCode"><default-field title="PIN Code"><text-line size="8"/></default-field></field>
+                        <field name="taxRegistrationNumber"><default-field title="GSTIN"><text-line size="20"/></default-field></field>
+                        <field name="taxIdNumber"><default-field title="PAN"><text-line size="12"/></default-field></field>
                         <field name="leadSourceId"><default-field title="Source">
                             <drop-down allow-empty="true">
                                 <list-options list="leadSources" key="${leadSourceId}" text="${description}"/>

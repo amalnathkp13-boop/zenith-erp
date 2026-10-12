@@ -1,4 +1,4 @@
-/* Reference toolbar keeps the real server-side filters and native list controls. */
+/* Keep the shared list toolbar, filter dialog and pager in one consistent card. */
 .zc-shops-page .shops-reference-list {transform:none!important;border-radius:12px;padding:20px!important;box-shadow:0 1px 3px rgba(17,24,39,.04)!important}
 .zc-shops-page .shops-reference-list .form-list-nav-row :is(td,th) {padding:10px 0!important;white-space:normal}
 .zc-shops-page .shops-reference-list .form-list-nav-row :is(.btn,.q-btn) {min-height:36px;border-radius:6px;margin:3px}
@@ -35,13 +35,6 @@ body.zq-nav:has(.zc-shops-page) .q-layout .q-page-container {padding-top:calc(va
 }
 
 body.zq-nav:has(.zc-shops-page) #zq-subnav {top:var(--zq-shops-header-height,51px)!important}
-
-/* Preserve the working page-size/footer controls while exposing native advanced filters. */
-.zc-shops-page .shops-reference-list .zlc-toolbar {display:none!important}
-.zc-shops-page .shops-reference-list tr.form-list-nav-row {display:table-row!important}
-.zc-shops-page .shops-reference-list .form-list-nav-row .pagination,
-.zc-shops-page .shops-reference-list .form-list-nav-row>th>.row>div:nth-child(2) {display:none!important}
-
 
 .zc-shops-page #StoresForm_hdialog_button>i.fa::before {font-family:'Material Icons Z';content:'search';font-size:16px;vertical-align:-2px}
 .zc-shops-page #StoresForm_SelColsDialog_button>i.fa::before {font-family:'Material Icons Z';content:'table_chart';font-size:16px;vertical-align:-2px}

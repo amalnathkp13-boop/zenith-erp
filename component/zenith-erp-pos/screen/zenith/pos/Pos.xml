@@ -43,16 +43,19 @@
             modContacts = _allMod || (_mods != null && _mods.contains('contacts'))
             modAccounting = _allMod || (_mods != null && _mods.contains('accounting'))
             modPurchase = _allMod || (_mods != null && _mods.contains('purchase'))
+            showPosModuleLinks = !(ec.web.request.pathInfo ?: '').endsWith('/pos/Dashboard')
         ]]></script>
     </actions>
 
     <widgets>
+        <section name="PosCrossModuleNav" condition="showPosModuleLinks"><widgets>
         <container id="pos-module-nav" style="row items-center justify-end q-px-md q-pt-sm q-gutter-sm">
             <section name="PosNavSales" condition="modSales"><widgets><link url="goSales" text="Sales" icon="fa fa-line-chart" btn-type="primary" style="q-btn--dense"/></widgets></section>
             <section name="PosNavInventory" condition="modInventory"><widgets><link url="goInventory" text="Inventory" icon="fa fa-cubes" btn-type="info" style="q-btn--dense"/></widgets></section>
             <section name="PosNavContacts" condition="modContacts"><widgets><link url="goContacts" text="Customers" icon="fa fa-users" btn-type="success" style="q-btn--dense"/></widgets></section>
             <section name="PosNavAccounting" condition="modAccounting"><widgets><link url="goAccounting" text="Accounting" icon="fa fa-calculator" btn-type="warning" style="q-btn--dense"/></widgets></section>
         </container>
+        </widgets></section>
         <!-- ZE-POS-NAV single-row: render only the active POS subscreen's CONTENT here; the submodule tab bar is
              the global #z-subnav / #zq-subnav (one authoritative, route-driven, overflow-scrolling row). The old
              framework tab menu (#pos-tabs-menu, from subscreens-panel type=tab) was a duplicate second row. -->

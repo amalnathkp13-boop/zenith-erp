@@ -333,14 +333,22 @@
     </actions>
 
     <widgets>
-        <container style="q-mb-lg">
-            <label text="Sales Dashboard" type="h3" style="text-primary text-weight-bold q-my-none"/>
+        <render-mode><text type="html,qvt,vuet"><![CDATA[<div class="sales-dashboard-page">]]></text></render-mode>
+        <container style="sd-heading q-mb-lg">
+            <label text="Sales Dashboard" type="h3" style="text-weight-bold q-my-none"/>
             <label text="A quick look at how your sales are doing — orders, quotes, customers and revenue at a glance." type="p" style="text-grey-7 q-mt-sm q-mb-none"/>
         </container>
 
         <!-- ZE-DASH: date-range filter + customize gear -->
-        <container style="q-px-lg q-py-md q-mb-md zenith-card bg-white shadow-1 border-radius-lg">
-            <render-mode><text type="html,vuet,qvt" template="true"><![CDATA[<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-family:Segoe UI,Arial,sans-serif;margin-bottom:10px"><span style="font-size:11.5px;font-weight:800;color:#5C6B85;letter-spacing:.06em;margin-right:4px">DATE RANGE</span><details class="zdash-dr"><summary class="zdash-chip zdash-dr-sum${showCustom?string(' on','')}">&#128197; <#if (showCustom!false) && (dashDate!'')?has_content>${dashDate}<#if (dashDateTo!'')?has_content && dashDateTo != dashDate> to ${dashDateTo}</#if><#else>Date-wise</#if> &#9662;</summary><form method="get" action="." class="zdash-dr-pop"><input type="hidden" name="dateMode" value="custom"/><div class="zdash-dr-row"><span>From</span><input type="date" name="dashDate" value="${dashDate}"/></div><div class="zdash-dr-row"><span>To</span><input type="date" name="dashDateTo" value="${dashDateTo}"/></div><button type="submit" class="zdash-dr-apply">&#10003; Apply</button></form></details><a href="${urlAll}" class="zdash-chip${(presetActive=='all' && !showCustom)?string(' on','')}">All time</a><a href="${urlToday}" class="zdash-chip${(presetActive=='today')?string(' on','')}">Today</a><a href="${urlWeek}" class="zdash-chip${(presetActive=='week')?string(' on','')}">This Week</a><a href="${urlMonth}" class="zdash-chip${(presetActive=='month')?string(' on','')}">This Month</a><a href="${url30}" class="zdash-chip${(presetActive=='last30')?string(' on','')}">Last 30 Days</a><a href="${urlYear}" class="zdash-chip${(presetActive=='year')?string(' on','')}">This Year</a><a href="${urlSettings}" title="Customize dashboard widgets" style="margin-left:auto;color:#9C93B4;font-size:18px;line-height:1;text-decoration:none;padding:2px 6px">&#9881;</a></div>]]></text></render-mode>
+        <container style="sd-toolbar q-px-lg q-py-md q-mb-md zenith-card bg-white shadow-1 border-radius-lg">
+            <render-mode><text type="html,vuet,qvt" template="true"><![CDATA[
+              <div class="sd-datebar">
+                <a href="${urlSettings}" class="sd-customize" title="Customize dashboard widgets"><span class="material-icons" aria-hidden="true">tune</span> Customize</a>
+                <details class="zdash-dr"><summary class="zdash-chip zdash-dr-sum${showCustom?string(' on','')}"><span class="material-icons" aria-hidden="true">calendar_today</span> <#if (showCustom!false) && (dashDate!'')?has_content>${dashDate}<#if (dashDateTo!'')?has_content && dashDateTo != dashDate> – ${dashDateTo}</#if><#else>Date range</#if> &#9662;</summary><form method="get" action="." class="zdash-dr-pop"><input type="hidden" name="dateMode" value="custom"/><div class="zdash-dr-row"><span>From</span><input type="date" name="dashDate" value="${dashDate}"/></div><div class="zdash-dr-row"><span>To</span><input type="date" name="dashDateTo" value="${dashDateTo}"/></div><button type="submit" class="zdash-dr-apply">Apply</button></form></details>
+                <div class="sd-presets"><a href="${urlToday}" class="zdash-chip${(presetActive=='today')?string(' on','')}">Today</a><a href="${urlWeek}" class="zdash-chip${(presetActive=='week')?string(' on','')}">This Week</a><a href="${urlMonth}" class="zdash-chip${(presetActive=='month')?string(' on','')}">This Month</a><a href="${urlYear}" class="zdash-chip${(presetActive=='year')?string(' on','')}">This Year</a></div>
+                <details class="sd-more-periods"><summary>More periods</summary><div><a href="${urlAll}" class="zdash-chip${(presetActive=='all' && !showCustom)?string(' on','')}">All time</a><a href="${url30}" class="zdash-chip${(presetActive=='last30')?string(' on','')}">Last 30 days</a></div></details>
+              </div>
+            ]]></text></render-mode>
             <!-- ZE-DATEPICKER: superseded by the compact <details> date-range pill in the chip row; keep the
                  form defined but never render it (condition false) so the bulky From/To panel can't reappear. -->
             <section name="wDateCustom">
@@ -384,18 +392,14 @@
         <container-row>
             <!-- Total Orders -->
             <row-col lg="3" md="6" sm="12">
-                <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-lg q-mb-md">
-                    <container style="row items-start justify-between">
-                        <container>
+                <container style="sd-metric-card zenith-card bg-white shadow-2 border-radius-lg q-pa-lg q-mb-md">
+                    <container style="sd-metric-main">
+                        <container style="sd-metric-icon sd-green"><render-mode><text type="html,qvt,vuet"><![CDATA[<span class="material-icons" aria-hidden="true">trending_up</span>]]></text></render-mode></container>
+                        <container style="sd-metric-copy">
                             <label text="Total Sales" type="p" style="text-grey-7 text-uppercase text-weight-bold q-mb-xs"/>
                             <label text="${currSymbol}${zinr.inr(ec.l10n.format(totalSalesAmount ?: 0, '#,##,##0'))}" type="h4" style="text-dark text-weight-bold q-my-none"/>
                         </container>
-                        <container style="column items-end q-gutter-xs">
-                            <container style="q-pa-sm bg-green-1 border-radius-md text-green-9">
-                                <render-mode><text type="html"><![CDATA[<q-icon name="trending_up" class="text-h4"/>]]></text></render-mode>
-                            </container>
-                            <render-mode><text type="html,qvt,vuet">${salesSparkHtml}</text></render-mode>
-                        </container>
+                        <container style="sd-metric-spark"><render-mode><text type="html,qvt,vuet">${salesSparkHtml}</text></render-mode></container>
                     </container>
                     <render-mode><text type="html,qvt,vuet">${salesDeltaHtml}</text></render-mode>
                 </container>
@@ -403,18 +407,14 @@
 
             <!-- Active Quotes -->
             <row-col lg="3" md="6" sm="12">
-                <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-lg q-mb-md">
-                    <container style="row items-start justify-between">
-                        <container>
+                <container style="sd-metric-card zenith-card bg-white shadow-2 border-radius-lg q-pa-lg q-mb-md">
+                    <container style="sd-metric-main">
+                        <container style="sd-metric-icon sd-orange"><render-mode><text type="html,qvt,vuet"><![CDATA[<span class="material-icons" aria-hidden="true">request_quote</span>]]></text></render-mode></container>
+                        <container style="sd-metric-copy">
                             <label text="Active Quotes" type="p" style="text-grey-7 text-uppercase text-weight-bold q-mb-xs"/>
                             <label text="${activeQuotes}" type="h4" style="text-dark text-weight-bold q-my-none"/>
                         </container>
-                        <container style="column items-end q-gutter-xs">
-                            <container style="q-pa-sm bg-orange-1 border-radius-md text-orange-8">
-                                <render-mode><text type="html"><![CDATA[<q-icon name="request_quote" class="text-h4"/>]]></text></render-mode>
-                            </container>
-                            <render-mode><text type="html,qvt,vuet">${quotesSparkHtml}</text></render-mode>
-                        </container>
+                        <container style="sd-metric-spark"><render-mode><text type="html,qvt,vuet">${quotesSparkHtml}</text></render-mode></container>
                     </container>
                     <render-mode><text type="html,qvt,vuet">${quotesDeltaHtml}</text></render-mode>
                 </container>
@@ -422,18 +422,14 @@
 
             <!-- Total Customers -->
             <row-col lg="3" md="6" sm="12">
-                <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-lg q-mb-md">
-                    <container style="row items-start justify-between">
-                        <container>
+                <container style="sd-metric-card zenith-card bg-white shadow-2 border-radius-lg q-pa-lg q-mb-md">
+                    <container style="sd-metric-main">
+                        <container style="sd-metric-icon sd-blue"><render-mode><text type="html,qvt,vuet"><![CDATA[<span class="material-icons" aria-hidden="true">groups</span>]]></text></render-mode></container>
+                        <container style="sd-metric-copy">
                             <label text="Total Customers" type="p" style="text-grey-7 text-uppercase text-weight-bold q-mb-xs"/>
                             <label text="${totalCustomers}" type="h4" style="text-dark text-weight-bold q-my-none"/>
                         </container>
-                        <container style="column items-end q-gutter-xs">
-                            <container style="q-pa-sm bg-blue-1 border-radius-md text-blue-9">
-                                <render-mode><text type="html"><![CDATA[<q-icon name="people" class="text-h4"/>]]></text></render-mode>
-                            </container>
-                            <render-mode><text type="html,qvt,vuet">${custSparkHtml}</text></render-mode>
-                        </container>
+                        <container style="sd-metric-spark"><render-mode><text type="html,qvt,vuet">${custSparkHtml}</text></render-mode></container>
                     </container>
                     <render-mode><text type="html,qvt,vuet">${custDeltaHtml}</text></render-mode>
                 </container>
@@ -441,18 +437,14 @@
 
             <!-- Total Invoices -->
             <row-col lg="3" md="6" sm="12">
-                <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-lg q-mb-md">
-                    <container style="row items-start justify-between">
-                        <container>
+                <container style="sd-metric-card zenith-card bg-white shadow-2 border-radius-lg q-pa-lg q-mb-md">
+                    <container style="sd-metric-main">
+                        <container style="sd-metric-icon sd-rose"><render-mode><text type="html,qvt,vuet"><![CDATA[<span class="material-icons" aria-hidden="true">receipt_long</span>]]></text></render-mode></container>
+                        <container style="sd-metric-copy">
                             <label text="Generated Invoices" type="p" style="text-grey-7 text-uppercase text-weight-bold q-mb-xs"/>
                             <label text="${totalInvoices}" type="h4" style="text-dark text-weight-bold q-my-none"/>
                         </container>
-                        <container style="column items-end q-gutter-xs">
-                            <container style="q-pa-sm bg-red-1 border-radius-md text-red-9">
-                                <render-mode><text type="html"><![CDATA[<q-icon name="receipt_long" class="text-h4"/>]]></text></render-mode>
-                            </container>
-                            <render-mode><text type="html,qvt,vuet">${invSparkHtml}</text></render-mode>
-                        </container>
+                        <container style="sd-metric-spark"><render-mode><text type="html,qvt,vuet">${invSparkHtml}</text></render-mode></container>
                     </container>
                     <render-mode><text type="html,qvt,vuet">${invDeltaHtml}</text></render-mode>
                 </container>
@@ -497,7 +489,7 @@
                                 grid: { borderColor: '#E5E7EB' },
                                 stroke: { show: true, width: 2, colors: ['transparent'] },
                                 tooltip: { shared: true, intersect: false },
-                                legend: { position: 'bottom' },
+                                legend: { position: 'top', horizontalAlign: 'center' },
                                 dataLabels: { enabled: false }
                             }).render();
                         })();})"/>
@@ -522,7 +514,7 @@
                     new ApexCharts(document.querySelector(&quot;#salesCatChart&quot;), {
                         chart: { type: 'bar', height: 300, toolbar: { show: false }, fontFamily: 'Roboto, sans-serif' },
                         series: [{ name: 'Sales', data: vals }],
-                        xaxis: { categories: cats },
+                        xaxis: { categories: cats, labels: { rotate: 0, trim: true, hideOverlappingLabels: true } },
                         yaxis: { labels: { formatter: fmtL } },
                         plotOptions: { bar: { distributed: true, columnWidth: '55%', borderRadius: 3, borderRadiusApplication: 'end' } },
                         colors: palette,
@@ -546,7 +538,7 @@
         <!-- Sales Forecast Infographic -->
         <section name="wForecast" condition="showForecast"><widgets>
         <render-mode><text type="html"><![CDATA[<div class="dash-widget" data-wkey="forecast"><div class="dash-handle" title="Drag to reorder">&#8942;&#8942;</div>]]></text></render-mode>
-        <container style="zenith-card bg-indigo-1 shadow-2 border-radius-lg q-pa-md q-mb-md">
+        <container style="sd-forecast zenith-card bg-white shadow-2 border-radius-lg q-pa-md q-mb-md">
             <container style="row items-center justify-between q-mb-sm">
                 <container style="column">
                     <label text="What's coming — Sales Forecast" type="h6" style="text-primary text-weight-bold q-my-none"/>
@@ -721,6 +713,7 @@
         </container-row>
         <render-mode><text type="html"><![CDATA[</div>]]></text></render-mode>
 
+        <render-mode><text type="html,qvt,vuet"><![CDATA[</div>]]></text></render-mode>
         <render-mode><text type="html" template="true"><![CDATA[<script>window.__dashLayout={saveUrl:(("${ec.web.request.requestURI}").replace(/\/+$/,''))+'/saveDashOrder',order:"${dashOrderCsv}",sizes:"${dashSizeCsv}"};</script><script src="/zenithstatic/js/dash-layout.js?v=6"></script>]]></text></render-mode>
 
     </widgets>
