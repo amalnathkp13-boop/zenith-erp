@@ -1,21 +1,15 @@
 /* Stock Levels presentation enhancement. Native query, controls and exports stay authoritative. */
 (function () {
   'use strict';
-  var labels = new Map(), moved = [], scheduled = false;
+  var moved = [], scheduled = false;
   function node(tag, cls, text) { var n = document.createElement(tag); n.className = cls || ''; if (text != null) n.textContent = text; return n; }
   function icon(name) { var n = node('span', 'material-icons', name); n.setAttribute('aria-hidden', 'true'); return n; }
   function button(label, glyph, action, cls) { var b = node('button', cls || 'sl-button'); b.type = 'button'; b.title = label; b.setAttribute('aria-label', label); if (glyph) b.appendChild(icon(glyph)); b.addEventListener('click', action); return b; }
   function chrome(root) {
     if (!root) {
-      labels.forEach(function (value, link) { if (link.isConnected) link.textContent = value; }); labels.clear();
       moved.reverse().forEach(function (m) { if (m.parent.isConnected) m.parent.insertBefore(m.link, m.next && m.next.parentNode === m.parent ? m.next : null); }); moved = [];
       return;
     }
-    var titles = { StockLevels:'Stock', FindReceipt:'Receive Stock', StockTransfers:'Stock Transfer', StockAdjustments:'Stock Adjustment', GatePasses:'Gate Entry', CreateCatalogue:'Product List', ExpiryDashboard:'Expiry', DemandForecast:'Sales Forecast' };
-    document.querySelectorAll('#zq-subnav a,#z-subnav a').forEach(function (link) {
-      var title = titles[new URL(link.href, location.href).pathname.split('/').pop()];
-      if (title && link.textContent !== title) { if (!labels.has(link)) labels.set(link, link.textContent); link.textContent = title; }
-    });
     var side = document.querySelector('#zq-sidebar .zqs-scroll,#z-sidebar .zs-scroll');
     if (side && !moved.length) Array.from(side.querySelectorAll('a')).filter(function (a) { return /\/zenith\/(pricing|barcode|tax|expenses)(\/|$)/i.test(new URL(a.href, location.href).pathname); }).forEach(function (link) { moved.push({link:link,parent:link.parentNode,next:link.nextSibling}); side.appendChild(link); });
   }

@@ -123,6 +123,11 @@
                 def _f2 = new java.text.SimpleDateFormat("dd MMM yyyy")
                 displayDate = _f1.format(java.sql.Date.valueOf(dashDate)) + " – " + _f2.format(java.sql.Date.valueOf(dashDateTo))
             }
+            def rangeStart = java.sql.Date.valueOf(dashDate)
+            def rangeEnd = java.sql.Date.valueOf(dashDateTo)
+            def rangeShort = new java.text.SimpleDateFormat("dd MMM")
+            def rangeLong = new java.text.SimpleDateFormat("dd MMM yyyy")
+            rangeDisplay = (dashDate.substring(0, 4) == dashDateTo.substring(0, 4) ? rangeShort : rangeLong).format(rangeStart) + " – " + rangeLong.format(rangeEnd)
 
             // ZE-DASH-04 (Owner View): mode-adaptive location filter — MUST be computed BEFORE the entity-finds
             // below (which read _locSessionIds). Locations = the tenant's retail-store FACILITIES (branch/Owner-View)
@@ -213,7 +218,7 @@
                 _donutSegs.append('<circle cx="70" cy="70" r="52" fill="none" stroke="'+col+'" stroke-width="17" pathLength="100" stroke-dasharray="'+String.format('%.2f',pctExact.doubleValue())+' 100" stroke-dashoffset="'+String.format('%.2f',-_cumPct)+'" transform="rotate(-90 70 70)" stroke-linecap="butt"/>')
                 _cumPct += pctExact.doubleValue()
             }
-            paymentDonutSvg = '<svg width="150" height="150" viewBox="0 0 140 140">' + _donutSegs.toString() + '</svg>'
+            paymentDonutSvg = '<svg width="150" height="150" viewBox="0 0 140 140"><circle cx="70" cy="70" r="52" fill="none" stroke="#EDF0F5" stroke-width="17"/>' + _donutSegs.toString() + '</svg>'
 
             // Hourly sales breakdown
             def hourlySales = new BigDecimal[24]
@@ -252,17 +257,17 @@
                 def productMap = [:]
                 itemList.each { item ->
                     def pid = item.productName ?: item.productId
-                    if (!productMap[pid]) productMap[pid] = [name: pid, qty: BigDecimal.ZERO, total: BigDecimal.ZERO]
-                    productMap[pid].qty = productMap[pid].qty + ((item.quantity ?: 0) as BigDecimal)
+                    if (!productMap[pid]) productMap[pid] = [name: pid, orders: new java.util.HashSet(), total: BigDecimal.ZERO]
+                    productMap[pid].orders.add(item.transactionId)
                     productMap[pid].total = productMap[pid].total + ((item.lineTotal ?: 0) as BigDecimal)
                 }
-                def sorted = productMap.values().sort { -(it.total as BigDecimal) }.take(10)
+                def sorted = productMap.values().sort { -(it.total as BigDecimal) }.take(5)
                 def maxP = sorted ? (sorted[0].total as BigDecimal) : BigDecimal.ONE
                 if (maxP == BigDecimal.ZERO) maxP = BigDecimal.ONE
                 sorted.eachWithIndex { p, idx ->
                     def pct = (p.total * 100 / maxP).intValue()
-                    topProductBars.add([name: p.name, total: zinr.inr(ec.l10n.format(p.total, '#,##0')),
-                        qty: zinr.inr(ec.l10n.format(p.qty, '#,##0')), pct: pct,
+                    topProductBars.add([name: p.name, total: '₹' + zinr.inr(ec.l10n.format(p.total, '#,##0.00')),
+                        orders: p.orders.size(), pct: pct,
                         color: barColors[idx % barColors.size()]])
                 }
             }
@@ -550,8 +555,16 @@
             def _pts2 = []
             for (int h=0; h<24; h++) { double x=_bx+(h*_plotW/23.0); double y=_by-(((hourlyBars[h].pct as int)/100.0)*_plotH); _pts2.add([x:x, y:y, has:hourlyBars[h].hasValue]) }
             def _f = { double v -> String.format('%.1f', v) }
-            def _lineStr = _pts2.collect { _f(it.x)+','+_f(it.y) }.join(' ')
-            def _areaStr = 'M'+_f(_pts2[0].x)+','+_f(_by)+' L'+_pts2.collect{ _f(it.x)+','+_f(it.y) }.join(' L')+' L'+_f(_pts2[-1].x)+','+_f(_by)+' Z'
+            // Smooth the hourly line without changing any actual sales values.
+            def _curve = new StringBuilder('M'+_f(_pts2[0].x)+','+_f(_pts2[0].y))
+            for (int i=0; i<_pts2.size()-1; i++) {
+                def p0 = _pts2[Math.max(0,i-1)], p1 = _pts2[i], p2 = _pts2[i+1], p3 = _pts2[Math.min(_pts2.size()-1,i+2)]
+                double c1x=p1.x+(p2.x-p0.x)/6.0, c1y=p1.y+(p2.y-p0.y)/6.0
+                double c2x=p2.x-(p3.x-p1.x)/6.0, c2y=p2.y-(p3.y-p1.y)/6.0
+                _curve.append(' C'+_f(c1x)+','+_f(c1y)+' '+_f(c2x)+','+_f(c2y)+' '+_f(p2.x)+','+_f(p2.y))
+            }
+            def _lineStr = _curve.toString()
+            def _areaStr = _lineStr+' L'+_f(_pts2[-1].x)+','+_f(_by)+' L'+_f(_pts2[0].x)+','+_f(_by)+' Z'
             def _dots = new StringBuilder(); _pts2.each { if (it.has) _dots.append('<circle cx="'+_f(it.x)+'" cy="'+_f(it.y)+'" r="3" fill="#3B82F6"/>') }
             def _grid = new StringBuilder()
             for (int t=0; t<=4; t++) { double frac=t/4.0; double yv=_by-frac*_plotH; def val=((hourlyMax?:1) as BigDecimal)*frac
@@ -562,8 +575,9 @@
             def _xl = new StringBuilder()
             for (int h=0; h<24; h+=2) { double x=_bx+(h*_plotW/23.0); _xl.append('<text x="'+_f(x)+'" y="'+_f(_by+15)+'" font-size="9" fill="#9CA3AF" text-anchor="middle">'+_hrLabels[h]+'</text>') }
             salesLineSvg = '<svg viewBox="0 0 '+((int)_CW)+' '+((int)_CH)+'" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;min-width:560px">'+
-                _grid.toString()+'<path d="'+_areaStr+'" fill="#3B82F6" fill-opacity="0.10"/>'+
-                '<polyline points="'+_lineStr+'" fill="none" stroke="#3B82F6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'+
+                '<defs><linearGradient id="posDashSalesFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#57A9F5" stop-opacity=".25"/><stop offset="100%" stop-color="#57A9F5" stop-opacity=".02"/></linearGradient></defs>'+
+                _grid.toString()+'<path d="'+_areaStr+'" fill="url(#posDashSalesFill)"/>'+
+                '<path d="'+_lineStr+'" fill="none" stroke="#57A9F5" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>'+
                 _dots.toString()+_xl.toString()+'</svg>'
 
             // ===== Recent transactions (last 5) — for the mockup's Recent Transactions table =====
@@ -585,469 +599,118 @@
     </actions>
 
     <widgets>
-        <render-mode><text type="html,qvt" template="true"><![CDATA[<details id="posHelp_dashboard" class="pos-reference-help" style="background:#e8f0fe;border:1px solid #4285f4;border-left:6px solid #1a73e8;border-radius:10px;padding:10px 16px;margin:0 0 14px 0;font-family:Segoe UI,Arial,sans-serif"><summary style="cursor:pointer;font-weight:800;font-size:15px;color:#174ea6;outline:none">&#128202; New here? POS Dashboard &mdash; quick help <span style="font-weight:600;color:#5f6368;font-size:12px">(click to hide / show)</span></summary><div style="font-size:13px;color:#202124;line-height:1.9;margin-top:8px">This screen is your day at a glance &mdash; total sales, number of bills, how customers paid, the busiest hours and your best-selling items.<br><b>1</b>&nbsp;Pick a preset (Today / This Week / This Month / Last 30) or a custom <b>From&ndash;To range</b> at the top to view any period.<br><b>2</b>&nbsp;Click any coloured <b>tile</b> (Billing, Transactions, Reports, Cash&hellip;) to open that screen.<br><b>3</b>&nbsp;Keep an eye on the <b>Stock</b>, <b>Cash</b> and <b>Expenses</b> boxes during the day.</div></details>]]></text></render-mode>
-        <!-- Dashboard Header -->
-        <container style="pos-reference-header row items-center justify-between q-px-lg q-py-sm q-mb-md">
-            <container style="row items-center q-gutter-md">
-                <render-mode><text type="html"><![CDATA[<q-icon name="dashboard" class="text-h4"/>]]></text></render-mode>
-                <container>
-                    <label text="POS Dashboard" type="h5" style="text-weight-bold q-my-none"/>
-                    <label text="${displayDate}" style="text-caption text-grey-7"/>
-                </container>
-            </container>
-            <container style="row items-center q-gutter-sm">
-                <section name="SetDefPos"><condition><expression>!isDefaultDashPos</expression></condition><widgets>
-                    <link url="setDefault" text="☆ Set as my default" parameter-map="[dd:'pos', dashDate:dashDate, dashDateTo:dashDateTo, dashLoc:dashLoc]" style="q-btn--flat q-btn--dense"/>
-                </widgets></section>
-                <section name="IsDefPos"><condition><expression>isDefaultDashPos</expression></condition><widgets>
-                    <link url="setDefault" text="✓ My default" parameter-map="[dd:'home', dashDate:dashDate, dashDateTo:dashDateTo, dashLoc:dashLoc]" style="q-btn--flat q-btn--dense"/>
-                </widgets></section>
-                <section name="CanSetTeamPos"><condition><expression>canSetTeamPos</expression></condition><widgets>
-                    <section name="SetTeamPos"><condition><expression>!isTeamDefaultPos</expression></condition><widgets>
-                        <link url="setTeamDefault" text="👥 Set as team default" parameter-map="[dd:'pos', dashDate:dashDate, dashDateTo:dashDateTo, dashLoc:dashLoc]" style="q-btn--flat q-btn--dense"/>
-                    </widgets></section>
-                    <section name="IsTeamPos"><condition><expression>isTeamDefaultPos</expression></condition><widgets>
-                        <link url="setTeamDefault" text="👥 Team default ✓" parameter-map="[dd:'home', dashDate:dashDate, dashDateTo:dashDateTo, dashLoc:dashLoc]" style="q-btn--flat q-btn--dense"/>
-                    </widgets></section>
-                </widgets></section>
-                <link url="goTerminal" text="Billing" icon="fa fa-calculator" btn-type="success"/>
-            </container>
-        </container>
-
-        <!-- ZE-DASH-01: date-range filter (preset chips + custom From/To). Drives dayStart/dayEnd for every widget below. -->
-        <container style="pos-reference-dates q-px-lg q-py-md q-mb-md zenith-card bg-white shadow-1 border-radius-lg">
-            <render-mode><text type="html,vuet,qvt" template="true"><![CDATA[<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-family:Segoe UI,Arial,sans-serif;margin-bottom:10px"><span style="font-size:11.5px;font-weight:800;color:#5C6B85;letter-spacing:.06em;margin-right:4px">DATE RANGE</span><details class="zdash-dr"><summary class="zdash-dr-sum" style="padding:6px 15px;border-radius:999px;font-size:12.5px;font-weight:700;border:1px solid ${showCustom?string('#7C3AED','#CFE0FA')};background:${showCustom?string('#7C3AED','#E7F0FD')};color:${showCustom?string('#ffffff','#463D7A')};cursor:pointer">&#128197; <#if (showCustom!false)>${displayDate}<#else>Date-wise</#if> &#9662;</summary><form method="get" action="." class="zdash-dr-pop"><input type="hidden" name="dateMode" value="custom"/><input type="hidden" name="dashLoc" value="${dashLoc!''}"/><div class="zdash-dr-row"><span>From</span><input type="date" name="dashDate" value="${dashDate}"/></div><div class="zdash-dr-row"><span>To</span><input type="date" name="dashDateTo" value="${dashDateTo}"/></div><button type="submit" class="zdash-dr-apply">&#10003; Apply</button></form></details><a href="${urlToday}" style="padding:6px 15px;border-radius:999px;font-size:12.5px;font-weight:700;text-decoration:none;border:1px solid ${(presetActive=='today')?string('#7C3AED','#CFE0FA')};background:${(presetActive=='today')?string('#7C3AED','#E7F0FD')};color:${(presetActive=='today')?string('#ffffff','#463D7A')}">Today</a><a href="${urlWeek}" style="padding:6px 15px;border-radius:999px;font-size:12.5px;font-weight:700;text-decoration:none;border:1px solid ${(presetActive=='week')?string('#7C3AED','#CFE0FA')};background:${(presetActive=='week')?string('#7C3AED','#E7F0FD')};color:${(presetActive=='week')?string('#ffffff','#463D7A')}">This Week</a><a href="${urlMonth}" style="padding:6px 15px;border-radius:999px;font-size:12.5px;font-weight:700;text-decoration:none;border:1px solid ${(presetActive=='month')?string('#7C3AED','#CFE0FA')};background:${(presetActive=='month')?string('#7C3AED','#E7F0FD')};color:${(presetActive=='month')?string('#ffffff','#463D7A')}">This Month</a><a href="${url30}" style="padding:6px 15px;border-radius:999px;font-size:12.5px;font-weight:700;text-decoration:none;border:1px solid ${(presetActive=='last30')?string('#7C3AED','#CFE0FA')};background:${(presetActive=='last30')?string('#7C3AED','#E7F0FD')};color:${(presetActive=='last30')?string('#ffffff','#463D7A')}">Last 30 Days</a><a href="${urlYear}" style="padding:6px 15px;border-radius:999px;font-size:12.5px;font-weight:700;text-decoration:none;border:1px solid ${(presetActive=='year')?string('#7C3AED','#CFE0FA')};background:${(presetActive=='year')?string('#7C3AED','#E7F0FD')};color:${(presetActive=='year')?string('#ffffff','#463D7A')}">This Year</a><a href="${urlSettings}" title="Customize dashboard widgets" style="margin-left:auto;color:#9C93B4;font-size:18px;line-height:1;text-decoration:none;padding:2px 6px">&#9881;</a></div>]]></text></render-mode>
-            <!-- ZE-DATEPICKER: superseded by the compact <details> date-range pill in the chip row (dashLoc
-                 preserved in its GET form); keep the form defined but never render it (condition false). -->
-            <section name="wDateCustom">
-                <condition><expression>false</expression></condition>
-                <widgets>
-                <form-single name="DateForm" transition="changeDashDate">
-                    <field name="dashDate"><default-field title="From"><date-time type="date" default-value="${dashDate}"/></default-field></field>
-                    <field name="dashDateTo"><default-field title="To"><date-time type="date" default-value="${dashDateTo}"/></default-field></field>
-                    <field name="dashLoc"><default-field><hidden/></default-field></field>
-                    <field name="goBtn"><default-field title=""><submit text="Apply" icon="fa fa-check"/></default-field></field>
-                </form-single>
-                </widgets>
-            </section>
-        </container>
-
-        <!-- ZE-DASH-04 (Owner View): shop/counter location filter (auto-hidden for single-location tenants) -->
-        <section name="LocFilter" condition="locMode != 'none'">
-            <widgets>
-                <container style="q-px-lg q-py-sm q-mb-md zenith-card bg-white shadow-1 border-radius-lg">
-                    <render-mode><text type="html" template="true"><![CDATA[<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-family:Segoe UI,Arial,sans-serif"><span style="font-size:11.5px;font-weight:800;color:#5C6B85;letter-spacing:.06em;margin-right:4px">${(locMode=='store')?string('SHOP','COUNTER')}</span><a href="${urlLocAll}" style="padding:6px 15px;border-radius:999px;font-size:12.5px;font-weight:700;text-decoration:none;border:1px solid ${(dashLoc=='')?string('#7C3AED','#CFE0FA')};background:${(dashLoc=='')?string('#7C3AED','#E7F0FD')};color:${(dashLoc=='')?string('#ffffff','#463D7A')}">${(locMode=='store')?string('All Shops','All Counters')}</a><#list locOptions as o><a href="${o.url}" style="padding:6px 15px;border-radius:999px;font-size:12.5px;font-weight:700;text-decoration:none;border:1px solid ${(dashLoc==o.id)?string('#7C3AED','#CFE0FA')};background:${(dashLoc==o.id)?string('#7C3AED','#E7F0FD')};color:${(dashLoc==o.id)?string('#ffffff','#463D7A')}">${o.name}</a></#list></div>]]></text></render-mode>
-                </container>
-            </widgets>
-        </section>
-
-        <!-- ZE-DASH-02: Customize (switchable widgets) panel — opens via the gear button -->
-        <section name="DashSettings" condition="showSettings == '1'">
-            <widgets>
-                <container style="q-px-lg q-py-md q-mb-md zenith-card bg-white shadow-1 border-radius-lg">
-                    <render-mode><text type="html"><![CDATA[<div style="font-size:12.5px;font-weight:800;color:#463D7A;letter-spacing:.04em;margin-bottom:2px">&#9881; CUSTOMIZE DASHBOARD</div><div style="font-size:12px;color:#5C6B85;margin-bottom:8px">Tick the sections you want to see &mdash; saved to your account, restored next time.</div>]]></text></render-mode>
-                    <form-single name="DashLayoutForm" transition="saveDashLayout">
-                        <field name="dashDate"><default-field><hidden/></default-field></field>
-                        <field name="dashDateTo"><default-field><hidden/></default-field></field>
-                        <field name="w_salesKpi"><default-field title="Sales KPIs (sales, avg ticket, tax, discounts, cancelled, sessions)"><check><option key="Y" text=" "/></check></default-field></field>
-                        <field name="w_opsKpi"><default-field title="Operations (cash in / out, expenses, wastage, stock, KOTs)"><check><option key="Y" text=" "/></check></default-field></field>
-                        <field name="w_health"><default-field title="Business Health scorecard (composite score across 5 metrics)"><check><option key="Y" text=" "/></check></default-field></field>
-                        <field name="w_hourly"><default-field title="Time-Wise Sales chart"><check><option key="Y" text=" "/></check></default-field></field>
-                        <field name="w_payments"><default-field title="Payment Breakdown"><check><option key="Y" text=" "/></check></default-field></field>
-                        <field name="w_products"><default-field title="Top Selling Products"><check><option key="Y" text=" "/></check></default-field></field>
-                        <field name="saveBtn"><default-field title=""><submit text="Save Layout" icon="fa fa-check"/></default-field></field>
-                    </form-single>
-                    <container style="row q-gutter-sm q-mt-sm">
-                        <link url="resetDashLayout" text="Reset to Default" icon="fa fa-undo" btn-type="warning" parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dashLoc:dashLoc]"/>
-                        <link url="." text="Close" btn-type="flat" parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dashLoc:dashLoc]"/>
-                    </container>
-                </container>
-            </widgets>
-        </section>
-
-        <render-mode><text type="html"><![CDATA[<style>
-.dash-widget{position:relative}
-.dash-widget.dragging{opacity:.4}
-.dash-widget .dash-handle{position:absolute;top:9px;right:13px;z-index:6;cursor:grab;color:#8ba6cf;font-size:13px;line-height:.55;padding:5px 7px;border-radius:7px;background:rgba(236, 232, 251,.9);user-select:none;font-weight:900;letter-spacing:-3px;box-shadow:0 1px 2px rgba(70, 61, 122,.12)}
-.dash-widget .dash-handle:hover{color:#7C3AED;background:#E7F0FD}
-.dash-widget .dash-handle:active{cursor:grabbing}
-</style>]]></text></render-mode>
-
-        <!-- KPI Cards Row 1: Sales -->
-        <section name="wSalesKpi" condition="showSalesKpi"><widgets>
-        <render-mode><text type="html"><![CDATA[<div class="dash-widget" data-wkey="salesKpi"><div class="dash-handle" title="Drag to reorder">&#8942;&#8942;</div>]]></text></render-mode>
         <render-mode><text type="html,qvt" template="true"><![CDATA[
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:16px;margin-bottom:20px;font-family:Inter,Segoe UI,Arial,sans-serif">
-<#list primaryCards as c>
-  <div style="background:${c.bg};border:1px solid #E5E7EB;border-radius:12px;padding:16px;box-shadow:0 1px 2px rgba(17,24,39,.05)">
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
-      <div style="font-size:20px;font-weight:800;color:${c.ac};line-height:1.15;word-break:break-word">${c.val}</div>
-      <div style="width:38px;height:38px;border-radius:999px;background:${c.ib};color:${c.ac};display:flex;align-items:center;justify-content:center;flex:0 0 auto">${c.icon}</div>
-    </div>
-    <div style="font-size:12.5px;color:#6B7280;font-weight:600;margin-top:8px">${c.label}</div>
-    <#if c.sub??><div style="font-size:11px;color:#9CA3AF;margin-top:2px">${c.sub}</div></#if>
-    <div style="display:flex;align-items:center;gap:5px;margin-top:8px"><span style="color:${c.dcol};font-size:9px">&#9670;</span><span style="font-size:11px;color:${c.dcol};font-weight:600">${c.delta}</span></div>
+<main class="pos-dash-v2">
+  <div class="pos-dash-toolbar">
+    <a class="pos-dash-customize" href="${urlSettings?html}">&#9881; Customize</a>
+    <details class="pos-dash-range">
+      <summary>&#128197; ${rangeDisplay?html} &#9662;</summary>
+      <form method="get" action=".">
+        <input type="hidden" name="dateMode" value="custom"/>
+        <input type="hidden" name="dashLoc" value="${(dashLoc!'')?html}"/>
+        <label>From <input type="date" name="dashDate" value="${dashDate?html}"/></label>
+        <label>To <input type="date" name="dashDateTo" value="${dashDateTo?html}"/></label>
+        <button type="submit">Apply</button>
+      </form>
+    </details>
+    <span class="pos-dash-filter" title="Choose a date range"><span class="material-icons">filter_alt</span></span>
+    <nav class="pos-dash-periods" aria-label="Dashboard date range">
+      <a class="<#if presetActive == 'today'>active</#if>" href="${urlToday?html}">Today</a>
+      <a class="<#if presetActive == 'week'>active</#if>" href="${urlWeek?html}">This Week</a>
+      <a class="<#if presetActive == 'month'>active</#if>" href="${urlMonth?html}">This Month</a>
+      <a class="<#if presetActive == 'year'>active</#if>" href="${urlYear?html}">This Year</a>
+    </nav>
   </div>
-</#list>
-</div>
-        ]]></text></render-mode>
-        <render-mode><text type="html"><![CDATA[</div>]]></text></render-mode>
-        </widgets></section>
-
-        <!-- KPI Cards Row 2: Operations -->
-        <section name="wOpsKpi" condition="showOpsKpi"><widgets>
-        <render-mode><text type="html"><![CDATA[<div class="dash-widget" data-wkey="opsKpi"><div class="dash-handle" title="Drag to reorder">&#8942;&#8942;</div>]]></text></render-mode>
-        <render-mode><text type="html,qvt" template="true"><![CDATA[
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:16px;margin-bottom:20px;font-family:Inter,Segoe UI,Arial,sans-serif">
-<#list secondaryCards as c>
-  <div style="background:${c.bg};border-radius:12px;padding:16px;text-align:center">
-    <div style="font-size:18px;font-weight:800;color:${c.vc};line-height:1.2">${c.val}</div>
-    <div style="font-size:12px;color:#6B7280;font-weight:600;margin-top:4px">${c.label}</div>
-    <#if c.sub??><div style="font-size:11px;color:#9CA3AF;margin-top:2px">${c.sub}</div></#if>
-  </div>
-</#list>
-</div>
-        ]]></text></render-mode>
-        <render-mode><text type="html"><![CDATA[</div>]]></text></render-mode>
-        </widgets></section>
-
-        <!-- Business Health scorecard (ZcERP report v2.1.0) — real composite score from live data -->
-        <section name="wHealth" condition="showHealth"><widgets>
-        <render-mode><text type="html"><![CDATA[<div class="dash-widget" data-wkey="health"><div class="dash-handle" title="Drag to reorder">&#8942;&#8942;</div>]]></text></render-mode>
-        <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-lg q-mb-md">
-            <container style="row items-center justify-between q-mb-md">
-                <label text="Business Health" type="h6" style="text-weight-bold q-my-none"/>
-                <label text="composite score · updates with the date range" style="text-caption text-grey-6"/>
-            </container>
-            <section name="HealthHasData" condition="healthHasData">
-                <widgets>
-                    <render-mode><text type="html,qvt" template="true"><![CDATA[
-<div style="display:flex;flex-wrap:wrap;gap:26px;align-items:center;font-family:Segoe UI,Arial,sans-serif">
-  <div style="display:flex;flex-direction:column;align-items:center;flex:0 0 auto">
-    <div style="position:relative;width:120px;height:120px">
-      <svg width="120" height="120" viewBox="0 0 120 120">
-        <circle cx="60" cy="60" r="52" fill="none" stroke="#EEF0F5" stroke-width="12"></circle>
-        <circle cx="60" cy="60" r="52" fill="none" stroke="${healthColor}" stroke-width="12" stroke-linecap="round" pathLength="100" stroke-dasharray="${healthScore} 100" transform="rotate(-90 60 60)"></circle>
-      </svg>
-      <div style="position:absolute;top:0;left:0;width:120px;height:120px;display:flex;flex-direction:column;align-items:center;justify-content:center">
-        <div style="font-size:31px;font-weight:800;color:${healthColor};line-height:1">${healthScore}</div>
-        <div style="font-size:10px;color:#94a3b8;font-weight:700;letter-spacing:.05em">OUT OF 100</div>
-      </div>
-    </div>
-    <div style="background:${healthColor};color:#fff;padding:3px 16px;border-radius:999px;font-size:12.5px;font-weight:800;margin-top:10px">${healthLabel}</div>
-  </div>
-  <div style="flex:1;min-width:250px">
-    <#list healthMetrics as m>
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 2px;border-bottom:1px solid #F1F5F9">
-      <span style="font-size:13.5px;color:#334155;font-weight:600">${m.name}</span>
-      <span style="background:${m.pillBg};color:${m.pillFg};padding:3px 12px;border-radius:999px;font-size:11.5px;font-weight:700;white-space:nowrap">${m.status}</span>
-    </div>
+  <#if (showSettings!'') == '1'>
+  <form class="pos-dash-settings" method="post" action="saveDashLayout">
+    <strong>Customize Dashboard</strong>
+    <input type="hidden" name="moquiSessionToken" value="${ec.web.sessionToken?html}"/>
+    <input type="hidden" name="dashDate" value="${dashDate?html}"/>
+    <input type="hidden" name="dashDateTo" value="${dashDateTo?html}"/>
+    <label><input type="checkbox" name="w_salesKpi" value="Y" <#if showSalesKpi>checked</#if>/> Sales metrics</label>
+    <label><input type="checkbox" name="w_opsKpi" value="Y" <#if showOpsKpi>checked</#if>/> Operations metrics</label>
+    <label><input type="checkbox" name="w_hourly" value="Y" <#if showHourly>checked</#if>/> Sales analysis</label>
+    <label><input type="checkbox" name="w_products" value="Y" <#if showProducts>checked</#if>/> Top products</label>
+    <label><input type="checkbox" name="w_payments" value="Y" <#if showPayments>checked</#if>/> Payments</label>
+    <button type="submit">Save</button>
+    <a href="resetDashLayout?dashDate=${dashDate?html}&amp;dashDateTo=${dashDateTo?html}">Reset</a>
+  </form>
+  </#if>
+  <#if showSalesKpi>
+  <div class="pos-dash-primary">
+    <#list primaryCards as c>
+    <article class="pos-dash-metric" style="--pd-bg:${c.bg};--pd-color:${c.ac};--pd-icon-bg:${c.ib}">
+      <div class="pos-dash-metric-top"><strong>${c.val?html}</strong><span class="pos-dash-metric-icon">${c.icon}</span></div>
+      <div class="pos-dash-metric-label">${c.label?html}</div>
+      <#if c.sub??><div class="pos-dash-metric-sub">${c.sub?html}</div></#if>
+      <div class="pos-dash-metric-delta" style="color:${c.dcol}">&#9670; &nbsp;${c.delta?html}</div>
+    </article>
     </#list>
-    <div style="font-size:11px;color:#94a3b8;margin-top:9px;line-height:1.5">Computed from your live sales trend, cash flow, credit outstanding, catalog &amp; GST setup. A metric with no data for the selected range is skipped, not counted against you.</div>
   </div>
-</div>
-                    ]]></text></render-mode>
-                </widgets>
-            </section>
-            <section name="HealthNoData" condition="!healthHasData">
-                <widgets>
-                    <container style="bg-blue-1 q-pa-md border-radius-md text-center">
-                        <label text="Add products and record a few sales to see your business health score." type="p" style="text-blue-9 q-mb-none"/>
-                    </container>
-                </widgets>
-            </section>
-        </container>
-        <render-mode><text type="html"><![CDATA[</div>]]></text></render-mode>
-        </widgets></section>
-
-        <container-row>
-            <!-- LEFT: Charts -->
-            <row-col lg="8" md="7" sm="12">
-                <!-- Hourly Sales -->
-                <section name="wHourly" condition="showHourly"><widgets>
-                <render-mode><text type="html"><![CDATA[<div class="dash-widget" data-wkey="hourly"><div class="dash-handle" title="Drag to reorder">&#8942;&#8942;</div>]]></text></render-mode>
-                <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-lg q-mb-md">
-                    <render-mode><text type="html,qvt" template="true"><![CDATA[
-<div style="font-family:Inter,Segoe UI,Arial,sans-serif">
-  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:6px">
-    <h3 style="font-size:15px;font-weight:700;color:#111827;margin:0">Sales Analyst</h3>
-    <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#6B7280;font-weight:600">
-      <span style="border:1px solid #E5E7EB;border-radius:8px;padding:5px 10px">Hourly</span>
-      <span style="border:1px solid #E5E7EB;border-radius:8px;padding:5px 10px">&#128197; ${displayDate}</span>
-    </div>
+  </#if>
+  <#if showOpsKpi>
+  <div class="pos-dash-secondary">
+    <#list secondaryCards as c>
+    <article style="--pd-bg:${c.bg};--pd-color:${c.vc}">
+      <strong>${c.val?html}</strong><span>${c.label?html}</span>
+      <#if c.sub??><small>${c.sub?html}</small></#if>
+    </article>
+    </#list>
   </div>
-  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span style="width:14px;height:3px;border-radius:2px;background:#3B82F6;display:inline-block"></span><span style="font-size:11.5px;color:#6B7280">Sales (&#8377;)</span></div>
-  <div style="width:100%;overflow-x:auto">${salesLineSvg}</div>
-</div>
-                    ]]></text></render-mode>
-                </container>
-                <render-mode><text type="html"><![CDATA[</div>]]></text></render-mode>
-                </widgets></section>
-
-                <!-- Top Selling Products -->
-                <section name="wProducts" condition="showProducts"><widgets>
-                <render-mode><text type="html"><![CDATA[<div class="dash-widget" data-wkey="products"><div class="dash-handle" title="Drag to reorder">&#8942;&#8942;</div>]]></text></render-mode>
-                <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-lg q-mb-md">
-                    <container style="row items-center justify-between q-mb-md">
-                        <label text="Top Selling Products" type="h6" style="text-weight-bold q-my-none"/>
-                        <link url="goReports" text="View all" link-type="anchor" style="z-vlink"/>
-                    </container>
-                    <section name="TopProductsSection" condition="topProductBars">
-                        <widgets>
-                            <render-mode><text type="html,qvt" template="true"><![CDATA[
-<#list topProductBars as p>
-<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid #F1F5F9;font-family:Inter,Segoe UI,Arial,sans-serif">
-<span style="width:22px;height:22px;border-radius:6px;background:#7C3AED;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:0 0 auto">${p_index+1}</span>
-<div style="flex:1;min-width:0">
-<div style="font-size:13px;font-weight:600;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${p.name}">${p.name}</div>
-<div style="font-size:11px;color:#9CA3AF">${p.qty} sold</div>
-</div>
-<div style="font-size:13px;font-weight:700;color:#111827;white-space:nowrap">${p.total}</div>
-</div>
-</#list>
-                            ]]></text></render-mode>
-                        </widgets>
-                    </section>
-                    <section name="NoProductsSection" condition="!topProductBars">
-                        <widgets>
-                            <container style="text-center q-py-lg">
-                                <label text="No sales data for this date" style="text-grey-5"/>
-                            </container>
-                        </widgets>
-                    </section>
-                </container>
-                <render-mode><text type="html"><![CDATA[</div>]]></text></render-mode>
-                </widgets></section>
-            </row-col>
-
-            <!-- RIGHT: Payment + Quick Actions -->
-            <row-col lg="4" md="5" sm="12">
-                <!-- Payment Breakdown -->
-                <section name="wPayments" condition="showPayments"><widgets>
-                <render-mode><text type="html"><![CDATA[<div class="dash-widget" data-wkey="payments"><div class="dash-handle" title="Drag to reorder">&#8942;&#8942;</div>]]></text></render-mode>
-                <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-lg q-mb-md">
-                    <label text="Payment Breakdown" type="h6" style="text-weight-bold q-my-none q-mb-md"/>
-                    <section name="PaymentSection" condition="paymentBars">
-                        <widgets>
-                            <render-mode><text type="html,qvt" template="true"><![CDATA[
-<div style="font-family:Inter,Segoe UI,Arial,sans-serif;width:100%;flex:1 1 100%;box-sizing:border-box">
-  <div style="text-align:center;margin-bottom:14px"><div style="position:relative;width:150px;height:150px;display:inline-block">${paymentDonutSvg}
-    <div style="position:absolute;top:0;left:0;width:150px;height:150px;display:flex;flex-direction:column;align-items:center;justify-content:center">
-      <div style="font-size:17px;font-weight:800;color:#111827;line-height:1.1">&#8377;${zinr.inr(ec.l10n.format(totalSales, '#,##0'))}</div>
-      <div style="font-size:11px;color:#9CA3AF;font-weight:600">Total</div>
-    </div>
+  </#if>
+  <div class="pos-dash-upper">
+    <#if showHourly>
+    <section class="pos-dash-panel pos-dash-sales">
+      <header><h2>Sales Analyst</h2><div class="pos-dash-chart-controls"><span>Hourly &#9662;</span><span>&#128197; ${displayDate?html}</span></div></header>
+      <div class="pos-dash-legend"><i></i> Sales (&#8377;)</div>
+      <div class="pos-dash-chart">${salesLineSvg}</div>
+    </section>
+    </#if>
+    <#if showProducts>
+    <section class="pos-dash-panel pos-dash-products">
+      <header><h2>Top Selling Products</h2><a href="/apps/zenith/pos/Reports">View all</a></header>
+      <#if topProductBars?has_content>
+      <#list topProductBars as p>
+      <div class="pos-dash-product"><b>${p_index+1}</b><span><strong>${p.name?html}</strong><small>${p.orders} Orders</small></span><em>${p.total?html}</em></div>
+      </#list>
+      <#else><p class="pos-dash-empty">No sales in this date range</p></#if>
+    </section>
+    </#if>
+    <#if modPurchase!false>
+    <section class="pos-dash-panel pos-dash-feature">
+      <header><h2>New Feature</h2></header>
+      <div class="pos-dash-feature-body"><div class="pos-dash-feature-icon">&#10022;</div><strong>Purchase Insights</strong><p>See insights for your purchases.</p><a href="/apps/zenith/Purchase/RfqList">View Insights</a></div>
+    </section>
+    </#if>
   </div>
-  <#list paymentBars as pb>
-  <div style="display:flex;align-items:center;gap:8px;padding:6px 0">
-    <span style="width:11px;height:11px;border-radius:3px;background:${pb.color};flex:0 0 auto"></span>
-    <span style="flex:1;font-size:12.5px;color:#334155;font-weight:600">${pb.method}</span>
-    <span style="font-size:12.5px;color:#111827;font-weight:700">&#8377;${pb.amount}</span>
-    <span style="width:34px;text-align:right;font-size:11.5px;color:#9CA3AF;font-weight:600">${pb.pct}%</span>
+  <div class="pos-dash-lower">
+    <section class="pos-dash-panel pos-dash-transactions">
+      <header><h2>Recent Transactions</h2><a href="/apps/zenith/pos/PosTransactions">View all</a></header>
+      <div class="pos-dash-table-scroll"><table><thead><tr><th>Time</th><th>Bill No.</th><th>Customer</th><th>Amount</th><th>Payment</th><th>Status</th></tr></thead><tbody>
+      <#list recentTxns as r>
+      <tr><td>${r.time?html}</td><td>${r.bill?html}</td><td>${r.cust?html}</td><td>${r.amt?html}</td><td><span style="background:${r.pmBg};color:${r.pmFg}">${r.pm?html}</span></td><td><span style="background:${r.stBg};color:${r.stFg}">${r.status?html}</span></td></tr>
+      </#list>
+      </tbody></table><#if !recentTxns?has_content><p class="pos-dash-empty">No transactions in this date range</p></#if></div>
+    </section>
+    <#if showPayments>
+    <section class="pos-dash-panel pos-dash-payments">
+      <header><h2>Payment Breakdown</h2></header>
+      <div class="pos-dash-payment-main">
+        <div class="pos-dash-donut">${paymentDonutSvg}<div><strong>&#8377;${zinr.inr(ec.l10n.format(totalSales, '#,##0'))}</strong><small>Total</small></div></div>
+        <div class="pos-dash-payment-list"><#list paymentBars as pb><div><i style="background:${pb.color}"></i><span>${pb.method?html}</span><strong>&#8377;${pb.amount?html}</strong><small>${pb.pct}%</small></div></#list><#if !paymentBars?has_content><p class="pos-dash-empty">No payments in this date range</p></#if></div>
+      </div>
+      <div class="pos-dash-finance"><span>Net Cash Position <b>&#8377;${zinr.inr(ec.l10n.format(todayCashIn - todayCashOut, '#,##0.00'))}</b></span><span>Profit (Sales - Exp - Wastage) <b>&#8377;${zinr.inr(ec.l10n.format(totalSales - todayExpenses - todayWastage, '#,##0.00'))}</b></span></div>
+    </section>
+    </#if>
+    <section class="pos-dash-panel pos-dash-actions">
+      <header><h2>Quick Actions</h2></header>
+      <a href="/apps/zenith/pos/Terminal" title="Billing Terminal" aria-label="Billing Terminal"><span class="material-icons">grid_view</span></a>
+      <a href="/apps/zenith/pos/DailySummary" title="Daily Summary" aria-label="Daily Summary"><span class="material-icons">event</span></a>
+      <a href="/apps/zenith/pos/PosTransactions" title="Transactions" aria-label="Transactions"><span class="material-icons">receipt_long</span></a>
+      <a href="/apps/zenith/pos/Reports" title="Reports" aria-label="Reports"><span class="material-icons">bar_chart</span></a>
+    </section>
   </div>
-  </#list>
-  <div style="margin-top:10px;border-top:1px solid #F1F5F9;padding-top:8px">
-    <div style="display:flex;justify-content:space-between;padding:5px 0"><span style="font-size:12.5px;color:#475569;font-weight:600">Net Cash Position</span><span style="font-size:12.5px;font-weight:700;color:#059669">&#8377;${zinr.inr(ec.l10n.format(todayCashIn - todayCashOut, '#,##0.00'))}</span></div>
-    <div style="display:flex;justify-content:space-between;padding:5px 0"><span style="font-size:12.5px;color:#475569;font-weight:600">Profit (Sales - Exp - Wastage)</span><span style="font-size:12.5px;font-weight:700;color:#2563EB">&#8377;${zinr.inr(ec.l10n.format(totalSales - todayExpenses - todayWastage, '#,##0.00'))}</span></div>
-  </div>
-</div>
-                            ]]></text></render-mode>
-                        </widgets>
-                    </section>
-                    <section name="NoPaymentSection" condition="!paymentBars">
-                        <widgets><label text="No payments recorded" style="text-grey-5"/></widgets>
-                    </section>
-                </container>
-                <render-mode><text type="html"><![CDATA[</div>]]></text></render-mode>
-                </widgets></section>
-
-                <render-mode><text type="html"><![CDATA[<div id="dashExtras">]]></text></render-mode>
-                <!-- Info Panel -->
-                <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-lg q-mb-md">
-                    <render-mode><text type="html,qvt" template="true"><![CDATA[
-<div style="font-size:13px;">
-<div style="display:flex;justify-content:space-between;padding:8px 0;">
-<span style="color:#555;">Last Bill</span>
-<span style="font-weight:600;">${lastBillNumber} &mdash; ${lastBillAmount}</span>
-</div>
-</div>
-                    ]]></text></render-mode>
-                </container>
-
-                <!-- New Feature (Purchase Insights) -->
-                <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-lg q-mb-md text-center">
-                    <render-mode><text type="html,qvt" template="true"><![CDATA[
-<div style="font-family:Inter,Segoe UI,Arial,sans-serif">
-  <div style="font-size:14px;font-weight:700;color:#111827;text-align:left;margin-bottom:14px">New Feature</div>
-  <div style="width:48px;height:48px;border-radius:999px;background:#F5F3FF;color:#7C3AED;display:flex;align-items:center;justify-content:center;margin:0 auto 10px">
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.287 1.288L3 12l5.8 1.9a2 2 0 0 1 1.288 1.287L12 21l1.9-5.8a2 2 0 0 1 1.287-1.288L21 12l-5.8-1.9a2 2 0 0 1-1.288-1.287Z"/></svg>
-  </div>
-  <div style="font-size:14px;font-weight:700;color:#111827;margin-bottom:4px">Purchase Insights</div>
-  <div style="font-size:12px;color:#6B7280;line-height:1.5;margin-bottom:14px">Get AI-powered insights and smart recommendations for your purchases.</div>
-</div>
-                    ]]></text></render-mode>
-                    <link url="goErpPurchase" text="View Insights" btn-type="primary" style="full-width z-solid"/>
-                </container>
-
-                <!-- Quick Actions -->
-                <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-lg q-mb-md">
-                    <label text="Quick Actions" type="h6" style="text-weight-bold q-my-none q-mb-md"/>
-                    <container style="column q-gutter-sm">
-                        <link url="goTerminal" text="Open Billing Terminal" icon="fa fa-calculator"
-                              btn-type="success" style="full-width"/>
-                        <link url="goDailySummary" text="Daily Summary" icon="fa fa-calendar"
-                              btn-type="primary" style="full-width"/>
-                        <link url="goTransactions" text="View Transactions" icon="fa fa-list"
-                              btn-type="primary" style="full-width"/>
-                        <link url="goReports" text="Sales Reports" icon="fa fa-bar-chart"
-                              btn-type="info" style="full-width"/>
-                    </container>
-                </container>
-
-                <!-- Module Links -->
-                <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-lg q-mb-md">
-                    <label text="Manage" type="h6" style="text-weight-bold q-my-none q-mb-md"/>
-                    <render-mode><text type="html,qvt" template="true"><![CDATA[
-<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-    <a href="/apps/zenith/pos/Expenses" style="display:flex;align-items:center;padding:10px;background:#FFF3E0;border-radius:8px;text-decoration:none;color:#E65100;font-size:13px;font-weight:500;">
-        <span style="margin-right:8px;font-size:18px;">&#128176;</span> Expenses
-    </a>
-    <a href="/apps/zenith/pos/CashEntry" style="display:flex;align-items:center;padding:10px;background:#E8F5E9;border-radius:8px;text-decoration:none;color:#2E7D32;font-size:13px;font-weight:500;">
-        <span style="margin-right:8px;font-size:18px;">&#128178;</span> Cash Entry
-    </a>
-    <a href="/apps/zenith/pos/Stock" style="display:flex;align-items:center;padding:10px;background:#E3F2FD;border-radius:8px;text-decoration:none;color:#1565C0;font-size:13px;font-weight:500;">
-        <span style="margin-right:8px;font-size:18px;">&#128230;</span> Stock
-    </a>
-    <a href="/apps/zenith/pos/Wastage" style="display:flex;align-items:center;padding:10px;background:#FFEBEE;border-radius:8px;text-decoration:none;color:#C62828;font-size:13px;font-weight:500;">
-        <span style="margin-right:8px;font-size:18px;">&#128465;</span> Wastage
-    </a>
-    <a href="/apps/zenith/pos/Kitchen" style="display:flex;align-items:center;padding:10px;background:#FCE4EC;border-radius:8px;text-decoration:none;color:#AD1457;font-size:13px;font-weight:500;">
-        <span style="margin-right:8px;font-size:18px;">&#127859;</span> Kitchen
-    </a>
-    <a href="/apps/zenith/pos/ProductImport" style="display:flex;align-items:center;padding:10px;background:#F3E5F5;border-radius:8px;text-decoration:none;color:#6A1B9A;font-size:13px;font-weight:500;">
-        <span style="margin-right:8px;font-size:18px;">&#128228;</span> Import
-    </a>
-    <a href="/apps/zenith/pos/SalesMode" style="display:flex;align-items:center;padding:10px;background:#E0F2F1;border-radius:8px;text-decoration:none;color:#00695C;font-size:13px;font-weight:500;">
-        <span style="margin-right:8px;font-size:18px;">&#127991;</span> Sales Mode
-    </a>
-    <a href="/apps/zenith/pos/ReceiptConfig" style="display:flex;align-items:center;padding:10px;background:#ECEFF1;border-radius:8px;text-decoration:none;color:#37474F;font-size:13px;font-weight:500;">
-        <span style="margin-right:8px;font-size:18px;">&#128424;</span> Receipts
-    </a>
-    <a href="/apps/zenith/pos/PosSessions" style="display:flex;align-items:center;padding:10px;background:#EDE7F6;border-radius:8px;text-decoration:none;color:#4527A0;font-size:13px;font-weight:500;">
-        <span style="margin-right:8px;font-size:18px;">&#128337;</span> Sessions
-    </a>
-    <a href="/apps/zenith/pos/PosTerminals" style="display:flex;align-items:center;padding:10px;background:#E7F0FD;border-radius:8px;text-decoration:none;color:#7C3AED;font-size:13px;font-weight:500;">
-        <span style="margin-right:8px;font-size:18px;">&#128424;</span> Terminals
-    </a>
-    <a href="/apps/zenith/pos/PriceOverrides" style="display:flex;align-items:center;padding:10px;background:#FBE9E7;border-radius:8px;text-decoration:none;color:#BF360C;font-size:13px;font-weight:500;">
-        <span style="margin-right:8px;font-size:18px;">&#128200;</span> Price Overrides
-    </a>
-    <a href="/apps/zenith/pos/CreditBills" style="display:flex;align-items:center;padding:10px;background:#FFF3E0;border-radius:8px;text-decoration:none;color:#E65100;font-size:13px;font-weight:600;">
-        <span style="margin-right:8px;font-size:18px;">&#128196;</span> Credit Bills
-    </a>
-</div>
-                    ]]></text></render-mode>
-                </container>
-
-                <!-- ERP Module Links -->
-                <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-lg q-mb-md">
-                    <label text="ERP Modules" type="h6" style="text-weight-bold q-my-none q-mb-md"/>
-                    <container style="column q-gutter-sm">
-                        <section name="ErpSalesLink" condition="modSales"><widgets>
-                        <link url="goErpSales" text="Sales Orders &amp; Invoices" icon="fa fa-line-chart"
-                              btn-type="primary" style="full-width q-btn--dense"/>
-                        </widgets></section>
-                        <section name="ErpInventoryLink" condition="modInventory"><widgets>
-                        <link url="goErpInventory" text="Product Catalog" icon="fa fa-cubes"
-                              btn-type="info" style="full-width q-btn--dense"/>
-                        </widgets></section>
-                        <section name="ErpContactsLink" condition="modContacts"><widgets>
-                        <link url="goErpContacts" text="Customers" icon="fa fa-users"
-                              btn-type="success" style="full-width q-btn--dense"/>
-                        </widgets></section>
-                        <section name="ErpAccountingLink" condition="modAccounting"><widgets>
-                        <link url="goErpAccounting" text="Accounting" icon="fa fa-calculator"
-                              btn-type="warning" style="full-width q-btn--dense"/>
-                        </widgets></section>
-                        <section name="ErpPurchaseLink" condition="modPurchase"><widgets>
-                        <link url="goErpPurchase" text="Purchase Orders" icon="fa fa-shopping-cart"
-                              btn-type="danger" style="full-width q-btn--dense"/>
-                        </widgets></section>
-                    </container>
-                </container>
-                <render-mode><text type="html"><![CDATA[</div>]]></text></render-mode>
-            </row-col>
-        </container-row>
-
-        <!-- Recent Transactions (mockup) -->
-        <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-lg q-mb-md">
-            <container style="row items-center justify-between q-mb-md">
-                <label text="Recent Transactions" type="h6" style="text-weight-bold q-my-none"/>
-                <link url="goTransactions" text="View all" link-type="anchor" style="z-vlink"/>
-            </container>
-            <section name="RecentTxnSection" condition="recentTxns">
-                <widgets>
-                    <render-mode><text type="html,qvt" template="true"><![CDATA[
-<div style="width:100%;overflow-x:auto;font-family:Inter,Segoe UI,Arial,sans-serif">
-<table style="width:100%;border-collapse:collapse;min-width:640px">
-<thead><tr style="text-align:left">
-<th style="font-size:11.5px;font-weight:600;color:#6B7280;padding:8px 12px;border-bottom:1px solid #E5E7EB">Time</th>
-<th style="font-size:11.5px;font-weight:600;color:#6B7280;padding:8px 12px;border-bottom:1px solid #E5E7EB">Bill No.</th>
-<th style="font-size:11.5px;font-weight:600;color:#6B7280;padding:8px 12px;border-bottom:1px solid #E5E7EB">Customer</th>
-<th style="font-size:11.5px;font-weight:600;color:#6B7280;padding:8px 12px;border-bottom:1px solid #E5E7EB;text-align:right">Amount</th>
-<th style="font-size:11.5px;font-weight:600;color:#6B7280;padding:8px 12px;border-bottom:1px solid #E5E7EB;text-align:center">Payment</th>
-<th style="font-size:11.5px;font-weight:600;color:#6B7280;padding:8px 12px;border-bottom:1px solid #E5E7EB;text-align:center">Status</th>
-</tr></thead>
-<tbody>
-<#list recentTxns as r>
-<tr style="border-bottom:1px solid #F1F5F9">
-<td style="font-size:12.5px;color:#111827;padding:11px 12px">${r.time}</td>
-<td style="font-size:12.5px;color:#7C3AED;font-weight:600;padding:11px 12px">${r.bill}</td>
-<td style="font-size:12.5px;color:#111827;padding:11px 12px">${r.cust}</td>
-<td style="font-size:12.5px;color:#111827;font-weight:600;padding:11px 12px;text-align:right">${r.amt}</td>
-<td style="padding:11px 12px;text-align:center"><span style="background:${r.pmBg};color:${r.pmFg};padding:3px 10px;border-radius:8px;font-size:11px;font-weight:600">${r.pm}</span></td>
-<td style="padding:11px 12px;text-align:center"><span style="background:${r.stBg};color:${r.stFg};padding:3px 10px;border-radius:8px;font-size:11px;font-weight:600">${r.status}</span></td>
-</tr>
-</#list>
-</tbody>
-</table>
-</div>
-                    ]]></text></render-mode>
-                </widgets>
-            </section>
-            <section name="NoRecentTxnSection" condition="!recentTxns">
-                <widgets><container style="text-center q-py-md"><label text="No transactions in this range" style="text-grey-5"/></container></widgets>
-            </section>
-        </container>
-
-        <!-- ZE-DASH-03: flatten the 5 widgets into #dashWidgets in saved order + drag-to-reorder (persists to POS_DASH_ORDER) -->
-        <render-mode><text type="html" template="true"><![CDATA[<script>
-(function(){try{
-var extras=document.getElementById('dashExtras');
-var firstW=document.querySelector('.dash-widget');
-if(!firstW)return;
-var chartsRow=extras?extras.parentNode.parentNode:null;
-var wrap=document.createElement('div');wrap.id='dashWidgets';wrap.className='dash-widgets-wrap';
-firstW.parentNode.insertBefore(wrap,firstW);
-var all=[].slice.call(document.querySelectorAll('.dash-widget'));
-var byKey={};all.forEach(function(w){byKey[w.getAttribute('data-wkey')]=w;});
-var def=['salesKpi','opsKpi','health','hourly','payments','products'];
-var saved=("${dashOrderCsv}").split(',').filter(Boolean);
-var seq=[];saved.forEach(function(k){if(byKey[k]&&seq.indexOf(k)<0)seq.push(k);});
-def.forEach(function(k){if(byKey[k]&&seq.indexOf(k)<0)seq.push(k);});
-seq.forEach(function(k){wrap.appendChild(byKey[k]);});
-if(extras)wrap.parentNode.insertBefore(extras,wrap.nextSibling);
-if(chartsRow&&chartsRow.parentNode)chartsRow.parentNode.removeChild(chartsRow);
-var dragEl=null;
-all.forEach(function(w){
-var h=w.querySelector('.dash-handle');if(!h)return;
-h.addEventListener('mousedown',function(){w.setAttribute('draggable','true');});
-w.addEventListener('dragstart',function(e){dragEl=w;w.classList.add('dragging');try{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain','x');}catch(_e){}});
-w.addEventListener('dragend',function(){w.classList.remove('dragging');w.removeAttribute('draggable');saveOrder();});
-});
-wrap.addEventListener('dragover',function(e){e.preventDefault();if(!dragEl)return;var a=afterEl(e.clientY);if(a==null)wrap.appendChild(dragEl);else wrap.insertBefore(dragEl,a);});
-function afterEl(y){var els=[].slice.call(wrap.querySelectorAll('.dash-widget:not(.dragging)'));var res={o:-1e9,e:null};els.forEach(function(ch){var b=ch.getBoundingClientRect();var o=y-b.top-b.height/2;if(o<0&&o>res.o){res={o:o,e:ch};}});return res.e;}
-function saveOrder(){var keys=[].slice.call(wrap.querySelectorAll('.dash-widget')).map(function(w){return w.getAttribute('data-wkey');});var base=("${ec.web.request.requestURI}").replace(/\/+$/,'');var body='order='+encodeURIComponent(keys.join(','))+'&moquiSessionToken='+encodeURIComponent("${ec.web.sessionToken}");fetch(base+'/saveDashOrder',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body,credentials:'same-origin'}).catch(function(){});}
-}catch(_e){}})();
-</script>]]></text></render-mode>
+</main>
+        ]]></text></render-mode>
     </widgets>
 </screen>

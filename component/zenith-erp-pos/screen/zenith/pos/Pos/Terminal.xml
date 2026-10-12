@@ -5395,10 +5395,12 @@ body.Terminal .nb-header .nb-hspace{flex:1 1 auto!important}
 body.Terminal .nb-header .nb-modes{position:relative;height:auto!important;padding:0!important;background:none!important}
 body.Terminal .nb-header .nb-modes__btn{list-style:none}
 body.Terminal .nb-header .nb-modes__btn::-webkit-details-marker{display:none}
-body.Terminal .nb-header .nb-modes__menu{position:absolute;top:112%;right:0;z-index:1200;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 8px 24px rgba(17,24,39,.12);min-width:160px;padding:6px}
+body.Terminal .nb-header .nb-modes__menu{position:absolute;top:112%;right:0;z-index:1200;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 8px 24px rgba(17,24,39,.12);min-width:190px;padding:6px}
 body.Terminal .nb-header .nb-modes__item{display:block!important;height:auto!important;min-height:0!important;padding:9px 12px!important;border-radius:7px!important;text-decoration:none;color:#1F2937!important;font-size:14px!important;font-weight:500!important;justify-content:flex-start!important;background:#fff!important}
 body.Terminal .nb-header .nb-modes__item:hover{background:#F4F7FC!important}
 body.Terminal .nb-header .nb-modes__item.is-active{background:#EEF0FF!important;color:#4F46E5!important;font-weight:700!important}
+body.Terminal .nb-header .nb-modes__section{margin:6px 6px 2px;padding:8px 6px 2px;border-top:1px solid #E5E7EB;color:#6B7280;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+body.Terminal .nb-header button.nb-modes__item{width:100%;border:0;text-align:left;cursor:pointer;font-family:inherit}
 body.Terminal .nb-header .nb-cashier{display:inline-flex!important;align-items:center;gap:9px;height:44px!important;padding:0 12px 0 6px!important;background:#EEF2F8!important;border-radius:8px!important}
 body.Terminal .nb-header .nb-cashier__av{width:34px;height:34px;border-radius:50%;background:#4F46E5;color:#fff;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
 body.Terminal .nb-header .nb-cashier__nm{font-size:14px;font-weight:500;color:#1F2937;white-space:nowrap}
@@ -5564,6 +5566,26 @@ body.Terminal:not(.pos-mode-normal) .pos-paywrap:has(> .pos-discount-btn) .pos-s
 body.Terminal:not(.pos-mode-normal) .pos-paywrap:has(> .pos-discount-btn) form[action*="holdSale"]{order:7!important}
 body.Terminal:not(.pos-mode-normal) .pos-paywrap:has(> .pos-discount-btn) form[action*="voidSale"]{order:8!important}
 body.Terminal:not(.pos-mode-normal) .pos-paywrap:has(> .pos-discount-btn) form[action*="recallSale"]{order:9!important}
+/* Populated Normal bills use the reference's single payment row on desktop.
+   Small stacked layouts keep their existing, scrollable button grid. */
+@media(min-width:1100px){
+body.Terminal.pos-mode-normal .pos-paywrap:has(> .pos-discount-btn){display:flex!important;flex-flow:row nowrap!important;gap:8px!important;align-items:stretch!important}
+body.Terminal.pos-mode-normal .pos-paywrap:has(> .pos-discount-btn) > div{display:contents!important}
+body.Terminal.pos-mode-normal .pos-paywrap:has(> .pos-discount-btn) > button,
+body.Terminal.pos-mode-normal .pos-paywrap:has(> .pos-discount-btn) > form,
+body.Terminal.pos-mode-normal .pos-paywrap:has(> .pos-discount-btn) > div > button,
+body.Terminal.pos-mode-normal .pos-paywrap:has(> .pos-discount-btn) > div > form{flex:1 1 0!important;min-width:0!important;margin:0!important}
+body.Terminal.pos-mode-normal .pos-paywrap:has(> .pos-discount-btn) button{width:100%!important;height:100%!important;min-height:56px!important;margin:0!important;white-space:nowrap!important}
+body.Terminal.pos-mode-normal .pos-paywrap:has(> .pos-discount-btn) .pos-discount-btn{order:1!important}
+body.Terminal.pos-mode-normal .pos-paywrap:has(> .pos-discount-btn) .pos-cash-btn{order:2!important}
+body.Terminal.pos-mode-normal .pos-paywrap:has(> .pos-discount-btn) form:has(input[name="paymentMethod"][value="Card"]){order:3!important}
+body.Terminal.pos-mode-normal .pos-paywrap:has(> .pos-discount-btn) button[onclick*="posCreditSale"]{order:4!important}
+body.Terminal.pos-mode-normal .pos-paywrap:has(> .pos-discount-btn) form:has(input[name="paymentMethod"][value="UPI"]){order:5!important}
+body.Terminal.pos-mode-normal .pos-paywrap:has(> .pos-discount-btn) .pos-split-btn{order:6!important}
+body.Terminal.pos-mode-normal .pos-paywrap:has(> .pos-discount-btn) form[action*="holdSale"]{order:7!important}
+body.Terminal.pos-mode-normal .pos-paywrap:has(> .pos-discount-btn) form[action*="voidSale"]{order:8!important}
+body.Terminal.pos-mode-normal .pos-paywrap:has(> .pos-discount-btn) form[action*="recallSale"]{order:9!important}
+}
 /* Advanced cart = Rate / Qty / Amount (no Tax column) -> hide the 6th column (Tax) */
 body.Terminal:not(.pos-mode-normal) .pos-cart table thead th:nth-child(6),
 body.Terminal:not(.pos-mode-normal) .pos-cart table tbody td:nth-child(6){display:none!important}
@@ -5575,10 +5597,49 @@ body.Terminal:not(.pos-mode-normal) .pos-product-grid{background:#F8F9FC!importa
 body.Terminal:not(.pos-mode-normal) .pos-product-grid button{background:#fff!important;border:1px solid #E5E7EB!important;border-radius:12px!important;box-shadow:0 1px 2px rgba(17,24,39,.04)!important}
 body.Terminal:not(.pos-mode-normal) .pos-product-grid button:hover{border-color:#C7D2FE!important;box-shadow:0 4px 10px rgba(79,70,229,.10)!important}
 body.Terminal:not(.pos-mode-normal) .pos-product-grid button div[style*="#e53935"]{color:#111827!important}
-/* the layout toggle pill */
-body.Terminal .nb-layout{display:inline-flex!important;align-items:center;gap:6px;height:52px;padding:0 14px;border-radius:12px;border:1px solid #E5E7EB;background:#fff;color:#374151;font-size:14px;font-weight:600;cursor:pointer;flex:0 0 auto}
-body.Terminal .nb-layout svg{width:18px;height:18px;color:#4F46E5}
-body.Terminal .nb-layout:hover{background:#F4F7FC}
+/* Keep the desktop terminal inside the measured viewport. When the header and tender controls
+   need more room, scroll this root rather than shrinking the cart until its rows are unusable. */
+@media (min-width:1025px){
+  body.Terminal .z-pos-page #pos-terminal-root{overflow-y:auto!important;overflow-x:hidden!important;min-height:0!important}
+  body.Terminal .z-pos-page #pos-terminal-root .pos-main-layout{flex:1 1 auto!important;flex-shrink:1!important;min-height:254px!important}
+  body.Terminal .z-pos-page #pos-terminal-root .pos-cart{min-height:180px!important}
+  body.Terminal .z-pos-page #pos-terminal-root .nb-side{min-height:0!important}
+  body.Terminal:not(.pos-mode-normal) .z-pos-page #pos-terminal-root .pos-left-panel{width:100%!important;max-width:none!important}
+  body.Terminal:not(.pos-mode-normal) .z-pos-page #pos-terminal-root{grid-template-rows:auto auto auto minmax(180px,1fr) auto auto auto auto auto auto!important}
+}
+
+/* Normal mode keeps the same controls and hierarchy but trims card chrome on shorter desktop
+   displays, so the cart, summary and tender buttons fit without page-level scrolling. */
+@media (min-width:1025px) and (max-height:900px){
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-hrow{min-height:54px!important;padding:4px 0!important}
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-header{min-height:54px!important}
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-actionbar{padding:5px 16px!important;gap:6px!important}
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-back,
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-abtn,
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-tax,
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-layout{height:42px!important;min-height:42px!important}
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-tax{padding:0 12px!important}
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .pos-main-layout{gap:10px!important;padding:8px 12px 0!important}
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-side{gap:8px!important}
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-customer__head{padding:9px!important;gap:8px!important}
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-customer__av{width:40px!important;height:40px!important}
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-customer__av svg{width:22px!important;height:22px!important}
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-customer__change{height:34px!important;padding:0 10px!important;font-size:13px!important}
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-cstat{padding:7px 9px!important}
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-customer__actions{gap:6px!important;padding:8px!important}
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-cbtn{height:36px!important;font-size:12px!important}
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-summary{padding:10px 14px!important}
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-summary__head{margin-bottom:4px!important}
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-summary__head h3{font-size:17px!important}
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-summary__row{padding:4px 0!important;font-size:14px!important}
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root > .nb-footer{padding:8px 12px!important;gap:6px!important}
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-footer .pos-summary{gap:6px!important}
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-footer #cartInlineSearch{padding:8px 12px!important}
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-footer .pos-summary > .pos-sum-strip{padding:6px 12px!important}
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-footer .pos-summary > .pos-sum-total{padding:8px 16px!important}
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-footer .pos-summary > .pos-sum-total > span:first-child{font-size:20px!important}
+  body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .nb-footer .pos-summary > .pos-sum-total > span:last-child{padding:7px 20px!important;font-size:24px!important}
+}
 
 </style>
 <div id="pos-terminal-root" style="display:flex;flex-direction:column;overflow:hidden">
@@ -5606,16 +5667,21 @@ body.Terminal .nb-layout:hover{background:#F4F7FC}
 
     <span class="nb-hspace"></span>
 
-    <#if salesModesList?? && (salesModesList?size > 1)>
     <details class="nb-modes">
       <summary class="nb-pill nb-modes__btn"><span>Modes</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
       <div class="nb-modes__menu">
+        <#if salesModesList?? && (salesModesList?size > 1)>
+        <div class="nb-modes__section" style="margin-top:0;border-top:0">Sales mode</div>
         <#list salesModesList as sm><a href="Terminal/changeSalesMode?sessionId=${sessionId!''}&transactionId=${transactionId!''}&catId=${catId!''}&taxOn=${taxOn!'N'}&salesModeId=${sm.salesModeId}" class="nb-modes__item<#if salesModeId! == sm.salesModeId> is-active</#if>">${sm.modeName!sm.salesModeId}</a></#list>
+        <#else>
+        <div class="nb-modes__section" style="margin-top:0;border-top:0">Sales mode</div>
+        <span class="nb-modes__item is-active" aria-current="true">${salesMode!'Retail'}</span>
+        </#if>
+        <div class="nb-modes__section">Billing layout</div>
+        <button type="button" class="nb-modes__item" data-pos-layout="normal" onclick="posSetLayout('normal')">Normal billing</button>
+        <button type="button" class="nb-modes__item" data-pos-layout="advanced" onclick="posSetLayout('advanced')">Advanced billing · product grid</button>
       </div>
     </details>
-    <#else>
-    <span class="nb-pill nb-modes__btn" style="background:${salesModeColor!'#4F46E5'};color:#fff">${salesMode!'Retail'}</span>
-    </#if>
 
     <span class="nb-cashier" title="Logged-in cashier"><#assign _cn = (ec.user.userAccount.userFullName)!'Cashier'/><span class="nb-cashier__av">${(_cn?length > 0)?then(_cn?substring(0,1)?upper_case,'C')}</span><span class="nb-cashier__nm">${_cn}</span></span>
 
@@ -5666,12 +5732,12 @@ body.Terminal .nb-layout:hover{background:#F4F7FC}
 
   
 
-  <button id="pos-layout-toggle" type="button" onclick="posToggleLayout()" class="nb-layout" title="Switch between Advanced (catalogue grid) and Normal (customer panel) billing layouts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg><span class="plt-label">Advanced</span></button>
+  <button type="button" id="posHelpBtn_terminal" class="nb-abtn nb-abtn--icon" title="Billing help" aria-label="Billing help" onclick="document.getElementById('posHelp_terminal').style.display='block';this.style.display='none';try{localStorage.removeItem('posHelpHide_terminal')}catch(e){}">?</button>
   <button id="posFullscreenBtn" onclick="posToggleFocus()" class="nb-abtn nb-abtn--icon" title="Full-screen billing — toggle"><span id="fsBtnIcon">&#x26F6;</span></button>
 </div>
 
 
-<img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="try{if(location.pathname.indexOf('/qapps/')===0){location.replace(location.href.replace('/qapps/','/apps/'));}}catch(e){}"/><div id="posHelp_terminal" style="position:relative;margin:6px 8px 0;z-index:1;background:#e8f0fe;border:1px solid #4285f4;border-left:6px solid #1a73e8;border-radius:10px;padding:10px 14px;box-shadow:0 6px 18px rgba(0,0,0,0.2);font-family:'Segoe UI',Arial,sans-serif"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div style="min-width:0"><div style="font-weight:800;font-size:14px;color:#174ea6;margin-bottom:4px">&#128161; Billing Terminal &mdash; quick start</div><div style="font-size:13px;color:#202124;line-height:1.8"><b>1</b>&nbsp;Tap a product, <b>scan its barcode</b>, or press <b>/</b> to search by name or code. A scanner gun works straight into the green search box; an unknown code shows &lsquo;Product not found&rsquo;.<br><b>2</b>&nbsp;Change quantity with <b>+</b> / <b>&#8722;</b> (or pick a line and type the number).<br><b>3</b>&nbsp;Take payment &mdash; <b>F1</b>&nbsp;Cash &middot; <b>F2</b>&nbsp;Card &middot; <b>F3</b>&nbsp;UPI &middot; <b>F4</b>&nbsp;Split.<br><b>4</b>&nbsp;<b>F10</b> new sale &middot; <b>F7</b> hold &middot; <b>F8</b> void &middot; <b>F9</b> history. <span style="color:#5f6368">The full key list is in the blue bar under the cart.</span></div></div><button type="button" onclick="document.getElementById('posHelp_terminal').style.display='none';document.getElementById('posHelpBtn_terminal').style.display='flex';try{localStorage.setItem('posHelpHide_terminal','1')}catch(e){}" style="flex-shrink:0;background:#1a73e8;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">Got it &#10005;</button></div></div><button type="button" id="posHelpBtn_terminal" onclick="document.getElementById('posHelp_terminal').style.display='block';this.style.display='none';try{localStorage.removeItem('posHelpHide_terminal')}catch(e){}" style="display:none;position:fixed;top:96px;right:12px;z-index:650;align-items:center;gap:4px;background:#1a73e8;color:#fff;border:none;border-radius:20px;padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.3)">&#10067; Help</button><img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="try{if(localStorage.getItem('posHelpHide_terminal')){var e=document.getElementById('posHelp_terminal');if(e)e.style.display='none';var b=document.getElementById('posHelpBtn_terminal');if(b)b.style.display='flex';}}catch(e){}"/>
+<img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="try{if(location.pathname.indexOf('/qapps/')===0){location.replace(location.href.replace('/qapps/','/apps/'));}}catch(e){}"/><div id="posHelp_terminal" style="display:none;position:relative;margin:6px 8px 0;z-index:1;background:#e8f0fe;border:1px solid #4285f4;border-left:6px solid #1a73e8;border-radius:10px;padding:10px 14px;box-shadow:0 6px 18px rgba(0,0,0,0.2);font-family:'Segoe UI',Arial,sans-serif"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div style="min-width:0"><div style="font-weight:800;font-size:14px;color:#174ea6;margin-bottom:4px">&#128161; Billing Terminal &mdash; quick start</div><div style="font-size:13px;color:#202124;line-height:1.8"><b>1</b>&nbsp;In Advanced billing, tap a product. In either layout, <b>scan its barcode</b> or press <b>/</b> to search by name or code. A scanner gun works in the product search box; an unknown code shows &lsquo;Product not found&rsquo;.<br><b>2</b>&nbsp;Change quantity with <b>+</b> / <b>&#8722;</b> (or pick a line and type the number).<br><b>3</b>&nbsp;Take payment &mdash; <b>F1</b>&nbsp;Cash &middot; <b>F2</b>&nbsp;Card &middot; <b>F3</b>&nbsp;UPI &middot; <b>F4</b>&nbsp;Split.<br><b>4</b>&nbsp;<b>F10</b> new sale &middot; <b>F7</b> hold &middot; <b>F8</b> void &middot; <b>F9</b> history. <span style="color:#5f6368">The full key list is in the blue bar under the cart.</span></div></div><button type="button" onclick="document.getElementById('posHelp_terminal').style.display='none';document.getElementById('posHelpBtn_terminal').style.display='flex';try{localStorage.setItem('posHelpHide_terminal','1')}catch(e){}" style="flex-shrink:0;background:#1a73e8;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">Got it &#10005;</button></div></div><img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="try{if(localStorage.getItem('posHelpHide_terminal')){var e=document.getElementById('posHelp_terminal');if(e)e.style.display='none';var b=document.getElementById('posHelpBtn_terminal');if(b)b.style.display='flex';}}catch(e){}"/>
 
 <div class="pos-main-layout" style="display:flex;flex:1;min-height:0;gap:0;font-family:'Segoe UI',Arial,sans-serif;overflow:hidden">
 
@@ -6949,8 +7015,10 @@ function applyFocus(on){var r=document.getElementById('pos-terminal-root');if(!r
 function f(){var r=document.getElementById('pos-terminal-root');if(!r)return;var foc=document.body.classList.contains('pos-focus');var t=foc?0:r.getBoundingClientRect().top;var h=window.innerHeight-t;if(h<360)h=360;r.style.height=h+'px';var lg=document.getElementById('posKbLegend');if(lg)lg.style.display=(window.innerHeight<1100?'none':'');var fi=document.getElementById('fsBtnIcon');if(fi){fi.innerHTML=foc?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5"/></svg>';fi.setAttribute('aria-hidden','true');}}
 window.posFitTerminal=f;
 window.posToggleFocus=function(){var on=!document.body.classList.contains('pos-focus');try{on?localStorage.setItem('posFocus','1'):localStorage.removeItem('posFocus');}catch(e){}applyFocus(on);if(on){try{(document.documentElement.requestFullscreen||function(){}).call(document.documentElement);}catch(e){}}else{try{if(document.fullscreenElement&&document.exitFullscreen)document.exitFullscreen();}catch(e){}}f();setTimeout(f,80);setTimeout(f,250);};
-window.posToggleLayout=function(){var toNormal=!document.body.classList.contains('pos-mode-normal');var mode=toNormal?'normal':'advanced';document.body.classList.toggle('pos-mode-normal',toNormal);document.body.classList.toggle('pos-mode-advanced',!toNormal);try{localStorage.setItem('posLayoutMode',mode);}catch(e){}var lb=document.querySelector('#pos-layout-toggle .plt-label');if(lb)lb.textContent=(toNormal?'Normal':'Advanced');f();setTimeout(f,100);setTimeout(f,320);};
-(function(){var lb=document.querySelector('#pos-layout-toggle .plt-label');if(lb)lb.textContent=(document.body.classList.contains('pos-mode-normal')?'Normal':'Advanced');}());
+function syncLayoutChoices(){var normal=document.body.classList.contains('pos-mode-normal');document.querySelectorAll('[data-pos-layout]').forEach(function(btn){var active=(btn.getAttribute('data-pos-layout')==='normal')===normal;btn.classList.toggle('is-active',active);btn.setAttribute('aria-pressed',String(active));});}
+window.posSetLayout=function(mode){if(mode!=='normal'&&mode!=='advanced')return;var normal=mode==='normal';document.body.classList.toggle('pos-mode-normal',normal);document.body.classList.toggle('pos-mode-advanced',!normal);try{localStorage.setItem('posLayoutMode',mode);}catch(e){}syncLayoutChoices();var menu=document.querySelector('.nb-modes');if(menu)menu.open=false;f();var root=document.getElementById('pos-terminal-root');if(root)root.scrollTop=0;setTimeout(f,100);setTimeout(f,320);};
+window.posToggleLayout=function(){window.posSetLayout(document.body.classList.contains('pos-mode-normal')?'advanced':'normal');};
+syncLayoutChoices();
 try{if(localStorage.getItem('posFocus'))applyFocus(true);}catch(e){}
 window.addEventListener('resize',f);window.addEventListener('orientationchange',f);if(document.readyState!=='loading')f();else document.addEventListener('DOMContentLoaded',f);setTimeout(f,150);setTimeout(f,500);setTimeout(f,1200);
 }())</script>

@@ -10,44 +10,49 @@
             <!-- Org-isolation: re-check ownership by PK before update (prevent cross-tenant IDOR edit) -->
             <set field="activeOrg" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
             <entity-find-one entity-name="zenith.erp.crm.CustomerSegment" value-field="curSeg"/>
-            <if condition="curSeg == null || (activeOrg &amp;&amp; curSeg.organizationPartyId != activeOrg &amp;&amp; !ec.user.isInGroup('ADMIN'))">
+            <if condition="curSeg == null || !activeOrg || activeOrg == '_NA_' || curSeg.organizationPartyId != activeOrg">
                 <return error="true" message="Segment not found for your account."/>
             </if>
             <service-call name="zenith.crm.CrmServices.update#CustomerSegment" in-map="context"/>
         </actions>
         <default-response url="."/>
+        <error-response url="."/>
     </transition>
     <transition name="addCriteria">
         <actions>
             <!-- Org-isolation: assert the target segment belongs to the active org before mutating -->
             <set field="activeOrg" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
             <entity-find-one entity-name="zenith.erp.crm.CustomerSegment" value-field="curSeg"/>
-            <if condition="curSeg == null || (activeOrg &amp;&amp; curSeg.organizationPartyId != activeOrg &amp;&amp; !ec.user.isInGroup('ADMIN'))">
+            <if condition="curSeg == null || !activeOrg || activeOrg == '_NA_' || curSeg.organizationPartyId != activeOrg">
                 <return error="true" message="Segment not found for your account."/>
             </if>
             <service-call name="zenith.crm.CrmServices.add#SegmentCriteria" in-map="[segmentId:segmentId, criteriaTypeEnumId:criteriaTypeEnumId, operator:operator, fieldValue:fieldValue, fieldValueTo:fieldValueTo]"/>
         </actions>
         <default-response url="."/>
+        <error-response url="."/>
     </transition>
     <transition name="deleteCriteria">
         <actions>
+            <service-call name="zenith.crm.CrmServices.assert#CrmWrite" out-map="crmWrite"/>
+            <if condition="!crmWrite.allowed"><return error="true" message="CRM write access and an active organization are required."/></if>
             <!-- Org-isolation: criteriaId carries no org; resolve via its segment and assert ownership -->
             <set field="activeOrg" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
             <entity-find-one entity-name="zenith.erp.crm.SegmentCriteria" value-field="curCrit"/>
             <entity-find-one entity-name="zenith.erp.crm.CustomerSegment" value-field="curSeg">
                 <field-map field-name="segmentId" from="curCrit?.segmentId"/></entity-find-one>
-            <if condition="curCrit == null || curSeg == null || (activeOrg &amp;&amp; curSeg.organizationPartyId != activeOrg &amp;&amp; !ec.user.isInGroup('ADMIN'))">
+            <if condition="curCrit == null || curSeg == null || !activeOrg || activeOrg == '_NA_' || curSeg.organizationPartyId != activeOrg">
                 <return error="true" message="Segment not found for your account."/>
             </if>
             <service-call name="delete#zenith.erp.crm.SegmentCriteria" in-map="[criteriaId:criteriaId]"/>
         </actions>
         <default-response url="."/>
+        <error-response url="."/>
     </transition>
     <transition name="addMember">
         <actions>
             <set field="activeOrg" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
             <entity-find-one entity-name="zenith.erp.crm.CustomerSegment" value-field="curSeg"/>
-            <if condition="curSeg == null || (activeOrg &amp;&amp; curSeg.organizationPartyId != activeOrg &amp;&amp; !ec.user.isInGroup('ADMIN'))">
+            <if condition="curSeg == null || !activeOrg || activeOrg == '_NA_' || curSeg.organizationPartyId != activeOrg">
                 <return error="true" message="Segment not found for your account."/>
             </if>
             <!-- ZE-SB-013 (Tier 3): the added member party must belong to this org. -->
@@ -59,41 +64,45 @@
             <service-call name="zenith.crm.CrmServices.add#SegmentMember" in-map="[segmentId:segmentId, partyId:partyId]"/>
         </actions>
         <default-response url="."/>
+        <error-response url="."/>
     </transition>
     <transition name="removeMember">
         <actions>
             <set field="activeOrg" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
             <entity-find-one entity-name="zenith.erp.crm.CustomerSegment" value-field="curSeg"/>
-            <if condition="curSeg == null || (activeOrg &amp;&amp; curSeg.organizationPartyId != activeOrg &amp;&amp; !ec.user.isInGroup('ADMIN'))">
+            <if condition="curSeg == null || !activeOrg || activeOrg == '_NA_' || curSeg.organizationPartyId != activeOrg">
                 <return error="true" message="Segment not found for your account."/>
             </if>
             <service-call name="zenith.crm.CrmServices.remove#SegmentMember" in-map="[segmentId:segmentId, partyId:partyId]"/>
         </actions>
         <default-response url="."/>
+        <error-response url="."/>
     </transition>
     <transition name="evaluateSegment">
         <actions>
             <set field="activeOrg" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
             <entity-find-one entity-name="zenith.erp.crm.CustomerSegment" value-field="curSeg"/>
-            <if condition="curSeg == null || (activeOrg &amp;&amp; curSeg.organizationPartyId != activeOrg &amp;&amp; !ec.user.isInGroup('ADMIN'))">
+            <if condition="curSeg == null || !activeOrg || activeOrg == '_NA_' || curSeg.organizationPartyId != activeOrg">
                 <return error="true" message="Segment not found for your account."/>
             </if>
             <service-call name="zenith.crm.CrmServices.evaluate#Segment"/>
         </actions>
         <default-response url="."/>
+        <error-response url="."/>
     </transition>
 
     <actions>
         <entity-find-one entity-name="zenith.erp.crm.CustomerSegment" value-field="segment"/>
         <!-- Org-isolation: block IDOR read of another tenant's segment by guessing segmentId -->
         <set field="activeOrg" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
-        <if condition="segment == null || (activeOrg &amp;&amp; segment.organizationPartyId != activeOrg &amp;&amp; !ec.user.isInGroup('ADMIN'))">
+        <if condition="segment == null || !activeOrg || activeOrg == '_NA_' || segment.organizationPartyId != activeOrg">
             <return error="true" message="Segment not found for your account."/>
         </if>
         <entity-find entity-name="zenith.erp.crm.SegmentCriteria" list="criteriaList">
             <econdition field-name="segmentId"/>
             <order-by field-name="sequenceNum"/>
         </entity-find>
+        <set field="hasUnsupportedCriteria" from="criteriaList.any { !['SctCustomerGroup','SctCountry','SctTotalSpend','SctOrderCount'].contains(it.criteriaTypeEnumId) }"/>
         <entity-find entity-name="zenith.erp.crm.SegmentMemberDetail" list="members">
             <econdition field-name="segmentId"/>
             <order-by field-name="organizationName,firstName"/>
@@ -103,9 +112,10 @@
     <widgets>
         <container style="row items-center justify-between q-mb-lg">
             <label text="Segment: ${segment.segmentName}" type="h4" style="text-weight-bold q-my-none"/>
-            <link url="evaluateSegment" text="Evaluate Now" btn-type="info" condition="modCanWrite"
+            <link url="evaluateSegment" text="Evaluate Now" btn-type="info" condition="modCanWrite &amp;&amp; !criteriaList.isEmpty() &amp;&amp; !hasUnsupportedCriteria"
                   parameter-map="[segmentId:segmentId]" confirmation="Evaluate segment criteria and update members?"/>
         </container>
+        <section name="unsupportedSegmentRules" condition="hasUnsupportedCriteria"><widgets><container style="zcrm-error"><label text="This segment contains a rule that is not supported by the evaluator. Remove or replace it before evaluating." type="p"/></container></widgets></section>
 
         <container-row>
             <row-col lg="8" md="12">
@@ -122,9 +132,6 @@
                                     <order-by field-name="sequenceNum"/>
                                 </entity-find>
                             </entity-options></drop-down></default-field></field>
-                        <field name="isAutoEvaluate"><default-field title="Auto-Evaluate">
-                            <drop-down><option key="N" text="No"/><option key="Y" text="Yes"/></drop-down>
-                        </default-field></field>
                         <field name="description"><default-field><text-area rows="2" cols="50"/></default-field></field>
                         <field name="isActive"><default-field title="Active">
                             <drop-down><option key="Y" text="Yes"/><option key="N" text="No"/></drop-down>
@@ -145,28 +152,26 @@
                             <form-single name="AddCriteriaForm" transition="addCriteria">
                                 <field name="segmentId" from="segment.segmentId"><default-field><hidden/></default-field></field>
                                 <field name="criteriaTypeEnumId"><default-field title="Criteria Type">
-                                    <drop-down><entity-options key="${enumId}" text="${description}">
-                                        <entity-find entity-name="moqui.basic.Enumeration">
-                                            <econdition field-name="enumTypeId" value="SegmentCriteriaType"/>
-                                            <order-by field-name="sequenceNum"/>
-                                        </entity-find>
-                                    </entity-options></drop-down></default-field></field>
+                                    <drop-down>
+                                        <option key="SctCustomerGroup" text="Customer group"/>
+                                        <option key="SctCountry" text="Country"/>
+                                        <option key="SctTotalSpend" text="Total spend"/>
+                                        <option key="SctOrderCount" text="Order count"/>
+                                    </drop-down></default-field></field>
                                 <field name="operator"><default-field>
                                     <drop-down>
-                                        <option key="eq" text="Equals"/><option key="neq" text="Not Equals"/>
+                                        <option key="eq" text="Equals"/>
                                         <option key="gt" text="Greater Than"/><option key="gte" text="Greater or Equal"/>
                                         <option key="lt" text="Less Than"/><option key="lte" text="Less or Equal"/>
-                                        <option key="in" text="In"/><option key="between" text="Between"/>
-                                        <option key="contains" text="Contains"/>
                                     </drop-down></default-field></field>
-                                <field name="fieldValue"><default-field title="Value"><text-line size="20"/></default-field></field>
-                                <field name="fieldValueTo"><default-field title="Value To (for 'between')"><text-line size="20"/></default-field></field>
+                                <field name="fieldValue"><default-field title="Value (group ID, country code, or number)"><text-line size="20"/></default-field></field>
                                 <field name="submitBtn"><default-field title="Add"><submit/></default-field></field>
                             </form-single>
                         </container-dialog>
                         </widgets></section>
                     </container>
 
+                    <section name="noCriteria" condition="criteriaList.isEmpty()"><widgets><container style="zcrm-empty"><label text="No rules yet. Add a supported rule to evaluate this segment, or add members manually." type="p"/></container></widgets></section>
                     <form-list name="CriteriaForm" list="criteriaList" skip-form="true">
                         <field name="sequenceNum"><default-field title="#"><display/></default-field></field>
                         <field name="criteriaTypeEnumId"><default-field title="Criteria">
@@ -198,7 +203,7 @@
                                     <drop-down><entity-options key="${partyId}" text="${(organizationName ?: ((firstName?:'') + ' ' + (lastName?:'')).trim()) ?: partyId}">
                                         <entity-find entity-name="mantle.party.PartyDetailAndRole">
                                             <econdition field-name="roleTypeId" value="Customer"/>
-                                            <econdition field-name="ownerPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+                                            <econdition field-name="ownerPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION') ?: '__NO_ORGANIZATION__'"/>
                                         </entity-find>
                                     </entity-options></drop-down></default-field></field>
                                 <field name="submitBtn"><default-field title="Add"><submit/></default-field></field>
@@ -207,6 +212,7 @@
                         </widgets></section>
                     </container>
 
+                    <section name="noMembers" condition="members.isEmpty()"><widgets><container style="zcrm-empty"><label text="No customers in this segment yet. Add a member or evaluate its rules." type="p"/></container></widgets></section>
                     <form-list name="MembersForm" list="members" skip-form="true">
                         <field name="partyId"><default-field title="Customer">
                             <display text="${(organizationName ?: ((firstName?:'') + ' ' + (lastName?:'')).trim()) ?: partyId}"/>

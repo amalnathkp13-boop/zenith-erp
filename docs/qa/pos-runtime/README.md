@@ -55,8 +55,10 @@ deployment claim. Never reuse a database containing customer records.
   invoice totals, tax detail and audit. No production issued bill is amended.
 - Tenant service/detail/receipt denial, CSRF, cashier permissions, child report
   rendering, one search-add POST, active till layouts and both app shells. Normal
-  and Advanced layouts retain cart height, contain wrapped headers and scroll
-  to both the cart and payment controls at five widths; the fullscreen icon uses SVG.
+  and Advanced layouts keep the desktop terminal viewport-contained with a usable
+  cart and visible payment controls; narrower layouts retain their scrolling
+  fallback. Wrapped headers and cart/payment reachability are checked at five widths;
+  the fullscreen icon uses SVG.
   AJAX cart add/remove updates the side Bill Summary, names remain literal text,
   and Advanced mobile checkout stacks the catalog/cart and wraps readable payment buttons.
 
