@@ -11,7 +11,7 @@
   <zenith.erp.base.CompanySettings organizationPartyId="POS_QA_A" settingKey="TAX_CALCULATION_SERVICE" settingValue="zenith.india.IndiaTaxServices.calculate#Tax" />
   <zenith.erp.pos.PosTerminal terminalId="POS_QA_A_TERM1" organizationPartyId="POS_QA_A" terminalName="Disposable POS A terminal 1" regionGeoId="33" stateCode="33" countryGeoId="IND" facilityId="POS_QA_A_FAC" isActive="Y" />
   <zenith.erp.pos.PosTerminal terminalId="POS_QA_A_TERM2" organizationPartyId="POS_QA_A" terminalName="Disposable POS A terminal 2" regionGeoId="33" stateCode="33" countryGeoId="IND" facilityId="POS_QA_A_FAC" isActive="Y" />
-  <zenith.erp.pos.PosTerminal terminalId="POS_QA_A_TERM_NO_STATE" organizationPartyId="POS_QA_A" terminalName="Disposable POS A no-state test terminal" countryGeoId="IND" facilityId="POS_QA_A_FAC" isActive="Y" />
+  <zenith.erp.pos.PosTerminal terminalId="POS_QA_A_TERM_TAX_OFF" organizationPartyId="POS_QA_A" terminalName="Disposable POS A tax-off test terminal" regionGeoId="33" stateCode="33" countryGeoId="IND" facilityId="POS_QA_A_FAC" isActive="Y" />
   <mantle.product.category.ProductCategory productCategoryId="POS_QA_A_CAT" productCategoryTypeEnumId="PctCatalog" categoryName="Disposable POS A category" ownerPartyId="POS_QA_A" />
   <mantle.product.Product productId="POS_QA_A_P18" pseudoId="POS_QA_A_P18" productName="Disposable POS A P18" productTypeEnumId="PtAsset" ownerPartyId="POS_QA_A" amountUomId="OTH_ea" mrpAmount="100" gstSlabId="GST_18" inventoryTracked="N" />
   <mantle.product.category.ProductCategoryMember productId="POS_QA_A_P18" productCategoryId="POS_QA_A_CAT" fromDate="2020-01-01 00:00:00" />

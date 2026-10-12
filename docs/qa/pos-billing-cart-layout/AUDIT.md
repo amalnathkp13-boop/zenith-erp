@@ -1,6 +1,6 @@
 # POS billing add and viewport layout audit
 
-Status: local candidate prepared on `fix/pos-billing-cart-layout`; not pushed and no PR opened.
+Status: follow-up acceptance-fixture correction for [PR #80](https://github.com/amalnathkp13-boop/zenith-erp/pull/80).
 
 ## Reported behavior
 
@@ -32,7 +32,7 @@ I inspected the shared training chat's text only and excluded its images and PR 
 
 ## Verification and limits
 
-The disposable POS runtime suite now contains a regression case using a synthetic terminal with no valid supply state, plus desktop layout assertions for a fixed outer terminal and reachable payment controls. The fixture is synthetic and the test closes its session and voids its unissued cart.
+The first staging acceptance run could not reach the tax-off regression: its synthetic terminal had no operating region, so organization authorization returned 403 before cart add. The fixture now supplies the valid region/state needed to resolve the disposable organization. The AJAX add request still omits customer and destination-state fields and runs with tax off, asserting a successful line add, the entered taxable amount, zero tax, and the expected payable amount. It closes its synthetic session and voids its unissued cart. Desktop layout assertions still cover the fixed outer terminal and reachable payment controls.
 
 Source checks completed:
 
@@ -41,6 +41,11 @@ Source checks completed:
 - CSS comment, party picker, cross-module transition, and form DOM collision guards passed.
 - `git diff --check` passed with the repository's CRLF line endings recognized.
 
-This workstation has no Docker executable and no local ZetaERP runtime image, so the Moqui billing scenario and rendered viewport could not be run here. The new regression case is prepared in the disposable POS runtime suite but has not been executed. I have not accessed a production tenant, written billing data, pushed the branch, opened a PR, merged code, or deployed anything.
+Follow-up fixture correction checks:
+
+- The disposable fixture XML parses, and `node --check` passes for the updated verifier.
+- All four repository source guards and `git diff --check` pass on the follow-up diff.
+
+This workstation has no Docker executable and no local ZetaERP runtime image, so the Moqui billing scenario and rendered viewport could not be run locally. The updated regression case must pass the branch's staging acceptance run. No production tenant was accessed and no billing data was written. The existing PR remains unmerged; no deployment was performed.
 
 Before merge, run the repository's required master workflow against the exact candidate SHA and the POS CI acceptance workflow as required by the POS runtime README. A maintainer must also verify the POS on both app surfaces in the disposable runtime and confirm cleanup evidence. The report does not claim those runtime checks passed.
