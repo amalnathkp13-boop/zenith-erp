@@ -1424,6 +1424,10 @@ body:not(.Terminal) #content { padding-bottom: 96px; }
    <style>/<script>, so the CSS must live here in the loaded theme sheet). Everything is gated on
    body.zq-nav (added by the JS) so it never affects /apps.
    =================================================================================================== */
+/* The shared Quasar shell mounts before its tenant-aware navigation. Keep that transient
+   framework layout out of sight until the replacement is fully initialized. */
+html.zq-shell-boot:not(.zq-nav-ready) body .q-layout{visibility:hidden!important}
+html.zq-shell-boot:not(.zq-nav-ready) body::after{content:"Loading workspace…";position:fixed;inset:0;z-index:4000;display:grid;place-items:center;background:#f8f9fc;color:#463d7a;font:600 15px/1.4 Inter,"Segoe UI",sans-serif;pointer-events:none}
 body.zq-nav .q-drawer { display:none !important; }
 body.zq-nav .q-page-container { padding-left:224px !important; transition:padding-left .15s ease; }
 body.zq-nav.zq-side-collapsed .q-page-container { padding-left:62px !important; }
@@ -3944,7 +3948,10 @@ body:has(.inv-dashboard) .navbar > .container-fluid :is(a,button,input,select,te
 .z-pos-page #pos-terminal-root{overflow-y:auto!important;overflow-x:hidden!important}
 .z-pos-page #pos-terminal-root > .nb-header{display:block!important;flex:0 0 auto!important;height:fit-content!important;align-self:start!important}
 .z-pos-page #pos-terminal-root > .nb-actionbar,.z-pos-page #pos-terminal-root > #posHelp_terminal{flex-shrink:0!important}
+/* On desktop cashier screens, give Normal billing's search/footer room.
+   Stacked mobile panes retain their scrollable height below. */
 .z-pos-page #pos-terminal-root .pos-main-layout{flex-shrink:0!important;min-height:300px!important}
+@media(min-width:1025px){body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root .pos-main-layout{flex-shrink:1!important;min-height:254px!important}}
 .z-pos-page #pos-terminal-root .pos-cart{min-height:240px!important}
 body.Terminal:not(.pos-mode-normal) .z-pos-page #pos-terminal-root{grid-template-rows:max-content max-content max-content minmax(240px,1fr) max-content max-content max-content max-content max-content!important}
 .z-pos-page #fsBtnIcon{display:inline-flex;align-items:center;justify-content:center}
