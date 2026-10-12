@@ -10,7 +10,7 @@
 
     <transition name="saveDashLayout">
         <actions><script><![CDATA[
-            def _wk = ['kpis','arap','revexp']
+            def _wk = ['kpis','arap']
             ec.user.setPreference('ACCT_DASH_HIDDEN', _wk.findAll { !context.get('w_' + it) }.join(','))
         ]]></script></actions>
         <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo]"/>
@@ -38,46 +38,31 @@
     <transition name="changeDashDate"><default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dateMode:'custom']"/></transition>
 
     <actions>
-        <!-- ZE-DASH date-range filter. DEFAULT = all-time (empty) so A/R and A/P stay at current totals on load;
-             a selected range scopes them to invoices dated in that period. -->
+        <!-- Outstanding balances are current snapshots. The date range controls the activity chart. -->
         <script><![CDATA[
             def sdf = new java.text.SimpleDateFormat("yyyy-MM-dd")
             def now = ec.user.nowTimestamp
             def todayStr = sdf.format(now)
-            if (!dashDate) dashDate = ''
-            if (!dashDateTo) dashDateTo = ''
-            dayStart = null; dayEndExcl = null
-            if (dashDate) {
-                if (!dashDateTo) dashDateTo = dashDate
-                if (dashDateTo < dashDate) { def _s = dashDate; dashDate = dashDateTo; dashDateTo = _s }
-                dayStart = java.sql.Timestamp.valueOf(dashDate + " 00:00:00")
-                def _ce = java.util.Calendar.getInstance(); _ce.setTime(java.sql.Timestamp.valueOf(dashDateTo + " 00:00:00")); _ce.add(java.util.Calendar.DAY_OF_MONTH, 1)
-                dayEndExcl = new java.sql.Timestamp(_ce.getTimeInMillis())
-            }
             def _cw = java.util.Calendar.getInstance(); _cw.setTime(now); _cw.set(java.util.Calendar.DAY_OF_WEEK, _cw.getFirstDayOfWeek()); def weekStartStr = sdf.format(_cw.getTime())
             def _cm = java.util.Calendar.getInstance(); _cm.setTime(now); _cm.set(java.util.Calendar.DAY_OF_MONTH,1); def monthStartStr = sdf.format(_cm.getTime())
-            def _c30 = java.util.Calendar.getInstance(); _c30.setTime(now); _c30.add(java.util.Calendar.DAY_OF_MONTH,-29); def last30Str = sdf.format(_c30.getTime())
-            urlAll = "?"; urlToday = "?dashDate="+todayStr+"&dashDateTo="+todayStr
+            def _yc = java.util.Calendar.getInstance(); _yc.setTime(now); _yc.set(java.util.Calendar.MONTH,0); _yc.set(java.util.Calendar.DAY_OF_MONTH,1); def yearStartStr = sdf.format(_yc.getTime())
+            if (!dashDate) dashDate = weekStartStr
+            if (!dashDateTo) dashDateTo = todayStr
+            if (dashDateTo < dashDate) { def _s = dashDate; dashDate = dashDateTo; dashDateTo = _s }
+            dayStart = java.sql.Timestamp.valueOf(dashDate + " 00:00:00")
+            def _ce = java.util.Calendar.getInstance(); _ce.setTime(java.sql.Timestamp.valueOf(dashDateTo + " 00:00:00")); _ce.add(java.util.Calendar.DAY_OF_MONTH, 1)
+            dayEndExcl = new java.sql.Timestamp(_ce.getTimeInMillis())
+            def rangeShort = new java.text.SimpleDateFormat("dd MMM")
+            def rangeLong = new java.text.SimpleDateFormat("dd MMM yyyy")
+            rangeDisplay = (dashDate.substring(0,4) == dashDateTo.substring(0,4) ? rangeShort : rangeLong).format(java.sql.Date.valueOf(dashDate)) + ' – ' + rangeLong.format(java.sql.Date.valueOf(dashDateTo))
+            urlToday = "?dashDate="+todayStr+"&dashDateTo="+todayStr
             urlWeek = "?dashDate="+weekStartStr+"&dashDateTo="+todayStr
             urlMonth = "?dashDate="+monthStartStr+"&dashDateTo="+todayStr
-            url30 = "?dashDate="+last30Str+"&dashDateTo="+todayStr
-            presetActive = 'all'
-            if (dashDate) {
-                presetActive = 'custom'
-                if (dashDateTo == todayStr) {
-                    if (dashDate == todayStr) presetActive='today'
-                    else if (dashDate == weekStartStr) presetActive='week'
-                    else if (dashDate == monthStartStr) presetActive='month'
-                    else if (dashDate == last30Str) presetActive='last30'
-                }
-            }
-            // ZE-DATEWISE: This Year preset + "Date-wise" custom-range tab (self-contained; var-name-agnostic)
-            def _dwSdf = new java.text.SimpleDateFormat("yyyy-MM-dd"); def _dwNow = ec.user.nowTimestamp; def _dwToday = _dwSdf.format(_dwNow)
-            def _dwYc = java.util.Calendar.getInstance(); _dwYc.setTime(_dwNow); _dwYc.set(java.util.Calendar.MONTH,0); _dwYc.set(java.util.Calendar.DAY_OF_MONTH,1); def _dwYearStart = _dwSdf.format(_dwYc.getTime())
-            urlYear = "?dashDate="+_dwYearStart+"&dashDateTo="+_dwToday
-            if (dashDate && dashDateTo == _dwToday && dashDate == _dwYearStart) presetActive = 'year'
-            showCustom = (((dateMode ?: '') == 'custom') || (presetActive == 'custom'))
-            urlCustom = dashDate ? ("?dateMode=custom&dashDate="+dashDate+"&dashDateTo="+dashDateTo) : "?dateMode=custom"
+            urlYear = "?dashDate="+yearStartStr+"&dashDateTo="+todayStr
+            presetActive = dashDateTo == todayStr ?
+                (dashDate == todayStr ? 'today' : dashDate == weekStartStr ? 'week' : dashDate == monthStartStr ? 'month' : dashDate == yearStartStr ? 'year' : 'custom') : 'custom'
+            showCustom = (dateMode ?: '') == 'custom'
+            urlSettings = "?dashDate="+dashDate+"&dashDateTo="+dashDateTo+"&showSettings=1"
         ]]></script>
         <set field="cal" from="new java.util.GregorianCalendar()"/>
         <set field="yr" from="cal.get(java.util.Calendar.YEAR)"/>
@@ -86,7 +71,7 @@
         <set field="financialYear" value="${fyStart}-${fyStart + 1}"/>
         
         <!-- Aggregate Receivables (Sales Invoices not fully paid) -->
-        <set field="activeOrgId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
+        <set field="activeOrgId" from="ec.user.getPreference('ACTIVE_ORGANIZATION') ?: '__NO_ACTIVE_ORG__'"/>
         <!-- ZE-SHOP: A/R (sales invoices) is shop-attributable via Invoice.facilityId; A/P (purchase invoices) has
              no shop dimension in this data model, so it stays org-wide even when a shop is selected. -->
         <script>_activeShop = null; try { def _sc = ec.service.sync().name("zenith.base.ShopServices.get#ActiveShopScope").call(); _activeShop = _sc?.activeShopId } catch (Exception _e) {}</script>
@@ -96,11 +81,7 @@
             <!-- Org isolation: only this org's receivables (sales invoices it issued). -->
             <econdition field-name="fromPartyId" from="activeOrgId" ignore-if-empty="true"/>
             <econdition field-name="facilityId" from="_activeShop" ignore-if-empty="true"/><!-- ZE-SHOP -->
-            <econdition field-name="invoiceDate" operator="greater-equals" from="dayStart" ignore-if-empty="true"/>
-            <econdition field-name="invoiceDate" operator="less" from="dayEndExcl" ignore-if-empty="true"/>
         </entity-find>
-        <set field="totalAr" from="0"/>
-        <script>for (def inv : arList) { totalAr += (inv.unpaidTotal ?: inv.invoiceTotal ?: 0) }</script>
         
         <!-- Aggregate Payables (Purchase Invoices not fully paid) -->
         <entity-find entity-name="mantle.account.invoice.Invoice" list="apList">
@@ -108,11 +89,89 @@
             <econdition field-name="statusId" operator="in" value="InvoiceApproved,InvoiceReceived"/>
             <!-- Org isolation: only this org's payables (purchase invoices billed TO it). -->
             <econdition field-name="toPartyId" from="activeOrgId" ignore-if-empty="true"/>
-            <econdition field-name="invoiceDate" operator="greater-equals" from="dayStart" ignore-if-empty="true"/>
-            <econdition field-name="invoiceDate" operator="less" from="dayEndExcl" ignore-if-empty="true"/>
         </entity-find>
-        <set field="totalAp" from="0"/>
-        <script>for (def inv : apList) { totalAp += (inv.unpaidTotal ?: inv.invoiceTotal ?: 0) }</script>
+
+        <script><![CDATA[
+            // All visible amounts come from the active organization's unpaid invoices.
+            def unpaid = { inv ->
+                def amount = ((inv.unpaidTotal != null ? inv.unpaidTotal : inv.invoiceTotal) ?: 0) as BigDecimal
+                amount > 0 ? amount : BigDecimal.ZERO
+            }
+            arOpen = arList.findAll { unpaid(it) > 0 }
+            apOpen = apList.findAll { unpaid(it) > 0 }
+            totalAr = arOpen.sum { unpaid(it) } ?: BigDecimal.ZERO
+            totalAp = apOpen.sum { unpaid(it) } ?: BigDecimal.ZERO
+            arCount = arOpen.size()
+            apVendorCount = apOpen.collect { it.fromPartyId }.findAll { it }.unique().size()
+            arDisplay = zinr.inr(ec.l10n.format(totalAr, '#,##,##0.00'))
+            apDisplay = zinr.inr(ec.l10n.format(totalAp, '#,##,##0.00'))
+
+            long dayMs = 86400000L
+            int spanDays = Math.max(1, ((dayEndExcl.time - dayStart.time) / dayMs) as int)
+            int barCount = Math.min(8, spanDays)
+            def chartDateFmt = new java.text.SimpleDateFormat('dd MMM')
+            chartBars = (0..<barCount).collect { idx ->
+                long startOffset = Math.floor(idx * spanDays / (double) barCount) as long
+                [label:chartDateFmt.format(new java.util.Date(dayStart.time + startOffset * dayMs)), ar:BigDecimal.ZERO, ap:BigDecimal.ZERO]
+            }
+            def fillChart = { invoices, key ->
+                invoices.each { inv ->
+                    def d = inv.invoiceDate ?: inv.entryDate
+                    if (d && d.time >= dayStart.time && d.time < dayEndExcl.time) {
+                        int offset = ((d.time - dayStart.time) / dayMs) as int
+                        int idx = Math.min(barCount - 1, (offset * barCount / spanDays) as int)
+                        chartBars[idx][key] += unpaid(inv)
+                    }
+                }
+            }
+            fillChart(arOpen, 'ar')
+            fillChart(apOpen, 'ap')
+            def maxBar = (chartBars.collectMany { [it.ar, it.ap] }.max() ?: BigDecimal.ZERO) as BigDecimal
+            chartMax = maxBar > 0 ? maxBar : BigDecimal.ONE
+            chartBars.each { b ->
+                b.arPct = b.ar > 0 ? Math.max(3, ((b.ar * 100 / chartMax) as BigDecimal).intValue()) : 0
+                b.apPct = b.ap > 0 ? Math.max(3, ((b.ap * 100 / chartMax) as BigDecimal).intValue()) : 0
+            }
+            chartAxis = (4..0).collect { n ->
+                def value = maxBar * n / 4
+                value >= 100000 ? '₹' + ec.l10n.format(value / 100000, '#0.#') + 'L' : '₹' + ec.l10n.format(value, '#,##0')
+            }
+            def spark = { key, color ->
+                def values = chartBars.collect { (it[key] ?: 0) as BigDecimal }
+                def maxValue = values.max() ?: BigDecimal.ONE
+                if (maxValue == 0) maxValue = BigDecimal.ONE
+                def points = values.withIndex().collect { pair ->
+                    def v = pair[0]
+                    def i = pair[1]
+                    def x = values.size() == 1 ? 140 : (i * 280.0 / (values.size() - 1))
+                    def y = 55.0 - (v.doubleValue() / maxValue.doubleValue()) * 45.0
+                    String.format(java.util.Locale.US, '%.1f,%.1f', x, y)
+                }.join(' ')
+                '<svg viewBox="0 0 280 65" aria-hidden="true"><polyline points="'+points+'" fill="none" stroke="'+color+'" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+            }
+            arSparkSvg = spark('ar', '#16b647')
+            apSparkSvg = spark('ap', '#ff7a00')
+
+            def age = { invoices ->
+                def rows = [
+                    [label:'0 – 30 Days', color:'#21bb62', count:0, amount:BigDecimal.ZERO],
+                    [label:'31 – 60 Days', color:'#56ca75', count:0, amount:BigDecimal.ZERO],
+                    [label:'61 – 90 Days', color:'#ff8917', count:0, amount:BigDecimal.ZERO],
+                    [label:'90+ Days', color:'#f05252', count:0, amount:BigDecimal.ZERO]
+                ]
+                invoices.each { inv ->
+                    def due = inv.dueDate ?: inv.invoiceDate ?: inv.entryDate ?: now
+                    int late = Math.max(0, ((now.time - due.time) / dayMs) as int)
+                    int idx = late <= 30 ? 0 : late <= 60 ? 1 : late <= 90 ? 2 : 3
+                    rows[idx].count++
+                    rows[idx].amount += unpaid(inv)
+                }
+                rows.each { row -> row.amountText = zinr.inr(ec.l10n.format(row.amount, '#,##,##0.00')) }
+                rows
+            }
+            arAgingRows = age(arOpen)
+            apAgingRows = age(apOpen)
+        ]]></script>
 
         <!-- ZE-DASH layout: switchable widgets (+ cashier role default) + saved drag order -->
         <script><![CDATA[
@@ -125,8 +184,8 @@
             } catch (Exception e) {}
             def _pref = ec.user.getPreference('ACCT_DASH_HIDDEN')
             def _hiddenSet = ((_pref != null) ? _pref : _roleHidden).split(',').findAll { it }.toSet()
-            showKpis = !_hiddenSet.contains('kpis'); showArap = !_hiddenSet.contains('arap'); showRevexp = !_hiddenSet.contains('revexp')
-            w_kpis = showKpis ? 'Y' : ''; w_arap = showArap ? 'Y' : ''; w_revexp = showRevexp ? 'Y' : ''
+            showKpis = !_hiddenSet.contains('kpis'); showArap = !_hiddenSet.contains('arap')
+            w_kpis = showKpis ? 'Y' : ''; w_arap = showArap ? 'Y' : ''
             dashOrderCsv = (ec.user.getPreference('ACCT_DASH_ORDER') ?: '')
             dashSizeCsv = (ec.user.getPreference('ACCT_DASH_SIZE') ?: '')
             urlSettings = dashDate ? ("?dashDate="+dashDate+"&dashDateTo="+dashDateTo+"&showSettings=1") : "?showSettings=1"
@@ -134,184 +193,50 @@
     </actions>
 
     <widgets>
-        <container style="row items-center justify-between q-mb-lg">
-            <container>
-                <label text="Financial Dashboard" type="h3" style="text-primary text-weight-bold q-my-none"/>
-                <label text="Financial Year: FY ${financialYear}" type="p" style="text-grey-7 q-mt-sm q-mb-none"/>
-            </container>
-        </container>
+        <render-mode><text type="html,qvt" template="true"><![CDATA[
+<main class="acct-dash-v2">
+  <div class="acct-dash-head">
+    <div><h1>Accounting Dashboard</h1><p>Real-time overview of your financial performance</p></div>
+    <div class="acct-dash-toolbar">
+      <details class="acct-dash-date"><summary><span class="material-icons">calendar_today</span> ${rangeDisplay?html} <span class="material-icons">expand_more</span></summary>
+        <form method="get" action="."><label>From <input type="date" name="dashDate" value="${dashDate?html}"/></label><label>To <input type="date" name="dashDateTo" value="${dashDateTo?html}"/></label><input type="hidden" name="dateMode" value="custom"/><button type="submit">Apply</button></form>
+      </details>
+      <nav class="acct-dash-periods" aria-label="Accounting dashboard date range"><a class="<#if presetActive == 'today'>active</#if>" href="${urlToday?html}">Today</a><a class="<#if presetActive == 'week'>active</#if>" href="${urlWeek?html}">This Week</a><a class="<#if presetActive == 'month'>active</#if>" href="${urlMonth?html}">This Month</a><a class="<#if presetActive == 'year'>active</#if>" href="${urlYear?html}">This Year</a></nav>
+      <a class="acct-dash-customize" href="${urlSettings?html}"><span class="material-icons">settings</span> Customize</a>
+    </div>
+  </div>
 
-        <!-- ZE-DASH: date-range filter + customize gear -->
-        <container style="q-px-lg q-py-md q-mb-md zenith-card bg-white shadow-1 border-radius-lg">
-            <render-mode><text type="html,vuet,qvt" template="true"><![CDATA[<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-family:Segoe UI,Arial,sans-serif;margin-bottom:10px"><span style="font-size:11.5px;font-weight:800;color:#5C6B85;letter-spacing:.06em;margin-right:4px">DATE RANGE</span><details class="zdash-dr"><summary class="zdash-chip zdash-dr-sum${showCustom?string(' on','')}">&#128197; <#if (showCustom!false) && (dashDate!'')?has_content>${dashDate}<#if (dashDateTo!'')?has_content && dashDateTo != dashDate> to ${dashDateTo}</#if><#else>Date-wise</#if> &#9662;</summary><form method="get" action="." class="zdash-dr-pop"><input type="hidden" name="dateMode" value="custom"/><div class="zdash-dr-row"><span>From</span><input type="date" name="dashDate" value="${dashDate}"/></div><div class="zdash-dr-row"><span>To</span><input type="date" name="dashDateTo" value="${dashDateTo}"/></div><button type="submit" class="zdash-dr-apply">&#10003; Apply</button></form></details><a href="${urlAll}" class="zdash-chip${(presetActive=='all' && !showCustom)?string(' on','')}">All time</a><a href="${urlToday}" class="zdash-chip${(presetActive=='today')?string(' on','')}">Today</a><a href="${urlWeek}" class="zdash-chip${(presetActive=='week')?string(' on','')}">This Week</a><a href="${urlMonth}" class="zdash-chip${(presetActive=='month')?string(' on','')}">This Month</a><a href="${url30}" class="zdash-chip${(presetActive=='last30')?string(' on','')}">Last 30 Days</a><a href="${urlYear}" class="zdash-chip${(presetActive=='year')?string(' on','')}">This Year</a><a href="${urlSettings}" title="Customize dashboard widgets" style="margin-left:auto;color:#9C93B4;font-size:18px;line-height:1;text-decoration:none;padding:2px 6px">&#9881;</a></div>]]></text></render-mode>
-            <!-- ZE-DATEPICKER: superseded by the compact <details> date-range pill in the chip row; keep the
-                 form defined but never render it (condition false) so the bulky From/To panel can't reappear. -->
-            <section name="wDateCustom">
-                <condition><expression>false</expression></condition>
-                <widgets>
-                <form-single name="DateForm" transition="changeDashDate">
-                    <field name="dashDate"><default-field title="From"><date-time type="date" default-value="${dashDate}"/></default-field></field>
-                    <field name="dashDateTo"><default-field title="To"><date-time type="date" default-value="${dashDateTo}"/></default-field></field>
-                    <field name="goBtn"><default-field title=""><submit text="Apply" icon="fa fa-check"/></default-field></field>
-                </form-single>
-                </widgets>
-            </section>
-        </container>
-        <section name="DashSettings" condition="showSettings == '1'">
-            <widgets>
-                <container style="q-px-lg q-py-md q-mb-md zenith-card bg-white shadow-1 border-radius-lg">
-                    <render-mode><text type="html"><![CDATA[<div style="font-size:12.5px;font-weight:800;color:#463D7A;letter-spacing:.04em;margin-bottom:2px">&#9881; CUSTOMIZE DASHBOARD</div><div style="font-size:12px;color:#5C6B85;margin-bottom:8px">Tick the sections you want to see &mdash; saved to your account. Drag the handle on any card to reorder.</div>]]></text></render-mode>
-                    <form-single name="DashLayoutForm" transition="saveDashLayout">
-                        <field name="dashDate"><default-field><hidden/></default-field></field>
-                        <field name="dashDateTo"><default-field><hidden/></default-field></field>
-                        <field name="w_kpis"><default-field title="A/R and A/P summary"><check><option key="Y" text=" "/></check></default-field></field>
-                        <field name="w_arap"><default-field title="Receivables vs Payables chart"><check><option key="Y" text=" "/></check></default-field></field>
-                        <field name="w_revexp"><default-field title="Revenue vs Expenses chart"><check><option key="Y" text=" "/></check></default-field></field>
-                        <field name="saveBtn"><default-field title=""><submit text="Save Layout" icon="fa fa-check"/></default-field></field>
-                    </form-single>
-                    <container style="row q-gutter-sm q-mt-sm">
-                        <link url="resetDashLayout" text="Reset to Default" icon="fa fa-undo" btn-type="warning" parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo]"/>
-                        <link url="." text="Close" btn-type="flat" parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo]"/>
-                    </container>
-                </container>
-            </widgets>
-        </section>
+  <#if (showSettings!'') == '1'>
+  <form class="acct-dash-settings" method="post" action="saveDashLayout">
+    <strong>Customize Dashboard</strong><input type="hidden" name="moquiSessionToken" value="${ec.web.sessionToken?html}"/><input type="hidden" name="dashDate" value="${dashDate?html}"/><input type="hidden" name="dashDateTo" value="${dashDateTo?html}"/>
+    <label><input type="checkbox" name="w_kpis" value="Y" <#if showKpis>checked</#if>/> Balance cards</label>
+    <label><input type="checkbox" name="w_arap" value="Y" <#if showArap>checked</#if>/> Comparison chart</label>
+    <button type="submit">Save</button><a href="resetDashLayout">Reset</a>
+  </form>
+  </#if>
 
-        <section name="wKpis" condition="showKpis"><widgets>
-        <render-mode><text type="html"><![CDATA[<div class="dash-widget" data-wkey="kpis"><div class="dash-handle" title="Drag to reorder">&#8942;&#8942;</div>]]></text></render-mode>
-        <container-row>
-            <row-col lg="6">
-                <!-- Accounts Receivable -->
-                <container style="bg-white shadow-3 q-pa-xl q-mb-md" id="arCard">
-                    <!-- Note: In Moqui, style="css classes", so we can't use inline CSS on container easily. 
-                         Quasar utility classes are used below. -->
-                    <container style="row items-center justify-between">
-                        <container>
-                            <label text="ACCOUNTS RECEIVABLE (A/R)" type="h6" style="text-grey-7 q-my-none text-weight-bold"/>
-                            <label text="${currSymbol}${zinr.inr(ec.l10n.format(totalAr ?: 0, '#,##,##0.00'))}" type="h3" style="text-positive text-weight-bolder q-my-none q-mt-sm"/>
-                        </container>
-                        <container style="bg-green-1 text-positive shadow-1 flex flex-center" id="arIconBox">
-                            <!-- Quasar lacks a simple 'circle' utility class that sets width/height natively without inline styles.
-                                 We rely on text-h2 for size. -->
-                            <render-mode><text type="html"><![CDATA[<q-icon name="account_balance_wallet" class="text-h2 q-pa-sm"/>]]></text></render-mode>
-                        </container>
-                    </container>
-                    <container style="q-mt-xl">
-                        <link url="../Invoices" text="View Customer Invoices" style="q-btn--flat text-positive text-weight-bold"/>
-                    </container>
-                </container>
-            </row-col>
-            
-            <row-col lg="6">
-                <!-- Accounts Payable -->
-                <container style="bg-white shadow-3 q-pa-xl q-mb-md" id="apCard">
-                    <container style="row items-center justify-between">
-                        <container>
-                            <label text="ACCOUNTS PAYABLE (A/P)" type="h6" style="text-grey-7 q-my-none text-weight-bold"/>
-                            <label text="${currSymbol}${zinr.inr(ec.l10n.format(totalAp ?: 0, '#,##,##0.00'))}" type="h3" style="text-warning text-weight-bolder q-my-none q-mt-sm"/>
-                        </container>
-                        <container style="bg-orange-1 text-warning shadow-1 flex flex-center" id="apIconBox">
-                            <render-mode><text type="html"><![CDATA[<q-icon name="credit_card" class="text-h2 q-pa-sm"/>]]></text></render-mode>
-                        </container>
-                    </container>
-                    <container style="q-mt-xl">
-                        <link url="../Invoices" text="View Vendor Bills" style="q-btn--flat text-warning text-weight-bold"/>
-                    </container>
-                </container>
-            </row-col>
-        </container-row>
-        <render-mode><text type="html"><![CDATA[</div>]]></text></render-mode>
-        </widgets></section>
+  <#if showKpis>
+  <div class="acct-dash-balances">
+    <article class="acct-dash-balance ar"><div class="acct-dash-balance-top"><span class="acct-dash-icon"><span class="material-icons">account_balance_wallet</span></span><div><label>TOTAL RECEIVABLE (A/R) <span title="Current outstanding customer invoices">ⓘ</span></label><strong>${(currSymbol!'₹')?html}${arDisplay?html}</strong></div></div><p>From ${arCount} Invoices</p><div class="acct-dash-spark">${arSparkSvg}</div><div class="acct-dash-balance-meta"><b>Live</b> current outstanding balance</div><a href="Invoices?invoiceTypeEnumId=InvoiceSales">View Customer Invoices <span>→</span></a></article>
+    <article class="acct-dash-balance ap"><div class="acct-dash-balance-top"><span class="acct-dash-icon"><span class="material-icons">credit_card</span></span><div><label>TOTAL PAYABLE (A/P) <span title="Current outstanding vendor bills">ⓘ</span></label><strong>${(currSymbol!'₹')?html}${apDisplay?html}</strong></div></div><p>To ${apVendorCount} Vendors</p><div class="acct-dash-spark">${apSparkSvg}</div><div class="acct-dash-balance-meta"><b>Live</b> current outstanding balance</div><a href="Invoices?invoiceTypeEnumId=InvoicePurchase">View Vendor Bills <span>→</span></a></article>
+  </div>
+  </#if>
 
-        <!-- Charts Row -->
-        <container-row>
-            <row-col lg="6">
-                <section name="wArap" condition="showArap"><widgets>
-                <render-mode><text type="html"><![CDATA[<div class="dash-widget" data-wkey="arap"><div class="dash-handle" title="Drag to reorder">&#8942;&#8942;</div>]]></text></render-mode>
-                <container style="bg-white shadow-3 q-pa-lg q-mb-md">
-                    <label text="Receivables vs Payables" type="h6" style="text-primary text-weight-bold q-mb-md"/>
-                    <render-mode><text type="html,vuet,qvt"><![CDATA[
-                        <div id="arApChart"></div>
-                        <img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onload="zChart(this,function(){(function() {
-                            var ar = ${(totalAr!0)?c};
-                            var ap = ${(totalAp!0)?c};
-                            if (ar == 0 && ap == 0) { ar = 875000; ap = 650000; }
-                            new ApexCharts(document.querySelector(&quot;#arApChart&quot;), {
-                                chart: { type: 'bar', height: 280, toolbar: { show: false }, fontFamily: 'Roboto, sans-serif' },
-                                series: [{ name: 'Amount', data: [ar, ap] }],
-                                xaxis: { categories: ['Receivables (AR)', 'Payables (AP)'] },
-                                colors: ['#4CAF50', '#FF9800'],
-                                plotOptions: { bar: { borderRadius: 8, columnWidth: '50%', distributed: true } },
-                                yaxis: { labels: { formatter: function(v) { return '${currSymbol!"$"}' + (v/1000).toFixed(0) + 'K'; } } },
-                                legend: { show: false },
-                                dataLabels: { enabled: true, formatter: function(v) { return '${currSymbol!"$"}' + (v/100000).toFixed(1) + 'L'; } }
-                            }).render();
-                        })();})"/>
-                    ]]></text></render-mode>
-                </container>
-                <render-mode><text type="html"><![CDATA[</div>]]></text></render-mode>
-                </widgets></section>
-            </row-col>
-            <row-col lg="6">
-                <section name="wRevexp" condition="showRevexp"><widgets>
-                <render-mode><text type="html"><![CDATA[<div class="dash-widget" data-wkey="revexp"><div class="dash-handle" title="Drag to reorder">&#8942;&#8942;</div>]]></text></render-mode>
-                <container style="bg-white shadow-3 q-pa-lg q-mb-md">
-                    <label text="Revenue vs Expenses (Monthly)" type="h6" style="text-primary text-weight-bold q-mb-md"/>
-                    <render-mode><text type="html,vuet,qvt"><![CDATA[
-                        <div id="revExpChart"></div>
-                        <img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onload="zChart(this,function(){(function() {
-                            var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-                            var revenue = [420000, 480000, 510000, 550000, 490000, 580000];
-                            var expenses = [310000, 340000, 360000, 380000, 350000, 390000];
-                            new ApexCharts(document.querySelector(&quot;#revExpChart&quot;), {
-                                chart: { type: 'bar', height: 280, toolbar: { show: true }, fontFamily: 'Roboto, sans-serif', stacked: false },
-                                series: [
-                                    { name: 'Revenue', data: revenue },
-                                    { name: 'Expenses', data: expenses }
-                                ],
-                                xaxis: { categories: months },
-                                colors: ['#4CAF50', '#F44336'],
-                                plotOptions: { bar: { borderRadius: 4, columnWidth: '60%' } },
-                                yaxis: { labels: { formatter: function(v) { return '${currSymbol!"$"}' + (v/1000).toFixed(0) + 'K'; } } },
-                                legend: { position: 'top' },
-                                dataLabels: { enabled: false }
-                            }).render();
-                        })();})"/>
-                    ]]></text></render-mode>
-                </container>
-                <render-mode><text type="html"><![CDATA[</div>]]></text></render-mode>
-                </widgets></section>
-            </row-col>
-        </container-row>
+  <div class="acct-dash-details">
+    <#if showArap>
+    <section class="acct-dash-panel acct-dash-comparison"><header><h2>Receivables vs Payables</h2><span>${rangeDisplay?html}</span></header><div class="acct-dash-legend"><span><i class="ar"></i> Receivables (A/R)</span><span><i class="ap"></i> Payables (A/P)</span></div>
+      <div class="acct-dash-chart"><div class="acct-dash-axis"><#list chartAxis as tick><span>${tick?html}</span></#list></div><div class="acct-dash-plot"><div class="acct-dash-grid"><span></span><span></span><span></span><span></span><span></span></div><div class="acct-dash-bars"><#list chartBars as bar><div class="acct-dash-bar-group"><div class="acct-dash-bar-pair"><i class="ar" style="height:${bar.arPct}%" title="Receivables: ${(currSymbol!'₹')?html}${zinr.inr(ec.l10n.format(bar.ar, '#,##,##0.00'))?html}"></i><i class="ap" style="height:${bar.apPct}%" title="Payables: ${(currSymbol!'₹')?html}${zinr.inr(ec.l10n.format(bar.ap, '#,##,##0.00'))?html}"></i></div><small>${bar.label?html}</small></div></#list></div></div></div>
+    </section>
+    <section class="acct-dash-panel acct-dash-aging"><header><h2>Customers Due</h2><a href="AgingReport?reportType=AR">View Details <span>→</span></a></header><p>Unpaid invoices by due period</p><table><thead><tr><th>Due Period</th><th>Invoices</th><th>Amount (${(currSymbol!'₹')?html})</th></tr></thead><tbody><#list arAgingRows as row><tr><td><i style="background:${row.color}"></i>${row.label?html}</td><td>${row.count}</td><td>${row.amountText?html}</td></tr></#list></tbody><tfoot><tr><td>Total</td><td>${arCount}</td><td>${arDisplay?html}</td></tr></tfoot></table></section>
+    <section class="acct-dash-panel acct-dash-aging ap"><header><h2>Vendors Due</h2><a href="AgingReport?reportType=AP">View Details <span>→</span></a></header><p>Unpaid bills by due period</p><table><thead><tr><th>Due Period</th><th>Invoices</th><th>Amount (${(currSymbol!'₹')?html})</th></tr></thead><tbody><#list apAgingRows as row><tr><td><i style="background:${row.color}"></i>${row.label?html}</td><td>${row.count}</td><td>${row.amountText?html}</td></tr></#list></tbody><tfoot><tr><td>Total</td><td>${apOpen?size}</td><td>${apDisplay?html}</td></tr></tfoot></table></section>
+    </#if>
+  </div>
 
-        <render-mode><text type="html"><![CDATA[<div id="dashExtras">]]></text></render-mode>
-        <!-- Quick Links -->
-        <container-row>
-            <row-col lg="12">
-                <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-lg q-mb-md">
-                    <label text="Financial Reports" type="h6" style="text-weight-bold q-my-none q-mb-md"/>
-                    <container style="row q-gutter-sm">
-                        <link url="../TrialBalance" text="Trial Balance" icon="fa fa-balance-scale" btn-type="primary" style="q-btn--dense"/>
-                        <link url="../ProfitAndLoss" text="Profit &amp; Loss" icon="fa fa-line-chart" btn-type="success" style="q-btn--dense"/>
-                        <link url="../CashFlowStatement" text="Cash Flow" icon="fa fa-money" btn-type="info" style="q-btn--dense"/>
-                        <link url="../Schedule3Statements" text="Balance Sheet" icon="fa fa-file-text" btn-type="warning" style="q-btn--dense"/>
-                        <link url="../AgingReport" text="AR/AP Aging" icon="fa fa-clock-o" btn-type="danger" style="q-btn--dense"/>
-                    </container>
-                </container>
-            </row-col>
-        </container-row>
-
-        <container-row>
-            <row-col lg="12">
-                <container style="bg-indigo-9 text-white shadow-6 text-center q-pa-xl q-mt-lg">
-                    <label text="Complete General Ledger Mapping" type="h4" style="text-weight-bold q-mb-md text-indigo-1"/>
-                    <label text="Ensure your Chart of Accounts aligns perfectly with Indian Schedule III classifications before finalizing year-end books." type="p" style="text-subtitle1 text-indigo-2 q-mb-xl"/>
-                    <link url="../ChartOfAccounts" text="Manage Chart of Accounts" style="q-btn q-btn--standard bg-white text-indigo-9 text-weight-bold q-px-xl q-py-sm"/>
-                </container>
-            </row-col>
-        </container-row>
-        <render-mode><text type="html"><![CDATA[</div>]]></text></render-mode>
-
-        <render-mode><text type="html" template="true"><![CDATA[<script>window.__dashLayout={saveUrl:(("${ec.web.request.requestURI}").replace(/\/+$/,''))+'/saveDashOrder',order:"${dashOrderCsv}",sizes:"${dashSizeCsv}"};</script><script src="/zenithstatic/js/dash-layout.js?v=6"></script>]]></text></render-mode>
+  <section class="acct-dash-panel acct-dash-actions"><h2>Quick Actions</h2><div class="acct-dash-action-grid">
+    <#if modCanWrite!false><a href="/vapps/zenith/sales/EditInvoice"><span class="material-icons">description</span>New Invoice</a><a href="Payments"><span class="material-icons">payments</span>Record Payment</a><a href="/vapps/zenith/Purchase/EditPurchaseInvoice"><span class="material-icons">receipt_long</span>New Bill</a><a href="/apps/zenith/expenses/MyExpenses"><span class="material-icons">receipt</span>Record Expense</a></#if>
+    <a href="AutoBrs"><span class="material-icons">account_balance</span>Bank Reconciliation</a><a href="ChartOfAccounts"><span class="material-icons">contact_page</span>Chart of Accounts</a><a href="Schedule3Statements"><span class="material-icons">bar_chart</span>Financial Reports</a>
+  </div></section>
+</main>
+        ]]></text></render-mode>
     </widgets>
 </screen>

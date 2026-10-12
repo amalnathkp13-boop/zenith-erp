@@ -5,6 +5,9 @@
     <mantle.party.PartyRole partyId="POS_UI_QA" roleTypeId="OrgInternal"/>
     <mantle.facility.Facility facilityId="POS_UI_QA_FAC" ownerPartyId="POS_UI_QA" facilityTypeEnumId="FcTpRetailStore" facilityName="Disposable POS UI facility"/>
     <zenith.erp.pos.PosTerminal terminalId="POS_UI_QA_TERM" organizationPartyId="POS_UI_QA" terminalName="Disposable POS UI terminal" countryGeoId="IND" facilityId="POS_UI_QA_FAC" isActive="Y"/>
+    <mantle.product.category.ProductCategory productCategoryId="POS_UI_QA_CAT" productCategoryTypeEnumId="PctCatalog" categoryName="Disposable POS UI category" ownerPartyId="POS_UI_QA"/>
+    <mantle.product.Product productId="POS_UI_QA_ITEM" pseudoId="POS_UI_QA_ITEM" productName="Disposable POS UI item" productTypeEnumId="PtAsset" ownerPartyId="POS_UI_QA" amountUomId="OTH_ea" mrpAmount="10" inventoryTracked="N"/>
+    <mantle.product.category.ProductCategoryMember productId="POS_UI_QA_ITEM" productCategoryId="POS_UI_QA_CAT" fromDate="2020-01-01 00:00:00"/>
     <zenith.erp.pos.RestaurantTable tableId="POS_UI_QA_AVAILABLE" facilityId="POS_UI_QA_FAC" tableNumber="QA-A" seatingCapacity="4" sectionName="QA" statusId="TblAvailable"/>
     <zenith.erp.pos.RestaurantTable tableId="POS_UI_QA_RESERVED" facilityId="POS_UI_QA_FAC" tableNumber="QA-R" seatingCapacity="4" sectionName="QA" statusId="TblReserved"/>
 </entity-facade-xml>

@@ -48,7 +48,12 @@
     <transition name="goPos"><default-response url="../pos/Dashboard"/></transition>
     <transition name="goIntegrations"><default-response url="../integrations/GstReturns"/></transition>
 
+    <actions>
+        <set field="showAccountingModuleLinks" from="!(ec.web.request.pathInfo ?: '').endsWith('/accounting/AcctgDashboard')"/>
+    </actions>
+
     <widgets>
+        <section name="AccountingCrossModuleNav" condition="showAccountingModuleLinks"><widgets>
         <container style="row items-center justify-end q-px-md q-pt-md q-gutter-sm">
             <section name="gate_sales_1" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('sales'))"><widgets><link url="goSales" text="Sales" icon="fa fa-line-chart" btn-type="primary" style="q-btn--dense"/></widgets></section>
             <section name="gate_purchase_2" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('purchase'))"><widgets><link url="goPurchase" text="Purchase" icon="fa fa-shopping-cart" btn-type="info" style="q-btn--dense"/></widgets></section>
@@ -59,6 +64,7 @@
             <section name="gate_pos_7" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('pos'))"><widgets><link url="goPos" text="POS" icon="fa fa-desktop" btn-type="primary" style="q-btn--dense"/></widgets></section>
             <section name="gate_integrations_8" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('integrations'))"><widgets><link url="goIntegrations" text="GST/Tax" icon="fa fa-plug" btn-type="info" style="q-btn--dense"/></widgets></section>
         </container>
+        </widgets></section>
         <subscreens-active/>
     </widgets>
 </screen>
