@@ -27,12 +27,13 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  s=await open();report.created.push({sessionId:s.sessionId});check('opened session is committed with the authorized terminal and organization',count('pos_session',`session_id='${s.sessionId}' AND terminal_id='POS_QA_A_TERM1' AND organization_party_id='POS_QA_A' AND status_id='PsOpen'`)===1,{sessionId:s.sessionId});
  await invoke('open',{terminalId:'POS_QA_A_TERM2',openingCash:'-1'},true);await invoke('open',{terminalId:'POS_QA_B_TERM1',openingCash:'0'},true);
  t=await cart(s);check('unpaid cart consumes no bill number',!tx(t.transactionId).transaction_number,tx(t.transactionId));
- const taxOffSession=await open('POS_QA_A_TERM_TAX_OFF');report.created.push({sessionId:taxOffSession.sessionId});
- const taxOffCart=await cart(taxOffSession);report.created.push({transactionId:taxOffCart.transactionId});
- const addResponse=await post('Terminal','ajaxCart',{action:'addItem',sessionId:taxOffSession.sessionId,transactionId:taxOffCart.transactionId,productId:'POS_QA_A_P18',addQty:'1',taxOn:'N'});const addResult=await addResponse.json();
- const taxOffLine=rows('pos_transaction_item',`transaction_id='${taxOffCart.transactionId}'`)[0];
- check('tax-off cart add bypasses GST calculation and preserves entered line value',addResponse.status()===200&&addResult.success&&!!taxOffLine&&Number(taxOffLine.taxable_amount)===100&&Number(taxOffLine.total_tax_amount)===0&&Number(tx(taxOffCart.transactionId).payable_amount)===100,{status:addResponse.status(),response:addResult,line:taxOffLine,transaction:tx(taxOffCart.transactionId)});
- await invoke('void',{transactionId:taxOffCart.transactionId});await invoke('close',{sessionId:taxOffSession.sessionId,closingCash:'100'});
+ // A second open session retires this operator's first unpaid cart. Exercise tax-off in the
+ // existing disposable cart and remove the line before the remaining billing assertions.
+ const addResponse=await post('Terminal','ajaxCart',{action:'addItem',sessionId:s.sessionId,transactionId:t.transactionId,productId:'POS_QA_A_P18',addQty:'1',taxOn:'N'});const addResult=await addResponse.json();
+ const taxOffLine=rows('pos_transaction_item',`transaction_id='${t.transactionId}'`)[0];
+ check('tax-off cart add bypasses GST calculation and preserves entered line value',addResponse.status()===200&&addResult.success&&!!taxOffLine&&Number(taxOffLine.taxable_amount)===100&&Number(taxOffLine.total_tax_amount)===0&&Number(tx(t.transactionId).payable_amount)===100,{status:addResponse.status(),response:addResult,line:taxOffLine,transaction:tx(t.transactionId)});
+ await invoke('remove',{transactionId:t.transactionId,itemSeqId:taxOffLine.item_seq_id});
+ check('tax-off probe restores the empty unpaid cart',count('pos_transaction_item',`transaction_id='${t.transactionId}'`)===0&&Number(tx(t.transactionId).payable_amount)===0);
  await invoke('complete',{transactionId:t.transactionId},true);await invoke('credit',{transactionId:t.transactionId,customerName:'Synthetic Credit',customerPhone:'0000000000'},true);
  for(const bad of [{quantity:'0'},{quantity:'-1'},{unitPrice:'-1'},{discountPercent:'101'},{discountPercent:'-1'},{productId:'POS_QA_B_P18'}])await invoke('add',{transactionId:t.transactionId,productId:'POS_QA_A_P18',quantity:'1',...bad},true);
  await item(t);check('retail intra GST exact golden',Number(tx(t.transactionId).subtotal)===100&&Number(tx(t.transactionId).total_tax_amount)===18&&Number(tx(t.transactionId).payable_amount)===118,tx(t.transactionId));
