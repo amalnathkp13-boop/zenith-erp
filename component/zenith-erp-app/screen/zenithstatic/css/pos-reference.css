@@ -197,3 +197,14 @@ body.zq-nav #AuditFilter.q-form > .row:first-of-type { grid-template-columns: mi
         grid-template-columns: minmax(0, 1fr);
     }
 }
+
+/* ZE-POS CreditBills credit-filter: the date-range box (#credit-from / #credit-to, built by
+   pos-terminal.js) holds two native type="date" inputs that will not shrink below their intrinsic
+   width. On narrow phones (en-US placeholders render ~150px each) #credit-to overflowed the
+   viewport at 320px. Below 380px, let the box wrap and give each date input its own full row so the
+   range always stays inside the screen. CSS-only; the credit billing JS is untouched. */
+@media (max-width: 380px) {
+    div:has(> #credit-to) { flex-wrap: wrap; max-width: 100%; min-width: 0; }
+    #credit-from,
+    #credit-to { flex: 1 1 100%; min-width: 0; width: auto; }
+}
