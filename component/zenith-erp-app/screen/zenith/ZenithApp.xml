@@ -309,6 +309,7 @@
             html_stylesheets.add('/zenithstatic/css/shops-reference.css?v=2')
             html_stylesheets.add('/zenithstatic/css/purchase-operations.css?v=2')
             html_stylesheets.add('/zenithstatic/css/contacts-dashboard.css?v=1')
+            html_stylesheets.add('/zenithstatic/css/accounting-dashboard-reference.css?v=1')
             html_stylesheets.add('/zenithstatic/css/edit-customer-group.css?v=1')
             html_stylesheets.add('/zenithstatic/css/contacts-reference.css?v=1')
             html_stylesheets.add('/zenithstatic/css/crm-experience.css?v=1')
