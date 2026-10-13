@@ -222,7 +222,7 @@
       <thead><tr><th>Txn #</th><th>Type</th><th>Time</th><th>Customer</th><th>Subtotal</th><th>Tax</th><th>Discount</th><th>Total</th></tr></thead>
       <tbody>
         <#list recentTransactions as tx>
-        <tr><td><a href="/apps/zenith/pos/EditTransaction?transactionId=${tx.id?url}">${tx.number?html}</a></td><td>${tx.type?html}</td><td>${tx.time?html}</td><td>${tx.customer?html}</td><td>${tx.subtotal?html}</td><td>${tx.tax?html}</td><td>${tx.discount?html}</td><td>${tx.total?html}</td></tr>
+        <tr><td><a href="/apps/zenith/pos/EditTransaction?transactionId=${tx.id?url('UTF-8')}">${tx.number?html}</a></td><td>${tx.type?html}</td><td>${tx.time?html}</td><td>${tx.customer?html}</td><td>${tx.subtotal?html}</td><td>${tx.tax?html}</td><td>${tx.discount?html}</td><td>${tx.total?html}</td></tr>
         <#else><tr><td colspan="8" class="pos-daily-summary-ref__empty-row">No transactions for this date.</td></tr></#list>
       </tbody>
     </table></div>
