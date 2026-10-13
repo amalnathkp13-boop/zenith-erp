@@ -37,13 +37,13 @@ body:has(.pos-terminals-reference) #pos-module-nav { display: none !important; }
 .pos-terminals-reference .z-termtable :is(th, .th) { height: 58px; padding: 12px 14px !important; background: #faf9ff; color: #313565; font-size: 12px; font-weight: 700; border-bottom: 1px solid #e8e7f2; text-align: left; }
 .pos-terminals-reference .z-termtable :is(td, .td) { height: 76px; padding: 12px 14px !important; vertical-align: middle; border-bottom: 1px solid #e9eaf0; color: #20264b; font-size: 12px; overflow: visible; }
 .pos-terminals-reference .z-termtable :is(tr, .tr):last-child :is(td, .td) { border-bottom: 0; }
-.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(1) { width: 17%; }
-.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(2) { width: 19%; }
-.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(3) { width: 22%; }
+.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(1) { width: 16%; }
+.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(2) { width: 18%; }
+.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(3) { width: 21%; }
 .pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(4) { width: 11%; }
 .pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(5) { width: 15%; }
-.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(6) { width: 8%; }
-.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(7) { width: 8%; }
+.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(6) { width: 10%; }
+.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(7) { width: 9%; }
 .pos-terminals-reference .z-termtable :is(td,.td):first-child { font-weight: 700; white-space: normal; }
 .pos-terminals-reference .z-termtable :is(td,.td):first-child .z-rownum { float: left; margin-right: 10px; margin-top: 1px; }
 .pos-terminals-reference .z-termtable .z-termsub { margin-left: 35px; color: #9ba2b8; font-size: 11px; font-weight: 400; }
@@ -53,6 +53,10 @@ body:has(.pos-terminals-reference) #pos-module-nav { display: none !important; }
 .pos-terminals-reference .z-termtable .select2-selection--single { height: 43px !important; }
 .pos-terminals-reference .z-termtable .select2-selection__rendered { line-height: 41px !important; }
 .pos-terminals-reference .z-termtable .q-field__control { height: 43px !important; min-height: 43px !important; }
+.pos-terminals-reference .z-termtable .q-field__control { border: 1px solid #e0e3ed !important; box-sizing: border-box; }
+.pos-terminals-reference .z-termtable .q-field__control::before,
+.pos-terminals-reference .z-termtable .q-field__control::after { display: none !important; }
+.pos-terminals-reference .z-termtable .q-field:focus-within .q-field__control { border-color: #7b3ff2 !important; box-shadow: 0 0 0 2px #7b3ff233; }
 .pos-terminals-reference .z-termtable .q-field__native { min-height: 41px !important; padding: 0 8px !important; }
 .pos-terminals-reference .z-termtable .q-field__control-container { min-width: 0; }
 .pos-terminals-reference .z-termtable :is(.q-field__messages,.q-field__bottom) { display: none !important; }
