@@ -57,8 +57,8 @@ body:has(.pos-terminals-reference) #pos-module-nav { display: none !important; }
 .pos-terminals-reference .z-termtable .q-field__control::before,
 .pos-terminals-reference .z-termtable .q-field__control::after { display: none !important; }
 .pos-terminals-reference .z-termtable .q-field:focus-within .q-field__control { outline-color: #7b3ff2 !important; box-shadow: 0 0 0 2px #7b3ff233; }
-.pos-terminals-reference .z-termtable .q-field__native { min-height: 41px !important; padding: 0 8px !important; }
-.pos-terminals-reference .z-termtable .q-select__selection { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pos-terminals-reference .z-termtable .q-field__native { min-height: 41px !important; padding: 0 8px !important; min-width: 0; max-height: 41px; flex-wrap: nowrap !important; overflow: hidden; white-space: nowrap !important; }
+.pos-terminals-reference .z-termtable .q-field__native > * { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap !important; }
 .pos-terminals-reference .z-termtable .q-field__control-container { min-width: 0; }
 .pos-terminals-reference .z-termtable :is(.q-field__messages,.q-field__bottom) { display: none !important; }
 /* Column headers name each edit control. Cancel the shared horizontal-form label offset inside table cells;
