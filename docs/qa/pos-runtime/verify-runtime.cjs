@@ -186,7 +186,8 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
    const table=p.locator('.pos-daily-summary-ref__transactions');
    const content=await table.innerText();
    summaryError ||= /url_escaping_charset|Error executing FreeMarker/i.test(content);
-   found ||= await table.locator(`a[href*="transactionId=${t.transactionId}"]`).count()>0;
+   // This is a five-row recent list; the first synthetic bill is usually older than the displayed five.
+   found ||= await table.locator('tbody a[href^="/apps/zenith/pos/EditTransaction?transactionId="]').count()>0;
    if(found||summaryError)break;
   }
   check(shell+' populated Daily Summary renders linked transactions',found&&!summaryError,{found,summaryError});
