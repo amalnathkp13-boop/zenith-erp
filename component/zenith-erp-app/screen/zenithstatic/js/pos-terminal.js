@@ -2034,6 +2034,7 @@ window.posToggleFullscreen = function() {
         var CATID = (af.querySelector('[name=catId]') || {}).value || '';
         var CS = '₹';
         var busy = false;
+        var modeSwitching = false;
         var lastTxnNum = '';
         var lastPay = 0;
         var lastCartData = null;
@@ -2820,6 +2821,7 @@ window.posToggleFullscreen = function() {
             if (!d || !d.success) { if (d && d.error) alert(d.error); return; }
             TX = d.transactionId || '';
             document.querySelectorAll('input[name="transactionId"]').forEach(function(el) { el.value = TX; });
+            syncModeLinks();
             var tb = document.querySelector('.pos-cart tbody');
             if (!tb) return;
             var h = '';
@@ -2896,8 +2898,12 @@ window.posToggleFullscreen = function() {
             });
             document.querySelectorAll('.pos-pay-form input[name="amount"]').forEach(function(el) { el.value = d.pay; });
             document.querySelectorAll('.pos-pay-form input[name="transactionId"]').forEach(function(el) { el.value = TX; });
-            var bn = document.querySelector('.pos-header [style*="background:#e65100"]') || document.querySelector('.pos-header [style*="background: rgb(230, 81, 0)"]');
-            if (bn) bn.textContent = 'BILL- ' + (d.txnNum || '0');
+            var bn = document.getElementById('pos-bill-badge');
+            if (bn) {
+                bn.textContent = d.txnNum || 'Pending';
+                bn.title = d.txnNum ? 'Issued bill number' : 'Bill number is assigned when payment completes';
+                bn.classList.toggle('nb-billno__new', !d.txnNum);
+            }
             lastTxnNum = d.txnNum || '';
             lastPay = d.pay || 0;
             lastCartData = d;
@@ -2925,6 +2931,11 @@ window.posToggleFullscreen = function() {
             var taxK = 1, tmp = 0;
             var q = [];               // pending server ops (FIFO; qty/price/add coalesced)
             var inflight = false;
+            var idleWaiters = [];
+            function notifyIdle() {
+                if (inflight || q.length) return;
+                idleWaiters.splice(0).forEach(function(resolve) { resolve(); });
+            }
             var tmpMeta = {};         // tmpSeq -> {pid, mode}  (lines not yet saved server-side)
             var realByTmp = {};       // tmpSeq -> real itemSeqId (filled when its add completes)
             var claimed = {};         // real itemSeqId -> true (already assigned to a temp line)
@@ -2997,7 +3008,7 @@ window.posToggleFullscreen = function() {
                     .then(function (d) {
                         inflight = false; var done = q.shift();
                         if (d && d.success) {
-                            if (d.transactionId) { TX = d.transactionId; document.querySelectorAll('input[name="transactionId"]').forEach(function (el) { el.value = TX; }); }
+                            if (d.transactionId) { TX = d.transactionId; document.querySelectorAll('input[name="transactionId"]').forEach(function (el) { el.value = TX; }); syncModeLinks(); }
                             calibrate(d);
                             if (done.action === 'addItem') mapAdd(done, d);
                             applyRealSeqs();
@@ -3015,8 +3026,9 @@ window.posToggleFullscreen = function() {
                             if (d && d.error) { try { var _et = document.createElement('div'); _et.textContent = '⚠ ' + d.error; _et.style.cssText = 'position:fixed;top:52px;left:50%;transform:translateX(-50%);z-index:9999999;background:#c62828;color:#fff;padding:13px 24px;border-radius:10px;font-weight:700;box-shadow:0 6px 24px rgba(0,0,0,0.3);max-width:90vw;text-align:center'; document.body.appendChild(_et); setTimeout(function () { _et.remove(); }, 3500); } catch (e) {} }
                         }
                         drain();
+                        notifyIdle();
                     })
-                    .catch(function () { inflight = false; q.shift(); drain(); });
+                    .catch(function () { inflight = false; q.shift(); drain(); notifyIdle(); });
             }
             function mergeable(i) { return !(i === 0 && inflight); }
             // Coalesce ONLY with the most-recent pending op on the same line, and
@@ -3090,13 +3102,14 @@ window.posToggleFullscreen = function() {
             function doScan(code) { enqueue({ action: 'scanAdd', code: code, lineKey: 'scan#' + (++scanN) }); }
 
             return {
-                add: function (pid, price, name, uom) { try { doAdd(pid, price, name, uom); } catch (e) { post({ action: 'addItem', transactionId: TX, productId: pid, unitPrice: price, addQty: 1 }).then(renderCart); } },
-                qty: function (seq, q2) { try { doQty(seq, q2); } catch (e) { post({ action: Number(q2) <= 0 ? 'removeItem' : 'updateQty', transactionId: TX, itemSeqId: seq, newQty: q2 }).then(renderCart); } },
-                price: function (seq, p2) { try { doPrice(seq, p2); } catch (e) { post({ action: 'updatePrice', transactionId: TX, itemSeqId: seq, newPrice: p2 }).then(renderCart); } },
-                remove: function (seq) { try { doRemove(seq); } catch (e) { post({ action: 'removeItem', transactionId: TX, itemSeqId: seq }).then(renderCart); } },
-                mode: function (seq, m) { try { doMode(seq, m); } catch (e) { post({ action: 'setItemMode', transactionId: TX, itemSeqId: seq, itemMode: m }).then(renderCart); } },
-                scan: function (code) { try { doScan(code); } catch (e) { post({ action: 'scanAdd', transactionId: TX, cartSearch: code }).then(function (d) { if (d && !d.success && d.error) alert(d.error); else renderCart(d); }); } },
-                _drainPending: function () { return q.length + (inflight ? 1 : 0); }
+                add: function (pid, price, name, uom) { if (modeSwitching) return showToast('Wait for the sales mode to change', '#c62828'); try { doAdd(pid, price, name, uom); } catch (e) { post({ action: 'addItem', transactionId: TX, productId: pid, unitPrice: price, addQty: 1 }).then(renderCart); } },
+                qty: function (seq, q2) { if (modeSwitching) return showToast('Wait for the sales mode to change', '#c62828'); try { doQty(seq, q2); } catch (e) { post({ action: Number(q2) <= 0 ? 'removeItem' : 'updateQty', transactionId: TX, itemSeqId: seq, newQty: q2 }).then(renderCart); } },
+                price: function (seq, p2) { if (modeSwitching) return showToast('Wait for the sales mode to change', '#c62828'); try { doPrice(seq, p2); } catch (e) { post({ action: 'updatePrice', transactionId: TX, itemSeqId: seq, newPrice: p2 }).then(renderCart); } },
+                remove: function (seq) { if (modeSwitching) return showToast('Wait for the sales mode to change', '#c62828'); try { doRemove(seq); } catch (e) { post({ action: 'removeItem', transactionId: TX, itemSeqId: seq }).then(renderCart); } },
+                mode: function (seq, m) { if (modeSwitching) return showToast('Wait for the sales mode to change', '#c62828'); try { doMode(seq, m); } catch (e) { post({ action: 'setItemMode', transactionId: TX, itemSeqId: seq, itemMode: m }).then(renderCart); } },
+                scan: function (code) { if (modeSwitching) return showToast('Wait for the sales mode to change', '#c62828'); try { doScan(code); } catch (e) { post({ action: 'scanAdd', transactionId: TX, cartSearch: code }).then(function (d) { if (d && !d.success && d.error) alert(d.error); else renderCart(d); }); } },
+                _drainPending: function () { return q.length + (inflight ? 1 : 0); },
+                whenIdle: function () { return (inflight || q.length) ? new Promise(function(resolve) { idleWaiters.push(resolve); }) : Promise.resolve(); }
             };
         })();
 
@@ -3334,6 +3347,14 @@ window.posToggleFullscreen = function() {
         });
 
         /* --- Sales mode switching: AJAX --- */
+        function syncModeLinks() {
+            document.querySelectorAll('.pos-header a[href*="changeSalesMode"]').forEach(function(link) {
+                var url = new URL(link.href);
+                if (TX) url.searchParams.set('transactionId', TX);
+                else url.searchParams.delete('transactionId');
+                link.href = url.href;
+            });
+        }
         document.querySelectorAll('.pos-header a[href*="changeSalesMode"]').forEach(function(link) {
             var u = new URL(link.href);
             var mid = u.searchParams.get('salesModeId') || '';
@@ -3344,34 +3365,46 @@ window.posToggleFullscreen = function() {
             link.addEventListener('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
+                if (modeSwitching) return;
                 var linkUrl = new URL(this.href);
                 var newSM = linkUrl.searchParams.get('salesModeId') || '';
-                SM = newSM;
-                af.querySelector('[name=salesModeId]').value = SM;
-                var clicked = this;
-                document.querySelectorAll('.pos-header a[href*="changeSalesMode"]').forEach(function(a) {
-                    a.style.background = 'rgba(255,255,255,0.15)'; a.style.borderColor = 'rgba(255,255,255,0.3)';
-                });
-                fetchScreen({salesModeId: newSM}).then(function(doc) {
+                if (!newSM || newSM === SM) return;
+                modeSwitching = true;
+                var previousSM = SM;
+                OPT.whenIdle().then(function() {
+                    // The optimistic cart can be visible before its addItem reply gives us TX.
+                    // Switch only after every queued write has settled, using that current ID.
+                    return fetchScreen({salesModeId: newSM});
+                }).then(function(doc) {
+                    var renderedMode = doc.querySelector('#cartInlineAddForm [name="salesModeId"]');
+                    if (!renderedMode) throw new Error('Could not load the selected sales mode.');
+                    SM = renderedMode.value;
+                    af.querySelector('[name=salesModeId]').value = SM;
                     swapGrid(doc);
                     var newLinks = doc.querySelectorAll('.pos-header a[href*="changeSalesMode"]');
-                    newLinks.forEach(function(nl) {
-                        var nid = new URL(nl.href).searchParams.get('salesModeId') || '';
-                        if (nid === newSM) {
-                            clicked.style.background = nl.style.background || '#2e7d32';
-                            clicked.style.borderColor = '#fff';
-                            clicked.dataset.color = nl.style.background || '#2e7d32';
-                        }
+                    document.querySelectorAll('.pos-header a[href*="changeSalesMode"]').forEach(function(a) {
+                        var mid = new URL(a.href).searchParams.get('salesModeId');
+                        var match = Array.prototype.find.call(newLinks, function(nl) { return new URL(nl.href).searchParams.get('salesModeId') === mid; });
+                        a.classList.toggle('is-active', !!match && match.classList.contains('is-active'));
                     });
+                    var modeError = doc.querySelector('#posModeSwitchErr');
+                    if (modeError) showToast(modeError.textContent.trim(), '#c62828');
                     if (TX) {
-                        post({action:'refresh', transactionId: TX}).then(function(d) {
-                            if (d) renderCart(d);
+                        return post({action:'refresh', transactionId: TX}).then(function(d) {
+                            if (!d || !d.success) throw new Error((d && d.error) || 'Could not refresh the cart after changing mode.');
+                            renderCart(d);
                         });
                     } else {
                         var ns = doc.querySelector('.pos-summary');
                         if (ns) { var os = document.querySelector('.pos-summary'); if (os) os.innerHTML = ns.innerHTML; }
                         appendRecallIfNeeded();
                     }
+                }).catch(function(err) {
+                    SM = previousSM;
+                    af.querySelector('[name=salesModeId]').value = SM;
+                    showToast(err.message || 'Could not change sales mode. Try again.', '#c62828');
+                }).finally(function() {
+                    modeSwitching = false;
                 });
             });
         });
