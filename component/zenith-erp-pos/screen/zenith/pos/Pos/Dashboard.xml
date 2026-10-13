@@ -8,13 +8,14 @@
     <parameter name="showSettings"/>
     <parameter name="dashLoc"/>
     <parameter name="dateMode"/>
+    <parameter name="chartMode"/>
 
     <transition name="changeDashDate">
-        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dashLoc:dashLoc, dateMode:'custom']"/>
+        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dashLoc:dashLoc, dateMode:'custom', chartMode:chartMode]"/>
     </transition>
     <!-- per-account default-dashboard choice: dd='pos' to make this the landing, 'home' to reset -->
     <transition name="setDefault"><actions><script>ec.user.setPreference('DEFAULT_DASHBOARD', (ec.context.dd == 'home') ? null : 'pos')</script></actions>
-        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dashLoc:dashLoc]"/></transition>
+        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dashLoc:dashLoc, chartMode:chartMode]"/></transition>
     <!-- team/org default (owner/manager only): dd='pos' to set for everyone, 'home' to clear -->
     <transition name="setTeamDefault"><actions><script><![CDATA[
         def _o = ec.user.getPreference('ACTIVE_ORGANIZATION'); def _can = false
@@ -24,7 +25,7 @@
             else ec.entity.makeValue("zenith.erp.pos.OrgDashboardDefault").set("organizationPartyId", _o).set("dashboardKey", "pos").createOrUpdate()
         }
     ]]></script></actions>
-        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dashLoc:dashLoc]"/></transition>
+        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dashLoc:dashLoc, chartMode:chartMode]"/></transition>
     <transition name="goTerminal"><default-response url="../Terminal"/></transition>
     <transition name="goTransactions"><default-response url="../PosTransactions"/></transition>
     <transition name="goDailySummary"><default-response url="../DailySummary"/></transition>
@@ -54,12 +55,12 @@
             def _hidden = _wk.findAll { !context.get('w_' + it) }
             ec.user.setPreference('POS_DASH_HIDDEN', _hidden.join(','))
         ]]></script></actions>
-        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dashLoc:dashLoc]"/>
+        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dashLoc:dashLoc, chartMode:chartMode]"/>
     </transition>
     <transition name="resetDashLayout">
         <!-- clear BOTH prefs (null removes them) so the role-based default view + order return -->
         <actions><script>ec.user.setPreference('POS_DASH_HIDDEN', null); ec.user.setPreference('POS_DASH_ORDER', null)</script></actions>
-        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dashLoc:dashLoc]"/>
+        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dashLoc:dashLoc, chartMode:chartMode]"/>
     </transition>
     <transition name="saveDashOrder" require-session-token="false">
         <actions><script><![CDATA[
@@ -73,27 +74,37 @@
 
     <actions>
         <script><![CDATA[
-            def sdf = new java.text.SimpleDateFormat("yyyy-MM-dd")
+            def userZone = ec.user.timeZone
+            def sdf = new java.text.SimpleDateFormat("yyyy-MM-dd"); sdf.setTimeZone(userZone)
             def now = ec.user.nowTimestamp
             def todayStr = sdf.format(now)
-            if (!dashDate) dashDate = todayStr
-            if (!dashDateTo) dashDateTo = dashDate
+            dateError = ''
+            try {
+                def fromDate = java.time.LocalDate.parse((dashDate ?: todayStr).toString())
+                def toDate = java.time.LocalDate.parse((dashDateTo ?: fromDate.toString()).toString())
+                if (fromDate.year < 1 || fromDate.year > 9999 || toDate.year < 1 || toDate.year > 9999) throw new java.time.DateTimeException('Unsupported date')
+                if (toDate.isBefore(fromDate)) { def swap = fromDate; fromDate = toDate; toDate = swap }
+                dashDate = fromDate.toString(); dashDateTo = toDate.toString()
+            } catch (java.time.DateTimeException e) {
+                dashDate = todayStr; dashDateTo = todayStr
+                dateError = 'Enter valid From and To dates. Showing today.'
+            }
+            chartMode = ['hourly', 'daily', 'weekly', 'monthly'].contains(chartMode) ? chartMode : 'hourly'
             if (!dashLoc) dashLoc = ''
-            // keep From <= To (swap if the user picks them backwards)
-            if (dashDateTo < dashDate) { def _sw = dashDate; dashDate = dashDateTo; dashDateTo = _sw }
 
-            def dayStart = java.sql.Timestamp.valueOf(dashDate + " 00:00:00")
-            def dayEnd = java.sql.Timestamp.valueOf(dashDateTo + " 23:59:59")
+            def dayStart = ec.l10n.parseTimestamp(dashDate + ' 00:00:00', 'yyyy-MM-dd HH:mm:ss')
+            def nextDay = java.time.LocalDate.parse(dashDateTo).plusDays(1)
+            def dayEnd = new java.sql.Timestamp(ec.l10n.parseTimestamp(nextDay.toString() + ' 00:00:00', 'yyyy-MM-dd HH:mm:ss').time - 1)
 
             // Preset range anchors (each ends today)
-            def _cw = java.util.Calendar.getInstance(); _cw.setTime(now)
+            def _cw = java.util.Calendar.getInstance(userZone); _cw.setTime(now)
             _cw.set(java.util.Calendar.DAY_OF_WEEK, _cw.getFirstDayOfWeek())
             def weekStartStr = sdf.format(_cw.getTime())
-            def _cm = java.util.Calendar.getInstance(); _cm.setTime(now); _cm.set(java.util.Calendar.DAY_OF_MONTH, 1)
+            def _cm = java.util.Calendar.getInstance(userZone); _cm.setTime(now); _cm.set(java.util.Calendar.DAY_OF_MONTH, 1)
             def monthStartStr = sdf.format(_cm.getTime())
-            def _c30 = java.util.Calendar.getInstance(); _c30.setTime(now); _c30.add(java.util.Calendar.DAY_OF_MONTH, -29)
+            def _c30 = java.util.Calendar.getInstance(userZone); _c30.setTime(now); _c30.add(java.util.Calendar.DAY_OF_MONTH, -29)
             def last30Str = sdf.format(_c30.getTime())
-            def _dwYcal = java.util.Calendar.getInstance(); _dwYcal.setTime(now); _dwYcal.set(java.util.Calendar.MONTH,0); _dwYcal.set(java.util.Calendar.DAY_OF_MONTH,1)
+            def _dwYcal = java.util.Calendar.getInstance(userZone); _dwYcal.setTime(now); _dwYcal.set(java.util.Calendar.MONTH,0); _dwYcal.set(java.util.Calendar.DAY_OF_MONTH,1)
             def yearStartStr = sdf.format(_dwYcal.getTime())
 
             // active-preset detection (for chip highlight) + preset link URLs (relative query preserves the screen path)
@@ -164,7 +175,10 @@
             urlLocAll = "?dashDate="+dashDate+"&dashDateTo="+dashDateTo
             locName = 'All ' + (locMode=='store' ? 'Shops' : 'Counters')
             if (dashLoc) { def _o = locOptions.find { it.id == dashLoc }; if (_o) locName = _o.name }
-            if (dashLoc) { urlToday += "&dashLoc="+dashLoc; urlWeek += "&dashLoc="+dashLoc; urlMonth += "&dashLoc="+dashLoc; url30 += "&dashLoc="+dashLoc }
+            if (dashLoc) { urlYear += '&dashLoc=' + java.net.URLEncoder.encode(dashLoc.toString(), 'UTF-8'); urlToday += "&dashLoc="+dashLoc; urlWeek += "&dashLoc="+dashLoc; urlMonth += "&dashLoc="+dashLoc; url30 += "&dashLoc="+dashLoc }
+            def chartQuery = '&chartMode=' + chartMode
+            urlToday += chartQuery; urlWeek += chartQuery; urlMonth += chartQuery; url30 += chartQuery; urlYear += chartQuery; urlSettings += chartQuery; urlCustom += chartQuery; urlLocAll += chartQuery
+            locOptions.each { it.url += chartQuery }
         ]]></script>
 
         <entity-find entity-name="zenith.erp.pos.PosTransaction" list="completedTxns">
@@ -225,7 +239,7 @@
             for (int i = 0; i < 24; i++) hourlySales[i] = BigDecimal.ZERO
             completedTxns.each { t ->
                 if (t.entryDate) {
-                    def cal = java.util.Calendar.getInstance()
+                    def cal = java.util.Calendar.getInstance(userZone)
                     cal.setTime(t.entryDate)
                     def hour = cal.get(java.util.Calendar.HOUR_OF_DAY)
                     hourlySales[hour] = hourlySales[hour] + ((t.payableAmount ?: 0) as BigDecimal)
@@ -549,32 +563,85 @@
               [val:'₹'+_num2(creditAmount), label:'Credit Amount', sub:(creditInvoices+' Invoices'), bg:'#EFF6FF', vc:'#2563EB']
             ]
 
-            // ===== Sales Analyst line chart (SVG, hourly) — matches the mockup's line+area =====
+            // Group completed sales in the user's timezone; include empty buckets in the selected range.
+            def chartFrom = java.time.LocalDate.parse(dashDate)
+            def chartTo = java.time.LocalDate.parse(dashDateTo)
+            def bucketDate = { java.time.LocalDate d ->
+                chartMode == 'monthly' ? d.withDayOfMonth(1) :
+                    (chartMode == 'weekly' ? d.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)) : d)
+            }
+            def chartTotals = new LinkedHashMap()
+            if (chartMode == 'hourly') {
+                for (int h = 0; h < 24; h++) chartTotals[h] = hourlySales[h]
+            } else {
+                def cursor = bucketDate(chartFrom)
+                while (!cursor.isAfter(chartTo)) {
+                    chartTotals[cursor] = BigDecimal.ZERO
+                    cursor = chartMode == 'monthly' ? cursor.plusMonths(1) : cursor.plusDays(chartMode == 'weekly' ? 7 : 1)
+                }
+                completedTxns.each { txn ->
+                    if (txn.entryDate) {
+                        def localDay = java.time.Instant.ofEpochMilli(txn.entryDate.time).atZone(userZone.toZoneId()).toLocalDate()
+                        def key = bucketDate(localDay)
+                        if (chartTotals.containsKey(key)) chartTotals[key] += ((txn.payableAmount ?: 0) as BigDecimal)
+                    }
+                }
+            }
+            def dayLabel = java.time.format.DateTimeFormatter.ofPattern('dd MMM', java.util.Locale.ENGLISH)
+            def monthLabel = java.time.format.DateTimeFormatter.ofPattern('MMM yyyy', java.util.Locale.ENGLISH)
+            chartBuckets = chartTotals.collect { key, amount ->
+                def label = chartMode == 'hourly' ? ((key % 12 ?: 12).toString() + (key < 12 ? ' AM' : ' PM')) :
+                    (chartMode == 'monthly' ? key.format(monthLabel) : (key.isBefore(chartFrom) ? chartFrom : key).format(dayLabel))
+                def description = label
+                if (chartMode == 'weekly') {
+                    def last = key.plusDays(6).isAfter(chartTo) ? chartTo : key.plusDays(6)
+                    description += ' – ' + last.format(dayLabel)
+                }
+                [label:label, description:description, amount:amount]
+            }
+            def chartMax = chartBuckets.collect { it.amount }.max() ?: BigDecimal.ONE
+            if (chartMax <= 0) chartMax = BigDecimal.ONE
+            // Plot exact totals rather than rounded hourly percentages.
             double _CW=680.0, _CH=210.0, _bx=38.0, _by=176.0
             double _plotW=_CW-_bx-10, _plotH=_by-16
             def _pts2 = []
-            for (int h=0; h<24; h++) { double x=_bx+(h*_plotW/23.0); double y=_by-(((hourlyBars[h].pct as int)/100.0)*_plotH); _pts2.add([x:x, y:y, has:hourlyBars[h].hasValue]) }
-            def _f = { double v -> String.format('%.1f', v) }
+            chartBuckets.eachWithIndex { bucket, index ->
+                double x = _bx + (chartBuckets.size() == 1 ? _plotW / 2 : index * _plotW / (chartBuckets.size() - 1))
+                double y = _by - (bucket.amount / chartMax).doubleValue() * _plotH
+                _pts2.add([x:x, y:y, bucket:bucket])
+            }
+            def _f = { double v -> String.format(java.util.Locale.ROOT, '%.1f', v) }
             // Smooth the hourly line without changing any actual sales values.
             def _curve = new StringBuilder('M'+_f(_pts2[0].x)+','+_f(_pts2[0].y))
             for (int i=0; i<_pts2.size()-1; i++) {
                 def p0 = _pts2[Math.max(0,i-1)], p1 = _pts2[i], p2 = _pts2[i+1], p3 = _pts2[Math.min(_pts2.size()-1,i+2)]
                 double c1x=p1.x+(p2.x-p0.x)/6.0, c1y=p1.y+(p2.y-p0.y)/6.0
                 double c2x=p2.x-(p3.x-p1.x)/6.0, c2y=p2.y-(p3.y-p1.y)/6.0
+                // Keep the smooth line between its real endpoints, including zero-sales buckets.
+                double lowY=Math.min(p1.y,p2.y), highY=Math.max(p1.y,p2.y)
+                c1y=Math.max(lowY,Math.min(highY,c1y)); c2y=Math.max(lowY,Math.min(highY,c2y))
                 _curve.append(' C'+_f(c1x)+','+_f(c1y)+' '+_f(c2x)+','+_f(c2y)+' '+_f(p2.x)+','+_f(p2.y))
             }
             def _lineStr = _curve.toString()
             def _areaStr = _lineStr+' L'+_f(_pts2[-1].x)+','+_f(_by)+' L'+_f(_pts2[0].x)+','+_f(_by)+' Z'
-            def _dots = new StringBuilder(); _pts2.each { if (it.has) _dots.append('<circle cx="'+_f(it.x)+'" cy="'+_f(it.y)+'" r="3" fill="#3B82F6"/>') }
+            def _dots = new StringBuilder(); _pts2.each { point ->
+                if (point.bucket.amount != 0 || chartBuckets.size() == 1) _dots.append('<circle cx="'+_f(point.x)+'" cy="'+_f(point.y)+'" r="3" fill="#3B82F6"><title>'+point.bucket.description+': ₹'+_num2(point.bucket.amount)+'</title></circle>')
+            }
             def _grid = new StringBuilder()
-            for (int t=0; t<=4; t++) { double frac=t/4.0; double yv=_by-frac*_plotH; def val=((hourlyMax?:1) as BigDecimal)*frac
-                def lbl = val >= 1000 ? (String.format('%.0f',(val/1000).doubleValue())+'K') : String.format('%.0f',val.doubleValue())
+            for (int t=0; t<=4; t++) { double frac=t/4.0; double yv=_by-frac*_plotH; def val=chartMax*frac
+                def lbl = val >= 1000 ? (String.format(java.util.Locale.ROOT, '%.0f',(val/1000).doubleValue())+'K') : String.format(java.util.Locale.ROOT, chartMax < 4 ? '%.2f' : '%.0f',val.doubleValue())
                 _grid.append('<line x1="'+_f(_bx)+'" y1="'+_f(yv)+'" x2="'+_f(_CW-10)+'" y2="'+_f(yv)+'" stroke="#F1F5F9" stroke-width="1"/>')
                 _grid.append('<text x="'+_f(_bx-6)+'" y="'+_f(yv+3)+'" font-size="9" fill="#9CA3AF" text-anchor="end">'+lbl+'</text>') }
-            def _hrLabels = ['12 AM','','2 AM','','4 AM','','6 AM','','8 AM','','10 AM','','12 PM','','2 PM','','4 PM','','6 PM','','8 PM','','10 PM','']
             def _xl = new StringBuilder()
-            for (int h=0; h<24; h+=2) { double x=_bx+(h*_plotW/23.0); _xl.append('<text x="'+_f(x)+'" y="'+_f(_by+15)+'" font-size="9" fill="#9CA3AF" text-anchor="middle">'+_hrLabels[h]+'</text>') }
-            salesLineSvg = '<svg viewBox="0 0 '+((int)_CW)+' '+((int)_CH)+'" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;min-width:560px">'+
+            def visibleTicks = Math.min(chartMode == 'monthly' ? 12 : 8, chartBuckets.size())
+            def tickIndexes = chartMode == 'hourly' ? (0..<24).findAll { it % 2 == 0 } :
+                (0..<visibleTicks).collect { tick -> chartBuckets.size() == 1 ? 0 : Math.round(tick * (chartBuckets.size() - 1) / (visibleTicks - 1.0)) as int }.unique()
+            tickIndexes.each { index ->
+                def point = _pts2[index]
+                def anchor = chartMode != 'hourly' && chartBuckets.size() > 1 ? (index == 0 ? 'start' : (index == chartBuckets.size()-1 ? 'end' : 'middle')) : 'middle'
+                _xl.append('<text class="pos-chart-x-label" x="'+_f(point.x)+'" y="'+_f(_by+15)+'" font-size="9" fill="#9CA3AF" text-anchor="'+anchor+'">'+point.bucket.label+'</text>')
+            }
+            salesLineSvg = '<svg role="img" aria-label="'+chartMode.capitalize()+' sales from '+dashDate+' to '+dashDateTo+'" data-chart-mode="'+chartMode+'" viewBox="0 0 '+((int)_CW)+' '+((int)_CH)+'" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;min-width:560px">'+
                 '<defs><linearGradient id="posDashSalesFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#57A9F5" stop-opacity=".25"/><stop offset="100%" stop-color="#57A9F5" stop-opacity=".02"/></linearGradient></defs>'+
                 _grid.toString()+'<path d="'+_areaStr+'" fill="url(#posDashSalesFill)"/>'+
                 '<path d="'+_lineStr+'" fill="none" stroke="#57A9F5" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>'+
@@ -601,19 +668,25 @@
     <widgets>
         <render-mode><text type="html,qvt" template="true"><![CDATA[
 <main class="pos-dash-v2">
+  <#if dateError?has_content><p role="alert">${dateError?html}</p></#if>
+  <div class="pos-dash-header">
+    <div class="pos-dash-heading">
+      <h1>POS Overview</h1>
+      <p>Monitor sales, transactions, and business performance at a glance</p>
+    </div>
   <div class="pos-dash-toolbar">
     <a class="pos-dash-customize" href="${urlSettings?html}">&#9881; Customize</a>
     <details class="pos-dash-range">
       <summary>&#128197; ${rangeDisplay?html} &#9662;</summary>
-      <form method="get" action=".">
+      <form method="get">
+        <input type="hidden" name="chartMode" value="${chartMode}"/>
         <input type="hidden" name="dateMode" value="custom"/>
         <input type="hidden" name="dashLoc" value="${(dashLoc!'')?html}"/>
-        <label>From <input type="date" name="dashDate" value="${dashDate?html}"/></label>
-        <label>To <input type="date" name="dashDateTo" value="${dashDateTo?html}"/></label>
+        <label>From <input type="date" name="dashDate" value="${dashDate?html}" required min="0001-01-01" max="9999-12-31"/></label>
+        <label>To <input type="date" name="dashDateTo" value="${dashDateTo?html}" required min="0001-01-01" max="9999-12-31"/></label>
         <button type="submit">Apply</button>
       </form>
     </details>
-    <span class="pos-dash-filter" title="Choose a date range"><span class="material-icons">filter_alt</span></span>
     <nav class="pos-dash-periods" aria-label="Dashboard date range">
       <a class="<#if presetActive == 'today'>active</#if>" href="${urlToday?html}">Today</a>
       <a class="<#if presetActive == 'week'>active</#if>" href="${urlWeek?html}">This Week</a>
@@ -621,9 +694,11 @@
       <a class="<#if presetActive == 'year'>active</#if>" href="${urlYear?html}">This Year</a>
     </nav>
   </div>
+  </div>
   <#if (showSettings!'') == '1'>
   <form class="pos-dash-settings" method="post" action="saveDashLayout">
     <strong>Customize Dashboard</strong>
+    <input type="hidden" name="chartMode" value="${chartMode}"/>
     <input type="hidden" name="moquiSessionToken" value="${ec.web.sessionToken?html}"/>
     <input type="hidden" name="dashDate" value="${dashDate?html}"/>
     <input type="hidden" name="dashDateTo" value="${dashDateTo?html}"/>
@@ -633,7 +708,7 @@
     <label><input type="checkbox" name="w_products" value="Y" <#if showProducts>checked</#if>/> Top products</label>
     <label><input type="checkbox" name="w_payments" value="Y" <#if showPayments>checked</#if>/> Payments</label>
     <button type="submit">Save</button>
-    <a href="resetDashLayout?dashDate=${dashDate?html}&amp;dashDateTo=${dashDateTo?html}">Reset</a>
+    <a href="resetDashLayout?dashDate=${dashDate?html}&amp;dashDateTo=${dashDateTo?html}&amp;chartMode=${chartMode}">Reset</a>
   </form>
   </#if>
   <#if showSalesKpi>
@@ -661,7 +736,26 @@
   <div class="pos-dash-upper">
     <#if showHourly>
     <section class="pos-dash-panel pos-dash-sales">
-      <header><h2>Sales Analyst</h2><div class="pos-dash-chart-controls"><span>Hourly &#9662;</span><span>&#128197; ${displayDate?html}</span></div></header>
+      <header><h2>Sales Analyst</h2>
+        <form method="get" class="pos-dash-chart-controls">
+          <input type="hidden" name="dashLoc" value="${(dashLoc!'')?html}"/>
+          <input type="hidden" name="dateMode" value="${presetActive?html}"/>
+          <select name="chartMode" aria-label="Sales chart interval">
+            <#list ['hourly','daily','weekly','monthly'] as interval>
+            <option value="${interval}" <#if chartMode == interval>selected</#if>>${interval?cap_first}</option>
+            </#list>
+          </select>
+          <details class="pos-dash-chart-range">
+            <summary aria-label="Sales chart date range">&#128197; ${rangeDisplay?html} &#9662;</summary>
+            <div class="pos-dash-chart-date-pop">
+              <label>From <input type="date" name="dashDate" value="${dashDate}" required min="0001-01-01" max="9999-12-31"/></label>
+              <label>To <input type="date" name="dashDateTo" value="${dashDateTo}" required min="0001-01-01" max="9999-12-31"/></label>
+              <button type="submit">Apply</button>
+            </div>
+          </details>
+          <noscript><button type="submit">Apply interval</button></noscript>
+        </form>
+      </header>
       <div class="pos-dash-legend"><i></i> Sales (&#8377;)</div>
       <div class="pos-dash-chart">${salesLineSvg}</div>
     </section>

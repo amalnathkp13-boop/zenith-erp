@@ -43,7 +43,9 @@
             modContacts = _allMod || (_mods != null && _mods.contains('contacts'))
             modAccounting = _allMod || (_mods != null && _mods.contains('accounting'))
             modPurchase = _allMod || (_mods != null && _mods.contains('purchase'))
-            showPosModuleLinks = !(ec.web.request.pathInfo ?: '').endsWith('/pos/Dashboard')
+            // Jetty's pathInfo can be empty; use the request URI for both full and partial renders.
+            def posRequestPath = (ec.web.request.requestURI ?: ec.web.request.pathInfo ?: '').replaceFirst(/\.(qvt|vuet|html)$/, '').replaceAll('/+$', '')
+            showPosModuleLinks = !(posRequestPath.endsWith('/pos/Dashboard') || posRequestPath.endsWith('/pos'))
         ]]></script>
     </actions>
 

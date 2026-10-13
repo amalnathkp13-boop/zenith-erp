@@ -299,7 +299,7 @@
         ]]></script>
         <script><![CDATA[
             if (html_stylesheets == null) html_stylesheets = []
-            html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=283')
+            html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=285')
             html_stylesheets.add('/zenithstatic/css/sidebar-manager.css?v=3')
             html_stylesheets.add('/zenithstatic/css/my-subscription-reference.css?v=1')
             html_stylesheets.add('/zenithstatic/css/saas-admin.css?v=4')
@@ -366,6 +366,7 @@
             html_scripts.add('/zenithstatic/js/zenith-charts.js?v=3')
             html_scripts.add('/zenithstatic/js/inventory-dashboard.js?v=1')
             html_scripts.add('/zenithstatic/js/main-dashboard.js?v=5')
+            html_scripts.add('/zenithstatic/js/pos-dashboard.js?v=1')
             html_scripts.add('/zenithstatic/js/stock-levels.js?v=2')
             html_scripts.add('/zenithstatic/js/expiry-risk.js?v=3')
             html_scripts.add('/zenithstatic/js/stock-adjustments.js?v=7')
@@ -1225,7 +1226,7 @@
             <link rel="preconnect" href="https://fonts.googleapis.com"/>
             <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"/>
             <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
-            <link rel="stylesheet" href="/zenithstatic/css/zenith-theme-v4.css?v=283"/>
+            <link rel="stylesheet" href="/zenithstatic/css/zenith-theme-v4.css?v=285"/>
             <link rel="stylesheet" href="/zenithstatic/css/my-subscription-reference.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/saas-admin.css?v=4"/>
             <link rel="stylesheet" href="/zenithstatic/css/product-catalog.css?v=1"/>
