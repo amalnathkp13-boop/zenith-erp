@@ -23,14 +23,6 @@
     <transition name="goContacts"><default-response url="../Contacts/FindContact"/></transition>
 
     <widgets>
-        <container style="row items-center justify-end q-px-md q-pt-md q-gutter-sm">
-            <section name="gate_payroll_1" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('payroll'))"><widgets><link url="goPayroll" text="Payroll" icon="fa fa-money" btn-type="primary" style="q-btn--dense"/></widgets></section>
-            <section name="gate_attendance_2" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('attendance'))"><widgets><link url="goAttendance" text="Attendance" icon="fa fa-calendar-check-o" btn-type="info" style="q-btn--dense"/></widgets></section>
-            <section name="gate_timeoff_3" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('timeoff'))"><widgets><link url="goTimeOff" text="Time Off" icon="fa fa-plane" btn-type="warning" style="q-btn--dense"/></widgets></section>
-            <section name="gate_recruitment_4" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('recruitment'))"><widgets><link url="goRecruitment" text="Recruitment" icon="fa fa-user-plus" btn-type="success" style="q-btn--dense"/></widgets></section>
-            <section name="gate_expenses_5" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('expenses'))"><widgets><link url="goExpenses" text="Expenses" icon="fa fa-credit-card" btn-type="danger" style="q-btn--dense"/></widgets></section>
-            <section name="gate_contacts_6" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('contacts'))"><widgets><link url="goContacts" text="Contacts" icon="fa fa-address-book" style="q-btn--dense"/></widgets></section>
-        </container>
         <subscreens-active/>
     </widgets>
 </screen>

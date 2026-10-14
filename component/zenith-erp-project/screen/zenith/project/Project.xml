@@ -15,10 +15,6 @@
     <transition name="goHr"><default-response url="../Hr/Employees"/></transition>
 
     <widgets>
-        <container style="text-right">
-            <section name="gate_timesheets_1" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('timesheets'))"><widgets><link url="goTimesheets" text="Timesheets" link-type="anchor"/></widgets></section>
-            <section name="gate_hr_2" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('hr'))"><widgets><link url="goHr" text="HR / Employees" link-type="anchor"/></widgets></section>
-        </container>
         <subscreens-active/>
     </widgets>
 </screen>

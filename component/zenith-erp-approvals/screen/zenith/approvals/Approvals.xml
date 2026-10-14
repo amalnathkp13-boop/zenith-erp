@@ -10,11 +10,6 @@
     <transition name="goExpenses"><default-response url="../expenses/AllReports"/></transition>
 
     <widgets>
-        <container style="row items-center justify-end q-px-md q-pt-md q-gutter-sm">
-            <section name="gate_documents_1" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('documents'))"><widgets><link url="goDocuments" text="Documents" icon="fa fa-file-text" btn-type="primary" style="q-btn--dense"/></widgets></section>
-            <section name="gate_purchase_2" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('purchase'))"><widgets><link url="goPurchase" text="Purchase" icon="fa fa-shopping-cart" btn-type="info" style="q-btn--dense"/></widgets></section>
-            <section name="gate_expenses_3" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('expenses'))"><widgets><link url="goExpenses" text="Expenses" icon="fa fa-credit-card" btn-type="warning" style="q-btn--dense"/></widgets></section>
-        </container>
         <subscreens-active/>
     </widgets>
 </screen>

@@ -14,11 +14,6 @@
     <transition name="goPurchase"><default-response url="../Purchase/PurchaseInvoices"/></transition>
 
     <widgets>
-        <container style="row items-center justify-end q-px-md q-pt-md q-gutter-sm">
-            <section name="gate_accounting_1" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('accounting'))"><widgets><link url="goAccounting" text="GST Reports" icon="fa fa-bar-chart" btn-type="primary" style="q-btn--dense"/></widgets></section>
-            <section name="gate_sales_2" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('sales'))"><widgets><link url="goSales" text="Sales Invoices" icon="fa fa-file-text" btn-type="info" style="q-btn--dense"/></widgets></section>
-            <section name="gate_purchase_3" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('purchase'))"><widgets><link url="goPurchase" text="Purchase Invoices" icon="fa fa-shopping-cart" btn-type="success" style="q-btn--dense"/></widgets></section>
-        </container>
         <subscreens-active/>
     </widgets>
 </screen>

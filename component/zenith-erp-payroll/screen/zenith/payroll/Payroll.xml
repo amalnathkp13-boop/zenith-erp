@@ -20,13 +20,6 @@
     <transition name="goAccounting"><default-response url="../Accounting/AcctgDashboard"/></transition>
 
     <widgets>
-        <container style="row items-center justify-end q-px-md q-pt-md q-gutter-sm">
-            <section name="gate_hr_1" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('hr'))"><widgets><link url="goHr" text="HR" icon="fa fa-users" btn-type="primary" style="q-btn--dense"/></widgets></section>
-            <section name="gate_attendance_2" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('attendance'))"><widgets><link url="goAttendance" text="Attendance" icon="fa fa-calendar-check-o" btn-type="info" style="q-btn--dense"/></widgets></section>
-            <section name="gate_timeoff_3" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('timeoff'))"><widgets><link url="goTimeOff" text="Time Off" icon="fa fa-plane" btn-type="warning" style="q-btn--dense"/></widgets></section>
-            <section name="gate_expenses_4" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('expenses'))"><widgets><link url="goExpenses" text="Expenses" icon="fa fa-credit-card" btn-type="danger" style="q-btn--dense"/></widgets></section>
-            <section name="gate_accounting_5" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('accounting'))"><widgets><link url="goAccounting" text="Accounting" icon="fa fa-calculator" btn-type="success" style="q-btn--dense"/></widgets></section>
-        </container>
         <subscreens-active/>
     </widgets>
 </screen>

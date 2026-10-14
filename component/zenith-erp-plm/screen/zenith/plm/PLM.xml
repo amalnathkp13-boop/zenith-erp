@@ -14,11 +14,6 @@
     <transition name="goQuality"><default-response url="../quality/Inspections"/></transition>
 
     <widgets>
-        <container style="row items-center justify-end q-px-md q-pt-md q-gutter-sm">
-            <section name="gate_manufacturing_1" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('manufacturing'))"><widgets><link url="goManufacturing" text="Manufacturing" icon="fa fa-cogs" btn-type="primary" style="q-btn--dense"/></widgets></section>
-            <section name="gate_inventory_2" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('inventory'))"><widgets><link url="goInventory" text="Inventory" icon="fa fa-cubes" btn-type="info" style="q-btn--dense"/></widgets></section>
-            <section name="gate_quality_3" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('quality'))"><widgets><link url="goQuality" text="Quality" icon="fa fa-check-circle" btn-type="success" style="q-btn--dense"/></widgets></section>
-        </container>
         <subscreens-active/>
     </widgets>
 </screen>
