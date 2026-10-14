@@ -29,9 +29,10 @@
                 def payAgg = [:]
                 if (billIds) ec.entity.find("zenith.erp.pos.PosPayment").condition("transactionId","in",billIds).list().each { p ->
                     def mm = payAgg.get(p.transactionId, [:]); def k = canon(p.paymentMethod); mm[k] = (mm[k] ?: 0.0G) + ((p.amount ?: 0) as BigDecimal) }
-                def payType = { b -> (b.isCredit == 'Y') ? 'Credit' : (payAgg[b.transactionId] ? payAgg[b.transactionId].entrySet().max{ it.value }.key : '') }
+                def hasCreditDue = { b -> b.isCredit == 'Y' && ((b.payableAmount ?: 0) as BigDecimal) > ((b.paidAmount ?: 0) as BigDecimal) }
+                def payType = { b -> hasCreditDue(b) ? 'Credit' : (payAgg[b.transactionId] ? payAgg[b.transactionId].entrySet().max{ it.value }.key : '') }
                 def slMap = [PtCompleted:'Completed', PtVoided:'Cancelled', PtHeld:'Pending', PtCreated:'Pending']
-                def statusOf = { b -> (b.isCredit == 'Y') ? 'Credit' : (slMap[b.statusId] ?: b.statusId) }
+                def statusOf = { b -> hasCreditDue(b) ? 'Credit' : (slMap[b.statusId] ?: b.statusId) }
                 def esc = { v -> if (v == null) return ""; String s = v.toString().trim(); (s.contains(",")||s.contains("\"")||s.contains("\n")) ? "\"" + s.replace("\"","\"\"") + "\"" : s }
                 def num = { v -> String.format("%.2f", (v ?: 0.0) as double) }
                 def dt = { v -> v == null ? "" : ec.l10n.format(v, 'dd-MM-yyyy HH:mm') }
@@ -88,8 +89,8 @@
 
             // 5 stat cards
             def completed = billList.findAll { it.statusId == 'PtCompleted' }
-            def salesBills = completed.findAll { it.isCredit != 'Y' }
-            def creditBills = billList.findAll { it.isCredit == 'Y' }
+            def salesBills = completed.findAll { it.isCredit != 'Y' || ((it.payableAmount ?: 0) as BigDecimal) <= ((it.paidAmount ?: 0) as BigDecimal) }
+            def creditBills = completed.findAll { it.isCredit == 'Y' && ((it.payableAmount ?: 0) as BigDecimal) > ((it.paidAmount ?: 0) as BigDecimal) }
             def pendingBills = billList.findAll { (((it.payableAmount ?: 0) as BigDecimal) - ((it.paidAmount ?: 0) as BigDecimal)) > 0 }
             def totalSales = salesBills.inject(0.0G) { a, it -> a + ((it.payableAmount ?: 0) as BigDecimal) }
             def totalDiscount = completed.inject(0.0G) { a, it -> a + ((it.discountTotal ?: 0) as BigDecimal) }
@@ -202,13 +203,14 @@
                     <row-actions>
                         <script><![CDATA[
                             billNo = bill.transactionNumber ?: bill.transactionId
-                            def pt = (bill.isCredit == 'Y') ? 'Credit' : (payTypeByTxn[bill.transactionId] ?: '—')
+                            def _creditDue = bill.isCredit == 'Y' && ((bill.payableAmount ?: 0) as BigDecimal) > ((bill.paidAmount ?: 0) as BigDecimal)
+                            def pt = _creditDue ? 'Credit' : (payTypeByTxn[bill.transactionId] ?: '—')
                             paymentType = pt
                             // mockup: Cash/Card/Credit = violet, UPI = blue
                             payColor = [Cash:'primary', Card:'primary', Credit:'primary', UPI:'info'][pt] ?: 'grey'
                             def scMap = [PtCompleted:'success', PtVoided:'grey', PtHeld:'warning', PtCreated:'warning']
                             def slMap = [PtCompleted:'Completed', PtVoided:'Cancelled', PtHeld:'Pending', PtCreated:'Pending']
-                            if (bill.isCredit == 'Y') { statusText = 'Credit'; statusColor = 'primary' }
+                            if (_creditDue) { statusText = 'Credit'; statusColor = 'primary' }
                             else { statusColor = scMap[bill.statusId] ?: 'grey'; statusText = slMap[bill.statusId] ?: (bill.statusId ?: '—') }
                             customerDisp = bill.customerName ?: 'Walk-in Customer'
                         ]]></script>

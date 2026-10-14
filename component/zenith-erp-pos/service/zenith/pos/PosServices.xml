@@ -584,7 +584,7 @@
                  "not PtCreated" was exactly the reported bug — "This bill is already completed" on a bill that
                  still owes money, so the due could never be collected. Allow the payment while the bill is still
                  an unpaid credit (isCredit='Y' AND paidAmount < payableAmount); once it's fully paid
-                 (settle#PosCredit flips isCredit='N', or paid catches up to payable) the guard fires again, so a
+                 (paid catches up to payable) the guard fires again, so a
                  fully-settled credit or a normal completed sale still can't be double-paid. -->
             <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="_ptxn" for-update="true"/>
             <if condition="_ptxn == null"><return error="true" message="Transaction not found"/></if>
@@ -713,12 +713,15 @@
         </actions>
     </service>
 
-    <!-- Complete a sale as CREDIT (pay-later): finalize the bill unpaid, record who owes -->
+    <!-- Complete a credit-origin sale, optionally collecting part or all of its value now. -->
     <service verb="complete" noun="PosTransactionCredit">
         <in-parameters>
             <parameter name="transactionId" required="true"/>
             <parameter name="customerName" required="true"/>
             <parameter name="customerPhone" required="true"/>
+            <parameter name="customerPartyId"/>
+            <parameter name="upfrontAmount" type="BigDecimal"/>
+            <parameter name="upfrontMethod"/>
         </in-parameters>
         <actions>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[transactionId:transactionId]"/>
@@ -731,6 +734,35 @@
                 <return error="true" message="Transaction is not in Created status"/></if>
             <if condition="!customerName?.trim() || !customerPhone?.trim()">
                 <return error="true" message="Customer name and phone are required for a credit sale"/></if>
+            <set field="custDigits" from="customerPhone.replaceAll('[^0-9]', '')"/>
+            <if condition="custDigits.length() &lt; 10 || custDigits.length() &gt; 15">
+                <return error="true" message="Enter a valid customer phone number (10 to 15 digits)."/></if>
+            <set field="upfront" from="upfrontAmount ?: (0 as BigDecimal)"/>
+            <if condition="upfront &lt; 0 || upfront.scale() &gt; 2 || upfront + ((txn.paidAmount ?: 0) as BigDecimal) &gt; ((txn.payableAmount ?: 0) as BigDecimal)">
+                <return error="true" message="Upfront payment must be between zero and the remaining bill amount, with at most two decimal places."/></if>
+            <if condition="upfront &gt; 0 &amp;&amp; !['Cash','Card','UPI'].contains(upfrontMethod)">
+                <return error="true" message="Choose Cash, Card, or UPI for the upfront payment."/></if>
+            <if condition="customerPartyId">
+                <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_customerAccess"
+                    in-map="[transactionId:transactionId, customerPartyId:customerPartyId]"/>
+                <if condition="!_customerAccess.allowed"><return/></if>
+                <script><![CDATA[
+                    def customer = ec.entity.find('mantle.party.PartyDetailAndRole').condition('partyId', customerPartyId).limit(1).list()
+                    def detail = customer ? customer[0] : null
+                    def canonicalName = detail?.organizationName ?: (((detail?.firstName ?: '') + ' ' + (detail?.lastName ?: '')).trim())
+                    def phoneMechs = ec.entity.find('mantle.party.contact.PartyContactMech').condition('partyId', customerPartyId)
+                        .conditionDate('fromDate', 'thruDate', ec.user.nowTimestamp).list()
+                    def matchesPhone = phoneMechs.any { pcm ->
+                        def number = ec.entity.find('mantle.party.contact.TelecomNumber').condition('contactMechId', pcm.contactMechId).one()
+                        def digits = ((number?.countryCode ?: '') + (number?.areaCode ?: '') + (number?.contactNumber ?: '')).replaceAll('[^0-9]', '')
+                        digits && (digits == custDigits || (digits.length() > 10 && custDigits.length() == 10 && digits.endsWith(custDigits)))
+                    }
+                    if (!canonicalName || !(matchesPhone || customerPartyId == ('POSCUST_' + txn.organizationPartyId + '_' + custDigits)))
+                        ec.message.addError('Select a saved customer with a matching phone, or add a new customer.')
+                    else customerName = canonicalName
+                ]]></script>
+                <if condition="ec.message.hasError()"><return/></if>
+            </if>
 
             <!-- ZE-POS-MODERULES: apply the opt-in min-order rule to credit sales too (the customer rule is
                  already satisfied — a credit sale forces name+phone above). No-op unless the tenant opted in. -->
@@ -740,8 +772,7 @@
 
             <!-- Book the receivable against a real per-customer party (not the generic Walk-in),
                  keyed deterministically by phone so repeat credit customers reuse one ledger. -->
-            <set field="custDigits" from="customerPhone.replaceAll('[^0-9]', '')"/>
-            <set field="custPartyId" from="'POSCUST_' + txn.organizationPartyId + '_' + custDigits"/>
+            <set field="custPartyId" from="customerPartyId ?: ('POSCUST_' + txn.organizationPartyId + '_' + custDigits)"/>
             <entity-find-one entity-name="mantle.party.Party" value-field="existCust">
                 <field-map field-name="partyId" from="custPartyId"/></entity-find-one>
             <if condition="!existCust">
@@ -752,15 +783,32 @@
                 <service-call name="create#mantle.party.PartyRole"
                     in-map="[partyId:custPartyId, roleTypeId:'Customer']"/>
             </if>
+            <if condition="!existCust || (!customerPartyId &amp;&amp; !ec.entity.find('mantle.party.contact.PartyContactMech').condition('partyId', custPartyId).count())">
+                <service-call name="create#mantle.party.contact.ContactMech" out-map="_creditPhoneMech"
+                    in-map="[contactMechTypeEnumId:'CmtTelecomNumber']"/>
+                <service-call name="create#mantle.party.contact.TelecomNumber"
+                    in-map="[contactMechId:_creditPhoneMech.contactMechId, contactNumber:custDigits]"/>
+                <service-call name="create#mantle.party.contact.PartyContactMech"
+                    in-map="[partyId:custPartyId, contactMechId:_creditPhoneMech.contactMechId,
+                             contactMechPurposeId:'PhonePrimary', fromDate:ec.user.nowTimestamp]"/>
+            </if>
+            <!-- A deposit is a real tender in the sale's open drawer. The credit completion and
+                 payment share this transaction, so a rejected tender cannot leave a finalized bill. -->
+            <if condition="upfront &gt; 0">
+                <service-call name="zenith.pos.PosServices.process#PosPayment"
+                    in-map="[transactionId:transactionId, paymentMethod:upfrontMethod, amount:upfront, bypassModeRules:true]"/>
+                <if condition="ec.message.hasError()"><return/></if>
+            </if>
             <!-- Mint the bill number now, at completion, so abandoned carts never consume a number. -->
             <service-call name="zenith.pos.PosServices.assign#BillNumber" in-map="[transactionId:transactionId]"/>
             <service-call name="update#zenith.erp.pos.PosTransaction"
                 in-map="[transactionId:transactionId, statusId:'PtCompleted', isCredit:'Y', completedDate:ec.user.nowTimestamp,
-                         paidAmount:txn.paidAmount ?: 0, changeAmount:0, customerPartyId:custPartyId,
+                         paidAmount:((txn.paidAmount ?: 0) as BigDecimal) + upfront, changeAmount:0, customerPartyId:custPartyId,
                          customerName:customerName, customerPhone:customerPhone]"/>
             <script>ec.service.async().name("zenith.pos.PosSyncServices.sync#PosTransactionInvoice").parameter("transactionId", transactionId).call()</script>
 
-            <!-- A credit sale is still a sale: update session sales totals (no cash collected) -->
+            <!-- A credit sale is still a sale: record its sales total once. The payment row,
+                 when present, belongs to this session's tender reconciliation. -->
             <entity-find-one entity-name="zenith.erp.pos.PosSession" value-field="session" for-update="true">
                 <field-map field-name="sessionId" from="txn.sessionId"/></entity-find-one>
             <if condition="session">
@@ -807,8 +855,6 @@
             <if condition="outstanding &lt;= 0">
                 <set field="fullyPaid" from="true"/>
                 <set field="outstanding" from="0 as BigDecimal"/>
-                <service-call name="update#zenith.erp.pos.PosTransaction"
-                    in-map="[transactionId:transactionId, isCredit:'N']"/>
             <else>
                 <set field="fullyPaid" from="false"/>
             </else></if>

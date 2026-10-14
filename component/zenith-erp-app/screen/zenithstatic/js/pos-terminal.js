@@ -577,7 +577,7 @@ window._posOffline = (function() {
             h += '<table><tr><td class="tot">' + (isTax ? 'GRAND TOTAL' : 'TOTAL') + '</td><td class="r tot">' + f2(sm.total) + '</td></tr></table>';
             if (d.isCredit) {
                 h += '<div class="sep"></div>';
-                h += '<div class="c b" style="border:1px dashed #000;padding:3px 2px;font-size:12px">** CREDIT / PAY LATER (UNPAID) **</div>';
+                h += '<div class="c b" style="border:1px dashed #000;padding:3px 2px;font-size:12px">** ' + (Number(d.outstanding) > 0 ? 'CREDIT / PAY LATER' : 'CREDIT / PAID IN FULL') + ' **</div>';
                 h += '<table><tr><td class="b">Amount Due</td><td class="r b">' + f2(d.outstanding) + '</td></tr></table>';
             }
             h += '<div class="c b" style="font-size:13px;margin-top:6px">Thank You !!</div>';
@@ -2310,17 +2310,21 @@ window.posToggleFullscreen = function() {
             if (!TX) { showToast('Add items to the cart first', '#e53935'); return; }
             var ov = document.createElement('div');
             ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:999999;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center';
-            ov.innerHTML = '<div style="background:#fff;border-radius:16px;width:420px;max-width:90vw;box-shadow:0 12px 48px rgba(0,0,0,0.3);overflow:hidden">'
+            ov.innerHTML = '<div style="background:#fff;border-radius:16px;width:420px;max-width:90vw;max-height:90vh;overflow-y:auto;box-shadow:0 12px 48px rgba(0,0,0,0.3)">'
                 + '<div style="padding:18px 20px;background:#e65100;color:#fff;text-align:center;font-size:18px;font-weight:700">&#128196; Credit / Pay Later</div>'
                 + '<div style="padding:20px 24px">'
-                + '<div style="font-size:13px;color:#666;margin-bottom:14px">The current bill will be completed as <b>CREDIT (unpaid)</b>. Record who owes — settle the payment later from the Credit Bills screen.</div>'
+                + '<div style="font-size:13px;color:#666;margin-bottom:14px">Choose a saved customer or add one below. Record any amount paid now; the balance remains in Credit Bills.</div>'
                 + '<label style="font-size:13px;font-weight:600;color:#555;display:block;margin-bottom:4px">Customer Name *</label>'
                 + '<div style="position:relative;margin-bottom:12px">'
                 + '<input id="credit-name" type="text" autocomplete="off" placeholder="Type to search your saved customers&hellip;" style="width:100%;padding:11px 14px;border:2px solid #ffb74d;border-radius:8px;font-size:15px;box-sizing:border-box;outline:none"/>'
                 + '<div id="credit-cust-results" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:20;background:#fff;border:1px solid #ccc;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,0.18);max-height:160px;overflow-y:auto;margin-top:4px"></div>'
                 + '</div>'
                 + '<label style="font-size:13px;font-weight:600;color:#555;display:block;margin-bottom:4px">Customer Phone *</label>'
-                + '<input id="credit-phone" type="tel" inputmode="numeric" autocomplete="off" style="width:100%;padding:11px 14px;border:2px solid #ffb74d;border-radius:8px;font-size:15px;box-sizing:border-box;outline:none"/>'
+                + '<input id="credit-phone" type="tel" inputmode="tel" autocomplete="off" placeholder="10 to 15 digits" style="width:100%;padding:11px 14px;border:2px solid #ffb74d;border-radius:8px;font-size:15px;box-sizing:border-box;outline:none"/>'
+                + '<button id="credit-add-customer" type="button" style="margin-top:7px;padding:0;border:0;background:none;color:#7C3AED;font-weight:700;cursor:pointer">+ Add customer with this name and phone</button>'
+                + '<div style="display:flex;gap:10px;margin-top:15px"><label style="flex:1;font-size:13px;font-weight:600;color:#555">Paid now (₹)<input id="credit-upfront" type="number" min="0" step="0.01" inputmode="decimal" value="0" style="display:block;width:100%;margin-top:4px;padding:11px 14px;border:2px solid #ffb74d;border-radius:8px;font-size:15px;box-sizing:border-box"/></label>'
+                + '<label style="flex:1;font-size:13px;font-weight:600;color:#555">Method<select id="credit-upfront-method" style="display:block;width:100%;margin-top:4px;padding:11px 14px;border:2px solid #ffb74d;border-radius:8px;font-size:15px;box-sizing:border-box"><option value="Cash">Cash</option><option value="Card">Card</option><option value="UPI">UPI</option></select></label></div>'
+                + '<div id="credit-due-preview" aria-live="polite" style="margin-top:9px;font-size:13px;font-weight:700;color:#c62828"></div>'
                 + '<div style="display:flex;gap:12px;margin-top:20px">'
                 + '<button id="credit-cancel" style="flex:1;padding:14px;border:2px solid #ccc;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;background:#fff;color:#555">Cancel</button>'
                 + '<button id="credit-confirm" style="flex:1;padding:14px;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;background:#e65100;color:#fff">Complete Credit Sale</button>'
@@ -2334,40 +2338,96 @@ window.posToggleFullscreen = function() {
             // both name and phone so credit is recorded against the existing contact.
             var resBox = document.getElementById('credit-cust-results');
             var phoneInp = document.getElementById('credit-phone');
+            var selectedPartyId = '';
+            var amountInp = document.getElementById('credit-upfront');
+            var duePreview = document.getElementById('credit-due-preview');
+            var creditBtn = document.getElementById('credit-confirm');
+            var creditReady = false;
+            creditBtn.disabled = true;
+            creditBtn.textContent = 'Loading bill…';
+            function updateDuePreview() {
+                var paid = Number(amountInp.value || 0);
+                var remaining = Math.max(0, Number(lastPay || 0) - Number((lastCartData && lastCartData.paid) || 0));
+                duePreview.textContent = Number.isFinite(paid) && paid >= 0 && paid <= remaining
+                    ? 'Balance after this payment: ₹' + fmt2(remaining - paid) : 'Enter an amount from ₹0 to the remaining bill balance.';
+            }
+            amountInp.addEventListener('input', updateDuePreview);
+            duePreview.textContent = 'Loading the current bill balance…';
+            if (lastCartData && lastCartData.customer) {
+                nameInp.value = lastCartData.customer;
+                phoneInp.value = lastCartData.customerPhone || '';
+                selectedPartyId = lastCartData.customerPartyId || '';
+            }
+            // Re-read after the optimistic cart queue drains; the cashier may have tapped a
+            // product immediately before Credit. Never collect against a stale UI total.
+            function loadCreditBalance(attempt) {
+                if (!document.body.contains(ov)) return;
+                if (busy || OPT._drainPending() > 0) {
+                    if (attempt < 80) setTimeout(function() { loadCreditBalance(attempt + 1); }, 100);
+                    else duePreview.textContent = 'Bill is still updating. Close and reopen Credit.';
+                    return;
+                }
+                post({action:'refresh', transactionId:TX}).then(function(d) {
+                    if (!d || !d.success || !d.items || !d.items.length) throw new Error('Bill unavailable');
+                    lastPay = Number(d.pay || 0);
+                    lastCartData = d;
+                    if (!nameInp.value.trim() && d.customer) { nameInp.value = d.customer; phoneInp.value = d.customerPhone || ''; selectedPartyId = d.customerPartyId || ''; }
+                    updateDuePreview();
+                    creditReady = true;
+                    creditBtn.disabled = false;
+                    creditBtn.textContent = 'Complete Credit Sale';
+                }).catch(function() { duePreview.textContent = 'Could not load the bill. Close and reopen Credit.'; });
+            }
+            loadCreditBalance(0);
+            document.getElementById('credit-add-customer').addEventListener('click', function() {
+                selectedPartyId = '';
+                resBox.style.display = 'none';
+                (nameInp.value.trim() ? phoneInp : nameInp).focus();
+                showToast('Enter both fields; the customer will be saved with this credit bill.', '#7C3AED');
+            });
             var cTimer = null;
             function creditCustSearch(term) {
                 var pr = new URLSearchParams({ term: term || '', sessionId: SI, moquiSessionToken: TK });
                 return fetch('Terminal/searchCustomers', { method: 'post', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: pr, credentials: 'same-origin' }).then(function(r) { return r.json(); });
             }
             function renderCreditCust(list) {
-                if (!list || !list.length) { resBox.style.display = 'none'; resBox.innerHTML = ''; return; }
+                if (!list || !list.length) { resBox.style.display = 'block'; resBox.textContent = 'No saved customer found. Use Add customer below.'; return; }
                 var h = '';
+                function safe(v) { return String(v || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
                 list.forEach(function(c) {
-                    h += '<div class="cc-row" data-name="' + (c.name || '').replace(/"/g, '&quot;') + '" data-phone="' + (c.phone || '').replace(/"/g, '&quot;') + '" style="padding:10px 12px;cursor:pointer;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center;gap:10px" onmouseover="this.style.background=\'#fff3e0\'" onmouseout="this.style.background=\'#fff\'"><span style="font-weight:700;color:#e65100">' + (c.name || '') + '</span>' + (c.phone ? '<span style="font-size:13px;color:#777;white-space:nowrap">' + c.phone + '</span>' : '') + '</div>';
+                    h += '<div class="cc-row" data-party-id="' + safe(c.partyId) + '" data-name="' + safe(c.name) + '" data-phone="' + safe(c.phone) + '" style="padding:10px 12px;cursor:pointer;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center;gap:10px"><span style="font-weight:700;color:#e65100">' + safe(c.name) + '</span>' + (c.phone ? '<span style="font-size:13px;color:#777;white-space:nowrap">' + safe(c.phone) + '</span>' : '') + '</div>';
                 });
                 resBox.innerHTML = h; resBox.style.display = 'block';
                 resBox.querySelectorAll('.cc-row').forEach(function(row) {
                     row.addEventListener('click', function() {
                         nameInp.value = row.dataset.name || '';
                         if (row.dataset.phone) phoneInp.value = row.dataset.phone;
+                        selectedPartyId = row.dataset.partyId || '';
                         resBox.style.display = 'none';
                         if (!phoneInp.value) phoneInp.focus();
                     });
                 });
             }
             nameInp.addEventListener('input', function() {
+                selectedPartyId = '';
                 clearTimeout(cTimer);
                 var q = nameInp.value.trim();
                 if (q.length < 1) { resBox.style.display = 'none'; return; }
                 cTimer = setTimeout(function() { creditCustSearch(q).then(function(d) { renderCreditCust((d && d.success) ? (d.customers || []) : []); }); }, 300);
             });
+            phoneInp.addEventListener('input', function() { selectedPartyId = ''; });
             ov.addEventListener('click', function(e) { if (resBox && !resBox.contains(e.target) && e.target !== nameInp) resBox.style.display = 'none'; });
             document.getElementById('credit-cancel').addEventListener('click', function() { ov.remove(); });
             document.getElementById('credit-confirm').addEventListener('click', function() {
+                if (!creditReady) return;
                 var nm = (document.getElementById('credit-name').value || '').trim();
                 var ph = (document.getElementById('credit-phone').value || '').trim();
                 if (!nm) { showToast('Enter the customer name', '#e53935'); document.getElementById('credit-name').focus(); return; }
                 if (!ph) { showToast('Enter the customer phone', '#e53935'); document.getElementById('credit-phone').focus(); return; }
+                if (ph.replace(/[^0-9]/g, '').length < 10 || ph.replace(/[^0-9]/g, '').length > 15) { showToast('Enter a valid 10 to 15 digit phone number', '#e53935'); phoneInp.focus(); return; }
+                var paidNow = Number(amountInp.value);
+                var remaining = Math.max(0, Number(lastPay || 0) - Number((lastCartData && lastCartData.paid) || 0));
+                if (!/^\d+(\.\d{1,2})?$/.test(amountInp.value.trim()) || !Number.isFinite(paidNow) || paidNow > remaining) { showToast('Paid now must be between ₹0 and the remaining bill balance, with at most two decimals', '#e53935'); amountInp.focus(); return; }
                 var btn = document.getElementById('credit-confirm');
                 btn.disabled = true; btn.textContent = 'Completing...';
                 // Submit a real form POST so the SPA navigates to the receipt/confirmation screen
@@ -2376,6 +2436,9 @@ window.posToggleFullscreen = function() {
                 function hid(n, v) { var i = document.createElement('input'); i.type = 'hidden'; i.name = n; i.value = v; f.appendChild(i); }
                 hid('transactionId', TX); hid('sessionId', SI); hid('salesModeId', SM);
                 hid('customerName', nm); hid('customerPhone', ph); hid('moquiSessionToken', TK);
+                if (selectedPartyId) hid('customerPartyId', selectedPartyId);
+                hid('upfrontAmount', paidNow.toFixed(2));
+                if (paidNow > 0) hid('upfrontMethod', document.getElementById('credit-upfront-method').value);
                 document.body.appendChild(f);
                 f.submit();
             });
@@ -2573,7 +2636,7 @@ window.posToggleFullscreen = function() {
             html += '</table>';
             if (d.isCredit) {
                 html += '<div class="sep2"></div>';
-                html += '<div class="c b" style="font-size:13px;border:1px dashed #000;padding:3px 2px">** CREDIT — UNPAID **</div>';
+                html += '<div class="c b" style="font-size:13px;border:1px dashed #000;padding:3px 2px">** ' + (Number(d.outstanding) > 0 ? 'CREDIT — AMOUNT DUE' : 'CREDIT — PAID IN FULL') + ' **</div>';
                 html += '<table><tr><td class="b">Outstanding</td><td class="r b">' + cs2 + f2(d.outstanding) + '</td></tr></table>';
             }
             if (Number(d.saving||0) > 0) {

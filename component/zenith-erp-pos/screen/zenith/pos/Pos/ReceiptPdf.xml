@@ -86,6 +86,7 @@
             paidTotal = payments.sum { (it.amount ?: 0) as BigDecimal } ?: 0
             // ZE-POS-005: credit/pay-later marker + amount due, computed in Groovy (no FO FreeMarker arithmetic)
             isCreditBill = (txn.isCredit == 'Y')
+            creditHasDue = ((txn.payableAmount ?: 0) as BigDecimal) > ((txn.paidAmount ?: 0) as BigDecimal)
             outstandingAmt = zinr.inr(ec.l10n.format(((txn.payableAmount ?: 0) as BigDecimal) - ((txn.paidAmount ?: 0) as BigDecimal), '#,##0.00'))
         ]]></script>
     </actions>
@@ -264,7 +265,7 @@
             <#-- Credit / Pay Later marker + amount due (ZE-POS-005) -->
             <#if isCreditBill>
             <fo:block space-before="1mm" space-after="0.5mm" border-bottom="0.5pt dashed #000"/>
-            <fo:block font-size="9pt" font-weight="bold" text-align="center" border="0.5pt solid #000" padding="1mm" space-after="1mm">** CREDIT / PAY LATER (UNPAID) **</fo:block>
+            <fo:block font-size="9pt" font-weight="bold" text-align="center" border="0.5pt solid #000" padding="1mm" space-after="1mm">** <#if creditHasDue>CREDIT / PAY LATER<#else>CREDIT / PAID IN FULL</#if> **</fo:block>
             <fo:table table-layout="fixed" width="100%">
                 <fo:table-column column-width="proportional-column-width(1)"/><fo:table-column column-width="24mm"/>
                 <fo:table-body>
