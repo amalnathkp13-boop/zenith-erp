@@ -340,7 +340,7 @@
             html_stylesheets.add('https://fonts.googleapis.com/icon?family=Material+Icons')
             if (footer_scripts == null) footer_scripts = []
             footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=12')
-            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=37')
+            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=38')
             footer_scripts.add('/zenithstatic/js/sidebar-manager.js?v=1')
             footer_scripts.add('/zenithstatic/js/pricing-price-lists.js?v=1')
             footer_scripts.add('/zenithstatic/js/purchase-rfq.js?v=1')
