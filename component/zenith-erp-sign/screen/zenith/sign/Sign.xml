@@ -14,11 +14,6 @@
     <transition name="goSales"><default-response url="../sales/FindInvoice"/></transition>
 
     <widgets>
-        <container style="row items-center justify-end q-px-md q-pt-md q-gutter-sm">
-            <section name="gate_documents_1" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('documents'))"><widgets><link url="goDocuments" text="Documents" icon="fa fa-file-text" btn-type="primary" style="q-btn--dense"/></widgets></section>
-            <section name="gate_approvals_2" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('approvals'))"><widgets><link url="goApprovals" text="Approvals" icon="fa fa-check-square-o" btn-type="info" style="q-btn--dense"/></widgets></section>
-            <section name="gate_sales_3" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('sales'))"><widgets><link url="goSales" text="Invoices" icon="fa fa-file-text-o" btn-type="success" style="q-btn--dense"/></widgets></section>
-        </container>
         <subscreens-active/>
     </widgets>
 </screen>

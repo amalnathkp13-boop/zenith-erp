@@ -5,14 +5,6 @@
 
     <always-actions>
         <set field="html_title" value="Contacts"/>
-        <!-- Plan-aware cross-module nav: SaaS tenants only see buttons for modules in their plan -->
-        <set field="planGate" from="isSaasTenant &amp;&amp; !saasHasAllAccess &amp;&amp; saasAllowedModules != null"/>
-        <set field="showSales" from="!planGate || saasAllowedModules.contains('sales')"/>
-        <set field="showPurchase" from="!planGate || saasAllowedModules.contains('purchase')"/>
-        <set field="showAccounting" from="!planGate || saasAllowedModules.contains('accounting')"/>
-        <set field="showCrm" from="!planGate || saasAllowedModules.contains('crm')"/>
-        <set field="showHr" from="!planGate || saasAllowedModules.contains('hr')"/>
-        <set field="showMarketing" from="!planGate || saasAllowedModules.contains('marketing')"/>
     </always-actions>
 
     <subscreens default-item="ContactsDashboard">
@@ -41,16 +33,6 @@
     <transition name="goMarketing"><default-response url="../marketing/Campaigns"/></transition>
 
     <widgets>
-        <!-- ZE-CONTACTS-NAV (report 'Contacts Navigation Overlap' secondary ask): collapse the always-visible
-             cross-module quick-nav row into a compact "More" disclosure so the Contacts header stays clean.
-             Native <details> + inline <a sri.buildUrl> links → renders on /apps, /qapps AND /vapps (no JS, no
-             <style>); per-surface URLs preserved; plan-gating (show*) preserved. -->
-        <render-mode><text type="html,vuet,qvt" template="true"><![CDATA[
-        <div class="zc-module-nav" style="display:flex;justify-content:flex-end;padding:12px 16px 0">
-          <#assign contactsModuleNavPrefix = ''>
-          <#include 'component://zenith-erp-contacts/screen/zenith/contacts/includes/ContactsModuleLinks.html.ftl'>
-        </div>
-        ]]></text></render-mode>
         <container style="zcontacts-page"><subscreens-active/></container>
     </widgets>
 </screen>

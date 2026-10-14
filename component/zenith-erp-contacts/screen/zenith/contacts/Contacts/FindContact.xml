@@ -329,10 +329,6 @@
                  via the shared export transition — replaces the native show-csv-button, unifying with the
                  other Contacts lists as proper columns rather than the old 3 mushed HTML columns). -->
             <link url="export" text="Export to CSV" parameter-map="[format:'csv']" link-type="anchor" target-window="_blank" style="cust-export"/>
-            <render-mode><text type="html,qvt,vuet" template="true"><![CDATA[
-                <#assign contactsModuleNavPrefix = '../'>
-                <#include 'component://zenith-erp-contacts/screen/zenith/contacts/includes/ContactsModuleLinks.html.ftl'>
-            ]]></text></render-mode>
         </box-toolbar><box-body>
             <!-- ZE-CONTACTS-SEARCH: full-width unified search box + a "Filters" button. Native GET form (no JS/CSRF —
                  works on /apps + /qapps like the filter-bar links); carries the other three filters as hidden inputs so
