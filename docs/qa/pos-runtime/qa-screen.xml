@@ -63,6 +63,18 @@
     ec.message.clearErrors()
     ec.web.sendJsonResponse([result:publicResult,errors:errors])
 ]]></script></actions><default-response type="none"/></transition>
+<transition name="legacyCartStates"><actions><script><![CDATA[
+    if (System.getProperty('pos.qa.disposable')!='true' || ec.user.username!='pos.qa') {
+        ec.web.response.setStatus(403);ec.web.sendJsonResponse([denied:true]);return
+    }
+    def cart=ec.entity.find('zenith.erp.pos.PosTransaction')
+        .condition('transactionId',ec.web.parameters.transactionId).one()
+    if (!cart || cart.organizationPartyId!='POS_QA_A' || cart.statusId!='PtCreated') {
+        ec.web.response.setStatus(403);ec.web.sendJsonResponse([denied:true]);return
+    }
+    cart.originRegionGeoId=null;cart.destinationRegionGeoId=null;cart.update()
+    ec.web.sendJsonResponse([cleared:true])
+]]></script></actions><default-response type="none"/></transition>
 <transition name="scope"><actions><script><![CDATA[
     if (System.getProperty('pos.qa.disposable')!='true' || ec.user.username!='pos.qa') {
         ec.web.response.setStatus(403);ec.web.sendJsonResponse([denied:true]);return

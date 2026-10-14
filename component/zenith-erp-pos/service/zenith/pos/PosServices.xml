@@ -234,14 +234,18 @@
             <entity-find-one entity-name="zenith.erp.pos.PosTerminal" value-field="terminal">
                 <field-map field-name="terminalId" from="session.terminalId"/>
             </entity-find-one>
+            <entity-find entity-name="zenith.erp.india.IndiaGstConfig" list="_posGstConfig" limit="1">
+                <econdition field-name="organizationPartyId" from="terminal.organizationPartyId"/>
+            </entity-find>
+            <set field="_posRegion" from="terminal.regionGeoId ?: (_posGstConfig ? _posGstConfig[0].stateCode : null)"/>
 
 
             <service-call name="create#zenith.erp.pos.PosTransaction" out-map="context"
                 in-map="[sessionId:sessionId, organizationPartyId:terminal?.organizationPartyId, transactionNumber:null,
                          transactionType:transactionType, entryDate:ec.user.nowTimestamp,
                          customerName:customerName, customerTaxRegNumber:customerTaxRegNumber,
-                         originRegionGeoId:terminal.regionGeoId,
-                         destinationRegionGeoId:destinationRegionGeoId ?: terminal.regionGeoId,
+                          originRegionGeoId:_posRegion,
+                          destinationRegionGeoId:destinationRegionGeoId ?: _posRegion,
                          subtotal:0, totalTaxAmount:0,
                          discountTotal:0, grandTotal:0, roundOff:0, payableAmount:0,
                          paidAmount:0, changeAmount:0, statusId:'PtCreated']"/>

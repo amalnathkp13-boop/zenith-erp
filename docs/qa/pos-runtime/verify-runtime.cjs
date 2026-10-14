@@ -80,6 +80,12 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  await invoke('reprice',{transactionId:taxMode.transactionId,salesModeId:'RETAIL',taxOn:'Y'});
  check('tax-on reprice restores exact line GST detail',Number(tx(taxMode.transactionId).total_tax_amount)===18&&Number(q(`SELECT coalesce(sum(tax_amount),0) AS n FROM tax_line_detail WHERE reference_type='PosTransactionItem' AND reference_id='${taxMode.transactionId}'`)[0].n)===18,tx(taxMode.transactionId));
  await invoke('void',{transactionId:taxMode.transactionId});
+  const legacyTaxCart=await cart(s);await item(legacyTaxCart,{taxOn:'N'});
+  const legacySeed=await post('PosQaAcceptance','legacyCartStates',{transactionId:legacyTaxCart.transactionId});
+  check('disposable legacy cart has blank supply states',legacySeed.status()===200&&!(tx(legacyTaxCart.transactionId).origin_region_geo_id)&&!(tx(legacyTaxCart.transactionId).destination_region_geo_id));
+  const taxToggle=await post('Terminal','toggleTax',{transactionId:legacyTaxCart.transactionId,sessionId:s.sessionId,taxOn:'Y'});
+  check('GST toggle repairs legacy supply states and records exact tax',taxToggle.status()>=300&&taxToggle.status()<400&&tx(legacyTaxCart.transactionId).origin_region_geo_id==='33'&&tx(legacyTaxCart.transactionId).destination_region_geo_id==='33'&&Number(tx(legacyTaxCart.transactionId).total_tax_amount)===18&&Number(q(`SELECT coalesce(sum(tax_amount),0) AS n FROM tax_line_detail WHERE reference_type='PosTransactionItem' AND reference_id='${legacyTaxCart.transactionId}'`)[0].n)===18,{status:taxToggle.status(),transaction:tx(legacyTaxCart.transactionId)});
+  await invoke('void',{transactionId:legacyTaxCart.transactionId});
  const heldCart=await cart(s);await item(heldCart);const h=await invoke('hold',{transactionId:heldCart.transactionId,holdReason:'Disposable recall'});const recalled=await invoke('recall',{heldId:h.heldId,sessionId:s.sessionId});check('recall restores one line',count('pos_transaction_item',`transaction_id='${recalled.transactionId}'`)===1);await invoke('recall',{heldId:h.heldId,sessionId:s.sessionId},true);await invoke('void',{transactionId:recalled.transactionId});
  const bs=await open('POS_QA_B_TERM1',foreign);const bcart=await cart(bs,foreign);await item(bcart,{productId:'POS_QA_B_P18'},foreign);const before=JSON.stringify(tx(bcart.transactionId));
  for(const op of ['pay','complete','receipt','hold','void','sync'])await invoke(op,{transactionId:bcart.transactionId,paymentMethod:'Cash',amount:'118'},true);

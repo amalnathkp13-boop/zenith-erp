@@ -1026,10 +1026,15 @@
 
 
         <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_taxAccess"
+                          in-map="[transactionId:transactionId, sessionId:sessionId]"/>
+            <if condition="!_taxAccess.allowed"><return/></if>
 
 
 
             <if condition="transactionId">
+                <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="txn2"/>
+                <if condition="txn2.statusId != 'PtCreated'"><return error="true" message="Only an open cart can change tax mode."/></if>
 
 
 
@@ -1066,14 +1071,14 @@
 
 
                     </iterate>
+                    <entity-delete-by-condition entity-name="zenith.erp.tax.TaxLineDetail">
+                        <econdition field-name="referenceType" value="PosTransactionItem"/>
+                        <econdition field-name="referenceId" from="transactionId"/>
+                    </entity-delete-by-condition>
 
 
 
                 <else>
-
-
-
-                    <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="txn2"/>
 
 
 
@@ -1086,6 +1091,35 @@
 
 
                     </entity-find-one>
+                    <entity-find entity-name="zenith.erp.india.IndiaGstConfig" list="_toggleGstConfig" limit="1">
+                        <econdition field-name="organizationPartyId" from="term2.organizationPartyId"/>
+                    </entity-find>
+                    <script><![CDATA[
+                        // Older PtCreated carts may predate the terminal's state setup. Use only
+                        // this tenant's terminal or GST configuration, never a hard-coded state.
+                        def origin = txn2.originRegionGeoId ?: term2?.regionGeoId ?: (_toggleGstConfig ? _toggleGstConfig[0].stateCode : null)
+                        def destination = txn2.destinationRegionGeoId ?: origin
+                        if (!txn2.destinationRegionGeoId && txn2.customerTaxRegNumber &&
+                                txn2.customerTaxRegNumber ==~ /[0-9]{2}[A-Z0-9]{13}/) {
+                            destination = txn2.customerTaxRegNumber.substring(0, 2)
+                        }
+                        def validOrigin = origin ? ec.entity.find('zenith.erp.india.IndiaState').condition('stateCode', origin).one() : null
+                        def validDestination = destination ? ec.entity.find('zenith.erp.india.IndiaState').condition('stateCode', destination).one() : null
+                        taxStatesValid = validOrigin != null && validDestination != null
+                        if (taxStatesValid) {
+                            if (txn2.originRegionGeoId != origin || txn2.destinationRegionGeoId != destination) {
+                                txn2.originRegionGeoId = origin
+                                txn2.destinationRegionGeoId = destination
+                                txn2.update()
+                            }
+                            taxOrigin = origin
+                            taxDestination = destination
+                        } else {
+                            modeSwitchError = 'Set a valid POS terminal and customer supply state before enabling GST.'
+                            taxOn = 'N'
+                        }
+                    ]]></script>
+                    <if condition="!taxStatesValid"><return/></if>
 
 
 
@@ -1141,11 +1175,11 @@
 
 
 
-                                     originRegionGeoId:txn2.originRegionGeoId,
+                                     originRegionGeoId:taxOrigin,
 
 
 
-                                     destinationRegionGeoId:txn2.destinationRegionGeoId,
+                                     destinationRegionGeoId:taxDestination,
 
 
 
@@ -1154,6 +1188,7 @@
 
 
                             out-map="taxRes2" ignore-error="true"/>
+                        <if condition="ec.message.hasError()"><return/></if>
 
 
 
@@ -1178,6 +1213,11 @@
 
 
                                      totalTaxAmount:newTax, lineTotal:newLine]"/>
+                        <if condition="ti2?.taxBreakdowns">
+                            <service-call name="zenith.tax.TaxServices.store#TaxLineDetails"
+                                in-map="[referenceType:'PosTransactionItem', referenceId:transactionId,
+                                         referenceSeqId:ti.itemSeqId, taxBreakdowns:ti2.taxBreakdowns]"/>
+                        </if>
 
 
 
