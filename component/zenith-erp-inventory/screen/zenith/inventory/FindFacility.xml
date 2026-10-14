@@ -13,27 +13,92 @@
         </default-response>
     </transition>
 
+    <actions>
+        <script><![CDATA[
+            facilityOrgId = ec.user.getPreference('ACTIVE_ORGANIZATION')
+            if (!facilityOrgId || facilityOrgId == '_NA_') facilityOrgId = '__NO_ORGANIZATION__'
+            def facilities = ec.entity.find('mantle.facility.Facility').condition('ownerPartyId',facilityOrgId).orderBy('facilityName,facilityId').list()
+            def types = ec.entity.find('moqui.basic.Enumeration').condition('enumTypeId','FacilityType').list().collectEntries { [(it.enumId):it.description] }
+            def statuses = ec.entity.find('moqui.basic.StatusItem').condition('statusTypeId','Facility').list().collectEntries { [(it.statusId):it.description] }
+            def now = ec.user.nowTimestamp
+            facilityRows = facilities.collect { f ->
+                def operating = (!f.openedDate || f.openedDate <= now) && (!f.closedDate || f.closedDate > now)
+                def status = statuses[f.statusId] ?: (operating ? 'Active' : 'Inactive')
+                def active = operating && status.equalsIgnoreCase('Active')
+                [id:f.facilityId, name:f.facilityName ?: f.facilityId, type:types[f.facilityTypeEnumId] ?: f.facilityTypeEnumId ?: 'Other',
+                 typeId:f.facilityTypeEnumId ?: '', state:f.gstStateCode ?: '', gstin:f.facilityGstin ?: '',
+                 description:f.description ?: '', pincode:f.postalCode ?: '', status:status, active:active]
+            }
+            facilityTotal = facilityRows.size()
+            facilityActive = facilityRows.count { it.active }
+            facilityRetail = facilityRows.count { it.typeId == 'FcTpRetailStore' }
+            facilityWarehouses = facilityRows.count { it.typeId == 'FcTpWarehouse' }
+            facilityViewKey = 'zenith.facility.views.v1.' + ec.user.userId + '.' + facilityOrgId
+            facilityInitialSearch = (ec.web.parameters.facilitySearch ?: ec.web.parameters.facilityName ?: '').toString()
+        ]]></script>
+    </actions>
+
     <widgets>
-        <render-mode><text type="html"><![CDATA[
-            <style>
-                .zenith-card { border-radius: 12px; border: 1px solid #e2e8f0; }
-                /* Fix Quasar text inputs getting squashed */
-                .q-field__control { min-height: 40px !important; }
-                .q-field__native, .q-field__input { padding-top: 12px !important; }
-                .q-field__label { top: 12px !important; }
-            </style>
-        ]]></text></render-mode>
-        <container style="row items-center justify-between q-mb-lg">
-            <container>
-                <label text="Warehouses &amp; Facilities" type="h3" style="text-primary text-weight-bold q-my-none"/>
-                <label text="Your stores, warehouses and other places where you keep stock." type="p" style="text-grey-7 q-mt-sm q-mb-none"/>
-            </container>
-            
-            <!-- ZE-INV-010 (IV-110): create control only for users with full Inventory write access -->
+<container id="warehouseFacilities" style="wf-page">
+<render-mode><text type="html,qvt" template="true"><![CDATA[
+<#assign warehouseSvg><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 9 9-6 9 6v12h-6v-8H9v8H3Z"/><path d="M7 9h10M9 17h6M11 21h2"/></svg></#assign>
+<#assign storeSvg><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10v11h16V10M3 4h18l1 6a3 3 0 0 1-5 2 3 3 0 0 1-5 0 3 3 0 0 1-5 0 3 3 0 0 1-5-2Zm0 3h18"/></svg></#assign>
+<span class="wf-config" data-view-key="${facilityViewKey?html}" hidden></span>
+  <header class="wf-heading">
+    <div class="wf-heading-left"><span class="wf-page-icon">${warehouseSvg}</span><div><h1>Warehouses &amp; Facilities</h1><p>Your stores, warehouses and other places where you keep stock.</p></div></div>
+    <div class="wf-new-slot"></div>
+  </header>
+  <section class="wf-kpis" aria-label="Facility summary">
+    <article class="wf-kpi"><span class="wf-icon wf-violet">${warehouseSvg}</span><div><span>Total Facilities</span><strong>${facilityTotal}</strong></div></article>
+    <article class="wf-kpi"><span class="wf-icon wf-green">${warehouseSvg}</span><div><span>Active Facilities</span><strong>${facilityActive}</strong></div></article>
+    <article class="wf-kpi"><span class="wf-icon wf-blue">${storeSvg}</span><div><span>Retail Stores</span><strong>${facilityRetail}</strong></div></article>
+    <article class="wf-kpi"><span class="wf-icon wf-orange">${warehouseSvg}</span><div><span>Warehouses</span><strong>${facilityWarehouses}</strong></div></article>
+  </section>
+  <section class="wf-card" aria-label="Facilities">
+    <div class="wf-toolbar">
+      <label class="wf-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/></svg><input type="search" aria-label="Search facilities" placeholder="Search facilities..." value="${facilityInitialSearch?html}"/></label>
+      <details class="wf-views"><summary class="wf-button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4Z"/></svg>Saved Views</summary><div class="wf-view-pop"><p class="wf-view-empty">No saved views yet.</p><div class="wf-view-list"></div><form class="wf-save-view"><label>Name this view<input name="viewName" maxlength="60" required placeholder="e.g. Regional facilities"/></label><button class="wf-button" type="submit">Save current view</button></form></div></details>
+      <button class="wf-button wf-csv" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 16v5h16v-5"/></svg>CSV</button>
+      <button class="wf-button wf-reset" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 11a8 8 0 1 1-2-5M20 3v6h-6"/></svg>Reset</button>
+    </div>
+    <p class="wf-selection" role="status" aria-live="polite"></p>
+    <div class="wf-table-scroll">
+      <table class="wf-table">
+        <thead><tr>
+          <th class="wf-select-cell"><input type="checkbox" aria-label="Select all facilities on this page"/></th>
+          <#list [['id','Facility ID'],['name','Facility Name'],['type','Type'],['state','State Code'],['gstin','GSTIN'],['description','Description'],['pincode','Pincode']] as col>
+          <th scope="col" <#if col[0]!='description'>aria-sort="none"</#if>><#if col[0]!='description'><button type="button" data-sort="${col[0]}">${col[1]}<span class="wf-sort" aria-hidden="true">&#8597;</span></button><#else>${col[1]}</#if></th>
+          </#list>
+          <th scope="col">Status</th><th scope="col" class="wf-actions-head">Actions</th>
+        </tr></thead>
+        <tbody>
+        <#list facilityRows as f>
+          <tr data-id="${f.id?html}">
+            <td class="wf-select-cell"><input type="checkbox" aria-label="Select ${f.name?html}"/></td>
+            <td data-column="id"><a class="wf-id" href="EditFacility?facilityId=${f.id?url('UTF-8')}">${f.id?html}</a></td>
+            <td data-column="name">${f.name?html}</td>
+            <td data-column="type"><span class="wf-type <#if f.typeId=='FcTpRetailStore'>wf-retail<#elseif f.typeId=='FcTpWarehouse'>wf-warehouse<#else>wf-other</#if>"><#if f.typeId=='FcTpRetailStore'>${storeSvg}<#else>${warehouseSvg}</#if>${f.type?html}</span></td>
+            <td data-column="state" class="wf-state">${f.state?has_content?then(f.state,'-')?html}</td>
+            <td data-column="gstin">${f.gstin?has_content?then(f.gstin,'-')?html}</td>
+            <td data-column="description" class="wf-description">${f.description?has_content?then(f.description,'-')?html}</td>
+            <td data-column="pincode">${f.pincode?has_content?then(f.pincode,'-')?html}</td>
+            <td data-column="status"><span class="wf-status <#if f.active>wf-active<#else>wf-inactive</#if>">${f.status?html}</span></td>
+            <td class="wf-row-actions"><#if invCanWrite><a class="wf-edit" href="EditFacility?facilityId=${f.id?url('UTF-8')}" aria-label="Edit ${f.name?html}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m15 4 5 5M4 20l4-1L20 7a2 2 0 0 0-3-3L5 16Z"/><path d="M12 4H4v16h16v-8"/></svg></a></#if><details class="wf-more"><summary aria-label="More actions for ${f.name?html}">&#8943;</summary><div class="wf-more-pop"><a href="EditFacility?facilityId=${f.id?url('UTF-8')}">View facility details</a><button type="button" data-copy-id="${f.id?html}">Copy facility ID</button></div></details></td>
+          </tr>
+        </#list>
+        </tbody>
+      </table>
+      <p class="wf-empty" <#if facilityRows?has_content>hidden</#if>>No facilities found. <#if facilityOrgId=='__NO_ORGANIZATION__'>Select an organization to view its facilities.<#else>Try another search or add a new facility.</#if></p>
+    </div>
+    <footer class="wf-footer"><span class="wf-entries">Showing <#if facilityTotal gt 0>1 to ${facilityTotal}<#else>0 to 0</#if> of ${facilityTotal} entries</span><div class="wf-pagination"><select aria-label="Facilities per page"><option value="10">10 per page</option><option value="25">25 per page</option><option value="50">50 per page</option><option value="100">100 per page</option></select><button type="button" data-page="first" aria-label="First page">&#124;&lsaquo;</button><button type="button" data-page="previous" aria-label="Previous page">&lsaquo;</button><span class="wf-current-page" aria-label="Current page">1</span><button type="button" data-page="next" aria-label="Next page">&rsaquo;</button><button type="button" data-page="last" aria-label="Last page">&rsaquo;&#124;</button></div></footer>
+  </section>
+
+]]></text></render-mode>
+<container style="wf-create-anchor">
             <section name="FindFacilityCreate_write">
-              <condition><expression>invCanWrite</expression></condition>
+              <condition><expression>invCanWrite &amp;&amp; facilityOrgId != '__NO_ORGANIZATION__'</expression></condition>
               <widgets>
-            <container-dialog id="CreateFacilityDialog" button-text="New Facility" button-class="q-btn q-btn-item non-selectable no-outline q-btn--standard q-btn--rectangle bg-indigo-8 text-white q-btn--actionable q-focusable q-hoverable text-weight-bold q-px-md">
+            <container-dialog id="CreateFacilityDialog" button-text="New Facility" button-style="wf-primary">
                 <form-single name="CreateFacilityForm" transition="createFacility">
                     <field name="facilityName"><default-field title="Facility Name"><text-line size="60"/></default-field></field>
                     <field name="facilityTypeEnumId">
@@ -65,15 +130,13 @@
             </container-dialog>
               </widgets>
             </section>
-        </container>
-
-        <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-md z-listchrome">
-            <render-mode><text type="html,qvt"><![CDATA[<span class="zlc-ph" data-ph="Search facilities..." style="display:none"></span>]]></text></render-mode>
+</container>
+<section name="FacilityNativeExport" condition="sri.getRenderMode() in ['csv','xlsx']"><widgets>
             <form-list name="FindFacilityList" list="facilityList" skip-form="true" header-dialog="true" show-csv-button="true">
                 <entity-find entity-name="mantle.facility.Facility" list="facilityList">
                     <search-form-inputs default-order-by="facilityName"/>
                     <!-- ZE-SALES-014 f/u: org-isolate CSV/XLSX export (standalone render bypasses the MANTLE_ACTIVE_ORG authz filter) -->
-                    <econdition field-name="ownerPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+                    <econdition field-name="ownerPartyId" from="facilityOrgId"/>
                 </entity-find>
 
                 <field name="facilityId">
@@ -138,6 +201,7 @@
 
                 <field name="findButton"><header-field title="Find"><submit/></header-field></field>
             </form-list>
-        </container>
+</widgets></section>
+</container>
     </widgets>
 </screen>
