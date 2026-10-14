@@ -33,31 +33,7 @@
     <transition name="goContacts"><default-response url="../Contacts/Customers"/></transition>
     <transition name="goAccounting"><default-response url="../Accounting/AcctgDashboard"/></transition>
 
-    <actions>
-        <script><![CDATA[
-            // SaaS module-access flags: hide cross-module links not in the tenant's plan (inherited from ZenithApp)
-            def _mods = context.saasAllowedModules
-            boolean _allMod = (context.saasHasAllAccess == true) || (context.isSaasTenant != true)
-            modSales = _allMod || (_mods != null && _mods.contains('sales'))
-            modInventory = _allMod || (_mods != null && _mods.contains('inventory'))
-            modContacts = _allMod || (_mods != null && _mods.contains('contacts'))
-            modAccounting = _allMod || (_mods != null && _mods.contains('accounting'))
-            modPurchase = _allMod || (_mods != null && _mods.contains('purchase'))
-            // Jetty's pathInfo can be empty; use the request URI for both full and partial renders.
-            def posRequestPath = (ec.web.request.requestURI ?: ec.web.request.pathInfo ?: '').replaceFirst(/\.(qvt|vuet|html)$/, '').replaceAll('/+$', '')
-            showPosModuleLinks = !(posRequestPath.endsWith('/pos/Dashboard') || posRequestPath.endsWith('/pos'))
-        ]]></script>
-    </actions>
-
     <widgets>
-        <section name="PosCrossModuleNav" condition="showPosModuleLinks"><widgets>
-        <container id="pos-module-nav" style="row items-center justify-end q-px-md q-pt-sm q-gutter-sm">
-            <section name="PosNavSales" condition="modSales"><widgets><link url="goSales" text="Sales" icon="fa fa-line-chart" btn-type="primary" style="q-btn--dense"/></widgets></section>
-            <section name="PosNavInventory" condition="modInventory"><widgets><link url="goInventory" text="Inventory" icon="fa fa-cubes" btn-type="info" style="q-btn--dense"/></widgets></section>
-            <section name="PosNavContacts" condition="modContacts"><widgets><link url="goContacts" text="Customers" icon="fa fa-users" btn-type="success" style="q-btn--dense"/></widgets></section>
-            <section name="PosNavAccounting" condition="modAccounting"><widgets><link url="goAccounting" text="Accounting" icon="fa fa-calculator" btn-type="warning" style="q-btn--dense"/></widgets></section>
-        </container>
-        </widgets></section>
         <!-- ZE-POS-NAV single-row: render only the active POS subscreen's CONTENT here; the submodule tab bar is
              the global #z-subnav / #zq-subnav (one authoritative, route-driven, overflow-scrolling row). The old
              framework tab menu (#pos-tabs-menu, from subscreens-panel type=tab) was a duplicate second row. -->

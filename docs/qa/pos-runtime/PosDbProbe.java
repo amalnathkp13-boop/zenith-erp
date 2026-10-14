@@ -7,7 +7,9 @@ public class PosDbProbe {
     }
     public static void main(String[] args) throws Exception {
         String url=System.getenv("POS_QA_DB_URL");
-        if (!"jdbc:h2:tcp://127.0.0.1:19096/mem:pos-qa;IFEXISTS=TRUE".equals(url)) throw new IllegalArgumentException("Disposable POS memory DB required");
+        if (!"jdbc:h2:tcp://127.0.0.1:19096/mem:pos-qa;IFEXISTS=TRUE".equals(url)
+                && !"jdbc:h2:tcp://127.0.0.1:19104/mem:pos-sales-mode-qa;IFEXISTS=TRUE".equals(url))
+            throw new IllegalArgumentException("Disposable POS memory DB required");
         String sql=new String(System.in.readAllBytes(),StandardCharsets.UTF_8).trim();
         if (!sql.toUpperCase().startsWith("SELECT ")) throw new IllegalArgumentException("Read-only SELECT only");
         try (var c=DriverManager.getConnection(url,"sa", "")) {

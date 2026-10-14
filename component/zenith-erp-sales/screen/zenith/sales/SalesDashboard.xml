@@ -242,14 +242,6 @@
             long paidCnt = totalSalesCnt - onCredit
             if (paidCnt < 0) paidCnt = 0
             salesStatusJson = "[" + paidCnt + "," + onCredit + "]"
-            def isTenant = ec.context.getOrDefault('isSaasTenant', false)
-            def hasAll = ec.context.getOrDefault('saasHasAllAccess', false)
-            def allowed = ec.context.get('saasAllowedModules')
-            def planGate = isTenant && !hasAll && allowed != null
-            def allow = { k -> !planGate || (allowed != null && allowed.contains(k)) }
-            showContacts = allow('contacts'); showInventory = allow('inventory'); showPurchase = allow('purchase')
-            showAccounting = allow('accounting'); showCrm = allow('crm'); showPos = allow('pos'); showEcom = allow('ecommerce')
-
             // ZE-DASH layout: switchable widgets (+ cashier role default) + saved drag order
             def _roleHidden = ''
             try {
@@ -672,7 +664,7 @@
         <!-- Additional payment breakdown retained below the reference dashboard layout. -->
         <render-mode><text type="html"><![CDATA[<div id="dashExtras">]]></text></render-mode>
         <container-row>
-            <row-col lg="4" md="4" sm="12">
+            <row-col lg="12" md="12" sm="12">
                 <section name="wPayments" condition="showPayments"><widgets>
                 <render-mode><text type="html"><![CDATA[<div class="dash-widget" data-wkey="payments"><div class="dash-handle" title="Drag to reorder">&#8942;&#8942;</div>]]></text></render-mode>
                 <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-md q-mb-md">
@@ -694,21 +686,6 @@
                 </container>
                 <render-mode><text type="html"><![CDATA[</div>]]></text></render-mode>
                 </widgets></section>
-            </row-col>
-            <row-col lg="8" md="8" sm="12">
-        <!-- Related Modules -->
-        <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-lg q-mb-md">
-            <label text="Related Modules" type="h6" style="text-weight-bold q-my-none q-mb-md"/>
-            <container style="row q-gutter-sm">
-                <section name="relContacts"><condition><expression>showContacts</expression></condition><widgets><link url="goContacts" text="Contacts" icon="fa fa-address-book" btn-type="primary" style="q-btn--dense"/></widgets></section>
-                <section name="relInventory"><condition><expression>showInventory</expression></condition><widgets><link url="goInventory" text="Inventory" icon="fa fa-cubes" btn-type="info" style="q-btn--dense"/></widgets></section>
-                <section name="relPurchase"><condition><expression>showPurchase</expression></condition><widgets><link url="goPurchase" text="Purchase" icon="fa fa-shopping-cart" btn-type="warning" style="q-btn--dense"/></widgets></section>
-                <section name="relAccounting"><condition><expression>showAccounting</expression></condition><widgets><link url="goAccounting" text="Accounting" icon="fa fa-calculator" btn-type="success" style="q-btn--dense"/></widgets></section>
-                <section name="relCrm"><condition><expression>showCrm</expression></condition><widgets><link url="goCrm" text="CRM / Leads" icon="fa fa-bullseye" style="q-btn--dense"/></widgets></section>
-                <section name="relPos"><condition><expression>showPos</expression></condition><widgets><link url="goPos" text="POS Terminal" icon="fa fa-desktop" btn-type="danger" style="q-btn--dense"/></widgets></section>
-                <section name="relEcom"><condition><expression>showEcom</expression></condition><widgets><link url="goEcommerce" text="eCommerce" icon="fa fa-globe" btn-type="primary" style="q-btn--dense"/></widgets></section>
-            </container>
-        </container>
             </row-col>
         </container-row>
         <render-mode><text type="html"><![CDATA[</div>]]></text></render-mode>

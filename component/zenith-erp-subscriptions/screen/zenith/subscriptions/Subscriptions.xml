@@ -14,11 +14,6 @@
     <transition name="goAccounting"><default-response url="../Accounting/Invoices"/></transition>
 
     <widgets>
-        <container style="row items-center justify-end q-px-md q-pt-md q-gutter-sm">
-            <section name="gate_sales_1" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('sales'))"><widgets><link url="goSales" text="Sales" icon="fa fa-line-chart" btn-type="primary" style="q-btn--dense"/></widgets></section>
-            <section name="gate_contacts_2" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('contacts'))"><widgets><link url="goContacts" text="Customers" icon="fa fa-users" btn-type="info" style="q-btn--dense"/></widgets></section>
-            <section name="gate_accounting_3" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('accounting'))"><widgets><link url="goAccounting" text="Accounting" icon="fa fa-calculator" btn-type="success" style="q-btn--dense"/></widgets></section>
-        </container>
         <subscreens-active/>
     </widgets>
 </screen>

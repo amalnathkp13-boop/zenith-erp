@@ -2796,6 +2796,9 @@ body.zq-nav .es-canceltrigger .block::before{font-family:'Material Icons Z';cont
 .smode-fact dt{color:#6B7280}
 .smode-fact dd{color:#111827;font-weight:600;margin:0}
 .smode-tile-foot{margin-top:12px;border-radius:8px;padding:7px 10px;font-size:11.5px;font-weight:600;text-align:center}
+.smode-tile-actions{margin:12px 0 0;display:flex;justify-content:flex-end}
+.smode-tile-actions button{border:1px solid #FECACA;border-radius:7px;background:#FFF7F7;color:#B91C1C;padding:6px 10px;font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer}
+.smode-tile-actions button:hover{background:#FEE2E2}
 .smode-tile.v .smode-tile-ico{background:#F5F3FF;color:#7C3AED}.smode-tile.v .smode-tile-foot{background:#F5F3FF;color:#7C3AED}
 .smode-tile.b .smode-tile-ico{background:#EFF6FF;color:#3B82F6}.smode-tile.b .smode-tile-foot{background:#EFF6FF;color:#2563EB}
 .smode-tile.g .smode-tile-ico{background:#ECFDF5;color:#059669}.smode-tile.g .smode-tile-foot{background:#ECFDF5;color:#059669}

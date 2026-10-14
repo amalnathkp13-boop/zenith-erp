@@ -45,14 +45,6 @@
 
     <widgets>
         <container id="inventoryModule" style="inventory-module">
-        <container style="inv-module-shortcuts row items-center justify-end q-px-md q-pt-md q-gutter-sm">
-            <section name="gate_sales_1" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('sales'))"><widgets><link url="goSales" text="Sales" icon="fa fa-line-chart" btn-type="primary" style="q-btn--dense"/></widgets></section>
-            <section name="gate_purchase_2" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('purchase'))"><widgets><link url="goPurchase" text="Purchase" icon="fa fa-shopping-cart" btn-type="info" style="q-btn--dense"/></widgets></section>
-            <section name="gate_pos_3" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('pos'))"><widgets><link url="goPos" text="POS" icon="fa fa-desktop" btn-type="success" style="q-btn--dense"/></widgets></section>
-            <section name="gate_manufacturing_4" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('manufacturing'))"><widgets><link url="goManufacturing" text="Manufacturing" icon="fa fa-cogs" btn-type="warning" style="q-btn--dense"/></widgets></section>
-            <section name="gate_quality_5" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('quality'))"><widgets><link url="goQuality" text="Quality" icon="fa fa-check-circle" btn-type="danger" style="q-btn--dense"/></widgets></section>
-            <section name="gate_ecommerce_6" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('ecommerce'))"><widgets><link url="goEcommerce" text="eCommerce" icon="fa fa-globe" style="q-btn--dense"/></widgets></section>
-        </container>
         <subscreens-active/>
         </container>
     </widgets>
