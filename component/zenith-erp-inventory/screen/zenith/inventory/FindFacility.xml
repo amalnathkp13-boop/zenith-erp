@@ -62,7 +62,7 @@
       <button class="wf-button wf-reset" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 11a8 8 0 1 1-2-5M20 3v6h-6"/></svg>Reset</button>
     </div>
     <p class="wf-selection" role="status" aria-live="polite"></p>
-    <div class="wf-table-scroll">
+    <div class="wf-table-scroll" tabindex="0" role="region" aria-label="Facilities table, scroll horizontally to see all columns">
       <table class="wf-table">
         <thead><tr>
           <th class="wf-select-cell"><input type="checkbox" aria-label="Select all facilities on this page"/></th>

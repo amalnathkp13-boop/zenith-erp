@@ -1,4 +1,4 @@
-/* Warehouse content only; no application shell or navigation selectors. */
+/* Warehouse page and its responsive shell; desktop navigation keeps the shared theme. */
 #inventoryModule:has(#warehouseFacilities)>.inv-module-shortcuts{display:none}
 #warehouseFacilities{--wf-primary:var(--z-primary,#7c3aed);--wf-text:#101038;--wf-muted:#626b8c;--wf-border:#e5e7f1;box-sizing:border-box;padding:24px;font-family:Inter,"Segoe UI",Arial,sans-serif;color:var(--wf-text)}
 #warehouseFacilities *,#warehouseFacilities *::before,#warehouseFacilities *::after{box-sizing:border-box}
@@ -17,6 +17,9 @@
 #warehouseFacilities.wf-ready .wf-heading-left{padding-right:0}
 #warehouseFacilities.wf-ready .wf-heading{flex-wrap:wrap;margin-bottom:22px}
 #warehouseFacilities .wf-new-slot:empty{display:none}
+#warehouseFacilities{container-type:inline-size;container-name:facilities;min-width:0}
+#warehouseFacilities .wf-kpi div{min-width:0}
+#warehouseFacilities .wf-kpi strong{display:block;overflow-wrap:anywhere}
 #warehouseFacilities .wf-primary{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:46px;border:0;border-radius:10px;background:var(--wf-primary);color:#fff;padding:0 20px;font-size:14px;font-weight:600;box-shadow:0 3px 8px #7c3aed25;text-transform:none;white-space:nowrap}
 #warehouseFacilities .wf-primary.q-btn{background:var(--wf-primary)!important;color:#fff!important}
 #warehouseFacilities .wf-primary.q-btn::before{border:0}
@@ -78,7 +81,7 @@
 #warehouseFacilities .wf-pagination button:disabled{color:#a8aec8;cursor:not-allowed}
 #warehouseFacilities .wf-current-page{display:grid;place-items:center;min-width:40px;height:42px;border:1px solid var(--wf-primary);border-radius:8px;color:var(--wf-primary);background:#faf8ff;font-weight:600}
 #warehouseFacilities .wf-views{position:relative}
-#warehouseFacilities .wf-view-pop{position:absolute;top:calc(100% + 8px);left:0;z-index:50;width:290px;max-width:calc(100vw - 64px);padding:14px;background:#fff;border:1px solid var(--wf-border);border-radius:10px;box-shadow:0 10px 24px #14102f18;font-size:13px}
+#warehouseFacilities .wf-view-pop{position:fixed;z-index:2800;width:290px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);overflow:auto;padding:14px;background:#fff;border:1px solid var(--wf-border);border-radius:10px;box-shadow:0 10px 24px #14102f18;font-size:13px}
 #warehouseFacilities .wf-view-empty{margin:0 0 12px;color:var(--wf-muted)}
 #warehouseFacilities .wf-view-item{display:flex;gap:6px;margin-bottom:5px}
 #warehouseFacilities .wf-view-item button{border:0;border-radius:5px;background:#f6f3ff;padding:8px;color:var(--wf-primary);cursor:pointer;font:inherit}
@@ -87,5 +90,98 @@
 #warehouseFacilities .wf-save-view label{display:grid;gap:6px;color:var(--wf-muted)}
 #warehouseFacilities .wf-save-view input{width:100%;border:1px solid #dfe3ef;border-radius:6px;padding:8px;color:var(--wf-text);font:inherit}
 #warehouseFacilities :is(a,button,input,select,summary):focus-visible{outline:2px solid var(--wf-primary);outline-offset:3px}
+#warehouseFacilities .wf-copilot-close{display:none}
 @media(max-width:1200px){#warehouseFacilities .wf-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}#warehouseFacilities .wf-search{flex:1 1 300px}}
 @media(max-width:600px){#warehouseFacilities{padding:16px}#warehouseFacilities .wf-heading-left{gap:13px;padding-right:0}#warehouseFacilities .wf-page-icon{width:50px;height:50px}#warehouseFacilities .wf-page-icon svg{width:29px;height:29px}#warehouseFacilities .wf-heading h1{font-size:24px}#warehouseFacilities .wf-heading p{font-size:13px}#warehouseFacilities .wf-heading{margin-bottom:72px}#warehouseFacilities .wf-create-anchor{top:106px;left:16px;right:auto}#warehouseFacilities .wf-kpi{padding:13px;gap:12px}#warehouseFacilities .wf-icon{width:42px;height:42px}#warehouseFacilities .wf-icon svg{width:26px;height:26px}#warehouseFacilities .wf-kpi div>span{font-size:12px}#warehouseFacilities .wf-kpi strong{font-size:25px}#warehouseFacilities .wf-card{padding:12px}#warehouseFacilities .wf-search{flex-basis:100%;min-width:0}#warehouseFacilities .wf-button{padding:0 11px;gap:6px}#warehouseFacilities .wf-pagination{gap:3px;width:100%;justify-content:space-between}#warehouseFacilities .wf-pagination select{max-width:126px;font-size:12px}#warehouseFacilities .wf-view-pop{max-width:calc(100vw - 64px)} }
+@container facilities (max-width:1000px){#warehouseFacilities .wf-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){
+  #warehouseFacilities{padding-bottom:32px}
+  #warehouseFacilities .wf-pagination{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+  #warehouseFacilities .wf-pagination select{grid-column:1/-1;width:100%;max-width:none;margin:0;font-size:14px;min-height:44px}
+  #warehouseFacilities .wf-pagination button{width:100%;min-height:44px}
+  #warehouseFacilities .wf-current-page{min-width:0;height:44px}
+  #warehouseFacilities .wf-button,#warehouseFacilities .wf-search{min-height:44px}
+  #warehouseFacilities .wf-edit,#warehouseFacilities .wf-more>summary{width:44px;height:44px}
+  #warehouseFacilities .wf-search input,#warehouseFacilities .wf-save-view input{font-size:16px}
+  #warehouseFacilities .wf-view-pop{max-width:calc(100vw - 24px)}
+  body:has(#warehouseFacilities) .q-footer{position:relative!important;left:0!important;margin-left:0!important;width:100%!important}
+  body:has(#warehouseFacilities) #ai-copilot-container{position:relative!important;inset:auto!important;transform:none!important;display:flex!important;justify-content:flex-end;margin:12px 16px 24px}
+  body:has(#warehouseFacilities) #ai-copilot-window{position:fixed!important;top:16px!important;left:12px!important;right:12px!important;bottom:auto!important;width:calc(100vw - 24px)!important;height:min(460px,calc(100dvh - 32px))!important;max-width:none!important}
+  body:has(#warehouseFacilities) #copilot-input{min-width:0;font-size:16px!important}
+  body:has(#warehouseFacilities) #ai-copilot-window .chat-header{padding-right:64px}
+  #warehouseFacilities .wf-copilot-close{position:fixed;top:20px;right:16px;z-index:10001;display:grid;place-items:center;width:40px;height:36px;border:0;border-radius:6px;background:transparent;color:#fff;font-size:26px;cursor:pointer}
+}
+/* Grid rows prevent context, search, and utilities from competing for the same space. */
+@media(max-width:1300px){
+  body.zq-nav:has(#warehouseFacilities) .q-header .q-toolbar{display:grid!important;grid-template-columns:44px minmax(0,200px) minmax(0,1fr) auto;grid-template-rows:44px 40px;gap:6px;padding:8px!important;height:auto!important;min-height:106px!important}
+  body:has(#warehouseFacilities) #zq-topextra{display:contents}
+  body:has(#warehouseFacilities) .q-header .q-toolbar>.q-space{display:none}
+  body:has(#warehouseFacilities) .q-header .q-toolbar>button:first-child{grid-column:1;grid-row:1;width:44px;min-height:44px}
+  body:has(#warehouseFacilities) .q-header .q-toolbar>button.text-positive{grid-column:4;grid-row:1;max-width:100px;min-width:0;min-height:44px}
+  body:has(#warehouseFacilities) .q-header .q-toolbar>button.text-positive .block{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  body:has(#warehouseFacilities) #zq-ownerview{grid-column:2;grid-row:1;margin:0;min-width:0;max-width:100%;gap:4px;padding:8px;font-size:12px;min-height:40px}
+  body:has(#warehouseFacilities) #zq-ownerview .zqov-org{min-width:0;overflow:hidden;text-overflow:ellipsis}
+  body:has(#warehouseFacilities) #zq-search{display:block!important;grid-column:3;grid-row:1;min-width:0;margin:0}
+  body:has(#warehouseFacilities) #zq-search .zqsr-box{min-height:44px;width:100%;max-width:none}
+  body:has(#warehouseFacilities) #zq-toolbtns{grid-column:1/-1;grid-row:2;margin:0;justify-content:flex-end;position:static!important}
+  body:has(#warehouseFacilities) #zq-toolbtns .zqtb-quad{display:inline-flex}
+}
+@media(max-width:900px){
+  body.zq-nav:has(#warehouseFacilities) .q-header .q-toolbar{grid-template-columns:44px minmax(0,1fr) auto;grid-template-rows:44px 44px 40px;min-height:156px!important}
+  body:has(#warehouseFacilities) .q-header .q-toolbar>button.text-positive{grid-column:3}
+  body:has(#warehouseFacilities) #zq-search{grid-column:1/-1;grid-row:2}
+  body:has(#warehouseFacilities) #zq-search input{font-size:16px;min-width:0}
+  body:has(#warehouseFacilities) #zq-toolbtns{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));grid-column:1/-1;grid-row:3;gap:0}
+  body:has(#warehouseFacilities) #zq-toolbtns .zqtb{width:100%;height:40px;margin:0}
+  body:has(#warehouseFacilities) #zq-toolbtns .zqtb-avatar{width:32px;height:32px;justify-self:center}
+  body:has(#warehouseFacilities) #zq-shopmenu{min-width:0;width:236px;max-width:calc(100vw - 72px);white-space:normal}
+  body:has(#warehouseFacilities) #zq-search-results{width:100%;max-width:100%}
+  body:has(#warehouseFacilities) #zq-subnav{height:44px}
+  body:has(#warehouseFacilities) #zq-sidebar{max-width:calc(100vw - 44px)}
+  body.zq-nav:has(#warehouseFacilities) .q-drawer__backdrop{display:none!important}
+  body.zq-nav.q-body--prevent-scroll:has(#warehouseFacilities):has(.q-drawer--mobile):not(:has(.q-dialog)){position:static!important;overflow:auto!important}
+  body:not(.zq-nav):has(#warehouseFacilities) #top,body:not(.zq-nav):has(#warehouseFacilities) #top .navbar{height:auto!important;min-height:0!important}
+  body:not(.zq-nav):has(#warehouseFacilities) #top .container-fluid{padding:0}
+  body:not(.zq-nav):has(#warehouseFacilities) .navbar-header{display:none}
+  body:has(#warehouseFacilities) #navbar-buttons{display:grid!important;grid-template-columns:repeat(9,minmax(0,1fr));grid-template-rows:44px 44px 40px;gap:6px 0;padding:8px!important;height:auto!important;margin:0!important;overflow:visible!important}
+  body:has(#warehouseFacilities) #navbar-buttons :is(#header-menus,#navbar-menu-crumbs,.navbar-text){display:none!important}
+  body:has(#warehouseFacilities) #z-ownerview{grid-column:1/-1;grid-row:1;margin:0 0 0 44px;float:none;min-width:0;max-width:calc(100% - 44px);gap:4px;padding:8px;min-height:40px}
+  body:has(#warehouseFacilities) #z-ownerview :is(.zov-org,.zov-sep){display:block;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  body:has(#warehouseFacilities) #z-search{grid-column:1/-1;grid-row:2;float:none;margin:0;min-width:0}
+  body:has(#warehouseFacilities) #z-search .zsr-box{width:100%;max-width:none;min-height:44px}
+  body:has(#warehouseFacilities) #z-search input{min-width:0;font-size:16px}
+  body:has(#warehouseFacilities) #navbar-buttons>.btn-group{display:contents}
+  body:has(#warehouseFacilities) #navbar-buttons :is(a.navbar-right,.btn-group>a,#history-menu){grid-row:3;float:none!important;margin:0!important;min-width:0;width:100%;height:40px;padding:0;display:flex;align-items:center;justify-content:center}
+  body:has(#warehouseFacilities) #history-menu>a{height:40px;width:100%;margin:0;display:grid;place-items:center}
+  body:has(#warehouseFacilities) #z-avatar{width:32px!important;height:32px!important;align-self:center;justify-self:center}
+  body:has(#warehouseFacilities) #z-side-burger{width:40px;height:40px;top:10px}
+  body:has(#warehouseFacilities) #z-sidebar{z-index:2800;max-width:calc(100vw - 44px)}
+  body:has(#warehouseFacilities) :is(#z-shopmenu,#z-search-results){max-width:calc(100vw - 64px)}
+  body:has(#warehouseFacilities) #z-shopmenu{min-width:0;width:236px}
+  body:has(#warehouseFacilities) #history-menu .dropdown-menu{left:auto;right:0;max-width:calc(100vw - 24px);white-space:normal}
+  body:has(#warehouseFacilities) #history-menu .dropdown-menu a{white-space:normal;overflow-wrap:anywhere}
+}
+@media(max-width:600px){
+  body:has(#warehouseFacilities) .q-header .q-toolbar>button.text-positive{width:44px;max-width:44px;padding:0}
+  body:has(#warehouseFacilities) .q-header .q-toolbar>button.text-positive .block{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+  body:has(#warehouseFacilities) .q-header .q-toolbar>button.text-positive .q-icon{margin:0}
+}
+/* Bootstrap keeps the same controls in flow; its tabs follow the measured sticky header. */
+body:not(.zq-nav):has(#warehouseFacilities) #z-subnav{position:sticky;top:var(--wf-header-height,51px);z-index:1050}
+#warehouseFacilities :is(button,input,select,summary,a,.wf-table-scroll){scroll-margin-block:calc(var(--wf-header-height,var(--zq-header-height,51px)) + 60px) 80px}
+@media(min-width:901px) and (max-width:1300px){
+  body:not(.zq-nav):has(#warehouseFacilities) #top,body:not(.zq-nav):has(#warehouseFacilities) #top .navbar{height:auto!important;min-height:0!important}
+  body:not(.zq-nav):has(#warehouseFacilities) #top .container-fluid{padding:0}
+  body:not(.zq-nav):has(#warehouseFacilities) .navbar-header{display:none}
+  body:has(#warehouseFacilities) #navbar-buttons{display:grid!important;grid-template-columns:repeat(9,minmax(0,1fr));grid-template-rows:44px 40px;gap:6px 0;padding:8px!important;height:auto!important;margin:0!important;overflow:visible!important}
+  body:has(#warehouseFacilities) #navbar-buttons :is(#header-menus,#navbar-menu-crumbs,.navbar-text){display:none!important}
+  body:has(#warehouseFacilities) #z-ownerview{grid-column:1/5;grid-row:1;float:none;margin:0 8px;min-width:0;max-width:100%;min-height:40px}
+  body:has(#warehouseFacilities) #z-ownerview .zov-org{min-width:0;overflow:hidden;text-overflow:ellipsis}
+  body:has(#warehouseFacilities) #z-search{grid-column:5/-1;grid-row:1;float:none;margin:0 8px;min-width:0}
+  body:has(#warehouseFacilities) #z-search .zsr-box{width:100%;max-width:none;min-height:44px}
+  body:has(#warehouseFacilities) #navbar-buttons>.btn-group{display:contents}
+  body:has(#warehouseFacilities) #navbar-buttons :is(a.navbar-right,.btn-group>a,#history-menu){grid-row:2;float:none!important;margin:0!important;min-width:0;width:100%;height:40px;padding:0;display:flex;align-items:center;justify-content:center}
+  body:has(#warehouseFacilities) #history-menu>a{height:40px;width:100%;margin:0;display:grid;place-items:center}
+  body:has(#warehouseFacilities) #z-avatar{width:32px!important;height:32px!important;align-self:center;justify-self:center}
+}
+@media print{body:has(#warehouseFacilities) #ai-copilot-container,#warehouseFacilities .wf-copilot-close{display:none!important}}
