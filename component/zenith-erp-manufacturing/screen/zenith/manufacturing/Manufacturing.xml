@@ -19,13 +19,6 @@
     <transition name="goPlm"><default-response url="../plm/EngineeringChangeOrders"/></transition>
 
     <widgets>
-        <container style="row items-center justify-end q-px-md q-pt-md q-gutter-sm">
-            <section name="gate_inventory_1" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('inventory'))"><widgets><link url="goInventory" text="Inventory" icon="fa fa-cubes" btn-type="primary" style="q-btn--dense"/></widgets></section>
-            <section name="gate_purchase_2" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('purchase'))"><widgets><link url="goPurchase" text="Purchase" icon="fa fa-shopping-cart" btn-type="info" style="q-btn--dense"/></widgets></section>
-            <section name="gate_quality_3" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('quality'))"><widgets><link url="goQuality" text="QC Approvals (8 Pending)" icon="fa fa-check-circle" btn-type="warning" style="q-btn--dense"/></widgets></section>
-            <section name="gate_maintenance_4" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('maintenance'))"><widgets><link url="goMaintenance" text="Maintenance" icon="fa fa-wrench" btn-type="warning" style="q-btn--dense"/></widgets></section>
-            <section name="gate_plm_5" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('plm'))"><widgets><link url="goPlm" text="PLM" icon="fa fa-sitemap" btn-type="danger" style="q-btn--dense"/></widgets></section>
-        </container>
         <subscreens-active/>
     </widgets>
 </screen>

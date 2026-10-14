@@ -3,51 +3,120 @@
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         default-menu-title="Sales Mode" default-menu-index="14">
 
-    <transition name="createMode">
+    <transition name="createMode" method="post" begin-transaction="true">
         <actions>
-            <!-- ZE-CONTACTS-022 f/u: a sales-mode discount is a percentage — reject out-of-range (0-100).
-                 The POS engine also clamps at apply time, but this gives a clear error at entry. -->
             <script><![CDATA[
-                if (discountPercent != null && discountPercent.toString().trim() && ((discountPercent as BigDecimal) < 0 || (discountPercent as BigDecimal) > 100))
-                    ec.message.addError("Discount % must be between 0 and 100.")
+                def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId','pos').call()
+                def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
+                if (access?.canWrite != true || !(ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN')) || !org || org == '_NA_') { ec.message.addError('Select a shop with POS administrator access first.'); return }
+                def name = (modeName ?: '').toString().trim()
+                def code = (modeCode ?: '').toString().trim().toUpperCase(java.util.Locale.ROOT)
+                if (!name || name.length() > 100 || !(code ==~ /[A-Z0-9_]{2,12}/)) { ec.message.addError('Enter a mode name and a 2-12 character code using letters, numbers or underscore.'); return }
+                if (!['PpsMrp','PpsDiscountMrp','PpsFixedProduct'].contains(priceSource)) { ec.message.addError('Choose a supported price source.'); return }
+                def disc, markup, minimum
+                try { disc = (discountPercent ?: '0') as BigDecimal; markup = (markupPercent ?: '0') as BigDecimal; minimum = (minOrderAmount ?: '0') as BigDecimal }
+                catch (Exception ignored) { ec.message.addError('Enter valid numeric pricing values.'); return }
+                if (disc < 0 || disc > 100 || markup < 0 || minimum < 0) { ec.message.addError('Discount must be 0-100%; markup and minimum must be non-negative.'); return }
+                if (ec.entity.find('zenith.erp.pos.PosSalesMode').condition('modeCode',code).list().any { !it.organizationPartyId || it.organizationPartyId == org }) { ec.message.addError('A sales mode with this code already exists for this shop.'); return }
+                def newMode = ec.entity.makeValue('zenith.erp.pos.PosSalesMode').setAll([
+                    organizationPartyId:org, modeName:name, modeCode:code, priceSource:priceSource,
+                    discountPercent:disc, markupPercent:markup, minOrderAmount:minimum,
+                    isTaxInclusive:(isTaxInclusive == 'Y' ? 'Y' : 'N'), requireCustomer:(requireCustomer == 'Y' ? 'Y' : 'N'),
+                    invoicePrefix:(invoicePrefix ?: '').toString().trim().take(20),
+                    colorCode:((colorCode ?: '') ==~ /#[0-9a-fA-F]{6}/ ? colorCode : '#7C3AED'),
+                    isDefault:'N', isActive:'Y', description:(description ?: '').toString().trim().take(1000)
+                ]).setSequencedIdPrimary()
+                newMode.create()
+                // Existing terminal assignments are restrictive. Make a newly created mode
+                // available immediately at this shop; admins can remove individual assignments.
+                def availableModes = ec.entity.find('zenith.erp.pos.PosSalesMode').condition('isActive','Y').list()
+                    .findAll { !it.organizationPartyId || it.organizationPartyId == org }
+                ec.entity.find('zenith.erp.pos.PosTerminal').condition('organizationPartyId',org).condition('isActive','Y').list().each { terminal ->
+                    def assigned = ec.entity.find('zenith.erp.pos.PosTerminalSalesMode').condition('terminalId',terminal.terminalId).condition('isActive','Y').list()
+                    // A terminal with no mappings previously offered every active mode. Preserve
+                    // that set when adding the first mappings, rather than hiding Wholesale.
+                    def modesToAssign = assigned ? [newMode] : availableModes
+                    modesToAssign.each { mode ->
+                        ec.service.sync().name('store#zenith.erp.pos.PosTerminalSalesMode').parameters([
+                            terminalId:terminal.terminalId, salesModeId:mode.salesModeId, isActive:'Y'
+                        ]).call()
+                    }
+                }
             ]]></script>
-            <if condition="ec.message.hasError()"><return/></if>
-            <service-call name="create#zenith.erp.pos.PosSalesMode" in-map="context"/>
         </actions>
         <default-response url="."/>
     </transition>
-    <transition name="updateMode">
+    <transition name="updateMode" method="post" begin-transaction="true">
         <actions>
             <script><![CDATA[
-                if (discountPercent != null && discountPercent.toString().trim() && ((discountPercent as BigDecimal) < 0 || (discountPercent as BigDecimal) > 100))
-                    ec.message.addError("Discount % must be between 0 and 100.")
+                def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId','pos').call()
+                def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
+                def mode = salesModeId ? ec.entity.find('zenith.erp.pos.PosSalesMode').condition('salesModeId',salesModeId).one() : null
+                if (access?.canWrite != true || !(ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN')) || !org || org == '_NA_' || mode?.organizationPartyId != org) { ec.message.addError('This shop cannot edit that sales mode.'); return }
+                if (ec.entity.find('zenith.erp.pos.PosTransaction').condition('organizationPartyId',org).condition('salesModeId',salesModeId).condition('statusId','PtCreated').count() > 0) { ec.message.addError('Finish or void open carts in this mode before changing it.'); return }
+                def disc
+                try { disc = (discountPercent ?: '0') as BigDecimal } catch (Exception ignored) { ec.message.addError('Enter a valid discount.'); return }
+                if (disc < 0 || disc > 100) { ec.message.addError('Discount % must be between 0 and 100.'); return }
+                def code = (modeCode ?: '').toString().trim().toUpperCase(java.util.Locale.ROOT)
+                if (!(code ==~ /[A-Z0-9_]{2,12}/)) { ec.message.addError('Use a 2-12 character code.'); return }
+                if (ec.entity.find('zenith.erp.pos.PosSalesMode').condition('modeCode',code).list().any { it.salesModeId != salesModeId && (!it.organizationPartyId || it.organizationPartyId == org) }) { ec.message.addError('That mode code already exists.'); return }
+                mode.setAll([modeName:(modeName ?: '').toString().trim().take(100), modeCode:code,
+                    priceSource:(['PpsMrp','PpsDiscountMrp','PpsFixedProduct'].contains(priceSource) ? priceSource : mode.priceSource),
+                    discountPercent:disc, isTaxInclusive:(isTaxInclusive == 'Y' ? 'Y' : 'N'),
+                    requireCustomer:(requireCustomer == 'Y' ? 'Y' : 'N'), isActive:(isActive == 'N' ? 'N' : 'Y'), isDefault:'N'])
+                if (!mode.modeName) { ec.message.addError('Mode name is required.'); return }
+                mode.update()
             ]]></script>
-            <if condition="ec.message.hasError()"><return/></if>
-            <service-call name="update#zenith.erp.pos.PosSalesMode" in-map="context"/>
         </actions>
         <default-response url="."/>
     </transition>
-    <transition name="deleteMode">
-        <service-call name="delete#zenith.erp.pos.PosSalesMode"/>
+    <transition name="deleteMode" method="post" begin-transaction="true">
+        <actions><script><![CDATA[
+            def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId','pos').call()
+            def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
+            def mode = salesModeId ? ec.entity.find('zenith.erp.pos.PosSalesMode').condition('salesModeId',salesModeId).one() : null
+            if (access?.canWrite != true || !(ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN')) || !org || org == '_NA_' || mode?.organizationPartyId != org || mode.isDefault == 'Y') { ec.message.addError('This shop cannot remove that sales mode.'); return }
+            if (ec.entity.find('zenith.erp.pos.PosTransaction').condition('organizationPartyId',org).condition('salesModeId',salesModeId).condition('statusId','PtCreated').count() > 0) { ec.message.addError('Finish or void open carts in this mode before archiving it.'); return }
+            // Retain historical transaction/price references; an archived mode disappears from billing choices.
+            mode.set('isActive','N').update()
+        ]]></script></actions>
         <default-response url="."/>
     </transition>
-    <transition name="assignTerminal">
-        <service-call name="store#zenith.erp.pos.PosTerminalSalesMode"/>
+    <transition name="assignTerminal" method="post" begin-transaction="true">
+        <actions><script><![CDATA[
+            def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
+            def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId','pos').call()
+            def terminal = terminalId ? ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',terminalId).one() : null
+            def mode = salesModeId ? ec.entity.find('zenith.erp.pos.PosSalesMode').condition('salesModeId',salesModeId).one() : null
+            if (access?.canWrite != true || !(ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN')) || !org || org == '_NA_' || terminal?.organizationPartyId != org || mode?.isActive != 'Y' || (mode.organizationPartyId && mode.organizationPartyId != org)) { ec.message.addError('Choose a terminal and active mode from this shop.'); return }
+            ec.service.sync().name('store#zenith.erp.pos.PosTerminalSalesMode').parameters([terminalId:terminalId,salesModeId:salesModeId,isActive:'Y']).call()
+        ]]></script></actions>
         <default-response url="."/>
     </transition>
-    <transition name="removeTerminal">
-        <service-call name="delete#zenith.erp.pos.PosTerminalSalesMode"/>
+    <transition name="removeTerminal" method="post" begin-transaction="true">
+        <actions><script><![CDATA[
+            def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
+            def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId','pos').call()
+            def terminal = terminalId ? ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',terminalId).one() : null
+            if (access?.canWrite != true || !(ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN')) || !org || org == '_NA_' || terminal?.organizationPartyId != org) { ec.message.addError('This shop cannot change that terminal.'); return }
+            ec.service.sync().name('delete#zenith.erp.pos.PosTerminalSalesMode').parameters([terminalId:terminalId,salesModeId:salesModeId]).call()
+        ]]></script></actions>
         <default-response url="."/>
     </transition>
     <!-- ZE-POS-MODERULES: opt-in per-shop order rules. organizationPartyId is ALWAYS taken from the
          caller's active org server-side (never from the post) so one tenant can't write another's rules. -->
-    <transition name="saveOrgRule">
+    <transition name="saveOrgRule" method="post" begin-transaction="true">
         <actions>
             <set field="_org" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
+            <if condition="!(ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN'))">
+                <return error="true" message="POS administrator access is required."/></if>
             <if condition="!_org || _org == '_NA_'">
                 <return error="true" message="No active shop is selected, so a shop-specific rule cannot be saved."/></if>
             <if condition="!salesModeId">
                 <return error="true" message="Pick a sales mode for the rule."/></if>
+            <entity-find-one entity-name="zenith.erp.pos.PosSalesMode" value-field="_ruleMode"><field-map field-name="salesModeId"/></entity-find-one>
+            <if condition="!_ruleMode || _ruleMode.isActive != 'Y' || (_ruleMode.organizationPartyId &amp;&amp; _ruleMode.organizationPartyId != _org)">
+                <return error="true" message="That mode is not available for this shop."/></if>
             <if condition="minOrderAmount != null &amp;&amp; minOrderAmount.toString().trim() &amp;&amp; (minOrderAmount as BigDecimal) &lt; 0">
                 <return error="true" message="Minimum order amount cannot be negative."/></if>
             <service-call name="store#zenith.erp.pos.PosSalesModeOrgConfig"
@@ -56,9 +125,11 @@
         </actions>
         <default-response url="."/>
     </transition>
-    <transition name="deleteOrgRule">
+    <transition name="deleteOrgRule" method="post" begin-transaction="true">
         <actions>
             <set field="_org" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
+            <if condition="!(ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN'))">
+                <return error="true" message="POS administrator access is required."/></if>
             <if condition="!_org || _org == '_NA_'">
                 <return error="true" message="No active shop is selected."/></if>
             <service-call name="delete#zenith.erp.pos.PosSalesModeOrgConfig"
@@ -82,6 +153,7 @@
             <econdition field-name="enumTypeId" value="PosPriceSource"/>
             <order-by field-name="sequenceNum"/>
         </entity-find>
+        <set field="supportedPriceSourceList" from="priceSourceList.findAll { ['PpsMrp','PpsDiscountMrp','PpsFixedProduct'].contains(it.enumId) }"/>
 
         <entity-find entity-name="zenith.erp.pos.PosTerminal" list="terminalList">
             <order-by field-name="terminalName"/>
@@ -91,6 +163,15 @@
 
         <!-- ZE-POS-MODERULES: the active shop's opt-in order rules (scoped to the active org; never list all). -->
         <set field="_activeOrg" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
+        <set field="modeCanManage" from="modCanWrite &amp;&amp; (ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN'))"/>
+        <script><![CDATA[
+            modeList = (modeList ?: []).findAll { !it.organizationPartyId || it.organizationPartyId == _activeOrg }
+            activeModeList = modeList.findAll { it.isActive == 'Y' }
+            editableModeList = modeList.findAll { it.organizationPartyId && it.organizationPartyId == _activeOrg }
+            terminalList = (_activeOrg && _activeOrg != '_NA_') ? (terminalList ?: []).findAll { it.organizationPartyId == _activeOrg } : []
+            def terminalIds = terminalList.collect { it.terminalId } as Set
+            terminalModeList = (terminalModeList ?: []).findAll { terminalIds.contains(it.terminalId) }
+        ]]></script>
         <set field="orgRuleList" from="[]"/>
         <set field="hasActiveOrg" from="(_activeOrg &amp;&amp; _activeOrg != '_NA_') ? true : false"/>
         <if condition="hasActiveOrg">
@@ -105,14 +186,14 @@
         <script><![CDATA[
             def _psById = [:]; (priceSourceList ?: []).each { _psById[it.enumId] = it.description }
             def _short = { s -> s == null ? '' : s.toString().replaceAll(/\s*\(.*?\)/, '').trim() }
-            def _esc = { s -> s == null ? '' : s.toString().replace('&','&amp;').replace('<','&lt;').replace('>','&gt;') }
+            def _esc = { s -> s == null ? '' : s.toString().replace('&','&amp;').replace('<','&lt;').replace('>','&gt;').replace('"','&quot;').replace("'",'&#39;') }
             def C = 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'
             def svgBag = '<svg viewBox="0 0 24 24" ' + C + '><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>'
             def svgUsers = '<svg viewBox="0 0 24 24" ' + C + '><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'
             def svgSliders = '<svg viewBox="0 0 24 24" ' + C + '><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg>'
             // order + theme keyed by mode identity so it reads like the mockup (Retail/violet, Wholesale/blue, Custom/green)
             def _prio = { mm -> def n = (mm.modeName ?: '').toLowerCase(); (n.contains('retail') || mm.isDefault == 'Y') ? 0 : (n.contains('wholesale') || n.contains('bulk')) ? 1 : (n.contains('custom') || n.contains('special') || n.contains('project')) ? 2 : 3 }
-            def _ordered = (modeList ?: []).sort(false) { _prio(it) }
+            def _ordered = (modeList ?: []).findAll { it.isActive == 'Y' && (!it.organizationPartyId || it.organizationPartyId == _activeOrg) }.sort(false) { _prio(it) }
             def _cycleT = ['b','g','v']; def _cycleI = [svgUsers, svgSliders, svgBag]; int _i = 0
             def _tiles = new StringBuilder()
             _ordered.each { m ->
@@ -136,6 +217,8 @@
                 _tiles.append('<div class="smode-fact"><dt>Tax Inclusive</dt><dd>').append(taxLabel).append('</dd></div>')
                 _tiles.append('<div class="smode-fact"><dt>Require Customer</dt><dd>').append(reqLabel).append('</dd></div></dl>')
                 if (m.description) _tiles.append('<div class="smode-tile-foot">').append(_esc(m.description)).append('</div>')
+                if (modeCanManage && m.organizationPartyId && m.organizationPartyId == _activeOrg)
+                    _tiles.append('<form class="smode-tile-actions" method="post" action="SalesMode/deleteMode" onsubmit="return confirm(&quot;Archive this sales mode? It will disappear from billing choices, but past bills are kept.&quot;)"><input type="hidden" name="salesModeId" value="').append(_esc(m.salesModeId)).append('"/><input type="hidden" name="moquiSessionToken" value="').append(_esc(ec.web.sessionToken)).append('"/><button type="submit">Archive mode</button></form>')
                 _tiles.append('</div>')
             }
             context.tilesHtml = _tiles.length() ? ('<div class="smode-tiles">' + _tiles.toString() + '</div>') : '<div class="smode-info">No sales modes yet — create one on the left.</div>'
@@ -160,7 +243,7 @@
                 <link url="goDashboard" text="Dashboard" icon="fa fa-dashboard" style="q-btn--dense"/>
             </container>
             <container style="smode-grid">
-                <section name="CreateMode_write"><condition><expression>modCanWrite</expression></condition><widgets>
+                <section name="CreateMode_write"><condition><expression>modeCanManage</expression></condition><widgets>
                     <container style="smode-card smode-createform">
                         <render-mode><text type="html,qvt"><![CDATA[<div class="smode-card-hd"><span class="smode-card-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg></span><h2 class="smode-card-title">Create Sales Mode</h2></div>]]></text></render-mode>
                         <form-single name="CreateMode" transition="createMode">
@@ -172,7 +255,7 @@
                             </default-field></field>
                             <field name="priceSource"><default-field title="Price Source">
                                 <drop-down>
-                                    <list-options list="priceSourceList" key="${enumId}" text="${description}"/>
+                                    <list-options list="supportedPriceSourceList" key="${enumId}" text="${description}"/>
                                 </drop-down>
                             </default-field></field>
                             <field name="discountPercent"><default-field title="Discount %">
@@ -196,9 +279,6 @@
                             <field name="colorCode"><default-field title="Color Code">
                                 <text-line size="8" default-value="#1976D2"/>
                             </default-field></field>
-                            <field name="isDefault"><default-field title="Default Mode">
-                                <drop-down><option key="N" text="No"/><option key="Y" text="Yes"/></drop-down>
-                            </default-field></field>
                             <field name="description"><default-field title="Description">
                                 <text-line size="40"/>
                             </default-field></field>
@@ -218,7 +298,7 @@
 
             <container style="smode-card smode-tbl">
             <render-mode><text type="html,qvt"><![CDATA[<div class="smode-card-hd"><span class="smode-card-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></span><h2 class="smode-card-title">Sales Mode Pricing Rules</h2></div>]]></text></render-mode>
-            <form-list name="ModeListForm" list="modeList" transition="updateMode" skip-form="false">
+            <form-list name="ModeListForm" list="editableModeList" transition="updateMode" skip-form="false">
                 <field name="salesModeId"><default-field><hidden/></default-field></field>
                 <field name="modeName"><default-field title="Name">
                     <text-line size="15"/>
@@ -228,7 +308,7 @@
                 </default-field></field>
                 <field name="priceSource"><default-field title="Price Source">
                     <drop-down>
-                        <list-options list="priceSourceList" key="${enumId}" text="${description}"/>
+                        <list-options list="supportedPriceSourceList" key="${enumId}" text="${description}"/>
                     </drop-down>
                 </default-field></field>
                 <field name="discountPercent"><default-field title="Disc %">
@@ -240,22 +320,12 @@
                 <field name="requireCustomer"><default-field title="Req. Cust.">
                     <drop-down><option key="N" text="No"/><option key="Y" text="Yes"/></drop-down>
                 </default-field></field>
-                <field name="isDefault"><default-field title="Default">
-                    <drop-down><option key="N" text="No"/><option key="Y" text="Yes"/></drop-down>
-                </default-field></field>
                 <field name="isActive"><default-field title="Active">
                     <drop-down><option key="Y" text="Yes"/><option key="N" text="No"/></drop-down>
                 </default-field></field>
                 <field name="submitBtn">
-                    <conditional-field name="mode_save_write" condition="modCanWrite" title="">
+                    <conditional-field name="mode_save_write" condition="modeCanManage &amp;&amp; organizationPartyId == _activeOrg" title="">
                     <submit text="Save" icon="fa fa-save"/>
-                    </conditional-field>
-                    <default-field title=""><label text="" type="span"/></default-field></field>
-                <field name="deleteBtn">
-                    <conditional-field name="mode_delete_write" condition="modCanWrite" title="">
-                    <link url="deleteMode" text="Delete" icon="fa fa-trash" btn-type="danger"
-                          parameter-map="[salesModeId:salesModeId]"
-                          confirmation="Delete this sales mode?"/>
                     </conditional-field>
                     <default-field title=""><label text="" type="span"/></default-field></field>
             </form-list>
@@ -268,11 +338,11 @@
             <section name="NoActiveOrgNote"><condition><expression>!hasActiveOrg</expression></condition><widgets>
                 <label text="Select an active shop (organization) to manage its order rules." style="text-orange-9 text-weight-medium"/>
             </widgets></section>
-            <section name="OrgRules_write"><condition><expression>hasActiveOrg &amp;&amp; modCanWrite</expression></condition><widgets>
+            <section name="OrgRules_write"><condition><expression>hasActiveOrg &amp;&amp; modeCanManage</expression></condition><widgets>
             <container style="zenith-card bg-white shadow-2 q-pa-md q-mb-md border-radius-lg">
                 <form-single name="CreateOrgRule" transition="saveOrgRule">
                     <field name="salesModeId"><default-field title="Sales Mode">
-                        <drop-down><list-options list="modeList" key="${salesModeId}" text="${modeName}"/></drop-down>
+                        <drop-down><list-options list="activeModeList" key="${salesModeId}" text="${modeName}"/></drop-down>
                     </default-field></field>
                     <field name="requireCustomer"><default-field title="Require Customer">
                         <drop-down><option key="Y" text="Yes"/><option key="N" text="No"/></drop-down>
@@ -299,13 +369,13 @@
                     <text-line size="10" input-type="number"/>
                 </default-field></field>
                 <field name="saveBtn">
-                    <conditional-field name="orgrule_save_write" condition="modCanWrite" title="">
+                    <conditional-field name="orgrule_save_write" condition="modeCanManage" title="">
                     <submit text="Save" icon="fa fa-save"/>
                     </conditional-field>
                     <default-field title=""><label text="" type="span"/></default-field></field>
                 <field name="deleteBtn">
-                    <conditional-field name="orgrule_delete_write" condition="modCanWrite" title="">
-                    <link url="deleteOrgRule" text="Delete" icon="fa fa-trash" btn-type="danger"
+                    <conditional-field name="orgrule_delete_write" condition="modeCanManage" title="">
+                    <link url="deleteOrgRule" text="Delete" icon="fa fa-trash" btn-type="danger" link-type="hidden-form"
                           parameter-map="[salesModeId:salesModeId]" confirmation="Remove this rule?"/>
                     </conditional-field>
                     <default-field title=""><label text="" type="span"/></default-field></field>
@@ -313,8 +383,8 @@
             </widgets></section>
 
             <container style="smode-card smode-assign smode-tbl">
-            <render-mode><text type="html,qvt"><![CDATA[<div class="smode-card-hd"><span class="smode-card-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg></span><div><h2 class="smode-card-title">Terminal Mode Assignment</h2><p class="smode-card-sub">Assign which sales mode is available on each terminal.</p></div></div>]]></text></render-mode>
-            <section name="AssignTerminalMode_write"><condition><expression>modCanWrite</expression></condition><widgets>
+            <render-mode><text type="html,qvt"><![CDATA[<div class="smode-card-hd"><span class="smode-card-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg></span><div><h2 class="smode-card-title">Terminal Mode Assignment</h2><p class="smode-card-sub">New modes are available on all active shop terminals. Remove an assignment to hide a mode from one terminal.</p></div></div>]]></text></render-mode>
+            <section name="AssignTerminalMode_write"><condition><expression>modeCanManage</expression></condition><widgets>
             <container style="q-mb-md">
                 <form-single name="AssignTerminalMode" transition="assignTerminal">
                     <field name="terminalId"><default-field title="Terminal">
@@ -324,7 +394,7 @@
                     </default-field></field>
                     <field name="salesModeId"><default-field title="Sales Mode">
                         <drop-down>
-                            <list-options list="modeList" key="${salesModeId}" text="${modeName}"/>
+                            <list-options list="activeModeList" key="${salesModeId}" text="${modeName}"/>
                         </drop-down>
                     </default-field></field>
                     <field name="submitBtn"><default-field title="">
@@ -342,8 +412,8 @@
                     <display-entity entity-name="zenith.erp.pos.PosSalesMode" key-field-name="salesModeId" text="${modeName}"/>
                 </default-field></field>
                 <field name="removeBtn">
-                    <conditional-field name="tm_remove_write" condition="modCanWrite" title="">
-                    <link url="removeTerminal" text="Remove" icon="fa fa-unlink" btn-type="danger"
+                    <conditional-field name="tm_remove_write" condition="modeCanManage" title="">
+                    <link url="removeTerminal" text="Remove" icon="fa fa-unlink" btn-type="danger" link-type="hidden-form"
                           parameter-map="[terminalId:tm.terminalId, salesModeId:tm.salesModeId]"
                           confirmation="Remove this assignment?"/>
                     </conditional-field>

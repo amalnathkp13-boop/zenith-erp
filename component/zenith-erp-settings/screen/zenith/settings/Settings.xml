@@ -29,11 +29,6 @@
     <transition name="goHr"><default-response url="../Hr/Employees"/></transition>
 
     <widgets>
-        <container style="row items-center justify-end q-px-md q-pt-md q-gutter-sm">
-            <section name="gate_studio_1" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('studio'))"><widgets><link url="goStudio" text="Studio" icon="fa fa-paint-brush" btn-type="primary" style="q-btn--dense"/></widgets></section>
-            <section name="gate_integrations_2" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('integrations'))"><widgets><link url="goIntegrations" text="Integrations" icon="fa fa-plug" btn-type="info" style="q-btn--dense"/></widgets></section>
-            <section name="gate_hr_3" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('hr'))"><widgets><link url="goHr" text="HR" icon="fa fa-users" btn-type="success" style="q-btn--dense"/></widgets></section>
-        </container>
 
         <!-- Glassmorphism header container -->
         <container style="zenith-header glass-panel">

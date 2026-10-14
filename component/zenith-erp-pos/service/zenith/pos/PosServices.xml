@@ -1690,36 +1690,40 @@
                 <if condition="lineDisc &gt; 100"><set field="lineDisc" from="new BigDecimal('100')" type="BigDecimal"/></if>
                 <set field="lineSubtotal" from="((it.quantity ?: 0) as BigDecimal) * newUnit" type="BigDecimal"/>
                 <set field="discAmt" from="lineSubtotal * lineDisc / 100" type="BigDecimal"/>
-                <service-call name="zenith.tax.TaxServices.calculate#Tax" ignore-error="true"
-                    in-map="[organizationPartyId:terminal?.organizationPartyId,
-                             items:[[productId:it.productId, productTaxCode:(prodRp?.productTaxCode ?: ''),
-                                     taxCategoryId:prodRp?.taxCategoryId, quantity:it.quantity,
-                                     unitAmount:newUnit, discountAmount:discAmt, isTaxInclusive:_rpModeTaxIncl]],
-                             originRegionGeoId:txn.originRegionGeoId,
-                             destinationRegionGeoId:txn.destinationRegionGeoId, transactionType:'SALE']"
-                    out-map="taxResult"/>
-                <set field="taxedItem" from="taxResult?.taxedItems ? taxResult.taxedItems[0] : null"/>
-                <set field="taxableAmount" from="taxedItem?.taxableAmount ?: (lineSubtotal - discAmt)" type="BigDecimal"/>
-                <set field="totalTaxAmount" from="taxedItem?.totalTaxAmount ?: BigDecimal.ZERO" type="BigDecimal"/>
-                <set field="lineTotal" from="taxableAmount + totalTaxAmount" type="BigDecimal"/>
-                <!-- Honor the tax toggle: if the cashier turned tax OFF, a mode switch must NOT
-                     re-apply GST (otherwise the bill is silently re-taxed). -->
-                <if condition="taxOn == 'N'">
-                    <set field="totalTaxAmount" from="BigDecimal.ZERO" type="BigDecimal"/>
-                    <set field="lineTotal" from="taxableAmount" type="BigDecimal"/>
-                    <!-- ZE-TAX-PHANTOM: tax toggled OFF -> clear the per-line GST breakdown add stored, so the
-                         recorded detail matches the tax-free charge. Charge-neutral (only touches TaxLineDetail). -->
-                    <entity-delete-by-condition entity-name="zenith.erp.tax.TaxLineDetail">
-                        <econdition field-name="referenceType" value="PosTransactionItem"/>
-                        <econdition field-name="referenceId" from="transactionId"/>
-                        <econdition field-name="referenceSeqId" from="it.itemSeqId"/>
-                    </entity-delete-by-condition>
+                <set field="taxableAmount" from="lineSubtotal - discAmt" type="BigDecimal"/>
+                <set field="totalTaxAmount" from="BigDecimal.ZERO" type="BigDecimal"/>
+                <set field="taxedItem" from="null"/>
+                <if condition="taxOn != 'N'">
+                    <service-call name="zenith.tax.TaxServices.calculate#Tax"
+                        in-map="[organizationPartyId:terminal?.organizationPartyId,
+                                 items:[[productId:it.productId, productTaxCode:(prodRp?.productTaxCode ?: ''),
+                                         taxCategoryId:prodRp?.taxCategoryId, quantity:it.quantity,
+                                         unitAmount:newUnit, discountAmount:discAmt, isTaxInclusive:_rpModeTaxIncl]],
+                                 originRegionGeoId:txn.originRegionGeoId,
+                                 destinationRegionGeoId:txn.destinationRegionGeoId, transactionType:'SALE']"
+                        out-map="taxResult"/>
+                    <if condition="ec.message.hasError()"><return/></if>
+                    <set field="taxedItem" from="taxResult?.taxedItems ? taxResult.taxedItems[0] : null"/>
+                    <set field="taxableAmount" from="taxedItem?.taxableAmount != null ? taxedItem.taxableAmount : (lineSubtotal - discAmt)" type="BigDecimal"/>
+                    <set field="totalTaxAmount" from="taxedItem?.totalTaxAmount ?: BigDecimal.ZERO" type="BigDecimal"/>
                 </if>
+                <set field="lineTotal" from="taxableAmount + totalTaxAmount" type="BigDecimal"/>
                 <service-call name="update#zenith.erp.pos.PosTransactionItem"
                     in-map="[transactionId:transactionId, itemSeqId:it.itemSeqId, unitPrice:newUnit,
                              mrp:(prodRp?.mrpAmount ?: newUnit),
                              discountPercent:lineDisc, discountAmount:discAmt, salesModeId:salesModeId,
                              taxableAmount:taxableAmount, totalTaxAmount:totalTaxAmount, lineTotal:lineTotal]"/>
+                <if condition="taxOn != 'N' &amp;&amp; taxedItem?.taxBreakdowns">
+                    <service-call name="zenith.tax.TaxServices.store#TaxLineDetails"
+                        in-map="[referenceType:'PosTransactionItem', referenceId:transactionId,
+                                 referenceSeqId:it.itemSeqId, taxBreakdowns:taxedItem.taxBreakdowns]"/>
+                <else>
+                    <entity-delete-by-condition entity-name="zenith.erp.tax.TaxLineDetail">
+                        <econdition field-name="referenceType" value="PosTransactionItem"/>
+                        <econdition field-name="referenceId" from="transactionId"/>
+                        <econdition field-name="referenceSeqId" from="it.itemSeqId"/>
+                    </entity-delete-by-condition>
+                </else></if>
             </iterate>
             <service-call name="zenith.pos.PosServices.recalculate#TransactionTotals"
                 in-map="[transactionId:transactionId]"/>
@@ -1765,31 +1769,41 @@
             <set field="md" from="(lmp?.isFixed) ? BigDecimal.ZERO : ((lmp?.discountPercent ?: 0) as BigDecimal)" type="BigDecimal"/>
             <set field="lineSub" from="((it.quantity ?: 0) as BigDecimal) * newUnit" type="BigDecimal"/>
             <set field="dAmt" from="lineSub * (md ?: 0) / 100" type="BigDecimal"/>
-            <service-call name="zenith.tax.TaxServices.calculate#Tax" ignore-error="true"
-                in-map="[organizationPartyId:terminal?.organizationPartyId,
-                         items:[[productId:it.productId, productTaxCode:(prod?.productTaxCode ?: ''),
-                                 taxCategoryId:prod?.taxCategoryId, quantity:it.quantity,
-                                 unitAmount:newUnit, discountAmount:dAmt, isTaxInclusive:_smTaxIncl]],
-                         originRegionGeoId:txn.originRegionGeoId,
-                         destinationRegionGeoId:txn.destinationRegionGeoId, transactionType:'SALE']"
-                out-map="taxRes"/>
-            <set field="taxedI" from="taxRes?.taxedItems ? taxRes.taxedItems[0] : null"/>
-            <set field="taxable" from="taxedI?.taxableAmount ?: (lineSub - dAmt)" type="BigDecimal"/>
-            <set field="ttax" from="taxedI?.totalTaxAmount ?: BigDecimal.ZERO" type="BigDecimal"/>
-            <!-- Honor the tax toggle: a per-line mode change must not re-apply GST when tax is OFF. -->
-            <if condition="taxOn == 'N'"><set field="ttax" from="BigDecimal.ZERO" type="BigDecimal"/>
-                <!-- ZE-TAX-PHANTOM: clear the stale GST breakdown so recorded detail matches the tax-free charge. -->
-                <entity-delete-by-condition entity-name="zenith.erp.tax.TaxLineDetail">
-                    <econdition field-name="referenceType" value="PosTransactionItem"/>
-                    <econdition field-name="referenceId" from="transactionId"/>
-                    <econdition field-name="referenceSeqId" from="itemSeqId"/>
-                </entity-delete-by-condition>
+            <!-- Tax-off mode changes must never invoke the GST service. A rejected tax call marks
+                 the request rollback-only, so subsequent line/tax reads fail in the cashier UI. -->
+            <set field="taxable" from="lineSub - dAmt" type="BigDecimal"/>
+            <set field="ttax" from="BigDecimal.ZERO" type="BigDecimal"/>
+            <set field="taxedI" from="null"/>
+            <if condition="taxOn != 'N'">
+                <service-call name="zenith.tax.TaxServices.calculate#Tax"
+                    in-map="[organizationPartyId:terminal?.organizationPartyId,
+                             items:[[productId:it.productId, productTaxCode:(prod?.productTaxCode ?: ''),
+                                     taxCategoryId:prod?.taxCategoryId, quantity:it.quantity,
+                                     unitAmount:newUnit, discountAmount:dAmt, isTaxInclusive:_smTaxIncl]],
+                             originRegionGeoId:txn.originRegionGeoId,
+                             destinationRegionGeoId:txn.destinationRegionGeoId, transactionType:'SALE']"
+                    out-map="taxRes"/>
+                <if condition="ec.message.hasError()"><return/></if>
+                <set field="taxedI" from="taxRes?.taxedItems ? taxRes.taxedItems[0] : null"/>
+                <set field="taxable" from="taxedI?.taxableAmount != null ? taxedI.taxableAmount : (lineSub - dAmt)" type="BigDecimal"/>
+                <set field="ttax" from="taxedI?.totalTaxAmount ?: BigDecimal.ZERO" type="BigDecimal"/>
             </if>
             <service-call name="update#zenith.erp.pos.PosTransactionItem"
                 in-map="[transactionId:transactionId, itemSeqId:itemSeqId, unitPrice:newUnit,
                          mrp:(prod?.mrpAmount ?: newUnit),
                          discountPercent:md, discountAmount:dAmt, salesModeId:salesModeId,
                          taxableAmount:taxable, totalTaxAmount:ttax, lineTotal:(taxable + ttax)]"/>
+            <if condition="taxOn != 'N' &amp;&amp; taxedI?.taxBreakdowns">
+                <service-call name="zenith.tax.TaxServices.store#TaxLineDetails"
+                    in-map="[referenceType:'PosTransactionItem', referenceId:transactionId,
+                             referenceSeqId:itemSeqId, taxBreakdowns:taxedI.taxBreakdowns]"/>
+            <else>
+                <entity-delete-by-condition entity-name="zenith.erp.tax.TaxLineDetail">
+                    <econdition field-name="referenceType" value="PosTransactionItem"/>
+                    <econdition field-name="referenceId" from="transactionId"/>
+                    <econdition field-name="referenceSeqId" from="itemSeqId"/>
+                </entity-delete-by-condition>
+            </else></if>
             <service-call name="zenith.pos.PosServices.recalculate#TransactionTotals"
                 in-map="[transactionId:transactionId]"/>
         </actions>
@@ -1825,6 +1839,12 @@
             <if condition="!salesModeId"><return/></if>
             <entity-find-one entity-name="zenith.erp.pos.PosSalesMode" value-field="mode">
                 <field-map field-name="salesModeId"/></entity-find-one>
+            <if condition="!mode || mode.isActive != 'Y' || (mode.organizationPartyId &amp;&amp; mode.organizationPartyId != product?.ownerPartyId)">
+                <set field="isFixed" from="true"/>
+                <set field="blocked" from="true"/>
+                <set field="blockReason" from="'This sales mode is not available for this product.'"/>
+                <return/>
+            </if>
             <set field="ps" from="mode?.priceSource ?: 'PpsMrp'"/>
             <if condition="ps == 'PpsFixedProduct'">
                 <set field="isFixed" from="true"/>
@@ -1863,6 +1883,8 @@
             <if condition="!product"><return error="true" message="Unknown product ${productId}"/></if>
             <entity-find-one entity-name="zenith.erp.pos.PosSalesMode" value-field="mode">
                 <field-map field-name="salesModeId"/></entity-find-one>
+            <if condition="!mode || mode.isActive != 'Y' || (mode.organizationPartyId &amp;&amp; mode.organizationPartyId != product.ownerPartyId)">
+                <return error="true" message="That sales mode is not available for this product."/></if>
             <set field="ps" from="mode?.priceSource ?: 'PpsMrp'"/>
             <set field="hasPrice" from="price != null &amp;&amp; (price as BigDecimal).compareTo(BigDecimal.ZERO) &gt; 0"/>
             <set field="_thr" from="(thresholdQty != null &amp;&amp; (thresholdQty as BigDecimal).compareTo(BigDecimal.ZERO) &gt; 0) ? (thresholdQty as BigDecimal) : null"/>

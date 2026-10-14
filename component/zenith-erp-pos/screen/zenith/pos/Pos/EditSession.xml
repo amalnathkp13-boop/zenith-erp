@@ -19,7 +19,8 @@
             <!-- Cross-tenant write-IDOR guard: only the owning org (ADMIN exempt) may mutate this session. -->
             <service-call name="zenith.base.SecurityServices.assert#RecordOrgAccess" in-map="[entityName:'zenith.erp.pos.PosSession', idField:'sessionId', idValue:sessionId, orgField:'organizationPartyId']" out-map="_acc"/>
             <if condition="!_acc.allowed"><return error="true" message="You do not have access to this record."/></if>
-            <service-call name="zenith.pos.PosServices.close#PosSession"/>
+            <service-call name="zenith.pos.PosServices.close#PosSession"
+                          in-map="[sessionId:sessionId, closingCash:closingCash]"/>
         </actions>
         <default-response url="."/>
     </transition>
@@ -28,7 +29,8 @@
             <!-- Cross-tenant write-IDOR guard: only the owning org (ADMIN exempt) may mutate this session. -->
             <service-call name="zenith.base.SecurityServices.assert#RecordOrgAccess" in-map="[entityName:'zenith.erp.pos.PosSession', idField:'sessionId', idValue:sessionId, orgField:'organizationPartyId']" out-map="_acc"/>
             <if condition="!_acc.allowed"><return error="true" message="You do not have access to this record."/></if>
-            <service-call name="zenith.pos.PosServices.save#CashDenomination"/>
+            <service-call name="zenith.pos.PosServices.save#CashDenomination"
+                          in-map="[sessionId:sessionId, denomination:denomination, denominationCount:denominationCount]"/>
         </actions>
         <default-response url="."/>
     </transition>

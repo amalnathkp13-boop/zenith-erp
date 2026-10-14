@@ -9,10 +9,6 @@
     <transition name="goSign"><default-response url="../sign/SignatureRequests"/></transition>
 
     <widgets>
-        <container style="row items-center justify-end q-px-md q-pt-md q-gutter-sm">
-            <section name="gate_approvals_1" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('approvals'))"><widgets><link url="goApprovals" text="Approvals" icon="fa fa-check-square-o" btn-type="primary" style="q-btn--dense"/></widgets></section>
-            <section name="gate_sign_2" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('sign'))"><widgets><link url="goSign" text="e-Sign" icon="fa fa-pencil-square-o" btn-type="info" style="q-btn--dense"/></widgets></section>
-        </container>
         <subscreens-active/>
     </widgets>
 </screen>

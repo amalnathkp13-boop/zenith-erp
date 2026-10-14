@@ -16,13 +16,6 @@
     <transition name="goEcommerce"><default-response url="../ecommerce/EcomOrders"/></transition>
 
     <widgets>
-        <container style="row items-center justify-end q-px-md q-pt-md q-gutter-sm">
-            <section name="gate_crm_1" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('crm'))"><widgets><link url="goCrm" text="CRM" icon="fa fa-bullseye" btn-type="primary" style="q-btn--dense"/></widgets></section>
-            <section name="gate_contacts_2" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('contacts'))"><widgets><link url="goContacts" text="Contacts" icon="fa fa-address-book" btn-type="info" style="q-btn--dense"/></widgets></section>
-            <section name="gate_sales_3" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('sales'))"><widgets><link url="goSales" text="Sales" icon="fa fa-line-chart" btn-type="success" style="q-btn--dense"/></widgets></section>
-            <section name="gate_events_4" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('events'))"><widgets><link url="goEvents" text="Events" icon="fa fa-calendar" btn-type="warning" style="q-btn--dense"/></widgets></section>
-            <section name="gate_ecommerce_5" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('ecommerce'))"><widgets><link url="goEcommerce" text="eCommerce" icon="fa fa-globe" btn-type="danger" style="q-btn--dense"/></widgets></section>
-        </container>
         <subscreens-active/>
     </widgets>
 </screen>
