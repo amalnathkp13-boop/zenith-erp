@@ -1091,8 +1091,17 @@
 
 
                     </entity-find-one>
+                    <entity-find-one entity-name="zenith.erp.pos.PosTerminal" value-field="term2">
+
+
+
+                        <field-map field-name="terminalId" from="sess2.terminalId"/>
+
+
+
+                    </entity-find-one>
                     <entity-find entity-name="zenith.erp.india.IndiaGstConfig" list="_toggleGstConfig" limit="1">
-                        <econdition field-name="organizationPartyId" from="term2.organizationPartyId"/>
+                        <econdition field-name="organizationPartyId" from="txn2.organizationPartyId"/>
                     </entity-find>
                     <script><![CDATA[
                         // Older PtCreated carts may predate the terminal's state setup. Use only
@@ -1123,15 +1132,7 @@
 
 
 
-                    <entity-find-one entity-name="zenith.erp.pos.PosTerminal" value-field="term2">
 
-
-
-                        <field-map field-name="terminalId" from="sess2.terminalId"/>
-
-
-
-                    </entity-find-one>
 
 
 
@@ -1155,7 +1156,7 @@
 
 
 
-                            in-map="[organizationPartyId:term2.organizationPartyId,
+                            in-map="[organizationPartyId:txn2.organizationPartyId,
 
 
 
