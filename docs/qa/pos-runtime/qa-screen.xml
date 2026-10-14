@@ -37,7 +37,7 @@
         remove:['zenith.pos.PosServices.remove#PosTransactionItem',['transactionId','itemSeqId']],
         pay:['zenith.pos.PosServices.process#PosPayment',['transactionId','paymentMethod','amount','referenceNumber','collectionSessionId']],
         complete:['zenith.pos.PosServices.complete#PosTransaction',['transactionId']],
-        credit:['zenith.pos.PosServices.complete#PosTransactionCredit',['transactionId','customerName','customerPhone']],
+        credit:['zenith.pos.PosServices.complete#PosTransactionCredit',['transactionId','customerName','customerPhone','customerPartyId','upfrontAmount','upfrontMethod']],
         settle:['zenith.pos.PosServices.settle#PosCredit',['transactionId','paymentMethod','amount','referenceNumber','collectionSessionId']],
         hold:['zenith.pos.PosServices.hold#Transaction',['transactionId','holdReason']],
         recall:['zenith.pos.PosServices.recall#Transaction',['heldId','sessionId']],

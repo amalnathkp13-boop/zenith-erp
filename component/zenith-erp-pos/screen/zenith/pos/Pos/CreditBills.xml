@@ -19,7 +19,7 @@
              (/qapps strips <style> tags, not style attributes); absolute /apps target works from both
              surfaces (/qapps Terminal bounces to /apps anyway). -->
         <render-mode><text type="html,qvt" template="true"><![CDATA[<div style="margin:10px 12px 0 12px"><a href="/apps/zenith/pos/Terminal" style="display:inline-flex;align-items:center;gap:10px;padding:13px 26px;background:#2e7d32;color:#fff;border-radius:10px;font-size:17px;font-weight:800;text-decoration:none;box-shadow:0 2px 6px rgba(0,0,0,0.18);-webkit-tap-highlight-color:rgba(0,0,0,0.1)"><span style="font-size:20px;line-height:1">&#8592;</span> Back to Billing</a></div>]]></text></render-mode>
-        <render-mode><text type="html,qvt" template="true"><![CDATA[<details id="posHelp_creditbills" class="pos-reference-help" style="background:#e8f0fe;border:1px solid #4285f4;border-left:6px solid #1a73e8;border-radius:10px;padding:10px 16px;margin:8px 12px 4px 12px;font-family:Segoe UI,Arial,sans-serif"><summary style="cursor:pointer;font-weight:800;font-size:15px;color:#174ea6;outline:none">&#128179; Credit Bills &mdash; quick help <span style="font-weight:600;color:#5f6368;font-size:12px">(click to hide / show)</span></summary><div style="font-size:13px;color:#202124;line-height:1.9;margin-top:8px">Bills where the customer still <b>owes money</b> (dues).<br><b>1</b>&nbsp;Each row shows the <b>outstanding amount</b> for that customer.<br><b>2</b>&nbsp;Collect and record payments here as the dues are cleared.</div></details>]]></text></render-mode>
+        <render-mode><text type="html,qvt" template="true"><![CDATA[<details id="posHelp_creditbills" class="pos-reference-help" style="background:#e8f0fe;border:1px solid #4285f4;border-left:6px solid #1a73e8;border-radius:10px;padding:10px 16px;margin:8px 12px 4px 12px;font-family:Segoe UI,Arial,sans-serif"><summary style="cursor:pointer;font-weight:800;font-size:15px;color:#174ea6;outline:none">&#128179; Credit Bills &mdash; quick help <span style="font-weight:600;color:#5f6368;font-size:12px">(click to hide / show)</span></summary><div style="font-size:13px;color:#202124;line-height:1.9;margin-top:8px">Track credit bills, including fully paid ones.<br><b>1</b>&nbsp;Each row shows the <b>outstanding amount</b> for that customer.<br><b>2</b>&nbsp;Collect and record payments here as the dues are cleared.</div></details>]]></text></render-mode>
         <container style="row items-center justify-end q-px-md q-pt-md q-gutter-sm">
             <link url="goTerminal" text="Billing" icon="fa fa-calculator" btn-type="success" style="q-btn--dense"/>
             <link url="goTransactions" text="Transactions" icon="fa fa-list" btn-type="info" style="q-btn--dense"/>
@@ -28,7 +28,7 @@
         <container-box>
             <box-header title="Credit Bills"/>
             <box-body>
-                <render-mode><text type="html,qvt" template="true"><![CDATA[<input type="hidden" name="moquiSessionToken" value="${ec.web.sessionToken}"/><div id="credit-bills-root" style="min-height:200px">Loading credit bills…</div><script src="/zenithstatic/js/pos-terminal.js?v=150"></script>]]></text></render-mode>
+                <render-mode><text type="html,qvt" template="true"><![CDATA[<input type="hidden" name="moquiSessionToken" value="${ec.web.sessionToken}"/><div id="credit-bills-root" style="min-height:200px">Loading credit bills…</div><script src="/zenithstatic/js/pos-terminal.js?v=157"></script>]]></text></render-mode>
             </box-body>
         </container-box>
     </widgets>

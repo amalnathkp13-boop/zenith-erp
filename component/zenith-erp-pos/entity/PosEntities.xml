@@ -140,7 +140,7 @@
         <field name="paidAmount" type="currency-amount"/>
         <field name="changeAmount" type="currency-amount"/>
         <field name="statusId" type="id"/>
-        <field name="isCredit" type="text-indicator"><description>Y = completed credit (pay-later) sale, unpaid/partially paid</description></field>
+        <field name="isCredit" type="text-indicator"><description>Y = completed credit-origin sale; outstanding is payableAmount minus paidAmount</description></field>
         <field name="linkedOrderId" type="id"/>
         <field name="linkedInvoiceId" type="id"/>
         <relationship type="one" related="zenith.erp.pos.PosSession"/>

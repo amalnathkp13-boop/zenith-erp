@@ -37,8 +37,9 @@
             def dtf = { v -> v == null ? '' : ec.l10n.format(v, 'dd-MM-yyyy HH:mm') }
             def x = { v -> (v ?: '').toString().replace('&','&amp;').replace('<','&lt;').replace('>','&gt;') }
             rows = bills.collect { b ->
-                def pt = (b.isCredit == 'Y') ? 'Credit' : (payAgg[b.transactionId] ? payAgg[b.transactionId].entrySet().max{ it.value }.key : '')
-                def st = (b.isCredit == 'Y') ? 'Credit' : (slMap[b.statusId] ?: b.statusId)
+                def creditDue = b.isCredit == 'Y' && ((b.payableAmount ?: 0) as BigDecimal) > ((b.paidAmount ?: 0) as BigDecimal)
+                def pt = creditDue ? 'Credit' : (payAgg[b.transactionId] ? payAgg[b.transactionId].entrySet().max{ it.value }.key : '')
+                def st = creditDue ? 'Credit' : (slMap[b.statusId] ?: b.statusId)
                 [no:x(b.transactionNumber ?: b.transactionId), date:dtf(b.entryDate), term:x(b.terminalName),
                  cust:x(b.customerName ?: 'Walk-in Customer'), sub:num(b.subtotal), disc:num(b.discountTotal),
                  tax:num(b.totalTaxAmount), net:num(b.payableAmount), pay:x(pt),

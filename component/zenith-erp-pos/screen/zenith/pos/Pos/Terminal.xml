@@ -277,7 +277,8 @@
                 <return/>
             </if>
             <service-call name="zenith.pos.PosServices.complete#PosTransactionCredit"
-                          in-map="[transactionId:transactionId, customerName:customerName, customerPhone:customerPhone]"/>
+                          in-map="[transactionId:transactionId, customerName:customerName, customerPhone:customerPhone,
+                                   customerPartyId:customerPartyId, upfrontAmount:upfrontAmount, upfrontMethod:upfrontMethod]"/>
         </actions>
         <default-response url="." parameter-map="[sessionId:sessionId, lastCompletedId:transactionId]"/>
     </transition>
@@ -2951,7 +2952,7 @@
 
 
 
-                        grand:txn?.grandTotal ?: 0, pay:txn?.payableAmount ?: 0, round:txn?.roundOff ?: 0,
+                        grand:txn?.grandTotal ?: 0, pay:txn?.payableAmount ?: 0, paid:txn?.paidAmount ?: 0, round:txn?.roundOff ?: 0,
                         customer:txn?.customerName ?: '', customerPhone:txn?.customerPhone ?: '', customerPartyId:txn?.customerPartyId ?: '',
 
 
@@ -4420,7 +4421,7 @@ gridNextOffset = gridOffset + gridProducts.size()
                           </div>
                           </#if>
                         ]]></text></render-mode>
-                        <render-mode><text type="html,qvt" template="true"><![CDATA[<img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="try{if(location.pathname.indexOf('/qapps/')===0){location.replace(location.href.replace('/qapps/','/apps/'));}}catch(e){}"/><div style="text-align:center;margin-top:18px"><button id="pos-history-btn-ns" type="button" onclick="window.posOpenHistory&amp;&amp;window.posOpenHistory()" style="padding:10px 24px;border-radius:8px;font-size:14px;font-weight:bold;cursor:pointer;background:#7C3AED;color:#fff;border:1px solid #A78BFA">&#128196; View Bill History<span style="margin-left:7px;padding:1px 6px;border:1px solid rgba(255,255,255,0.7);border-radius:4px;font-size:11px;font-weight:700;opacity:0.9">F9</span></button></div><script src="/zenithstatic/js/pos-terminal.js?v=157"></script>]]></text></render-mode>
+                        <render-mode><text type="html,qvt" template="true"><![CDATA[<img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="try{if(location.pathname.indexOf('/qapps/')===0){location.replace(location.href.replace('/qapps/','/apps/'));}}catch(e){}"/><div style="text-align:center;margin-top:18px"><button id="pos-history-btn-ns" type="button" onclick="window.posOpenHistory&amp;&amp;window.posOpenHistory()" style="padding:10px 24px;border-radius:8px;font-size:14px;font-weight:bold;cursor:pointer;background:#7C3AED;color:#fff;border:1px solid #A78BFA">&#128196; View Bill History<span style="margin-left:7px;padding:1px 6px;border:1px solid rgba(255,255,255,0.7);border-radius:4px;font-size:11px;font-weight:700;opacity:0.9">F9</span></button></div><script src="/zenithstatic/js/pos-terminal.js?v=158"></script>]]></text></render-mode>
 
 
 
@@ -4788,7 +4789,7 @@ function receiptText(value){
     /* Credit / Pay Later — mark unpaid credit bills + show the amount due (ZE-POS-005) */
     if (d.isCredit) {
         h += '<div class="ln"></div>';
-        h += '<div class="ct b" style="border:1px dashed #000;padding:3px 2px;font-size:13px;margin:2px 0">** CREDIT / PAY LATER (UNPAID) **</div>';
+        h += '<div class="ct b" style="border:1px dashed #000;padding:3px 2px;font-size:13px;margin:2px 0">** ' + (Number(String(d.outstanding).replace(/,/g,'')) > 0 ? 'CREDIT / PAY LATER' : 'CREDIT / PAID IN FULL') + ' **</div>';
         h += '<div class="rw bg"><span class="lb">Amount Due</span><span class="vl">' + cs + d.outstanding + '</span></div>';
     }
 
@@ -6963,7 +6964,7 @@ body.Terminal:not(.pos-mode-normal) .pos-product-grid button div[style*="#e53935
 <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
 
 
-<script src="/zenithstatic/js/pos-terminal.js?v=157"></script>
+<script src="/zenithstatic/js/pos-terminal.js?v=158"></script>
 
 
 
