@@ -238,6 +238,32 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  }
  const screens=['Dashboard','OwnerDashboard','Terminal','PosTransactions','DailySummary','PosSessions','PosTerminals','CreditBills','CashEntry','Expenses','Wastage','Stock','Reports','BillAuditReport','ProductPricing','PriceOverrides','DiscountSettings','SalesMode','Barcodes','BarcodeLabels','ProductImport','ReceiptConfig','PrinterConfig','Kitchen','BillNumberRegister','OfflineMode',`EditTransaction?transactionId=${t.transactionId}`,`EditSession?sessionId=${s.sessionId}`];
  for(const shell of ['apps','qapps'])for(const screen of screens){await p.setViewportSize({width:1366,height:768});const r=await p.goto(`${base}/${shell}/zenith/pos/${screen}`,{waitUntil:'networkidle',timeout:60000});const text=await p.locator('body').innerText();const error=/Error rendering|ScreenRenderException|500 Internal Server Error|HTTP Status 500|freemarker\.core/i.test(text);report.pages.push({shell,screen,status:r.status(),error,url:p.url()});check(shell+' '+screen+' renders',r.status()===200&&!error,{status:r.status(),error});}
+ // A populated Daily Summary used to render the FreeMarker ?url charset exception as table rows.
+ if(process.env.POS_QA_UI_ONLY!=='true')for(const shell of ['apps','qapps']){
+  const date=new Date(tx(t.transactionId).entry_date);
+  let found=false,summaryError=false;
+  for(const offset of [-1,0,1]){
+   const day=new Date(date.getTime()+offset*86400000).toISOString().slice(0,10);
+   await p.goto(`${base}/${shell}/zenith/pos/DailySummary?filterDate=${day}`,{waitUntil:'networkidle'});
+   const table=p.locator('.pos-daily-summary-ref__transactions');
+   const content=await table.innerText();
+   summaryError ||= /url_escaping_charset|Error executing FreeMarker/i.test(content);
+   // This is a five-row recent list; the first synthetic bill is usually older than the displayed five.
+   found ||= await table.locator('tbody a[href^="/apps/zenith/pos/EditTransaction?transactionId="]').count()>0;
+   if(found||summaryError)break;
+  }
+  check(shell+' populated Daily Summary renders linked transactions',found&&!summaryError,{found,summaryError});
+ }
+ for(const shell of ['apps','qapps']){
+  await p.goto(`${base}/${shell}/zenith/pos/PosTerminals`,{waitUntil:'networkidle'});
+  const table=p.locator('.pos-terminals-reference .z-termtable');
+  check(shell+' terminal table omits GSTIN but retains editable controls',
+   await table.count()===1&&!/GSTIN/.test(await table.innerText())&&await table.locator('input').count()>0&&await table.getByText('Update').count()>0);
+  if(shell==='qapps'){
+   const fields=await table.locator('form.q-form .q-field:has(.q-field__label)').evaluateAll(elements=>elements.map(el=>({padding:getComputedStyle(el).paddingLeft,labelWidth:el.querySelector('.q-field__label').getBoundingClientRect().width,clipped:getComputedStyle(el.querySelector('.q-field__label')).clipPath,outline:getComputedStyle(el.querySelector('.q-field__control')).outlineWidth})));
+   check('qapps terminal edit labels do not overlap controls',fields.length>0&&fields.every(field=>field.padding==='0px'&&field.labelWidth<=1&&field.clipped==='inset(50%)'&&field.outline==='1px'),fields);
+  }
+ }
  for(const width of [1920,1366,800,390,320])for(const shell of ['apps','qapps'])for(const screen of ['Terminal','PosTransactions','CreditBills','PosSessions','PosTerminals','CashEntry','SalesMode','ProductPricing','ReceiptConfig','Reports']){await p.setViewportSize({width,height:768});await p.goto(`${base}/${shell}/zenith/pos/${screen}`,{waitUntil:'networkidle',timeout:60000});const toggle=p.locator('#zq-nav-toggle');if(width<800&&await toggle.count()&&await p.locator('body').evaluate(e=>e.classList.contains('zq-nav-open')))await toggle.click();const g=await p.evaluate(()=>({viewport:innerWidth,document:document.documentElement.scrollWidth,scoped:document.querySelectorAll('.z-pos-page').length,overflow:[...document.querySelectorAll('.z-pos-page input,.z-pos-page select,.z-pos-page button')].filter(e=>{let r=e.getBoundingClientRect();return r.width&&(r.right>innerWidth+2||r.left<-2)&&!e.closest('table,.q-table,.z-termtable,.modal,[role=dialog]')}).slice(0,8).map(e=>({id:e.id,name:e.name}))}));report.layouts.push({shell,screen,width,...g});check(`${shell} ${screen} ${width}px fits viewport`,g.document<=width+2&&g.scoped>0&&g.overflow.length===0,g);if(width===390||width===1366)await p.screenshot({path:path.join(out,`${shell}-${screen}-${width}.png`),fullPage:true});}
  check('POS pages have no JavaScript exceptions',report.consoleErrors.length===0,report.consoleErrors);
  await browser.close();browser=null;
