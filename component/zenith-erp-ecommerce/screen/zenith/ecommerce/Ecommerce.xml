@@ -16,13 +16,6 @@
     <transition name="goWebsite"><default-response url="../website/Sites"/></transition>
 
     <widgets>
-        <container style="row items-center justify-end q-px-md q-pt-md q-gutter-sm">
-            <section name="gate_sales_1" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('sales'))"><widgets><link url="goSales" text="Sales" icon="fa fa-line-chart" btn-type="primary" style="q-btn--dense"/></widgets></section>
-            <section name="gate_inventory_2" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('inventory'))"><widgets><link url="goInventory" text="Inventory" icon="fa fa-cubes" btn-type="info" style="q-btn--dense"/></widgets></section>
-            <section name="gate_contacts_3" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('contacts'))"><widgets><link url="goContacts" text="Customers" icon="fa fa-users" btn-type="success" style="q-btn--dense"/></widgets></section>
-            <section name="gate_marketing_4" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('marketing'))"><widgets><link url="goMarketing" text="Marketing" icon="fa fa-bullhorn" btn-type="warning" style="q-btn--dense"/></widgets></section>
-            <section name="gate_website_5" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('website'))"><widgets><link url="goWebsite" text="Website" icon="fa fa-globe" btn-type="danger" style="q-btn--dense"/></widgets></section>
-        </container>
         <subscreens-active/>
     </widgets>
 </screen>

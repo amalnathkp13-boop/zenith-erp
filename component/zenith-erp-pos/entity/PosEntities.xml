@@ -719,6 +719,7 @@
     <!-- ========== POS Sales Mode (Retail/Wholesale) ========== -->
     <entity entity-name="PosSalesMode" package="zenith.erp.pos" short-alias="PosSalesModes">
         <field name="salesModeId" type="id" is-pk="true"/>
+        <field name="organizationPartyId" type="id"><description>Null only for seeded or legacy shared modes. Newly created modes belong to one organization.</description></field>
         <field name="modeName" type="text-medium"/>
         <field name="modeCode" type="text-short"/>
         <field name="priceSource" type="text-short"/>

@@ -1885,6 +1885,12 @@
             <if condition="!salesModeId"><return/></if>
             <entity-find-one entity-name="zenith.erp.pos.PosSalesMode" value-field="mode">
                 <field-map field-name="salesModeId"/></entity-find-one>
+            <if condition="!mode || mode.isActive != 'Y' || (mode.organizationPartyId &amp;&amp; mode.organizationPartyId != product?.ownerPartyId)">
+                <set field="isFixed" from="true"/>
+                <set field="blocked" from="true"/>
+                <set field="blockReason" from="'This sales mode is not available for this product.'"/>
+                <return/>
+            </if>
             <set field="ps" from="mode?.priceSource ?: 'PpsMrp'"/>
             <if condition="ps == 'PpsFixedProduct'">
                 <set field="isFixed" from="true"/>
@@ -1923,6 +1929,8 @@
             <if condition="!product"><return error="true" message="Unknown product ${productId}"/></if>
             <entity-find-one entity-name="zenith.erp.pos.PosSalesMode" value-field="mode">
                 <field-map field-name="salesModeId"/></entity-find-one>
+            <if condition="!mode || mode.isActive != 'Y' || (mode.organizationPartyId &amp;&amp; mode.organizationPartyId != product.ownerPartyId)">
+                <return error="true" message="That sales mode is not available for this product."/></if>
             <set field="ps" from="mode?.priceSource ?: 'PpsMrp'"/>
             <set field="hasPrice" from="price != null &amp;&amp; (price as BigDecimal).compareTo(BigDecimal.ZERO) &gt; 0"/>
             <set field="_thr" from="(thresholdQty != null &amp;&amp; (thresholdQty as BigDecimal).compareTo(BigDecimal.ZERO) &gt; 0) ? (thresholdQty as BigDecimal) : null"/>

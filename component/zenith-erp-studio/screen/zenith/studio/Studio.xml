@@ -13,10 +13,6 @@
     <transition name="goIntegrations"><default-response url="../integrations/PortalConfig"/></transition>
 
     <widgets>
-        <container style="row items-center justify-end q-px-md q-pt-md q-gutter-sm">
-            <link url="goSettings" text="Settings" icon="fa fa-cog" btn-type="primary" style="q-btn--dense"/>
-            <section name="gate_integrations_1" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('integrations'))"><widgets><link url="goIntegrations" text="Integrations" icon="fa fa-plug" btn-type="info" style="q-btn--dense"/></widgets></section>
-        </container>
         <subscreens-active/>
     </widgets>
 </screen>

@@ -3854,6 +3854,10 @@ gridNextOffset = gridOffset + gridProducts.size()
 
 
                 def allModes = ec.entity.find("zenith.erp.pos.PosSalesMode").condition("isActive", "Y").orderBy("isDefault,modeName").list()
+                    .findAll { !it.organizationPartyId || it.organizationPartyId == posOrg }
+                def assignedModeIds = terminal?.terminalId ? (ec.entity.find("zenith.erp.pos.PosTerminalSalesMode")
+                    .condition("terminalId", terminal.terminalId).condition("isActive", "Y").list()*.salesModeId as Set) : ([] as Set)
+                if (assignedModeIds) allModes = allModes.findAll { it.isDefault == 'Y' || assignedModeIds.contains(it.salesModeId) }
 
 
 
@@ -4417,7 +4421,7 @@ gridNextOffset = gridOffset + gridProducts.size()
                           </div>
                           </#if>
                         ]]></text></render-mode>
-                        <render-mode><text type="html,qvt" template="true"><![CDATA[<img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="try{if(location.pathname.indexOf('/qapps/')===0){location.replace(location.href.replace('/qapps/','/apps/'));}}catch(e){}"/><div style="text-align:center;margin-top:18px"><button id="pos-history-btn-ns" type="button" onclick="window.posOpenHistory&amp;&amp;window.posOpenHistory()" style="padding:10px 24px;border-radius:8px;font-size:14px;font-weight:bold;cursor:pointer;background:#7C3AED;color:#fff;border:1px solid #A78BFA">&#128196; View Bill History<span style="margin-left:7px;padding:1px 6px;border:1px solid rgba(255,255,255,0.7);border-radius:4px;font-size:11px;font-weight:700;opacity:0.9">F9</span></button></div><script src="/zenithstatic/js/pos-terminal.js?v=157"></script>]]></text></render-mode>
+                        <render-mode><text type="html,qvt" template="true"><![CDATA[<img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="try{if(location.pathname.indexOf('/qapps/')===0){location.replace(location.href.replace('/qapps/','/apps/'));}}catch(e){}"/><div style="text-align:center;margin-top:18px"><button id="pos-history-btn-ns" type="button" onclick="window.posOpenHistory&amp;&amp;window.posOpenHistory()" style="padding:10px 24px;border-radius:8px;font-size:14px;font-weight:bold;cursor:pointer;background:#7C3AED;color:#fff;border:1px solid #A78BFA">&#128196; View Bill History<span style="margin-left:7px;padding:1px 6px;border:1px solid rgba(255,255,255,0.7);border-radius:4px;font-size:11px;font-weight:700;opacity:0.9">F9</span></button></div><script src="/zenithstatic/js/pos-terminal.js?v=158"></script>]]></text></render-mode>
 
 
 
@@ -5614,7 +5618,7 @@ body.Terminal:not(.pos-mode-normal) .pos-product-grid button div[style*="#e53935
     <span class="nb-meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg><span>${dispDate!''}</span></span>
     <span class="nb-meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><span id="nb-clock">${dispTime!''}</span></span>
     <span class="nb-meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></svg><span>#${(terminal.terminalId)!(sessionId!'')}</span></span>
-    <span class="nb-billno"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/></svg><span class="nb-billno__lbl">Bill No.</span><#if (txn.transactionNumber)?? && txn.transactionNumber?has_content><span id="pos-bill-badge" class="nb-billno__val">${txn.transactionNumber}</span><#else><span id="pos-bill-badge" class="nb-billno__val nb-billno__new" title="Bill number is assigned automatically when you take payment">New</span></#if></span>
+    <span class="nb-billno"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/></svg><span class="nb-billno__lbl">Bill No.</span><#if (txn.transactionNumber)?? && txn.transactionNumber?has_content><span id="pos-bill-badge" class="nb-billno__val">${txn.transactionNumber}</span><#else><span id="pos-bill-badge" class="nb-billno__val nb-billno__new" title="Bill number is assigned when payment completes">Pending</span></#if></span>
 
     <span class="nb-hspace"></span>
 
@@ -6960,7 +6964,7 @@ body.Terminal:not(.pos-mode-normal) .pos-product-grid button div[style*="#e53935
 <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
 
 
-<script src="/zenithstatic/js/pos-terminal.js?v=157"></script>
+<script src="/zenithstatic/js/pos-terminal.js?v=158"></script>
 
 
 
@@ -7990,7 +7994,7 @@ window.numpadQty=function() { /* qty override for next add */ };
 
 
 
-        if(bn){ if(d.txnNum){ bn.textContent='BILL- '+d.txnNum; bn.style.background='#e65100'; } else { bn.innerHTML='&#128722; NEW SALE'; bn.style.background='#2e7d32'; } }
+        if(bn){ bn.textContent=d.txnNum||'Pending'; bn.title=d.txnNum?'Issued bill number':'Bill number is assigned when payment completes'; bn.classList.toggle('nb-billno__new',!d.txnNum); }
 
 
 

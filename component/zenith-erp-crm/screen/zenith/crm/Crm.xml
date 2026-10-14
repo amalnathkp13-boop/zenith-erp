@@ -24,14 +24,6 @@
 
     <widgets>
         <container style="zcrm-page">
-        <container style="row items-center justify-end q-px-md q-pt-md q-gutter-sm zcrm-cross-links">
-            <section name="gate_sales_1" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('sales'))"><widgets><link url="goSales" text="Sales" icon="fa fa-line-chart" btn-type="primary" style="q-btn--dense"/></widgets></section>
-            <section name="gate_contacts_2" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('contacts'))"><widgets><link url="goContacts" text="Contacts" icon="fa fa-address-book" btn-type="info" style="q-btn--dense"/></widgets></section>
-            <section name="gate_marketing_3" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('marketing'))"><widgets><link url="goMarketing" text="Marketing" icon="fa fa-bullhorn" btn-type="warning" style="q-btn--dense"/></widgets></section>
-            <section name="gate_helpdesk_4" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('helpdesk'))"><widgets><link url="goHelpdesk" text="Helpdesk" icon="fa fa-life-ring" btn-type="success" style="q-btn--dense"/></widgets></section>
-            <section name="gate_ecommerce_5" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('ecommerce'))"><widgets><link url="goEcommerce" text="eCommerce" icon="fa fa-globe" btn-type="danger" style="q-btn--dense"/></widgets></section>
-            <section name="gate_events_6" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('events'))"><widgets><link url="goEvents" text="Events" icon="fa fa-calendar" style="q-btn--dense"/></widgets></section>
-        </container>
         <subscreens-active/>
         </container>
     </widgets>

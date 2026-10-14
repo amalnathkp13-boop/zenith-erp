@@ -33,18 +33,17 @@ body:has(.pos-terminals-reference) #pos-module-nav { display: none !important; }
 .pos-terminals-reference .z-statdesc { color: #747e9f; font-size: 11px; }
 .pos-terminals-reference .z-termtable { border: 1px solid #e8e7f2; border-radius: 12px; box-shadow: 0 2px 10px #171b3d0c !important; padding: 0 !important; overflow-x: auto; background: #fff; }
 .pos-terminals-reference .z-termtable .table-scroll-wrapper { border-radius: 12px; }
-.pos-terminals-reference .z-termtable :is(table, .q-table) { width: 100% !important; min-width: 1200px !important; table-layout: fixed; border-collapse: collapse; }
+.pos-terminals-reference .z-termtable :is(table, .q-table) { width: 100% !important; min-width: 1040px !important; table-layout: fixed; border-collapse: collapse; }
 .pos-terminals-reference .z-termtable :is(th, .th) { height: 58px; padding: 12px 14px !important; background: #faf9ff; color: #313565; font-size: 12px; font-weight: 700; border-bottom: 1px solid #e8e7f2; text-align: left; }
-.pos-terminals-reference .z-termtable :is(td, .td) { height: 112px; padding: 15px 14px !important; vertical-align: middle; border-bottom: 1px solid #e9eaf0; color: #20264b; font-size: 12px; overflow: visible; }
+.pos-terminals-reference .z-termtable :is(td, .td) { height: 76px; padding: 12px 14px !important; vertical-align: middle; border-bottom: 1px solid #e9eaf0; color: #20264b; font-size: 12px; overflow: visible; }
 .pos-terminals-reference .z-termtable :is(tr, .tr):last-child :is(td, .td) { border-bottom: 0; }
-.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(1) { width: 17%; }
-.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(2) { width: 15%; }
-.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(3) { width: 18%; }
-.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(4) { width: 12%; }
-.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(5) { width: 12%; }
-.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(6) { width: 12%; }
-.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(7) { width: 7%; }
-.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(8) { width: 7%; }
+.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(1) { width: 18%; }
+.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(2) { width: 18%; }
+.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(3) { width: 21%; }
+.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(4) { width: 10%; }
+.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(5) { width: 14%; }
+.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(6) { width: 10%; }
+.pos-terminals-reference .z-termtable :is(th,td,.th,.td):nth-child(7) { width: 9%; }
 .pos-terminals-reference .z-termtable :is(td,.td):first-child { font-weight: 700; white-space: normal; }
 .pos-terminals-reference .z-termtable :is(td,.td):first-child .z-rownum { float: left; margin-right: 10px; margin-top: 1px; }
 .pos-terminals-reference .z-termtable .z-termsub { margin-left: 35px; color: #9ba2b8; font-size: 11px; font-weight: 400; }
@@ -54,22 +53,28 @@ body:has(.pos-terminals-reference) #pos-module-nav { display: none !important; }
 .pos-terminals-reference .z-termtable .select2-selection--single { height: 43px !important; }
 .pos-terminals-reference .z-termtable .select2-selection__rendered { line-height: 41px !important; }
 .pos-terminals-reference .z-termtable .q-field__control { height: 43px !important; min-height: 43px !important; }
+.pos-terminals-reference .z-termtable .q-field__control { border: 0 !important; outline: 1px solid #e0e3ed !important; outline-offset: 0 !important; box-sizing: border-box; }
+.pos-terminals-reference .z-termtable .q-field__control::before,
+.pos-terminals-reference .z-termtable .q-field__control::after { display: none !important; }
+.pos-terminals-reference .z-termtable .q-field:focus-within .q-field__control { outline-color: #7b3ff2 !important; box-shadow: 0 0 0 2px #7b3ff233; }
 .pos-terminals-reference .z-termtable .q-field__native { min-height: 41px !important; padding: 0 8px !important; }
+.pos-terminals-reference .z-termtable :is(td,.td):nth-child(3) .q-field__native { min-width: 0; max-height: 41px; flex-wrap: nowrap !important; overflow: hidden; white-space: nowrap !important; }
+.pos-terminals-reference .z-termtable :is(td,.td):nth-child(3) .q-field__native > * { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap !important; }
 .pos-terminals-reference .z-termtable .q-field__control-container { min-width: 0; }
 .pos-terminals-reference .z-termtable :is(.q-field__messages,.q-field__bottom) { display: none !important; }
-/* The shared horizontal-form rule leaves only a sliver of each edit control inside table cells. */
-body.zq-nav .pos-terminals-reference .z-termtable form.q-form .q-field:has(.q-field__label) { padding: 19px 0 0 !important; position: relative; }
-body.zq-nav .pos-terminals-reference .z-termtable form.q-form .q-field:has(.q-field__label) .q-field__label {
-  position: absolute !important; left: 0 !important; right: auto !important; top: 0 !important; bottom: auto !important;
-  width: auto !important; max-width: 100% !important; height: 18px !important; display: block !important;
-  transform: none !important; text-align: left !important; font-size: 11px !important; line-height: 18px !important;
-  color: #485485 !important; white-space: nowrap !important; overflow: visible !important;
+/* Column headers name each edit control. Cancel the shared horizontal-form label offset inside table cells;
+   keep field labels available to assistive technology without painting them over input values. */
+body.zq-nav .pos-terminals-reference .z-termtable form.q-form .q-field:has(.q-field__label) { padding: 0 !important; }
+body.zq-nav .pos-terminals-reference .z-termtable form.q-form .q-field__label {
+  position: absolute !important; width: 1px !important; height: 1px !important;
+  overflow: hidden !important; clip-path: inset(50%) !important; white-space: nowrap !important;
+  pointer-events: none !important;
 }
 #content .pos-terminals-reference .z-termtable .form-group { margin: 0 !important; }
 #content .pos-terminals-reference .z-termtable .form-group > .control-label { display: block; float: none; width: 100%; text-align: left; padding: 0 0 5px; color: #485485; font-size: 11px; line-height: 18px; }
 #content .pos-terminals-reference .z-termtable .form-group > [class*="col-"] { display: block; float: none; width: 100%; padding: 0; }
 .pos-terminals-reference .z-termtable :is(td,.td):last-child :is(button,.q-btn,.btn) { padding: 5px 8px !important; font-size: 11px !important; min-width: 0; }
-.pos-terminals-reference .z-termtable :is(td,.td):nth-child(7) :is(.q-field,select) { min-width: 64px !important; }
+.pos-terminals-reference .z-termtable :is(td,.td):nth-child(6) :is(.q-field,select) { min-width: 64px !important; }
 @media (max-width: 1150px) {
   .pos-terminals-reference .z-statrow { grid-template-columns: repeat(2,minmax(0,1fr)); }
 }

@@ -10,11 +10,6 @@
     <transition name="goTimeOff"><default-response url="../timeoff/AllLeaves"/></transition>
 
     <widgets>
-        <container style="row items-center justify-end q-px-md q-pt-md q-gutter-sm">
-            <section name="gate_hr_1" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('hr'))"><widgets><link url="goHr" text="HR" icon="fa fa-users" btn-type="primary" style="q-btn--dense"/></widgets></section>
-            <section name="gate_payroll_2" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('payroll'))"><widgets><link url="goPayroll" text="Payroll" icon="fa fa-money" btn-type="info" style="q-btn--dense"/></widgets></section>
-            <section name="gate_timeoff_3" condition="saasHasAllAccess == true || isSaasTenant != true || (saasAllowedModules != null &amp;&amp; saasAllowedModules.contains('timeoff'))"><widgets><link url="goTimeOff" text="Time Off" icon="fa fa-plane" btn-type="warning" style="q-btn--dense"/></widgets></section>
-        </container>
         <subscreens-active/>
     </widgets>
 </screen>

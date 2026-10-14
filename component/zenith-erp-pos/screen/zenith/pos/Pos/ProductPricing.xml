@@ -8,6 +8,7 @@
     <parameter name="pageIndex"/>
     <parameter name="pricingStatus"/>
     <parameter name="gstFilter"/>
+    <parameter name="extraModeId"/>
 
     <!-- Save one product's Retail / Wholesale / Custom prices (AJAX, returns JSON). -->
     <transition name="savePrices" begin-transaction="true">
@@ -20,14 +21,25 @@
                     // The MANTLE_ACTIVE_ORG filter does NOT apply in a transition, so verify ownership explicitly
                     // (super-admin exempt). Prevents cross-tenant price/MRP tampering via a forged productId.
                     def _ppAo = ec.user.getPreference('ACTIVE_ORGANIZATION')
+                    def _ppOwn = ec.entity.find("mantle.product.Product").condition("productId", p.productId).disableAuthz().one()?.ownerPartyId
+                    if (!_ppOwn) { ec.web.sendJsonResponse([success:false, error:'Product not found.']); return }
                     if (!ec.user.isInGroup('ADMIN')) {
-                        def _ppOwn = ec.entity.find("mantle.product.Product").condition("productId", p.productId).disableAuthz().one()?.ownerPartyId
                         if (!_ppAo || _ppAo == '_NA_' || _ppOwn != _ppAo) { ec.web.sendJsonResponse([success:false, error:'You do not have access to this product.']); return }
+                    }
+                    def extraId = (p.extraModeId ?: 'EMPLOYEE').toString()
+                    def extraMode = ec.entity.find('zenith.erp.pos.PosSalesMode').condition('salesModeId',extraId).one()
+                    if (!extraMode || extraMode.isActive != 'Y' || extraMode.priceSource != 'PpsFixedProduct' || extraId == 'WHOLESALE' || (extraMode.organizationPartyId && extraMode.organizationPartyId != _ppOwn)) {
+                        ec.web.sendJsonResponse([success:false, error:'Choose an available fixed-price sales mode.']); return
                     }
                     // ZE-INV-001 f/u: reject negative prices with a clear message. (A negative would otherwise be
                     // silently dropped -> set#PosModePrice treats price<=0 as "clear the mode".) Blank/0 = clear.
                     def parseBd = { v -> if (v == null || v.toString().trim() == '') return null; try { return v.toString().trim() as BigDecimal } catch (ex) { return null } }
-                    def rtBd = parseBd(p.retailPrice); def wsBd = parseBd(p.wholesalePrice); def emBd = parseBd(p.employeePrice)
+                    def extraRaw = p.containsKey('extraPrice') ? p.extraPrice : p.employeePrice
+                    def rtBd = parseBd(p.retailPrice); def wsBd = parseBd(p.wholesalePrice); def emBd = parseBd(extraRaw); def thBd = parseBd(p.wholesaleThreshold)
+                    if ([p.retailPrice,p.wholesalePrice,extraRaw,p.wholesaleThreshold].any { it != null && it.toString().trim() && parseBd(it) == null }) {
+                        ec.web.sendJsonResponse([success:false, error:'Enter a valid numeric price.']); return
+                    }
+                    if (thBd != null && (thBd < 0G || thBd.stripTrailingZeros().scale() > 0)) { ec.web.sendJsonResponse([success:false, error:'Auto-wholesale quantity must be a non-negative whole number.']); return }
                     if ((rtBd != null && rtBd < 0G) || (wsBd != null && wsBd < 0G) || (emBd != null && emBd < 0G)) {
                         ec.web.sendJsonResponse([success:false, error:"Prices can't be negative — enter a positive amount (or leave blank to clear)."]); return
                     }
@@ -40,10 +52,9 @@
                     ec.service.sync().name("zenith.pos.PosServices.set#PosModePrice")
                         .parameters([productId:p.productId, salesModeId:'WHOLESALE',
                                      price:(p.wholesalePrice != null && p.wholesalePrice.toString().trim() != '' ? (p.wholesalePrice as BigDecimal) : null),
-                                     thresholdQty:(p.wholesaleThreshold != null && p.wholesaleThreshold.toString().trim() != '' ? (p.wholesaleThreshold as BigDecimal) : null)]).call()
+                                     thresholdQty:thBd]).call()
                     ec.service.sync().name("zenith.pos.PosServices.set#PosModePrice")
-                        .parameters([productId:p.productId, salesModeId:'EMPLOYEE',
-                                     price:(p.employeePrice != null && p.employeePrice.toString().trim() != '' ? (p.employeePrice as BigDecimal) : null)]).call()
+                        .parameters([productId:p.productId, salesModeId:extraId, price:emBd]).call()
                     if (ec.message.hasError()) { def em = ec.message.errorsString; ec.message.clearErrors(); ec.web.sendJsonResponse([success:false, error:em]); return }
                     // ZE-INV-001 f/u: soft warning (NOT a block — it can be legitimate). Wholesale/Custom are
                     // normally <= retail; if either is higher it's usually a typo, so save but flag whichever is.
@@ -54,7 +65,7 @@
                     if (effRetail != null && effRetail > 0G) {
                         def _hi = []
                         if (wsBd != null && wsBd > 0G && wsBd > effRetail) _hi.add("Wholesale (₹" + wsBd.stripTrailingZeros().toPlainString() + ")")
-                        if (emBd != null && emBd > 0G && emBd > effRetail) _hi.add("Custom (₹" + emBd.stripTrailingZeros().toPlainString() + ")")
+                        if (emBd != null && emBd > 0G && emBd > effRetail) _hi.add((extraMode.modeName ?: 'Custom') + " (₹" + emBd.stripTrailingZeros().toPlainString() + ")")
                         if (_hi) warn = "Saved — but " + _hi.join(" and ") + (_hi.size() > 1 ? " are" : " is") + " higher than Retail (₹" + effRetail.stripTrailingZeros().toPlainString() + "). Wholesale/Custom are usually lower than Retail — please double-check."
                     }
                     ec.web.sendJsonResponse([success:true, warning:warn])
@@ -71,6 +82,9 @@
                 def p = ec.web.parameters
                 def _searchTerm = p.searchTerm; def _catId = p.catId; def _pricingStatus = p.pricingStatus; def _gstFilter = p.gstFilter
                 def posOrg = ec.user.getPreference('ACTIVE_ORGANIZATION')
+                def extraId = (p.extraModeId ?: 'EMPLOYEE').toString()
+                def extraMode = ec.entity.find('zenith.erp.pos.PosSalesMode').condition('salesModeId',extraId).one()
+                if (!extraMode || extraMode.priceSource != 'PpsFixedProduct' || extraMode.isActive != 'Y' || extraId == 'WHOLESALE' || (extraMode.organizationPartyId && extraMode.organizationPartyId != posOrg)) { extraId = 'EMPLOYEE'; extraMode = ec.entity.find('zenith.erp.pos.PosSalesMode').condition('salesModeId',extraId).one() }
                 def catPIds = null
                 if (_catId) { catPIds = [] as Set; ec.entity.find("mantle.product.category.ProductCategoryMember").condition("productCategoryId", _catId).list().each { catPIds.add(it.productId) } }
                 def slab = [:]; try { ec.entity.find("zenith.erp.india.IndiaGstSlab").list().each { slab[it.gstSlabId] = it.gstRate } } catch (Exception ig) {}
@@ -89,13 +103,13 @@
                 def ids = fl.collect { it.productId }
                 def wM = [:]; def eM = [:]; def wT = [:]
                 if (ids) { ec.entity.find("zenith.erp.pos.PosProductModePrice").condition("productId", "in", ids).list().each { mp ->
-                    if (mp.salesModeId == 'WHOLESALE') { wM[mp.productId] = mp.price; wT[mp.productId] = mp.thresholdQty } else if (mp.salesModeId == 'EMPLOYEE') eM[mp.productId] = mp.price } }
+                    if (mp.salesModeId == 'WHOLESALE') { wM[mp.productId] = mp.price; wT[mp.productId] = mp.thresholdQty } else if (mp.salesModeId == extraId) eM[mp.productId] = mp.price } }
                 def esc = { v -> if (v == null) return ""; String s = v.toString().trim(); (s.contains(",")||s.contains("\"")||s.contains("\n")) ? "\"" + s.replace("\"","\"\"") + "\"" : s }
                 def bd = { v -> v == null ? "" : (v as BigDecimal).stripTrailingZeros().toPlainString() }
                 StringBuilder csv = new StringBuilder()
                 csv.append("ZetaERP - Product Pricing (all prices are BEFORE GST)\n")
                 csv.append("Generated: ${ec.l10n.format(ec.user.nowTimestamp, 'dd MMM yyyy HH:mm')}\n\n")
-                csv.append("#,Product Name,SKU,GST %,Retail (Before GST),Wholesale (Before GST),Auto-WS Qty,Custom (Before GST)\n")
+                csv.append("#,Product Name,SKU,GST %,Retail (Before GST),Wholesale (Before GST),Auto-WS Qty,${esc(extraMode?.modeName ?: 'Custom')} (Before GST)\n")
                 int i = 0
                 fl.each { pr -> i++; def rt = rateSlab(pr)
                     csv.append("${i},${esc(pr.productName ?: pr.productId)},${esc(pr.pseudoId ?: '')},${rt != null ? rt.stripTrailingZeros().toPlainString()+'%' : ''},${bd(pr.mrpAmount)},${bd(wM[pr.productId])},${bd(wT[pr.productId])},${bd(eM[pr.productId])}\n") }
@@ -108,6 +122,11 @@
     <actions>
         <script><![CDATA[
             def posOrg = ec.user.getPreference('ACTIVE_ORGANIZATION')
+            extraModeChoices = ec.entity.find('zenith.erp.pos.PosSalesMode').condition('isActive','Y').condition('priceSource','PpsFixedProduct').orderBy('modeName').list()
+                .findAll { it.salesModeId != 'WHOLESALE' && (!it.organizationPartyId || it.organizationPartyId == posOrg) }
+            selectedExtraMode = extraModeChoices.find { it.salesModeId == extraModeId } ?: extraModeChoices.find { it.salesModeId == 'EMPLOYEE' } ?: (extraModeChoices ? extraModeChoices[0] : null)
+            selectedExtraModeId = selectedExtraMode?.salesModeId ?: ''
+            selectedExtraModeName = selectedExtraMode?.modeName ?: 'Additional mode'
             // Root-relative app base ("/apps" | "/qapps" | "/vapps") for the cross-module "Add Product" link.
             def _uri = (ec.web?.request?.requestURI ?: '')
             def _zi = _uri.indexOf('/zenith/')
@@ -162,7 +181,7 @@
             if (pageIds) {
                 ec.entity.find("zenith.erp.pos.PosProductModePrice").condition("productId", "in", pageIds).list().each { mp ->
                     if (mp.salesModeId == 'WHOLESALE') { wMap[mp.productId] = mp.price; wThr[mp.productId] = mp.thresholdQty }
-                    else if (mp.salesModeId == 'EMPLOYEE') eMap[mp.productId] = mp.price
+                    else if (mp.salesModeId == selectedExtraModeId) eMap[mp.productId] = mp.price
                 }
             }
             // Each product's GST rate (prices are GST-EXCLUSIVE -> the customer pays price + this %).
@@ -203,7 +222,7 @@
                 <span class="z-icobadge lg primary"><span class="material-icons">sell</span></span>
                 <div>
                   <div style="font-size:20px;font-weight:800;color:#111827;line-height:1.3">Product Pricing</div>
-                  <div style="font-size:13px;color:#6B7280;max-width:860px;line-height:1.5">Set and manage product prices for Retail, Wholesale and Custom. All prices are entered <b>BEFORE GST</b>; the customer pays the product price plus GST.</div>
+                  <div style="font-size:13px;color:#6B7280;max-width:860px;line-height:1.5">Set and manage product prices for Retail, Wholesale and your selected additional mode. All prices are entered <b>BEFORE GST</b>; the customer pays the product price plus GST when that mode is tax-exclusive.</div>
                 </div>
               </div>
               <a href="#ppHelp" onclick="var d=document.getElementById('ppHelp');if(d){d.open=true;}" style="display:inline-flex;align-items:center;gap:6px;background:#FEF3C7;color:#B45309;border:1px solid #FDE68A;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;flex:0 0 auto"><span class="material-icons" style="font-size:16px">lightbulb</span>How it works?</a>
@@ -219,24 +238,24 @@
             <details id="ppHelp" style="background:#EEF2FF;border:1px solid #C7D2FE;border-left:5px solid #6366F1;border-radius:10px;padding:10px 16px;margin:16px 0 0">
                 <summary style="cursor:pointer;font-weight:700;font-size:14px;color:#3730A3;outline:none">&#128214; How pricing works <span style="font-weight:500;color:#6B7280;font-size:12px">(click to hide / show)</span></summary>
                 <div style="font-size:13.5px;color:#202124;line-height:1.85;margin-top:10px">
-                    <div style="margin-bottom:8px">Each product can have <b>three prices</b>. While billing, the cashier picks a mode and that price is charged automatically.</div>
+                    <div style="margin-bottom:8px">Each product has a Retail price and can have fixed prices for other sales modes. Select the additional mode above to view or edit its product price.</div>
                     <table style="border-collapse:collapse;margin:4px 0 10px 0;font-size:13px">
                         <tr><td style="padding:3px 12px 3px 0;font-weight:700;color:#7C3AED;white-space:nowrap;vertical-align:top">Retail</td><td style="padding:3px 0">The normal walk-in base price. <b>You type the price before GST.</b></td></tr>
                         <tr><td style="padding:3px 12px 3px 0;font-weight:700;color:#7C3AED;white-space:nowrap;vertical-align:top">Wholesale</td><td style="padding:3px 0">A lower base price for bulk / shop buyers. <b>You type the exact price (before GST)</b> &mdash; there is no automatic discount.</td></tr>
-                        <tr><td style="padding:3px 12px 3px 0;font-weight:700;color:#7C3AED;white-space:nowrap;vertical-align:top">Custom</td><td style="padding:3px 0">A custom base price. Same idea &mdash; <b>type the exact price (before GST)</b> you want to charge in Custom mode.</td></tr>
+                        <tr><td style="padding:3px 12px 3px 0;font-weight:700;color:#7C3AED;white-space:nowrap;vertical-align:top">${selectedExtraModeName?html}</td><td style="padding:3px 0">The selected additional mode uses the exact per-product price entered here.</td></tr>
                     </table>
                     <div style="background:#ECE8FB;border:1px solid #A78BFA;border-radius:7px;padding:8px 11px;margin-bottom:9px;color:#463D7A">
                         &#129534; <b>All prices here are GST-exclusive (before tax).</b> GST is added on top at billing &mdash; the <b>GST</b> column shows each product's rate, and the grey <b>&asymp; &#8377;&hellip; incl.</b> line under each box previews what the customer actually pays. Example: a Mug priced &#8377;100 with 18% GST &rarr; the customer pays <b>&#8377;118</b>.
                     </div>
                     <div style="background:#fff3cd;border:1px solid #ffe082;border-radius:7px;padding:8px 11px;margin-bottom:9px;color:#6d4c00">
-                        &#9888;&#65039; <b>Leave Wholesale or Custom blank to block it.</b> A product with no Wholesale price simply can't be sold in Wholesale mode until you set one. Retail always works.
+                        &#9888;&#65039; <b>Leave a fixed-mode price blank to block that product in the mode.</b> A product with no Wholesale price cannot be sold in Wholesale mode until you set one. Retail always works.
                     </div>
                     <div style="background:#e6f4ea;border:1px solid #a5d6a7;border-radius:7px;padding:8px 11px;margin-bottom:9px;color:#1b5e20">
                         &#128200; <b>Auto-WS at qty</b> &mdash; type a quantity (e.g. 10) to make a normal Retail line <b>switch itself to the Wholesale price automatically</b> once the cashier rings that many of the item. Below the quantity it stays Retail. Needs a Wholesale price set. Leave blank to turn it off.
                     </div>
                     <div style="font-weight:700;color:#174ea6;margin-bottom:3px">How to set a price</div>
-                    <div style="margin-bottom:6px">1&nbsp; Find the product with the search box below &nbsp;&rarr;&nbsp; 2&nbsp; Type the <b>before-GST</b> price into the Retail, Wholesale or Custom box &nbsp;&rarr;&nbsp; 3&nbsp; Click that row's green <b>Save</b>.</div>
-                    <div style="font-size:12.5px;color:#5f6368">Example: a Coffee Mug at 18% GST &rarr; you type Retail &#8377;100, Wholesale &#8377;80, Custom &#8377;70. Walk-in customers pay &#8377;100 + 18% = &#8377;118.</div>
+                    <div style="margin-bottom:6px">1&nbsp; Select the additional mode and find the product &nbsp;&rarr;&nbsp; 2&nbsp; Type its <b>before-GST</b> price &nbsp;&rarr;&nbsp; 3&nbsp; Click that row's green <b>Save</b>.</div>
+                    <div style="font-size:12.5px;color:#5f6368">Example: a Coffee Mug at 18% GST and a Retail price of &#8377;100 costs &#8377;118 when GST is added.</div>
                 </div>
             </details>
 
@@ -257,6 +276,11 @@
                     <option value="with" <#if (pricingStatus!'')=='with'>selected</#if>>With pricing</option>
                     <option value="without" <#if (pricingStatus!'')=='without'>selected</#if>>Without pricing</option>
                 </select>
+                <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#6B7280">Additional mode
+                  <select name="extraModeId" onchange="this.form.submit()" aria-label="Additional sales mode price column" style="padding:9px 12px;border:1px solid #E5E7EB;border-radius:8px;font-size:13px;color:#374151;background:#fff">
+                    <#list (extraModeChoices![]) as mode><option value="${mode.salesModeId?html}" <#if (selectedExtraModeId!'') == mode.salesModeId>selected</#if>>${mode.modeName?html}</option></#list>
+                  </select>
+                </label>
                 <button type="button" onclick="var r=document.getElementById('ppGstRow');if(r)r.style.display=(r.style.display==='none'?'flex':'none');" style="display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border:1px solid #E5E7EB;border-radius:8px;background:#fff;color:#374151;font-size:13px;font-weight:500;cursor:pointer"><span class="material-icons" style="font-size:16px">filter_list</span>More Filters</button>
                 <input type="hidden" name="pageIndex" value="0"/>
                 <button type="submit" style="display:inline-flex;align-items:center;gap:6px;padding:9px 18px;background:#7C3AED;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer"><span class="material-icons" style="font-size:16px">search</span>Search</button>
@@ -270,7 +294,7 @@
                     </select>
                 </div>
               </form>
-              <a href="${appBase!''}/zenith/pos/ProductPricing/exportCsv?searchTerm=${(searchTerm!'')?url('UTF-8')}&catId=${(catId!'')?url('UTF-8')}&pricingStatus=${(pricingStatus!'')?url('UTF-8')}&gstFilter=${(gstFilter!'')?url('UTF-8')}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border:1px solid #E5E7EB;border-radius:8px;background:#fff;color:#374151;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap"><span class="material-icons" style="font-size:16px">download</span>Export</a>
+              <a href="${appBase!''}/zenith/pos/ProductPricing/exportCsv?searchTerm=${(searchTerm!'')?url('UTF-8')}&catId=${(catId!'')?url('UTF-8')}&pricingStatus=${(pricingStatus!'')?url('UTF-8')}&gstFilter=${(gstFilter!'')?url('UTF-8')}&extraModeId=${(selectedExtraModeId!'')?url('UTF-8')}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border:1px solid #E5E7EB;border-radius:8px;background:#fff;color:#374151;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap"><span class="material-icons" style="font-size:16px">download</span>Export</a>
               <a href="${appBase!''}/zenith/inventory/FindProduct" style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;background:#7C3AED;color:#fff;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap"><span class="material-icons" style="font-size:16px">add</span>Add Product</a>
             </div>
 
@@ -285,7 +309,7 @@
                         <th style="padding:11px 10px;font-weight:600;width:132px;text-align:right">Retail Price <span style="font-weight:400;color:#9CA3AF">(Before GST)</span></th>
                         <th style="padding:11px 10px;font-weight:600;width:150px;text-align:right">Wholesale Price <span style="font-weight:400;color:#9CA3AF">(Before GST)</span></th>
                         <th style="padding:11px 10px;font-weight:600;width:132px;text-align:center">Auto-WS <span style="font-weight:400;color:#9CA3AF">(&rarr; WS at qty)</span></th>
-                        <th style="padding:11px 10px;font-weight:600;width:132px;text-align:right">Custom Price <span style="font-weight:400;color:#9CA3AF">(Before GST)</span></th>
+                        <th style="padding:11px 10px;font-weight:600;width:132px;text-align:right">${selectedExtraModeName?html} Price <span style="font-weight:400;color:#9CA3AF">(Before GST)</span></th>
                         <th style="padding:11px 10px;font-weight:600;width:84px;text-align:center">Status</th>
                         <th style="padding:11px 10px;font-weight:600;width:96px;text-align:center">Action</th>
                     </tr>
@@ -314,7 +338,7 @@
 
             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;font-size:13px;color:#6B7280;flex-wrap:wrap;gap:8px">
                 <span>Showing ${showFrom!0} &ndash; ${showTo!0} of ${totalDisp!'0'} products</span>
-                <#assign baseQ = "ProductPricing?searchTerm=" + (searchTerm!'')?url('UTF-8') + "&catId=" + (catId!'')?url('UTF-8')>
+                <#assign baseQ = "ProductPricing?searchTerm=" + (searchTerm!'')?url('UTF-8') + "&catId=" + (catId!'')?url('UTF-8') + "&extraModeId=" + (selectedExtraModeId!'')?url('UTF-8') + "&pricingStatus=" + (pricingStatus!'')?url('UTF-8') + "&gstFilter=" + (gstFilter!'')?url('UTF-8')>
                 <div style="display:flex;gap:8px;align-items:center">
                     <#if (curPage!0) gt 0><a href="${baseQ}&pageIndex=${(curPage!0)-1}" style="display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border:1px solid #E5E7EB;border-radius:8px;text-decoration:none;color:#374151;font-size:18px">&#8249;</a><#else><span style="display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border:1px solid #F1F1F4;border-radius:8px;color:#C4C4C4;font-size:18px">&#8249;</span></#if>
                     <span style="padding:0 6px;color:#374151;font-weight:600">Page ${(curPage!0)+1} of ${pageCount!1}</span>
@@ -345,7 +369,8 @@
                     retailPrice:(tr.querySelector('.pp-retail')||{}).value||'',
                     wholesalePrice:(tr.querySelector('.pp-wholesale')||{}).value||'',
                     wholesaleThreshold:(tr.querySelector('.pp-wsthreshold')||{}).value||'',
-                    employeePrice:(tr.querySelector('.pp-employee')||{}).value||'',
+                    extraPrice:(tr.querySelector('.pp-employee')||{}).value||'',
+                    extraModeId:'${selectedExtraModeId?js_string}',
                     moquiSessionToken:tok() });
                 fetch('ProductPricing/savePrices',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body,credentials:'same-origin'})
                     .then(function(r){return r.json();})
