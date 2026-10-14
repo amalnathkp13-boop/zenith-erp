@@ -827,7 +827,7 @@ window._posOffline = (function() {
         /* === Edit an issued bill IN the cart view ===
            Loads a completed bill's items into a cart-styled editor mounted over the .pos-cart
            panel. Editing is entirely client-side (the live open cart is never touched); SAVE diffs
-           against the original and replays the proven server `amendBill` ops (same bill number,
+           against the original and submits one atomic server `amendBill` batch (same bill number,
            tracked amendments, tax recompute, refund/collect, revised receipt). No-op for normal
            billing — nothing here runs unless a cashier opens a bill from History to edit. */
         var cartEditorEl = null, cartEditorPrevPos = '';
@@ -886,7 +886,7 @@ window._posOffline = (function() {
             ed.innerHTML =
                 '<div style="background:#7C3AED;color:#fff;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0">'
               + '<div><span style="font-size:16px;font-weight:800">&#9998; Editing Bill #'+bill.billNo+'</span>'
-              + '<div style="font-size:11px;opacity:0.9;margin-top:2px">Change qty / price, remove items, or <b>tap a product on the left</b> to add it, then Save. This updates the same bill &mdash; not a new sale.</div></div>'
+              + '<div style="font-size:11px;opacity:0.9;margin-top:2px">Change qty / price, remove items, or <b>tap a product on the left</b> to add it. You will be asked for a reason before saving the revised bill.</div></div>'
               + '<button id="ced-cancel-x" title="Cancel" style="background:rgba(255,255,255,0.18);border:none;color:#fff;font-size:22px;line-height:1;cursor:pointer;border-radius:6px;width:34px;height:34px">&times;</button></div>'
               + '<div id="ced-rows" style="flex:1;overflow-y:auto;padding:6px 10px"></div>'
               + '<div style="flex-shrink:0;border-top:1px solid #e0e0e0;background:#f0faf0;padding:8px 12px;position:relative">'
@@ -898,10 +898,20 @@ window._posOffline = (function() {
               + '</div>'
               + '<div style="flex-shrink:0;border-top:1px solid #e0e0e0;padding:10px 12px;background:#fafafa">'
               +   '<div id="ced-totals" style="font-size:13px;color:#333;margin-bottom:8px"></div>'
-              +   '<input id="ced-reason" type="text" placeholder="Reason for edit (required)…" style="width:100%;padding:10px;border:1px solid #c8e6c9;border-radius:6px;font-size:13px;box-sizing:border-box;margin-bottom:8px;outline:none"/>'
               +   '<div style="display:flex;gap:8px">'
               +     '<button id="ced-cancel" style="flex:1;padding:13px;border:2px solid #ccc;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;background:#fff;color:#555">Cancel</button>'
-              +     '<button id="ced-save" style="flex:2;padding:13px;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;background:#2e7d32;color:#fff">&#10003; Save changes</button>'
+              +     '<button id="ced-save" style="flex:2;padding:13px;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;background:#2e7d32;color:#fff">&#10003; Save &amp; print revised bill</button>'
+              +   '</div>'
+              + '</div>'
+              + '<div id="ced-reason-dialog" role="dialog" aria-modal="true" aria-labelledby="ced-reason-title" style="display:none;position:absolute;inset:0;z-index:30;background:rgba(20,16,40,.65);align-items:center;justify-content:center;padding:14px">'
+              +   '<div style="width:min(440px,100%);background:#fff;border-radius:12px;padding:20px;box-shadow:0 12px 35px rgba(0,0,0,.25)">'
+              +     '<h3 id="ced-reason-title" style="margin:0 0 8px;color:#25204d;font-size:18px">Reason for changing this bill</h3>'
+              +     '<p style="margin:0 0 12px;color:#5A5273;font-size:13px">The revised bill keeps its original number. Your reason and each price or item change are saved in the audit history.</p>'
+              +     '<label for="ced-reason" style="display:block;font-size:13px;font-weight:700;margin-bottom:5px">Reason *</label>'
+              +     '<textarea id="ced-reason" maxlength="500" rows="3" placeholder="For example, corrected item price" style="width:100%;box-sizing:border-box;border:1px solid #CBB8F0;border-radius:8px;padding:10px;font:inherit;resize:vertical"></textarea>'
+              +     '<div id="ced-reason-error" role="alert" style="min-height:19px;color:#c62828;font-size:12px;margin-top:4px"></div>'
+              +     '<div style="display:flex;gap:8px;margin-top:12px"><button id="ced-reason-cancel" type="button" style="flex:1;padding:11px;border:1px solid #ccc;border-radius:8px;background:#fff;cursor:pointer">Back</button>'
+              +     '<button id="ced-reason-confirm" type="button" style="flex:2;padding:11px;border:0;border-radius:8px;background:#2e7d32;color:#fff;font-weight:700;cursor:pointer">Confirm, save &amp; print</button></div>'
               +   '</div>'
               + '</div>';
             cartEl.appendChild(ed);
@@ -1010,10 +1020,9 @@ window._posOffline = (function() {
             ed.querySelector('#ced-cancel').addEventListener('click', doCancel);
             ed.querySelector('#ced-cancel-x').addEventListener('click', doCancel);
 
-            ed.querySelector('#ced-save').addEventListener('click', function(){
-                var reason = ed.querySelector('#ced-reason').value.trim();
-                if (!reason) { histToast('Enter a reason for the edit', '#e53935'); ed.querySelector('#ced-reason').focus(); return; }
-                // Build the ordered op list: existing-line changes/removes, then new-item adds.
+            function pendingEditOps() {
+                // Existing-line changes/removes, then new-item adds. One request saves all
+                // operations and either commits the whole revised bill or rolls it all back.
                 var ops = [];
                 work.forEach(function(w){
                     if (w.isNew || w.removed) return;
@@ -1021,40 +1030,40 @@ window._posOffline = (function() {
                     if (f2(w.price) !== f2(w.origPrice)) ops.push({type:'PRICE_CHANGE', seq:w.seq, newPrice:w.price});
                 });
                 work.forEach(function(w){ if (!w.isNew && w.removed) ops.push({type:'ITEM_REMOVED', seq:w.seq}); });
-                work.forEach(function(w){ if (w.isNew && !w.removed) ops.push({type:'ITEM_ADDED', pid:w.pid, addQty:w.qty, customPrice:w.price, defPrice:w.origPrice}); });
+                work.forEach(function(w){ if (w.isNew && !w.removed) ops.push({type:'ITEM_ADDED', productId:w.pid, addQty:w.qty, newPrice:w.price}); });
+                return ops;
+            }
+            var reasonDialog = ed.querySelector('#ced-reason-dialog');
+            var reasonInput = ed.querySelector('#ced-reason');
+            var reasonError = ed.querySelector('#ced-reason-error');
+            ed.querySelector('#ced-save').addEventListener('click', function(){
+                var ops = pendingEditOps();
                 if (!ops.length) { histToast('No changes to save', '#ff9800'); return; }
-                var saveBtn = ed.querySelector('#ced-save'); saveBtn.disabled=true; saveBtn.textContent='Saving…';
-                var lastBill = null;
-                var chain = Promise.resolve(null);
-                ops.forEach(function(op){
-                    chain = chain.then(function(){
-                        var params = {action:'amendBill', editTxId:bill.txId, editReason:reason, editType:op.type};
-                        if (op.type==='QTY_CHANGE') { params.editItemSeqId=op.seq; params.newQty=op.newQty; }
-                        else if (op.type==='PRICE_CHANGE') { params.editItemSeqId=op.seq; params.newPrice=op.newPrice; }
-                        else if (op.type==='ITEM_REMOVED') { params.editItemSeqId=op.seq; }
-                        else if (op.type==='ITEM_ADDED') { params.addProductId=op.pid; params.addQty=op.addQty; }
-                        return historyPost(params).then(function(r){
-                            if (!r || !r.success) throw new Error(r && r.error ? r.error : 'Edit failed');
-                            lastBill = r.bill;
-                            // Honor a custom price on a just-added line: the server returns its new seq directly.
-                            if (op.type==='ITEM_ADDED' && r.bill && r.bill.newSeq && Math.abs(Number(op.customPrice)-Number(op.defPrice))>0.005) {
-                                return historyPost({action:'amendBill', editTxId:bill.txId, editReason:reason, editType:'PRICE_CHANGE', editItemSeqId:r.bill.newSeq, newPrice:op.customPrice}).then(function(r2){ if(r2&&r2.success) lastBill=r2.bill; });
-                            }
-                        });
-                    });
-                });
-                chain.then(function(){
-                    histToast('✔ Bill #'+(lastBill?lastBill.billNo:bill.billNo)+' updated — printing revised bill', '#2e7d32');
-                    if (lastBill) {
-                        var rd=Number(lastBill.refundDue)||0, bd=Number(lastBill.balanceDue)||0;
-                        if (rd>0.005) setTimeout(function(){ histToast('↩ REFUND ₹'+f2(rd)+' to the customer', '#7C3AED'); }, 1200);
-                        else if (bd>0.005) setTimeout(function(){ histToast('➕ COLLECT ₹'+f2(bd)+' more from the customer', '#e65100'); }, 1200);
-                        printEditedReceipt(lastBill.txId, lastBill.billNo, (Number(lastBill.tax)>0?'Y':'N'));
-                    }
+                reasonError.textContent = '';
+                reasonDialog.style.display = 'flex';
+                reasonInput.focus();
+            });
+            ed.querySelector('#ced-reason-cancel').addEventListener('click', function(){ reasonDialog.style.display='none'; });
+            reasonInput.addEventListener('keydown', function(e){ if (e.key==='Escape') reasonDialog.style.display='none'; });
+            ed.querySelector('#ced-reason-confirm').addEventListener('click', function(){
+                var reason = reasonInput.value.trim();
+                if (!reason) { reasonError.textContent='Enter a reason before saving this bill.'; reasonInput.focus(); return; }
+                var ops = pendingEditOps();
+                if (!ops.length) { reasonDialog.style.display='none'; histToast('No changes to save', '#ff9800'); return; }
+                var confirmBtn=ed.querySelector('#ced-reason-confirm');
+                confirmBtn.disabled=true; confirmBtn.textContent='Saving…'; reasonError.textContent='';
+                historyPost({action:'amendBill', editTxId:bill.txId, editReason:reason, editOps:JSON.stringify(ops)}).then(function(r){
+                    if (!r || !r.success || !r.bill) throw new Error(r && r.error ? r.error : 'Could not save bill changes');
+                    var revised=r.bill;
+                    histToast('Bill #'+revised.billNo+' updated — printing revised bill', '#2e7d32');
+                    var rd=Number(revised.refundDue)||0, bd=Number(revised.balanceDue)||0;
+                    if (rd>0.005) setTimeout(function(){ histToast('REFUND ₹'+f2(rd)+' to the customer', '#7C3AED'); }, 1200);
+                    else if (bd>0.005) setTimeout(function(){ histToast('COLLECT ₹'+f2(bd)+' more from the customer', '#e65100'); }, 1200);
+                    printEditedReceipt(revised.txId, revised.billNo, (Number(revised.tax)>0?'Y':'N'));
                     closeCartEditor();
                 }).catch(function(err){
-                    histToast(String(err && err.message ? err.message : err), '#e53935');
-                    saveBtn.disabled=false; saveBtn.innerHTML='&#10003; Save changes';
+                    reasonError.textContent=String(err && err.message ? err.message : err);
+                    confirmBtn.disabled=false; confirmBtn.textContent='Confirm, save & print';
                 });
             });
 
@@ -1065,6 +1074,7 @@ window._posOffline = (function() {
             // product already on the bill bumps that line's qty by 1 (a tracked amendment on save).
             window.__posCartEditorAddProduct = function(pid, price, name) {
                 if (!pid) return;
+                if (reasonDialog.style.display === 'flex') return;
                 var ex = null;
                 for (var i = 0; i < work.length; i++) { if (!work[i].removed && work[i].pid === pid) { ex = work[i]; break; } }
                 if (ex) { ex.qty = Math.round((ex.qty + 1) * 1000) / 1000; }
@@ -1073,7 +1083,7 @@ window._posOffline = (function() {
                 renderRows();
                 histToast('Added ' + (name || pid) + ' to bill', '#2e7d32');
             };
-            setTimeout(function(){ var r=ed.querySelector('#ced-reason'); if(r) r.focus(); }, 50);
+            setTimeout(function(){ var r=ed.querySelector('.ced-price'); if(r) r.focus(); }, 50);
         }
         window.posOpenCartEditor = openCartEditor;
 

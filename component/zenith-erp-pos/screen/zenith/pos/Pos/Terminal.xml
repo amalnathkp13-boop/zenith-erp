@@ -2497,33 +2497,83 @@
                         return
                     } else if (action == 'amendBill') {
                         def txId = p.editTxId
-                        def reason = p.editReason ?: 'No reason provided'
-                        def editType = p.editType
-                        def itemSeqId = p.editItemSeqId
+                        def reason = (p.editReason ?: '').trim()
+                        if (!reason) { ec.web.sendJsonResponse([success:false, error:'Enter a reason before saving or printing an edited bill.']); return }
+                        if (reason.length() > 500) { ec.web.sendJsonResponse([success:false, error:'Keep the edit reason under 500 characters.']); return }
                         def txn = ec.entity.find("zenith.erp.pos.PosTransaction").condition("transactionId", txId).forUpdate(true).one()
                         if (!txn || txn.statusId != 'PtCompleted') {
                             ec.web.sendJsonResponse([success:false, error:'Transaction not found or not editable'])
                             return
                         }
-                        // Validate before writing any issued synthetic/live amendment; errors are ordinary JSON.
-                        def editedValue = null
-                        if (['QTY_CHANGE','PRICE_CHANGE','ITEM_ADDED'].contains(editType)) {
-                            try { editedValue = new BigDecimal((editType=='QTY_CHANGE' ? p.newQty : editType=='PRICE_CHANGE' ? p.newPrice : p.addQty ?: '1').toString()) }
-                            catch (Exception ignored) { ec.web.sendJsonResponse([success:false,error:'Enter a valid quantity or price.']);return }
-                            if ((editType=='PRICE_CHANGE' && editedValue < 0) || (editType!='PRICE_CHANGE' && editedValue <= 0)) { ec.web.sendJsonResponse([success:false,error:'Use a positive quantity and a non-negative price.']);return }
+                        // Validate the whole requested edit before writing. A single ajaxCart request
+                        // owns one DB transaction, so Save & Print cannot leave half a revised bill.
+                        def editOps
+                        try {
+                            editOps = p.editOps ? new groovy.json.JsonSlurper().parseText(p.editOps.toString()) :
+                                [[type:p.editType, seq:p.editItemSeqId, newQty:p.newQty, newPrice:p.newPrice,
+                                  productId:p.addProductId, addQty:p.addQty]]
+                        } catch (Exception ignored) { editOps = null }
+                        if (!(editOps instanceof List) || !editOps || editOps.size() > 50 || editOps.any { !(it instanceof Map) }) {
+                            ec.web.sendJsonResponse([success:false, error:'Choose 1 to 50 valid bill changes.']); return
                         }
-                        if (!['QTY_CHANGE','PRICE_CHANGE','ITEM_ADDED','ITEM_REMOVED'].contains(editType)) { ec.web.sendJsonResponse([success:false,error:'Choose a valid amendment.']);return }
-                        def oldGrand = (txn.grandTotal ?: 0) as BigDecimal
+                        def originalItems = ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId', txId).list()
+                        def originalSeqs = originalItems.collect { it.itemSeqId } as Set
+                        def billHasTax = originalItems.any { ((it.totalTaxAmount ?: 0) as BigDecimal) > 0 }
+                        int nextItemSeq = (originalItems.collect { it.itemSeqId as int }.max() ?: 0) as int
+                        def removedSeqs = [] as Set
+                        int addedCount = 0
+                        for (def op : editOps) {
+                            def type = op.type
+                            if (!['QTY_CHANGE','PRICE_CHANGE','ITEM_ADDED','ITEM_REMOVED'].contains(type)) {
+                                ec.web.sendJsonResponse([success:false, error:'Choose a valid amendment.']); return
+                            }
+                            if (type == 'ITEM_ADDED') {
+                                def prod = op.productId ? ec.entity.find('mantle.product.Product').condition('productId', op.productId).one() : null
+                                if (!prod || prod.ownerPartyId != txn.organizationPartyId) {
+                                    ec.web.sendJsonResponse([success:false, error:'Choose a product from this organization.']); return
+                                }
+                                addedCount++
+                            } else if (!originalSeqs.contains(op.seq) || removedSeqs.contains(op.seq)) {
+                                ec.web.sendJsonResponse([success:false, error:'An edited item is missing or was already removed. Reload the bill.']); return
+                            }
+                            if (type == 'ITEM_REMOVED') removedSeqs.add(op.seq)
+                            if (type in ['QTY_CHANGE','PRICE_CHANGE','ITEM_ADDED']) {
+                                def raw = type == 'QTY_CHANGE' ? op.newQty : type == 'PRICE_CHANGE' ? op.newPrice : (op.addQty != null ? op.addQty : '1')
+                                def amount
+                                try { amount = new BigDecimal(raw.toString()) }
+                                catch (Exception ignored) { ec.web.sendJsonResponse([success:false, error:'Enter a valid quantity or price.']); return }
+                                if ((type == 'PRICE_CHANGE' && (amount < 0 || amount.scale() > 2)) ||
+                                    (type != 'PRICE_CHANGE' && (amount <= 0 || amount.scale() > 3))) {
+                                    ec.web.sendJsonResponse([success:false, error:'Use a positive quantity (up to 3 decimals) or a non-negative price (up to 2 decimals).']); return
+                                }
+                                if (type == 'ITEM_ADDED' && op.newPrice != null && op.newPrice.toString().trim()) {
+                                    def addPrice
+                                    try { addPrice = new BigDecimal(op.newPrice.toString()) }
+                                    catch (Exception ignored) { ec.web.sendJsonResponse([success:false, error:'Enter a valid new-item price.']); return }
+                                    if (addPrice < 0 || addPrice.scale() > 2) { ec.web.sendJsonResponse([success:false, error:'New-item price must be non-negative with up to 2 decimals.']); return }
+                                }
+                            }
+                        }
+                        if (originalItems.size() - removedSeqs.size() + addedCount < 1) {
+                            ec.web.sendJsonResponse([success:false, error:'An issued bill must retain at least one item. Void it instead.']); return
+                        }
+                        for (def editOp : editOps) {
+                        def editType = editOp.type
+                        def itemSeqId = editOp.seq
+                        def editedValue = editType == 'QTY_CHANGE' ? new BigDecimal(editOp.newQty.toString()) :
+                            editType == 'PRICE_CHANGE' ? new BigDecimal(editOp.newPrice.toString()) :
+                            editType == 'ITEM_ADDED' ? new BigDecimal((editOp.addQty != null ? editOp.addQty : '1').toString()) : null
+                        def currentTxn = ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId', txId).one()
+                        def oldGrand = (currentTxn.grandTotal ?: 0) as BigDecimal
                         def invAdjProduct = null; def invAdjQty = BigDecimal.ZERO
                         def _addedSeqId = null
                         if (editType == 'QTY_CHANGE') {
                             def item = ec.entity.find("zenith.erp.pos.PosTransactionItem")
                                 .condition("transactionId", txId).condition("itemSeqId", itemSeqId).one()
-                            if (!item) { ec.web.sendJsonResponse([success:false, error:'Item not found']); return }
+                            if (!item) throw new IllegalStateException('Item not found; reload the bill.')
                             def oldQty = item.quantity as BigDecimal
                             def newQty = editedValue
                             invAdjProduct = item.productId; invAdjQty = oldQty - newQty
-                            if (newQty <= 0) { ec.web.sendJsonResponse([success:false, error:'Quantity must be > 0']); return }
                             def up = (item.unitPrice ?: 0) as BigDecimal
                             def dp = (item.discountPercent ?: 0) as BigDecimal
                             def ls = newQty * up
@@ -2555,7 +2605,7 @@
                         } else if (editType == 'PRICE_CHANGE') {
                             def item = ec.entity.find("zenith.erp.pos.PosTransactionItem")
                                 .condition("transactionId", txId).condition("itemSeqId", itemSeqId).one()
-                            if (!item) { ec.web.sendJsonResponse([success:false, error:'Item not found']); return }
+                            if (!item) throw new IllegalStateException('Item not found; reload the bill.')
                             def oldPrice = item.unitPrice as BigDecimal
                             def newPrice = editedValue
                             def q = (item.quantity ?: 1) as BigDecimal
@@ -2589,12 +2639,14 @@
                         } else if (editType == 'ITEM_REMOVED') {
                             def item = ec.entity.find("zenith.erp.pos.PosTransactionItem")
                                 .condition("transactionId", txId).condition("itemSeqId", itemSeqId).one()
-                            if (!item) { ec.web.sendJsonResponse([success:false, error:'Item not found']); return }
+                            if (!item) throw new IllegalStateException('Item not found; reload the bill.')
                             def removedName = item.productName ?: item.productId
                             def removedQty = item.quantity
                             invAdjProduct = item.productId; invAdjQty = (removedQty ?: 0) as BigDecimal
                             ec.service.sync().name("delete#zenith.erp.pos.PosTransactionItem")
                                 .parameters([transactionId:txId, itemSeqId:itemSeqId]).call()
+                            ec.entity.find('zenith.erp.tax.TaxLineDetail').condition('referenceType','PosTransactionItem')
+                                .condition('referenceId',txId).condition('referenceSeqId',itemSeqId).deleteAll()
                             ec.service.sync().name("zenith.pos.PosServices.recalculate#TransactionTotals")
                                 .parameters([transactionId:txId]).call()
                             def txnAfter = ec.entity.find("zenith.erp.pos.PosTransaction").condition("transactionId", txId).one()
@@ -2607,10 +2659,10 @@
                                     oldValue:removedName+' x'+removedQty, newValue:'REMOVED',
                                     oldGrandTotal:oldGrand, newGrandTotal:txnAfter.grandTotal ?: 0]).call()
                         } else if (editType == 'ITEM_ADDED') {
-                            def productId = p.addProductId
-                            def addQty = p.addQty ? (p.addQty as BigDecimal) : BigDecimal.ONE
+                            def productId = editOp.productId
+                            def addQty = editedValue
                             def prod = ec.entity.find("mantle.product.Product").condition("productId", productId).one()
-                            if (!prod) { ec.web.sendJsonResponse([success:false, error:'Product not found']); return }
+                            if (!prod || prod.ownerPartyId != txn.organizationPartyId) throw new IllegalStateException('Product is not available for this organization.')
                             def unitPrice = BigDecimal.ZERO
                             if (prod.mrpAmount) unitPrice = prod.mrpAmount as BigDecimal
                             if (unitPrice == BigDecimal.ZERO) {
@@ -2618,41 +2670,41 @@
                                 if (!pp) pp = ec.entity.find("mantle.product.ProductPrice").condition("productId", productId).condition("priceTypeEnumId", "PptCurrent").orderBy("-lastUpdatedStamp").limit(1).one()
                                 if (pp?.price) unitPrice = pp.price as BigDecimal
                             }
-                            def existingItems = ec.entity.find("zenith.erp.pos.PosTransactionItem")
-                                .condition("transactionId", txId).orderBy("-itemSeqId").list()
-                            def maxSeq = 0
-                            existingItems.each { def s = it.itemSeqId ? (it.itemSeqId as int) : 0; if (s > maxSeq) maxSeq = s }
-                            def newSeqId = String.format("%05d", maxSeq + 1)
+                            if (editOp.newPrice != null && editOp.newPrice.toString().trim()) unitPrice = new BigDecimal(editOp.newPrice.toString())
+                            def newSeqId = String.format("%05d", ++nextItemSeq)
                             _addedSeqId = newSeqId
                             invAdjProduct = productId; invAdjQty = BigDecimal.ZERO - addQty
                             def ls = addQty * unitPrice
-                            // Match the added line to THIS bill's tax state. A bill billed with tax
-                            // toggled OFF carries zero tax on every existing line, so an item added
-                            // during an edit must stay tax-free too — otherwise editing a non-tax bill
-                            // silently re-introduces GST (the reported bug). A bill that carries tax
-                            // (e.g. MARUTHI) still resolves the product's GST exactly like a live sale.
-                            // Empty bill (all lines removed) → default to tax-on, matching a fresh sale.
-                            def _billHasTax = true
-                            if (existingItems) {
-                                _billHasTax = false
-                                for (exItm in existingItems) { if (((exItm.totalTaxAmount ?: 0) as BigDecimal) > 0) { _billHasTax = true; break } }
-                            }
-                            // Resolve GST the same way a live sale does: prefer the product's gstSlabId
-                            // (MARUTHI's products), fall back to taxCategoryId (demo/legacy). Both hold an
-                            // IndiaGstSlab PK (e.g. GST_18). The entity is zenith.erp.india.IndiaGstSlab.
-                            def taxCatId = prod.gstSlabId ?: (prod.taxCategoryId ?: '')
+                            // Preserve the issued bill's tax state, including when earlier edits in
+                            // this batch removed every old line. Use the same tax service as checkout.
                             def taxAmt = BigDecimal.ZERO
-                            def gstRate = BigDecimal.ZERO
-                            if (_billHasTax && taxCatId) {
-                                def slab = ec.entity.find("zenith.erp.india.IndiaGstSlab").condition("gstSlabId", taxCatId).one()
-                                if (slab) { gstRate = (slab.gstRate ?: 0) as BigDecimal; taxAmt = ls * gstRate / 100 }
+                            def taxable = ls
+                            def taxedItem = null
+                            if (billHasTax) {
+                                def taxResult = ec.service.sync().name('zenith.tax.TaxServices.calculate#Tax').parameters([
+                                    organizationPartyId:txn.organizationPartyId,
+                                    items:[[productId:productId, productTaxCode:prod.productTaxCode,
+                                        taxCategoryId:prod.taxCategoryId, quantity:addQty, unitAmount:unitPrice,
+                                        discountAmount:BigDecimal.ZERO, isTaxInclusive:'N']],
+                                    originRegionGeoId:txn.originRegionGeoId,
+                                    destinationRegionGeoId:txn.destinationRegionGeoId,
+                                    transactionType:'SALE']).call()
+                                if (ec.message.hasError()) throw new IllegalStateException(ec.message.errorsString ?: 'Cannot calculate tax for the added product.')
+                                taxedItem = taxResult?.taxedItems ? taxResult.taxedItems[0] : null
+                                taxable = (taxedItem?.taxableAmount != null ? taxedItem.taxableAmount : ls) as BigDecimal
+                                taxAmt = (taxedItem?.totalTaxAmount ?: 0) as BigDecimal
                             }
-                            def lineTotal = ls + taxAmt
+                            def lineTotal = taxable + taxAmt
                             ec.service.sync().name("create#zenith.erp.pos.PosTransactionItem")
                                 .parameters([transactionId:txId, itemSeqId:newSeqId, productId:productId,
-                                    productName:prod.productName ?: productId, quantity:addQty,
-                                    unitPrice:unitPrice, taxableAmount:ls, totalTaxAmount:taxAmt,
+                                    productName:prod.productName ?: productId, productTaxCode:prod.productTaxCode,
+                                    quantity:addQty, unitPrice:unitPrice, taxableAmount:taxable, totalTaxAmount:taxAmt,
                                     lineTotal:lineTotal, discountPercent:0, discountAmount:0]).call()
+                            if (taxedItem?.taxBreakdowns) {
+                                ec.service.sync().name('zenith.tax.TaxServices.store#TaxLineDetails').parameters([
+                                    referenceType:'PosTransactionItem', referenceId:txId, referenceSeqId:newSeqId,
+                                    taxBreakdowns:taxedItem.taxBreakdowns]).call()
+                            }
                             ec.service.sync().name("zenith.pos.PosServices.recalculate#TransactionTotals")
                                 .parameters([transactionId:txId]).call()
                             def txnAfter = ec.entity.find("zenith.erp.pos.PosTransaction").condition("transactionId", txId).one()
@@ -2718,7 +2770,7 @@
                                     ec.service.sync().name("zenith.inventory.InventoryStockServices.adjust#AssetOnHand").parameters([
                                         organizationPartyId: txnFinal.organizationPartyId, productId: invAdjProduct,
                                         quantityDiff: invAdjQty, reason: ('Bill edit ' + (txnFinal.transactionNumber ?: txId))]).call()
-                                } catch (Throwable e) { ec.logger.error("Bill-edit stock adjust failed: " + e.message) }
+                                } catch (Throwable e) { throw new IllegalStateException('Bill-edit stock adjustment failed; no changes were saved.', e) }
                             }
                         }
                         // Payment reconciliation: refund (paid > new total) or extra collection (new total > paid)
@@ -2744,6 +2796,8 @@
                                     type:it.changeType ?: '', reason:it.reason ?: '',
                                     product:it.productName ?: '', oldVal:it.oldValue ?: '', newVal:it.newValue ?: ''] }
                             ]]
+                        if (ec.message.hasError()) throw new IllegalStateException(ec.message.errorsString)
+                        }
                         ec.web.sendJsonResponse(result)
                         return
                     } else if (action == 'listHeld') {
@@ -2965,6 +3019,10 @@
 
 
 
+                    if (action == 'amendBill') {
+                        ec.transaction.setRollbackOnly('POS bill amendment failed', e)
+                        if (ec.message.hasError()) ec.message.clearErrors()
+                    }
                     result = [success:false, error:e.message]
 
 
@@ -4421,7 +4479,7 @@ gridNextOffset = gridOffset + gridProducts.size()
                           </div>
                           </#if>
                         ]]></text></render-mode>
-                        <render-mode><text type="html,qvt" template="true"><![CDATA[<img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="try{if(location.pathname.indexOf('/qapps/')===0){location.replace(location.href.replace('/qapps/','/apps/'));}}catch(e){}"/><div style="text-align:center;margin-top:18px"><button id="pos-history-btn-ns" type="button" onclick="window.posOpenHistory&amp;&amp;window.posOpenHistory()" style="padding:10px 24px;border-radius:8px;font-size:14px;font-weight:bold;cursor:pointer;background:#7C3AED;color:#fff;border:1px solid #A78BFA">&#128196; View Bill History<span style="margin-left:7px;padding:1px 6px;border:1px solid rgba(255,255,255,0.7);border-radius:4px;font-size:11px;font-weight:700;opacity:0.9">F9</span></button></div><script src="/zenithstatic/js/pos-terminal.js?v=158"></script>]]></text></render-mode>
+                        <render-mode><text type="html,qvt" template="true"><![CDATA[<img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="try{if(location.pathname.indexOf('/qapps/')===0){location.replace(location.href.replace('/qapps/','/apps/'));}}catch(e){}"/><div style="text-align:center;margin-top:18px"><button id="pos-history-btn-ns" type="button" onclick="window.posOpenHistory&amp;&amp;window.posOpenHistory()" style="padding:10px 24px;border-radius:8px;font-size:14px;font-weight:bold;cursor:pointer;background:#7C3AED;color:#fff;border:1px solid #A78BFA">&#128196; View Bill History<span style="margin-left:7px;padding:1px 6px;border:1px solid rgba(255,255,255,0.7);border-radius:4px;font-size:11px;font-weight:700;opacity:0.9">F9</span></button></div><script src="/zenithstatic/js/pos-terminal.js?v=159"></script>]]></text></render-mode>
 
 
 
@@ -6964,7 +7022,7 @@ body.Terminal:not(.pos-mode-normal) .pos-product-grid button div[style*="#e53935
 <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
 
 
-<script src="/zenithstatic/js/pos-terminal.js?v=158"></script>
+<script src="/zenithstatic/js/pos-terminal.js?v=159"></script>
 
 
 
