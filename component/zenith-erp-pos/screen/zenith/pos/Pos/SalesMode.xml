@@ -3,7 +3,7 @@
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         default-menu-title="Sales Mode" default-menu-index="14">
 
-    <transition name="createMode" begin-transaction="true">
+    <transition name="createMode" method="post" begin-transaction="true">
         <actions>
             <script><![CDATA[
                 def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId','pos').call()
@@ -46,7 +46,7 @@
         </actions>
         <default-response url="."/>
     </transition>
-    <transition name="updateMode" begin-transaction="true">
+    <transition name="updateMode" method="post" begin-transaction="true">
         <actions>
             <script><![CDATA[
                 def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId','pos').call()
@@ -70,7 +70,7 @@
         </actions>
         <default-response url="."/>
     </transition>
-    <transition name="deleteMode" begin-transaction="true">
+    <transition name="deleteMode" method="post" begin-transaction="true">
         <actions><script><![CDATA[
             def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId','pos').call()
             def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
@@ -82,7 +82,7 @@
         ]]></script></actions>
         <default-response url="."/>
     </transition>
-    <transition name="assignTerminal">
+    <transition name="assignTerminal" method="post" begin-transaction="true">
         <actions><script><![CDATA[
             def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
             def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId','pos').call()
@@ -93,7 +93,7 @@
         ]]></script></actions>
         <default-response url="."/>
     </transition>
-    <transition name="removeTerminal">
+    <transition name="removeTerminal" method="post" begin-transaction="true">
         <actions><script><![CDATA[
             def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
             def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId','pos').call()
@@ -105,7 +105,7 @@
     </transition>
     <!-- ZE-POS-MODERULES: opt-in per-shop order rules. organizationPartyId is ALWAYS taken from the
          caller's active org server-side (never from the post) so one tenant can't write another's rules. -->
-    <transition name="saveOrgRule">
+    <transition name="saveOrgRule" method="post" begin-transaction="true">
         <actions>
             <set field="_org" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
             <if condition="!(ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN'))">
@@ -125,7 +125,7 @@
         </actions>
         <default-response url="."/>
     </transition>
-    <transition name="deleteOrgRule">
+    <transition name="deleteOrgRule" method="post" begin-transaction="true">
         <actions>
             <set field="_org" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
             <if condition="!(ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN'))">
@@ -375,7 +375,7 @@
                     <default-field title=""><label text="" type="span"/></default-field></field>
                 <field name="deleteBtn">
                     <conditional-field name="orgrule_delete_write" condition="modeCanManage" title="">
-                    <link url="deleteOrgRule" text="Delete" icon="fa fa-trash" btn-type="danger"
+                    <link url="deleteOrgRule" text="Delete" icon="fa fa-trash" btn-type="danger" link-type="hidden-form"
                           parameter-map="[salesModeId:salesModeId]" confirmation="Remove this rule?"/>
                     </conditional-field>
                     <default-field title=""><label text="" type="span"/></default-field></field>
@@ -413,7 +413,7 @@
                 </default-field></field>
                 <field name="removeBtn">
                     <conditional-field name="tm_remove_write" condition="modeCanManage" title="">
-                    <link url="removeTerminal" text="Remove" icon="fa fa-unlink" btn-type="danger"
+                    <link url="removeTerminal" text="Remove" icon="fa fa-unlink" btn-type="danger" link-type="hidden-form"
                           parameter-map="[terminalId:tm.terminalId, salesModeId:tm.salesModeId]"
                           confirmation="Remove this assignment?"/>
                     </conditional-field>
