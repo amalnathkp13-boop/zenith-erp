@@ -1481,19 +1481,21 @@ body.zq-side-collapsed #zq-sidebar .zqs-link { justify-content:center; }
 #zq-ownerview .zqov-org { font-weight:800; color:var(--z-primary,#7C3AED); }
 #zq-ownerview .zqov-sep { opacity:.45; font-weight:400; }
 #zq-ownerview .zqov-caret { font-size:16px !important; margin-left:-3px; opacity:.75; }
-/* ZE-QAPPS-TOPBAR-PARITY: right-side control cluster mirroring the /apps toolbar (avatar/logout/theme/notif/msg/cal/task/lock). */
-#zq-toolbtns { display:flex; align-items:center; gap:1px; margin-left:4px; flex:0 0 auto; }
+/* Shared header controls: recents, password, notifications, account. */
+body.zq-nav .q-header .q-toolbar > button.q-btn:not(:first-child) { display:none !important; }
+#zq-toolbtns { display:flex; align-items:center; gap:8px; margin-left:auto; flex:0 0 auto; }
 .zqtb { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:8px; color:#6B6483 !important; text-decoration:none; position:relative; cursor:pointer; transition:background .12s, color .12s; }
+.zqtb:not(:first-child)::before { content:""; position:absolute; left:-5px; top:7px; height:20px; border-left:1px solid #DDD7EB; }
+.zqtb-history { min-width:34px !important; min-height:34px !important; padding:0 !important; }
+.zqtb-history .q-btn__wrapper { padding:0 !important; min-height:34px !important; }
 .zqtb:hover { background:var(--z-primary-soft,#ECE8FB); color:var(--z-primary,#7C3AED) !important; }
 .zqtb .material-icons { font-size:19px !important; color:inherit !important; line-height:1; }
 .zqtb.zqtb-avatar { width:32px; height:32px; margin:0 3px 0 4px; border-radius:50%; background:linear-gradient(135deg,#7C3AED,#8b7cf7); color:#fff !important; font:600 12px/1 system-ui,-apple-system,sans-serif; letter-spacing:.02em; box-shadow:0 1px 3px rgba(70,61,122,.35); }
 .zqtb.zqtb-avatar:hover { filter:brightness(1.08); background:linear-gradient(135deg,#7C3AED,#8b7cf7); color:#fff !important; }
-.zqtb.zqtb-danger:hover { background:#FEECEC; color:#E5484D !important; }
 .zqtb-badge { position:absolute; top:2px; right:2px; min-width:15px; height:15px; padding:0 3px; background:#E5484D; color:#fff; border:2px solid #fff; border-radius:9px; font:700 9px/11px system-ui,sans-serif; display:inline-flex; align-items:center; justify-content:center; }
 .zqtb-badge.zq-empty { display:none; }
 body.body--dark #zq-toolbtns .zqtb { color:#B9BDD0 !important; }
 body.body--dark #zq-toolbtns .zqtb:hover { background:rgba(124,58,237,.18); color:#C9B6F5 !important; }
-@media (max-width:820px) { .zqtb.zqtb-quad { display:none; } }
 /* ZE-QAPPS-PARITY: match the /apps dashboard — stack the Welcome header (buttons BELOW the text, left) instead of
    Quasar's flex `justify-between` row (which floats them right). /apps ignores the Quasar flex classes, so it stacks. */
 body.zq-nav .zdash-welcome-row { display:block !important; }
@@ -1629,6 +1631,15 @@ body.zq-nav .zenith-card > .row.items-center.justify-between > .q-pa-sm { displa
 #navbar-buttons .z-notif{position:relative}
 #navbar-buttons .z-notif-badge{position:absolute;top:1px;right:-2px;min-width:16px;height:16px;padding:0 4px;background:#E5484D !important;color:#fff !important;border:2px solid #fff;border-radius:9px;font:700 9.5px/12px system-ui,sans-serif;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(0,0,0,.2)}
 #navbar-buttons .z-notif-badge.z-empty{display:none}
+/* The classic /apps header uses the same four controls as /qapps. */
+#navbar-buttons:has(#z-app-toolbtns) > a.navbar-right,#navbar-buttons:has(#z-app-toolbtns) > .btn-group.navbar-right{display:none!important}
+#z-app-toolbtns{float:right;display:flex;align-items:center;gap:8px;height:50px}
+#z-app-toolbtns > *{float:none!important;position:relative}
+#z-app-toolbtns > :not(:first-child)::before{content:"";position:absolute;left:-5px;top:7px;height:20px;border-left:1px solid #DDD7EB}
+#z-app-toolbtns #history-menu{margin:0!important}
+#z-app-toolbtns #history-menu-link,#z-app-toolbtns > a:not(#z-avatar){display:flex;align-items:center;justify-content:center;width:34px;height:34px;margin:0!important;padding:0;border:0;border-radius:8px;background:transparent;color:#6B6483}
+#z-app-toolbtns #history-menu-link:hover,#z-app-toolbtns > a:not(#z-avatar):hover{background:var(--z-primary-soft,#ECE8FB);color:var(--z-primary,#7C3AED)}
+#z-app-toolbtns #z-avatar{margin:0;width:32px;height:32px}
 /* ZE-SUP-LIST: Suppliers list redesign — avatar + merged name/ID, contact-info column, colour-coded badges */
 .sup-namecell{display:flex;align-items:center;gap:10px;min-width:0}
 .sup-avatar{flex:none;width:34px;height:34px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;letter-spacing:.02em}
@@ -1753,7 +1764,6 @@ body.zq-nav .q-footer a, body.zq-nav .q-footer .text-white { color:var(--z-prima
   body.zq-nav #zq-search{grid-column:1/-1;grid-row:2;min-width:0;margin:0}
   body.zq-nav #zq-search input{min-width:0}
   body.zq-nav #zq-toolbtns{grid-column:1/-1;grid-row:3;justify-content:flex-end;flex-wrap:wrap;margin:0}
-  body.zq-nav #zq-toolbtns .zqtb-quad{display:inline-flex}
   body.zq-nav .q-header .q-space{display:none}
 }
 
@@ -2609,7 +2619,6 @@ body.zq-nav.q-body--prevent-scroll:has(.mysub-wrap):has(.q-drawer--mobile):not(:
   body.zq-nav:has(.mysub-wrap) #zq-search{grid-column:1/-1;grid-row:2;min-width:0;margin:0}
   body.zq-nav:has(.mysub-wrap) #zq-search input{min-width:0}
   body.zq-nav:has(.mysub-wrap) #zq-toolbtns{grid-column:1/-1;grid-row:3;justify-content:flex-end;flex-wrap:wrap;margin:0}
-  body.zq-nav:has(.mysub-wrap) #zq-toolbtns .zqtb-quad{display:inline-flex}
   body.zq-nav:has(.mysub-wrap) .q-header .q-space{display:none}
 }
 @media (max-width:900px){body.zq-nav:has(.mysub-wrap) .q-layout .q-page-container,body.zq-nav.zq-side-collapsed:has(.mysub-wrap) .q-layout .q-page-container{padding-left:0!important}}
@@ -3755,7 +3764,6 @@ body.zq-nav .q-btn i[class]:not([class~="fa"]):not([class~="glyphicon"]):not([cl
   body.zq-nav:has(#zq-subnav.show[data-mod="sales"]) #zq-search{grid-column:1/-1;grid-row:2;min-width:0;margin:0}
   body.zq-nav:has(#zq-subnav.show[data-mod="sales"]) #zq-search input{min-width:0}
   body.zq-nav:has(#zq-subnav.show[data-mod="sales"]) #zq-toolbtns{grid-column:1/-1;grid-row:3;justify-content:flex-end;flex-wrap:wrap;margin:0}
-  body.zq-nav:has(#zq-subnav.show[data-mod="sales"]) #zq-toolbtns .zqtb-quad{display:inline-flex}
   body.zq-nav:has(#zq-subnav.show[data-mod="sales"]) .q-header .q-space{display:none}
 }
 @media (min-width:901px) and (max-width:1200px){
@@ -3898,7 +3906,6 @@ body:has(> #z-sidebar):not(.z-side-off) #top{position:sticky;top:0;z-index:1000}
   body.zq-nav:has(#zq-subnav.show[data-mod="Contacts"]) #zq-search{grid-column:1/-1;grid-row:2;min-width:0;margin:0}
   body.zq-nav:has(#zq-subnav.show[data-mod="Contacts"]) #zq-search input{min-width:0}
   body.zq-nav:has(#zq-subnav.show[data-mod="Contacts"]) #zq-toolbtns{grid-column:1/-1;grid-row:3;justify-content:flex-end;flex-wrap:wrap;margin:0}
-  body.zq-nav:has(#zq-subnav.show[data-mod="Contacts"]) #zq-toolbtns .zqtb-quad{display:inline-flex}
   body.zq-nav:has(#zq-subnav.show[data-mod="Contacts"]) .q-header .q-space{display:none}
 }
 

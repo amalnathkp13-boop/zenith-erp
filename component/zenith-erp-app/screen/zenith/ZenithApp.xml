@@ -332,7 +332,7 @@
         ]]></script>
         <script><![CDATA[
             if (html_stylesheets == null) html_stylesheets = []
-            html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=295')
+            html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=299')
             html_stylesheets.add('/zenithstatic/css/sidebar-manager.css?v=3')
             html_stylesheets.add('/zenithstatic/css/subnav-manager.css?v=1')
             html_stylesheets.add('/zenithstatic/css/my-subscription-reference.css?v=1')
@@ -377,7 +377,7 @@ html_stylesheets.add('/zenithstatic/css/crm-experience.css?v=3')
             html_stylesheets.add('https://fonts.googleapis.com/icon?family=Material+Icons')
             if (footer_scripts == null) footer_scripts = []
             footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=12')
-            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=41')
+            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=44')
             footer_scripts.add('/zenithstatic/js/sidebar-manager.js?v=1')
             footer_scripts.add('/zenithstatic/js/subnav-manager.js?v=1')
             footer_scripts.add('/zenithstatic/js/pricing-price-lists.js?v=1')
@@ -1269,6 +1269,19 @@ html_stylesheets.add('/zenithstatic/css/crm-experience.css?v=3')
                   av.setAttribute('title',uname||'My account');av.setAttribute('aria-label',(uname?uname+' — ':'')+'My account');
                   var firstR=host.querySelector('.navbar-right');if(firstR)host.insertBefore(av,firstR);else host.appendChild(av);
                 }
+                // Keep the framework controls and their handlers; only regroup the requested four.
+                var history=host.querySelector('#history-menu');
+                var password=host.querySelector('a[href="/apps/zenith/MyPassword"]');
+                var notification=host.querySelector('.z-notif');
+                var avatar=host.querySelector('#z-avatar');
+                if(history&&password&&notification&&avatar){
+                  var historyLink=history.querySelector('#history-menu-link');
+                  if(historyLink){historyLink.title='Recent pages';historyLink.setAttribute('aria-label','Recent pages');
+                    var historyIcon=historyLink.querySelector('i');if(historyIcon)historyIcon.className='fa fa-history';}
+                  var tools=document.createElement('div');tools.id='z-app-toolbtns';
+                  [history,password,notification,avatar].forEach(function(control){tools.appendChild(control);});
+                  host.appendChild(tools);
+                }
               }catch(_e){}
             }
           }catch(_e){}
@@ -1280,7 +1293,7 @@ html_stylesheets.add('/zenithstatic/css/crm-experience.css?v=3')
             <link rel="preconnect" href="https://fonts.googleapis.com"/>
             <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"/>
             <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
-            <link rel="stylesheet" href="/zenithstatic/css/zenith-theme-v4.css?v=295"/>
+            <link rel="stylesheet" href="/zenithstatic/css/zenith-theme-v4.css?v=299"/>
             <link rel="stylesheet" href="/zenithstatic/css/my-subscription-reference.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/saas-admin.css?v=4"/>
             <link rel="stylesheet" href="/zenithstatic/css/product-catalog.css?v=1"/>

@@ -29,6 +29,7 @@
         ]]></script></actions>
     </service>
     <service verb="assert" noun="TenantAccess" authenticate="true" transaction="ignore">
+        <description>Shared tenant authorization used by subscription pages and plan changes; this definition must be installed with the SaaS component.</description>
         <in-parameters><parameter name="tenantId"/><parameter name="manage" type="Boolean" default-value="true"/></in-parameters>
         <out-parameters><parameter name="tenant" type="org.moqui.entity.EntityValue"/></out-parameters>
         <actions>

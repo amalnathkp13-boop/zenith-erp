@@ -387,6 +387,18 @@ jobs:
           code=$(curl -s -o /dev/null -w '%{http_code}' -u john.doe:moqui http://localhost:8080/apps/zenith || true)
           [ "$code" = "200" ] || { echo "::error::login/module access not 200 (got $code) — see diagnostics"; exit 1; }
 
+      - name: Assert SaaS pages and tenant-access service resolve
+        run: |
+          CID=$(docker compose -f "$COMPOSE" ps -q moqui)
+          docker exec "$CID" test -s /opt/moqui/runtime/component/zenith-erp-saas/service/zenith/saas/SaasAccessServices.xml || {
+            echo "::error::SaaS tenant-access service definition is missing from the deployed component tree"; exit 1;
+          }
+          for route in /apps/zenith/my-subscription /qapps/zenith/my-subscription.qvt \
+                       /apps/zenith/saas-admin/PlanAssignments /qapps/zenith/saas-admin/PlanAssignments.qvt; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -u john.doe:moqui "http://localhost:8080$route" || true)
+            [ "$code" = "200" ] || { echo "::error::SaaS route $route returned $code (check SaasAccessServices registration and server logs)"; exit 1; }
+          done
+
       - name: Assert fixtures loaded (DB ground truth)
         # Prove the demo load AND the isolation fixture actually landed, and the active-org pref stuck,
         # BEFORE the render assert — so a silent load failure or a stripped pref fails HERE with a

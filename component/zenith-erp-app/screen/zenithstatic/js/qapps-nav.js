@@ -285,58 +285,62 @@
         buildToolButtons(toolbar);
     }
 
-    // ---- right-side control cluster mirroring the /apps top bar ----
-    // /apps shows: avatar, logout, theme toggle, notifications, messages, calendar, tasks, password. The Quasar
-    // header's own right buttons (facility switcher `edit_location`, notifications dropdown, history, account avatar)
-    // are none of them present on /apps, so we hide them and render one cohesive, /apps-identical cluster instead.
+    // ---- right-side controls ----
     function zInitials(n) { n = (n || '').trim(); if (!n) return '?'; var w = n.split(/\s+/); var a = w[0].charAt(0); var b = w.length > 1 ? w[w.length - 1].charAt(0) : (w[0].charAt(1) || ''); return (a + b).toUpperCase(); }
+    function syncToolButtons() {
+        var cfg = document.getElementById('zenith-saas-cfg');
+        var cluster = document.getElementById('zq-toolbtns');
+        if (!cfg || !cluster) return;
+        var uname = cfg.getAttribute('data-user-name') || '';
+        var platformAdmin = cfg.getAttribute('data-super') === 'true';
+        var bell = cluster.querySelector('[data-control="notifications"]');
+        var av = cluster.querySelector('.zqtb-avatar');
+        var bellHref = platformAdmin ? '/apps/my/User/Notifications' : '/apps/zenith/MyWorkspace?section=notifications';
+        if (bell && bell.getAttribute('href') !== bellHref) bell.href = bellHref;
+        if (av) {
+            var accountHref = platformAdmin ? '/apps/my' : '/apps/zenith/MyWorkspace?section=account';
+            var label = (uname ? uname + ' — ' : '') + 'My account';
+            var initials = zInitials(uname);
+            if (av.getAttribute('href') !== accountHref) av.href = accountHref;
+            if (av.title !== (uname || 'My account')) av.title = uname || 'My account';
+            if (av.getAttribute('aria-label') !== label) av.setAttribute('aria-label', label);
+            if (av.textContent !== initials) av.textContent = initials;
+        }
+    }
     function buildToolButtons(toolbar) {
         try {
             if (!toolbar || document.getElementById('zq-toolbtns')) return;
-            var cfg = document.getElementById('zenith-saas-cfg');
-            var uname = (cfg && cfg.getAttribute('data-user-name')) || '';
-            var platformAdmin = cfg && cfg.getAttribute('data-super') === 'true';
-            // hide the framework's mismatched right buttons (none exist on /apps)
+            // Reuse Quasar's recents button so its existing menu and handlers stay intact.
+            var historyButton;
             [].slice.call(toolbar.querySelectorAll('button.q-btn')).forEach(function (btn) {
                 var ic = btn.querySelector('.q-icon, .material-icons'); var t = ic ? ic.textContent.trim() : '';
-                if (t === 'help_outline' || t === 'edit_location' || t === 'notifications' || t === 'history') btn.style.display = 'none';
+                if (t === 'history') historyButton = btn;
+                if (t === 'help_outline' || t === 'edit_location' || t === 'notifications' || t === 'account_circle') btn.style.display = 'none';
                 if (btn.querySelector('.q-avatar')) btn.style.display = 'none';   // framework account avatar
             });
             var cluster = el('div'); cluster.id = 'zq-toolbtns';
             function tb(icon, href, title, cls) { var a = el('a', 'zqtb' + (cls ? ' ' + cls : '')); a.href = href; a.title = title; a.setAttribute('aria-label', title); a.appendChild(mi(icon)); return a; }
+            if (historyButton) {
+                historyButton.classList.add('zqtb', 'zqtb-history');
+                historyButton.style.display = '';
+                historyButton.title = 'Recent pages';
+                historyButton.setAttribute('aria-label', 'Recent pages');
+                cluster.appendChild(historyButton);
+            }
             var lock = tb('lock', '/apps/zenith/MyPassword', 'My Password');
-            var accountHref = function (section, frameworkPath) {
-                return platformAdmin ? '/apps/my/User/' + frameworkPath : '/apps/zenith/MyWorkspace?section=' + section;
-            };
-            var bell = tb('notifications', accountHref('notifications', 'Notifications'), 'Notifications'); bell.appendChild(el('span', 'zqtb-badge zq-empty'));
-            var mail = tb('mail', accountHref('messages', 'Messages/FindMessage?statusId=CeReceived&toCurrentUser=true'), 'Messages', 'zqtb-quad');
-            var cal = tb('event', accountHref('calendar', 'Calendar/MyCalendar'), 'Events This Week', 'zqtb-quad');
-            var task = tb('task_alt', accountHref('tasks', 'Task/MyTasks'), 'Open Tasks', 'zqtb-quad');
-            var theme = tb('contrast', '#', 'Switch Dark / Light');
-            theme.setAttribute('role', 'button');
+            var bell = tb('notifications', '/apps/zenith/MyWorkspace?section=notifications', 'Notifications'); bell.setAttribute('data-control', 'notifications'); bell.appendChild(el('span', 'zqtb-badge zq-empty'));
             function setDark(on) {
                 try {
                     var app = document.getElementById('apps-root');
                     if (app && app.__vue__ && app.__vue__.$q && app.__vue__.$q.dark) app.__vue__.$q.dark.set(on);
                 } catch (_e) {}
                 document.body.classList.toggle('body--dark', on);
-                theme.setAttribute('aria-pressed', on ? 'true' : 'false');
             }
-            theme.addEventListener('click', function (e) {
-                e.preventDefault();
-                var on = !document.body.classList.contains('body--dark');
-                setDark(on);
-                try { localStorage.setItem('zqDark', on ? '1' : '0'); } catch (_e) {}
-            });
-            theme.addEventListener('keydown', function (e) {
-                if (e.key === ' ') { e.preventDefault(); theme.click(); }
-            });
-            var logout = tb('power_settings_new', '/Login/logout', 'Logout' + (uname ? ' ' + uname : ''), 'zqtb-danger');
-            // avatar (initials) → My Account — rightmost, mirroring /apps
-            var av = el('a', 'zqtb zqtb-avatar'); av.href = platformAdmin ? '/apps/my' : '/apps/zenith/MyWorkspace?section=account'; av.title = uname || 'My account'; av.setAttribute('aria-label', (uname ? uname + ' — ' : '') + 'My account'); av.textContent = zInitials(uname);
-            // order matches the /apps toolbar (L→R): password, notifications, messages, calendar, tasks, theme, logout, avatar
-            [lock, bell, mail, cal, task, theme, logout, av].forEach(function (b2) { cluster.appendChild(b2); });
+            // Avatar remains the rightmost account control.
+            var av = el('a', 'zqtb zqtb-avatar'); av.href = '/apps/zenith/MyWorkspace?section=account'; av.title = 'My account'; av.setAttribute('aria-label', 'My account'); av.textContent = '?';
+            [lock, bell, av].forEach(function (b2) { cluster.appendChild(b2); });
             toolbar.appendChild(cluster);
+            syncToolButtons();
             try { setDark(localStorage.getItem('zqDark') === '1'); } catch (_e) { setDark(false); }
         } catch (_e) {}
     }
@@ -435,7 +439,7 @@
         side.addEventListener('click', function (e) { if (e.target.closest('.zqs-link')) body.classList.remove('zq-side-open'); });
         // re-apply active highlight on SPA route changes (URL is swapped without a full reload)
         var last = location.pathname;
-        setInterval(function () { if (location.pathname !== last) { last = location.pathname; applyActive(); updateSubnav(); try { if (sessionStorage.getItem('zqGotoModules')) { sessionStorage.removeItem('zqGotoModules'); scrollToModules(); } } catch (_e) {} } }, 400);
+        setInterval(function () { syncToolButtons(); if (location.pathname !== last) { last = location.pathname; applyActive(); updateSubnav(); try { if (sessionStorage.getItem('zqGotoModules')) { sessionStorage.removeItem('zqGotoModules'); scrollToModules(); } } catch (_e) {} } }, 400);
         document.documentElement.classList.add('zq-nav-ready');
         document.documentElement.classList.remove('zq-shell-boot');
         return true;

@@ -28,7 +28,8 @@ try {
   await staff.goto(staffDashboard, { waitUntil: 'networkidle2' });
   await staff.waitForSelector('#zq-toolbtns');
   const links = await staff.$$eval('#zq-toolbtns a[href]', nodes => nodes.map(a => ({ label: a.getAttribute('aria-label'), href: a.getAttribute('href') })));
-  for (const label of ['My Password', 'Notifications', 'Messages', 'Events This Week', 'Open Tasks', 'My account']) {
+  assert.equal(links.length, 3, 'Quasar header has unexpected account actions');
+  for (const label of ['My Password', 'Notifications', 'My account']) {
     const link = links.find(item => item.label === label || item.label?.endsWith(`— ${label}`));
     assert(link, `Missing account action: ${label}`);
     if (label !== 'My Password') assert(link.href.startsWith('/apps/zenith/MyWorkspace?section='));
@@ -42,15 +43,16 @@ try {
     await staff.waitForSelector('#zq-toolbtns');
   }
   await staff.goto(`${base}/apps/zenith/pos/Dashboard`, { waitUntil: 'networkidle2' });
-  await staff.waitForSelector('#z-avatar');
-  const appsAccountLinks = await staff.$$eval('#navbar-buttons a[href]', nodes => nodes.map(a => a.getAttribute('href')));
-  for (const section of ['notifications', 'messages', 'calendar', 'tasks', 'account']) {
+  await staff.waitForSelector('#z-app-toolbtns');
+  const appsAccountLinks = await staff.$$eval('#z-app-toolbtns > a[href]', nodes => nodes.map(a => a.getAttribute('href')));
+  for (const section of ['notifications', 'account'])
     assert(appsAccountLinks.some(href => href?.includes(`MyWorkspace?section=${section}`)), `/apps header missing ${section}`);
-  }
+  assert(await staff.$('#z-app-toolbtns #history-menu-link'), '/apps recent pages control is missing');
+  assert(await staff.$('#z-app-toolbtns > a[href="/apps/zenith/MyPassword"]'), '/apps password control is missing');
   await staff.goto(staffDashboard, { waitUntil: 'networkidle2' });
   await staff.waitForSelector('#zq-toolbtns');
   await staff.screenshot({ path: join(process.env.RUNNER_TEMP || process.cwd(), 'account-toolbar-ci.png') });
-  const themeRect = await staff.$eval('#zq-toolbtns [aria-label="Switch Dark / Light"]', node => {
+  const header = await staff.$eval('#zq-toolbtns', node => {
     const rect = node.getBoundingClientRect();
     const describe = element => {
       const bounds = element.getBoundingClientRect();
@@ -59,18 +61,20 @@ try {
         display: style.display, visibility: style.visibility, width: bounds.width, height: bounds.height };
     };
     return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, viewport: innerWidth,
+      controls: [...node.children].map(item => item.getAttribute('aria-label')),
       bodyClass: document.body.className,
       ancestors: [node, node.parentElement, node.parentElement?.parentElement, node.closest('.q-header')].filter(Boolean).map(describe),
       toolbars: [...document.querySelectorAll('.q-header .q-toolbar')].map(describe) };
   });
-  assert(themeRect.width > 0 && themeRect.x >= 0 && themeRect.x + themeRect.width <= themeRect.viewport,
-    `Theme control is outside the viewport: ${JSON.stringify(themeRect)}`);
-  await staff.click('#zq-toolbtns [aria-label="Switch Dark / Light"]');
-  assert(await staff.$eval('body', node => node.classList.contains('body--dark')));
+  assert(header.width > 0 && header.x >= 0 && header.x + header.width <= header.viewport,
+    `Account controls are outside the viewport: ${JSON.stringify(header)}`);
+  assert.equal(header.controls.length, 4, 'Expected only recents, password, notifications and avatar');
+  assert.equal(header.controls[0], 'Recent pages');
+  await staff.click('#zq-toolbtns [aria-label="Recent pages"]');
+  assert(await staff.$eval('body', node => node.innerText.includes('Screen History')), 'Recent pages did not open');
   await staff.reload({ waitUntil: 'networkidle2' });
-  assert(await staff.$eval('body', node => node.classList.contains('body--dark')), 'Theme did not persist');
-  await staff.click('#zq-toolbtns [aria-label="Switch Dark / Light"]');
-  console.log('PASS shared account destinations and persisted theme for staff');
+  assert(await staff.$('#zq-toolbtns [aria-label="Recent pages"]'), 'Recent pages missing after reload');
+  console.log('PASS shared account destinations and four-control header for staff');
 
   // A signed-in user's Contacts tab choices must persist and appear in both shells.
   await staff.goto(`${base}/apps/zenith/Contacts/ContactsDashboard`, { waitUntil: 'networkidle2' });
@@ -104,10 +108,11 @@ try {
   const homeLinks = await staff.$$eval('#zq-toolbtns a', nodes => nodes.map(node => ({
     label: node.getAttribute('aria-label'), href: node.getAttribute('href'), width: node.getBoundingClientRect().width,
   })));
-  for (const [label, section] of [['Events This Week', 'calendar'], ['Notifications', 'notifications']]) {
+  for (const [label, section] of [['Notifications', 'notifications']]) {
     const link = homeLinks.find(item => item.label?.includes(label));
     assert(link?.width > 0 && link.href === `/apps/zenith/MyWorkspace?section=${section}`, `Home ${label} action is unavailable`);
   }
+  assert(await staff.$('#zq-toolbtns [aria-label="Recent pages"]'), 'Home recent pages action is unavailable');
   assert(homeLinks.some(item => item.label?.includes('My account') && item.width > 0), 'Home account action is unavailable');
   assert(await staff.$eval('#zq-sidebar', node => node.getBoundingClientRect().width > 0), 'Home dashboard shared sidebar is unavailable');
   assert(await staff.$eval('#zq-subnav', node => node.getBoundingClientRect().height > 0), 'Home dashboard shared module navigation is unavailable');
