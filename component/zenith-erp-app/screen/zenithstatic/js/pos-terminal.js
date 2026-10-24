@@ -44,6 +44,7 @@ window.PosFreeItems = (function () {
     function ensure(transactionId, token) {
         return api('freeItemState',{transactionId:transactionId},token).then(function(state){
             if(!state.success)throw new Error(state.error || 'Approval could not be checked.');
+            if((state.freeItems||[]).some(function(item){return !(Number(item.price)>0);}))throw new Error('Set a price above ₹0 for every product before payment.');
             if(!state.required)return;
             return promptApproval(state.canApprove,state.freeItems,function(values){
                 return api('approveFreeItems',Object.assign({transactionId:transactionId,expectedFingerprint:state.approvalFingerprint},values),token).then(function(result){
@@ -403,7 +404,7 @@ window._posOffline = (function() {
         h+='<div class="c b" style="margin-top:6px">Thank You !!</div><div class="c" style="font-size:7px;color:#666;margin-top:4px">Powered by ZetaERP &middot; www.zetaclantech.com</div></div>';
         h+='<script>window.onload=function(){window.print();}<\/script></body></html>';
         var f=document.getElementById('pos-offline-frame'); if(!f){ f=document.createElement('iframe'); f.id='pos-offline-frame'; f.style.cssText='position:fixed;left:-9999px;top:-9999px;width:80mm;height:0;border:none'; document.body.appendChild(f); } var d=f.contentDocument||f.contentWindow.document; d.open(); d.write(h); d.close(); }
-    function pay(method){ if(payPending||serverDraftPaused||!cart.length) return; var _fia=document.getElementById('pos-free-item-approval'); if(_fia&&_fia.value==='Y'&&cart.some(function(it){return Number(it.price)<=0;})){toast('Free items need online manager approval. Reconnect to complete this bill.','#c62828');return;} if(taxEnabled() && cart.some(function(it){return it.taxRate==null;})){toast('Tax cache unavailable. Reconnect before completing this sale.','#c62828');return;} var c=tCtx(); var total=payable();
+    function pay(method){ if(payPending||serverDraftPaused||!cart.length) return; if(cart.some(function(it){return !(Number(it.price)>0);})){toast('Set a price above ₹0 for every product before payment.','#c62828');return;} var _fia=document.getElementById('pos-free-item-approval'); if(_fia&&_fia.value==='Y'&&cart.some(function(it){return Number(it.qty)*Number(it.price)+taxAmount(it)<=0;})){toast('Free items need online manager approval. Reconnect to complete this bill.','#c62828');return;} if(taxEnabled() && cart.some(function(it){return it.taxRate==null;})){toast('Tax cache unavailable. Reconnect before completing this sale.','#c62828');return;} var c=tCtx(); var total=payable();
         var sale={ offlineId:'OFL-'+Date.now()+'-'+Math.floor(Math.random()*100000), organizationPartyId:orgId, taxOn:taxEnabled()?'Y':'N', terminalId:c.terminalId, sessionId:c.sessionId, items:cart.map(function(it){return {productId:it.productId,name:it.name,qty:it.qty,price:it.price,uom:it.uom};}), total:total, taxAmount:cart.reduce(function(a,it){return a+taxAmount(it);},0), roundOff:total-cart.reduce(function(a,it){return a+it.qty*it.price+taxAmount(it);},0), paymentMethod:method, ts:new Date().toISOString() };
         payPending=true;
         enqueue(sale).then(function(){

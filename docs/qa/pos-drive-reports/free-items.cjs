@@ -14,7 +14,7 @@ const checks=[];function check(name,passed){checks.push({name,passed:!!passed});
  const manager=await actor('pos.qa'),cashier=await actor('pos.cashier.qa'),foreign=await actor('pos.b.qa');
  const session=(await manager.invoke('open',{terminalId:'POS_QA_A_TERM1',openingCash:'0'})).result;
  if(!session?.sessionId)throw Error('Free-item verifier requires a fresh disposable runtime');
- async function cart(mixed=false){const id=(await manager.invoke('cart',{sessionId:session.sessionId,reuseOpenCart:'false'})).result.transactionId;await manager.invoke('add',{transactionId:id,productId:'POS_QA_A_FREE',quantity:'1',taxOn:'N'});if(mixed)await manager.invoke('add',{transactionId:id,productId:'POS_QA_A_P18',quantity:'1',taxOn:'N'});return id;}
+ async function cart(mixed=false){const id=(await manager.invoke('cart',{sessionId:session.sessionId,reuseOpenCart:'false'})).result.transactionId;await manager.c.request.get(base+'/apps/zenith/pos/Terminal?sessionId='+session.sessionId+'&transactionId='+id+'&taxOn=N');await manager.invoke('add',{transactionId:id,productId:'POS_QA_A_P5',quantity:'1',discountPercent:'100',taxOn:'N'});if(mixed)await manager.invoke('add',{transactionId:id,productId:'POS_QA_A_P18',quantity:'1',taxOn:'N'});return id;}
  const id=await cart(true),free=await cart(),credit=await cart(true);
  const pay=await cashier.invoke('pay',{transactionId:id,paymentMethod:'Cash',amount:'100'});
  check('Unapproved free item blocks tender before any money is recorded',pay.errors?.length>0&&q(`SELECT * FROM pos_payment WHERE transaction_id='${id}'`).length===0);

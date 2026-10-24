@@ -98,6 +98,9 @@
         <in-parameters><parameter name="transactionId" required="true"/></in-parameters>
         <actions>
             <service-call name="zenith.pos.PosFreeItemServices.get#FreeItemApprovalState" in-map="[transactionId:transactionId]" out-map="state"/>
+            <set field="_freeTxn" from="ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',transactionId).one()"/>
+            <if condition="_freeTxn?.statusId == 'PtCreated' &amp;&amp; state.freeItems?.any { (it.price as BigDecimal) &lt;= 0 }">
+                <return error="true" message="Set a price above ₹0 for every product before payment."/></if>
             <if condition="state.required"><return error="true" message="Manager approval and a reason are required for free items. Approve the current free items before payment or saving."/></if>
         </actions>
     </service>

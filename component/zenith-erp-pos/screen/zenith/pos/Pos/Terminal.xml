@@ -2451,6 +2451,17 @@
                                 if (!prod || prod.ownerPartyId != txn.organizationPartyId) {
                                     ec.web.sendJsonResponse([success:false, error:'Choose a product from this organization.']); return
                                 }
+                                if (op.newPrice == null || !op.newPrice.toString().trim()) {
+                                    def configuredPrice = (prod.mrpAmount ?: 0) as BigDecimal
+                                    if (configuredPrice <= 0) {
+                                        def priceRow = ec.entity.find('mantle.product.ProductPrice').condition('productId',prod.productId)
+                                            .condition('priceTypeEnumId','PptList').orderBy('-lastUpdatedStamp').one()
+                                        if (!priceRow) priceRow = ec.entity.find('mantle.product.ProductPrice').condition('productId',prod.productId)
+                                            .condition('priceTypeEnumId','PptCurrent').orderBy('-lastUpdatedStamp').one()
+                                        configuredPrice = (priceRow?.price ?: 0) as BigDecimal
+                                    }
+                                    if (configuredPrice <= 0) { ec.web.sendJsonResponse([success:false,error:'Set a product price above ₹0 before adding it to an issued bill.']); return }
+                                }
                                 addedCount++
                             } else if (!originalSeqs.contains(op.seq) || removedSeqs.contains(op.seq)) {
                                 ec.web.sendJsonResponse([success:false, error:'An edited item is missing or was already removed. Reload the bill.']); return
@@ -2461,15 +2472,15 @@
                                 def amount
                                 try { amount = new BigDecimal(raw.toString()) }
                                 catch (Exception ignored) { ec.web.sendJsonResponse([success:false, error:'Enter a valid quantity or price.']); return }
-                                if ((type == 'PRICE_CHANGE' && (amount < 0 || amount.scale() > 2)) ||
+                                if ((type == 'PRICE_CHANGE' && (amount <= 0 || amount.scale() > 2)) ||
                                     (type != 'PRICE_CHANGE' && (amount <= 0 || amount.scale() > 3))) {
-                                    ec.web.sendJsonResponse([success:false, error:'Use a positive quantity (up to 3 decimals) or a non-negative price (up to 2 decimals).']); return
+                                    ec.web.sendJsonResponse([success:false, error:'Use a positive quantity (up to 3 decimals) or a price above ₹0 (up to 2 decimals).']); return
                                 }
                                 if (type == 'ITEM_ADDED' && op.newPrice != null && op.newPrice.toString().trim()) {
                                     def addPrice
                                     try { addPrice = new BigDecimal(op.newPrice.toString()) }
                                     catch (Exception ignored) { ec.web.sendJsonResponse([success:false, error:'Enter a valid new-item price.']); return }
-                                    if (addPrice < 0 || addPrice.scale() > 2) { ec.web.sendJsonResponse([success:false, error:'New-item price must be non-negative with up to 2 decimals.']); return }
+                                    if (addPrice <= 0 || addPrice.scale() > 2) { ec.web.sendJsonResponse([success:false, error:'New-item price must be above ₹0 with up to 2 decimals.']); return }
                                 }
                             }
                         }
@@ -2590,6 +2601,7 @@
                                 if (pp?.price) unitPrice = pp.price as BigDecimal
                             }
                             if (editOp.newPrice != null && editOp.newPrice.toString().trim()) unitPrice = new BigDecimal(editOp.newPrice.toString())
+                            if (unitPrice <= 0) { ec.message.addError('Set a product price above ₹0 before adding it to an issued bill.'); return }
                             def newSeqId = String.format("%05d", ++nextItemSeq)
                             _addedSeqId = newSeqId
                             invAdjProduct = productId; invAdjQty = BigDecimal.ZERO - addQty

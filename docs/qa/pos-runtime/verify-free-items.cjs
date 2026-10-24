@@ -14,7 +14,8 @@ module.exports=async function({browser,base,q,check,out}){
   const session=existing?{sessionId:existing.session_id}:(await manager.invoke('open',{terminalId:'POS_QA_A_TERM1',openingCash:'0'})).result;
   if(!session?.sessionId)throw Error('Free-item fixture needs an open disposable session');
   async function cart(mixed=false){const id=(await manager.invoke('cart',{sessionId:session.sessionId,reuseOpenCart:'false'})).result.transactionId;
-   await manager.invoke('add',{transactionId:id,productId:'POS_QA_A_FREE',quantity:'1',taxOn:'N'});
+   await manager.c.request.get(base+'/apps/zenith/pos/Terminal?sessionId='+session.sessionId+'&transactionId='+id+'&taxOn=N');
+   await manager.invoke('add',{transactionId:id,productId:'POS_QA_A_P5',quantity:'1',discountPercent:'100',taxOn:'N'});
    if(mixed)await manager.invoke('add',{transactionId:id,productId:'POS_QA_A_P18',quantity:'1',taxOn:'N'});return id;
   }
   const id=await cart(true),free=await cart(),credit=await cart(true);

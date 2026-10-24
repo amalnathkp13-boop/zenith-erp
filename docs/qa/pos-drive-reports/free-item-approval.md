@@ -1,5 +1,7 @@
 # POS-04-09 — manager-approved free items
 
+Historical evidence for PR #138. Under the later POS-05-10 policy, products with a ₹0 unit price or no price may remain in a draft cart, but payment and bill completion are blocked even with manager approval. Approval still applies to a positive-price product discounted to zero. The manual steps below describe the earlier policy.
+
 The user selected **manager approval and reason** rather than blocking all free items. This follow-up belongs to PR #138 and preserves legitimate free-item sales. It does not retrospectively change issued invoices or credit collections.
 
 ## Behavior
