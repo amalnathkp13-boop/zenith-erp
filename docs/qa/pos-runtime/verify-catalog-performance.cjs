@@ -68,6 +68,9 @@ module.exports = async function ({a, foreign, base, check, q, invoke}) {
         await p.waitForFunction(()=>typeof window._posRefreshCart==='function');
         await p.evaluate(()=>window._posRefreshCart());
         check('first AJAX hydration creates no duplicate cart rows',await p.locator('.pos-cart tbody tr').count()===2);
+        const rapidSaved=p.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('/ajaxCart')&&
+            new URLSearchParams(r.request().postData()||'').get('action')==='updateQty'&&
+            new URLSearchParams(r.request().postData()||'').get('newQty')==='12');
         const result=await p.evaluate(async()=>{
             const rows=document.querySelectorAll('.pos-cart tbody tr'), input=rows[1].querySelector('.aj-p');
             input.value='207.25';input.focus();
@@ -79,7 +82,7 @@ module.exports = async function ({a, foreign, base, check, q, invoke}) {
         });
         check('rapid additions preserve other line drafts and focus',result.connected&&result.focused&&result.draft==='207.25',result);
         check('a quantity step before the next frame retains every addition',result.quantity===12,result);
-        await p.waitForLoadState('networkidle');
+        await rapidSaved;
         const stored=q(`SELECT quantity FROM pos_transaction_item WHERE transaction_id='${cart.transactionId}' AND product_id='POS_QA_A_P18'`)[0];
         check('the complete rapid-click quantity is persisted exactly once',Number(stored.quantity)===12,stored);
         await p.evaluate(()=>document.activeElement.blur());

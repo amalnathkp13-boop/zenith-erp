@@ -3225,7 +3225,11 @@ window.posToggleFullscreen = function() {
                 + cartText(bill && bill.dataset.sessionLastAmount || '0') + '</div>';
         }
 
-        function clearCompletedCartUrl() {
+        function resetCompletedCart() {
+            // Reset the live model and any scheduled optimistic paint before the next tap.
+            // The receipt keeps its own completed-bill payload.
+            renderCart({success:true, transactionId:'', items:[], sub:0, tax:0, disc:0,
+                tQty:0, grand:0, pay:0, round:0, modes:lastCartData && lastCartData.modes || []});
             // Checkout leaves an empty cart. A refresh must not reopen the completed
             // transaction still present in the original cashier URL.
             var current = new URL(window.location.href);
@@ -3348,7 +3352,13 @@ window.posToggleFullscreen = function() {
                     .then(function (d) {
                         inflight = false; var done = q.shift();
                         if (d && d.success) {
-                            if (d.transactionId) { TX = d.transactionId; document.querySelectorAll('input[name="transactionId"]').forEach(function (el) { el.value = TX; }); syncModeLinks(); }
+                            if (d.transactionId) {
+                                // Item sequence numbers restart per bill; prior claims must not
+                                // strand a rapid edit queued behind the first add of the next bill.
+                                if (d.transactionId !== TX) { claimed = {}; realByTmp = {}; }
+                                TX = d.transactionId;
+                                document.querySelectorAll('input[name="transactionId"]').forEach(function (el) { el.value = TX; }); syncModeLinks();
+                            }
                             calibrate(d);
                             if (done.action === 'addItem') mapAdd(done, d);
                             applyRealSeqs();
@@ -4064,26 +4074,18 @@ window.posToggleFullscreen = function() {
                         var billNum = d.bill && d.bill.number || '';
                         showToast('✔ Sale Complete' + (billNum ? ' — ' + billNum : '') + ' — ' + CS + fmt(paidAmt) + ' ' + method.toUpperCase());
                         printReceipt(savedTx, billNum, TO, false, d.receiptUnavailable ? null : d);
-                        TX = '';
-                        lastTxnNum = '';
-                        clearCompletedCartUrl();
+                        resetCompletedCart();
                         return fetchScreen({});
                     })
                     .then(function(doc) {
                         if (!doc) return;
                         extractHeldInfo(doc);
                         updateHeldBadge();
-                        var ntx = doc.querySelector('input[name="transactionId"]');
-                        TX = ntx ? (ntx.value || '') : '';
-                        document.querySelectorAll('input[name="transactionId"]').forEach(function(el) { el.value = TX; });
                         var ntk = doc.querySelector('input[name="moquiSessionToken"]');
                         if (ntk && ntk.value) TK = ntk.value;
+                        // Only refresh catalog/header metadata: a new bill may already be active.
                         swapGrid(doc);
                         syncIssuedBillHeader(doc);
-                        var nb = doc.querySelector('.pos-cart tbody');
-                        if (nb) document.querySelector('.pos-cart tbody').innerHTML = nb.innerHTML;
-                        var ns = doc.querySelector('.pos-summary');
-                        if (ns) document.querySelector('.pos-summary').innerHTML = ns.innerHTML;
                         appendRecallIfNeeded();
                         var bn = document.querySelector('.pos-header [style*="background:#e65100"]') || document.querySelector('.pos-header [style*="background: rgb(230, 81, 0)"]');
                         if (bn) bn.textContent = 'BILL- 0';
@@ -4121,28 +4123,18 @@ window.posToggleFullscreen = function() {
                         var billNum = d.bill && d.bill.number || '';
                         showToast('✔ Sale Complete' + (billNum ? ' — ' + billNum : '') + ' — ' + splitParts.join(' + '));
                         printReceipt(savedTx, billNum, TO, false, d.receiptUnavailable ? null : d);
-                        TX = '';
-                        lastTxnNum = '';
-                        lastPay = 0;
-                        lastCartData = null;
-                        clearCompletedCartUrl();
+                        resetCompletedCart();
                         return fetchScreen({});
                     })
                     .then(function(doc) {
                         if (!doc) return;
                         extractHeldInfo(doc);
                         updateHeldBadge();
-                        var ntx = doc.querySelector('input[name="transactionId"]');
-                        TX = ntx ? (ntx.value || '') : '';
-                        document.querySelectorAll('input[name="transactionId"]').forEach(function(el) { el.value = TX; });
                         var ntk = doc.querySelector('input[name="moquiSessionToken"]');
                         if (ntk && ntk.value) TK = ntk.value;
+                        // Only refresh catalog/header metadata: a new bill may already be active.
                         swapGrid(doc);
                         syncIssuedBillHeader(doc);
-                        var nb = doc.querySelector('.pos-cart tbody');
-                        if (nb) document.querySelector('.pos-cart tbody').innerHTML = nb.innerHTML;
-                        var ns = doc.querySelector('.pos-summary');
-                        if (ns) document.querySelector('.pos-summary').innerHTML = ns.innerHTML;
                         appendRecallIfNeeded();
                         var bn = document.querySelector('.pos-header [style*="background:#e65100"]') || document.querySelector('.pos-header [style*="background: rgb(230, 81, 0)"]');
                         if (bn) bn.textContent = 'BILL- 0';
@@ -4232,25 +4224,18 @@ window.posToggleFullscreen = function() {
                         if (change > 0) toastMsg += ' (Change: ' + CS + fmt(change) + ')';
                         showToast(toastMsg);
                         printReceipt(savedTx, billNum, TO, false, d.receiptUnavailable ? null : d);
-                        TX = ''; lastTxnNum = ''; lastPay = 0; lastCartData = null;
-                        clearCompletedCartUrl();
+                        resetCompletedCart();
                         return fetchScreen({});
                     })
                     .then(function(doc) {
                         if (!doc) return;
                         extractHeldInfo(doc);
                         updateHeldBadge();
-                        var ntx = doc.querySelector('input[name="transactionId"]');
-                        TX = ntx ? (ntx.value || '') : '';
-                        document.querySelectorAll('input[name="transactionId"]').forEach(function(el) { el.value = TX; });
                         var ntk = doc.querySelector('input[name="moquiSessionToken"]');
                         if (ntk && ntk.value) TK = ntk.value;
+                        // Only refresh catalog/header metadata: a new bill may already be active.
                         swapGrid(doc);
                         syncIssuedBillHeader(doc);
-                        var nb = doc.querySelector('.pos-cart tbody');
-                        if (nb) document.querySelector('.pos-cart tbody').innerHTML = nb.innerHTML;
-                        var ns = doc.querySelector('.pos-summary');
-                        if (ns) document.querySelector('.pos-summary').innerHTML = ns.innerHTML;
                         appendRecallIfNeeded();
                         var bn = document.querySelector('.pos-header [style*="background:#e65100"]') || document.querySelector('.pos-header [style*="background: rgb(230, 81, 0)"]');
                         if (bn) bn.textContent = 'BILL- 0';

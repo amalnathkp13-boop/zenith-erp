@@ -20,6 +20,7 @@ module.exports=async function({a,foreign,base,check,q,invoke,post,out}) {
   await page.setViewportSize({width:1672,height:941});
   await page.goto(`${base}/apps/zenith/pos/Terminal?sessionId=${session.sessionId}&transactionId=${cart.transactionId}&taxOn=N`);
   await page.locator('.pos-checkout-reference').waitFor();
+  check('billing header removes technical terminal, cashier badge and duplicate Search control',await page.locator('.nb-cashier,#pos-search-toggle').count()===0&&!(await page.locator('.nb-hrow').innerText()).includes(terminalId));
   check('reference empty cart keeps all tender buttons disabled',await page.locator('.pos-reference-payments button:disabled').count()===8&&await page.locator('#pos-copilot').isEnabled());
   check('counter and Back to POS target registered POS screens',(await page.locator('.nb-counter a').last().getAttribute('href'))==='/apps/zenith/pos/PosTerminals'&&(await page.locator('.nb-back').getAttribute('href'))==='/apps/zenith/pos/Dashboard');
   const stock=await api({action:'cardStock',productIds:'POS_QA_A_STOCK,POS_QA_B_P18'});
@@ -42,13 +43,13 @@ module.exports=async function({a,foreign,base,check,q,invoke,post,out}) {
   await clickAndSettle('.pos-product-grid form:has(input[name=productId][value=POS_QA_A_P5]) button','addItem');
   await clickAndSettle('.pos-cart tbody tr:has-text("Disposable POS A P5") .aj-rm svg','removeItem');
   check('clicking the trash icon removes only that product',lines().length===1&&lines()[0].product_id==='POS_QA_A_P18'&&Number(tx().subtotal)===151);
-  await page.locator('#pos-search-toggle').click();
+  await page.locator('.pos-cart-heading h2').click();await page.keyboard.press('/');
   await page.locator('#cartInlineSearch').fill('POS_QA_A_P5');
   await page.locator('#cartSearchDropdown .cart-dd-item[data-pid="POS_QA_A_P5"]').waitFor();
   const searchAdded=page.waitForResponse(r=>r.url().includes('/ajaxCart')&&new URLSearchParams(r.request().postData()||'').get('action')==='addItem');
   await page.locator('#cartInlineSearch').press('Enter');await searchAdded;
   await page.waitForFunction(()=>!document.querySelector('.pos-cart-search').classList.contains('is-open'));
-  check('search/Enter adds a product and frees the cart toolbar',lines().some(l=>l.product_id==='POS_QA_A_P5')&&await page.locator('#pos-search-toggle').getAttribute('aria-expanded')==='false');
+  check('search/Enter adds a product and frees the cart toolbar',lines().some(l=>l.product_id==='POS_QA_A_P5')&&await page.locator('#cartInlineSearch').count()===1);
   await clickAndSettle('.pos-cart tbody tr:has-text("Disposable POS A P5") .aj-rm svg','removeItem');
   // Show/cancel each payment path without writing a tender.
   for(const [key,selector] of [['F1','#posDiscountOverlay'],['F4','#posCreditOverlay'],['F6','.pos-split-panel']]) {

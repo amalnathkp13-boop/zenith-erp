@@ -49,7 +49,6 @@
         var panel = root.querySelector('.pos-cart-search'), input = document.getElementById('cartInlineSearch');
         if (!panel || !input) return;
         panel.classList.toggle('is-open', open);
-        document.getElementById('pos-search-toggle').setAttribute('aria-expanded', String(open));
         if (open) {
             var heading=root.querySelector('.pos-cart-heading').getBoundingClientRect();
             panel.style.top=Math.max(12,Math.min(heading.bottom+6,innerHeight-340))+'px';
@@ -89,7 +88,6 @@
         root.addEventListener('click', function (event) {
             var category = event.target.closest('.pos-cat-strip a');
             if (category) { root.dataset.checkoutCategory = new URL(category.href).searchParams.get('catId') || ''; schedule(); }
-            if (event.target.closest('#pos-search-toggle')) search(!root.querySelector('.pos-cart-search').classList.contains('is-open'));
             if (event.target.closest('#pos-clear-cart')) {
                 if (typeof window._posClearCart !== 'function') { notice('The bill is still loading. Try again.'); return; }
                 if (!confirm('Clear all items from this unpaid bill?')) return;

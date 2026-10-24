@@ -5134,7 +5134,6 @@ window.sendWhatsAppWithPdf=function() {
     <span class="nb-status" role="status"><span class="nb-dot"></span><span id="pos-connection-status">Online</span></span>
     <span class="nb-meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg><span>${dispDate!''}</span></span>
     <span class="nb-meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><span id="nb-clock">${dispTime!''}</span></span>
-    <span class="nb-meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></svg><span>#${(terminal.terminalId)!(sessionId!'')}</span></span>
     <span class="nb-billno"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/></svg><span class="nb-billno__lbl">Last bill</span><span id="pos-bill-badge" class="nb-billno__val<#if !(latestIssuedBillNo!'')?has_content> nb-billno__new</#if>" data-last-bill="${(latestIssuedBillNo!'')?html}" data-session-last-bill="${lastBillNo?html}" data-session-last-amount="${lastBillAmt?html}" title="POS bill number is assigned on completed payment; invoice numbering is separate">${((latestIssuedBillNo!'')?has_content)?then(latestIssuedBillNo, '—')}</span></span>
     <span class="nb-meta nb-today-bills" title="Completed POS bills today across this shop (India time)">Today: <strong id="pos-today-bills" data-day="${billDayKey}" data-time-zone="Asia/Kolkata">${todayBillCount!0}</strong> bills</span>
 
@@ -5160,8 +5159,6 @@ window.sendWhatsAppWithPdf=function() {
         <button type="button" class="nb-modes__item" data-pos-layout="advanced" onclick="posSetLayout('advanced')">Advanced billing · product grid</button>
       </div>
     </details>
-
-    <span class="nb-cashier" title="Logged-in cashier"><#assign _cn = (ec.user.userAccount.userFullName)!'Cashier'/><span class="nb-cashier__av">${(_cn?length > 0)?then(_cn?substring(0,1)?upper_case,'C')}</span><span class="nb-cashier__nm">${_cn}</span></span>
 
   <form method="post" action="Terminal/toggleTax" class="nb-tax" style="margin:0">
     <input type="hidden" name="sessionId" value="${sessionId!''}"/>
@@ -5438,7 +5435,7 @@ window.sendWhatsAppWithPdf=function() {
 
 
 
-        <div class="pos-cart-heading"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3h2l3 12h11l2-9H6M9 21h.01M18 21h.01"/></svg>Bill Items (<span id="pos-cart-count">${(cartItems![])?size}</span>)</h2><button id="pos-clear-cart" type="button">Clear Cart</button><button id="pos-search-toggle" type="button" title="Search or scan products (/)">Search /</button></div>
+        <div class="pos-cart-heading"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3h2l3 12h11l2-9H6M9 21h.01M18 21h.01"/></svg>Bill Items (<span id="pos-cart-count">${(cartItems![])?size}</span>)</h2><button id="pos-clear-cart" type="button">Clear Cart</button></div>
         <!-- Cart Table -->
 
 
