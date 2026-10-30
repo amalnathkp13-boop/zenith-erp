@@ -124,4 +124,112 @@
             ]]></script>
         </actions>
     </service>
+    <!-- Reconcile existing products to one catalogue each; never edits product records. -->
+    <service verb="import" noun="ProductCategories" authenticate="true" transaction="force-new">
+        <in-parameters><parameter name="csvText" required="true"/><parameter name="apply" type="Boolean" default-value="false"/></in-parameters>
+        <out-parameters>
+            <parameter name="matched" type="Integer"/><parameter name="categories" type="Integer"/>
+            <parameter name="changed" type="Integer"/><parameter name="issueCount" type="Integer"/>
+            <parameter name="matchMethods" type="Map"/><parameter name="issues" type="List"/>
+        </out-parameters>
+        <actions>
+            <service-call name="zenith.inventory.CatalogueServices.get#CatalogueWriteContext" out-map="scope"/>
+            <if condition="ec.message.hasError()"><return/></if>
+            <script><![CDATA[
+                def text = csvText?.toString() ?: ''
+                if (text.length() > 2_000_000) { ec.message.addError('Category CSV is too large.'); return }
+                def parseLine = { String line ->
+                    def cells = []; def cell = new StringBuilder(); boolean quoted = false
+                    for (int i = 0; i < line.length(); i++) {
+                        char ch = line.charAt(i)
+                        if (ch == ('"' as char)) {
+                            if (quoted && i + 1 < line.length() && line.charAt(i + 1) == ('"' as char)) { cell.append(ch); i++ }
+                            else quoted = !quoted
+                        } else if (ch == (',' as char) && !quoted) { cells.add(cell.toString().trim()); cell.setLength(0) }
+                        else cell.append(ch)
+                    }
+                    if (quoted) throw new IllegalArgumentException('Unclosed CSV quote')
+                    cells.add(cell.toString().trim()); cells
+                }
+                def lines = text.replace('\uFEFF','').split('\\r?\\n', -1).findAll { it.trim() }
+                if (lines.size() < 2 || lines.size() > 5001) { ec.message.addError('Use a header and 1–5,000 category rows.'); return }
+                def header = parseLine(lines[0]).collect { it.toLowerCase() }
+                boolean sourceFormat = header == ['sourceproductid','sourcecode','productname','category']
+                if (!sourceFormat && header != ['sku','productname','category']) {
+                    ec.message.addError('Use SKU,ProductName,Category or SourceProductId,SourceCode,ProductName,Category.'); return
+                }
+                def parsed
+                try { parsed = lines.drop(1).collect { parseLine(it) } }
+                catch (IllegalArgumentException e) { ec.message.addError('Invalid category CSV: ' + e.message); return }
+                def sourceCodes = sourceFormat ? parsed.countBy { it.size() > 1 ? it[1].toLowerCase(java.util.Locale.ROOT) : '' } : [:]
+                def sourceNames = sourceFormat ? parsed.countBy { it.size() > 2 ? it[2].toLowerCase(java.util.Locale.ROOT) : '' } : [:]
+                def products = ec.entity.find('mantle.product.Product')
+                    .condition('ownerPartyId',scope.selOrg).condition('productTypeEnumId','PtAsset').disableAuthz().list()
+                def bySku = products.groupBy { (it.pseudoId ?: '').trim().toLowerCase(java.util.Locale.ROOT) }
+                def byName = products.groupBy { (it.productName ?: '').trim().toLowerCase(java.util.Locale.ROOT) }
+                def bySourceId = products.findAll { (it.pseudoId ?: '') ==~ /SRC-[0-9]+-[0-9]+/ }
+                    .groupBy { it.pseudoId.tokenize('-').last() }
+                if (apply) ec.entity.find('mantle.party.Party').condition('partyId',scope.selOrg).disableAuthz().forUpdate(true).one()
+                def existingCategories = ec.entity.find('mantle.product.category.ProductCategory')
+                    .condition('ownerPartyId',scope.selOrg).disableAuthz().list()
+                def byCategory = existingCategories.groupBy { (it.categoryName ?: '').trim().toLowerCase(java.util.Locale.ROOT) }
+                issues = []; def assignments = []; def seen = [] as Set; def targetSeen = [] as Set
+                parsed.eachWithIndex { cells, index ->
+                    try {
+                        if (cells.size() != (sourceFormat ? 4 : 3) || !cells.every { it } || cells[-1].length() > 128) throw new IllegalArgumentException('Need product identifiers, name and category (up to 128 characters)')
+                        def key = cells[0].toLowerCase(java.util.Locale.ROOT)
+                        if (!seen.add(key)) throw new IllegalArgumentException('Duplicate product identifier in file')
+                        if (sourceFormat && !(cells[0] ==~ /[0-9]+/)) throw new IllegalArgumentException('SourceProductId must be numeric')
+                        def name = cells[sourceFormat ? 2 : 1]
+                        def matches = sourceFormat ? (bySourceId[cells[0]] ?: []) : (bySku[key] ?: [])
+                        def method = sourceFormat ? 'source ID' : 'SKU'
+                        if (sourceFormat && !matches && sourceCodes[cells[1].toLowerCase(java.util.Locale.ROOT)] == 1) {
+                            matches = bySku[cells[1].toLowerCase(java.util.Locale.ROOT)] ?: []
+                            if (matches) method = 'source code'
+                        }
+                        if (sourceFormat && !matches && sourceNames[name.toLowerCase(java.util.Locale.ROOT)] == 1) {
+                            matches = byName[name.toLowerCase(java.util.Locale.ROOT)] ?: []
+                            if (matches) method = 'unique name'
+                        }
+                        if (matches.size() != 1) throw new IllegalArgumentException(matches ? 'Product match is ambiguous in ERP' : 'Product not found in this organization')
+                        def product = matches[0]
+                        if (!(product.productName ?: '').trim().equalsIgnoreCase(name)) throw new IllegalArgumentException('Product name differs from ERP')
+                        if (!targetSeen.add(product.productId)) throw new IllegalArgumentException('Two source rows match the same ERP product')
+                        def categoryName = cells[-1]
+                        def catKey = categoryName.toLowerCase(java.util.Locale.ROOT)
+                        if ((byCategory[catKey] ?: []).size() > 1) throw new IllegalArgumentException('Category name is duplicated in ERP')
+                        assignments.add([product:product, categoryName:categoryName, categoryKey:catKey, method:method])
+                    } catch (Exception e) { issues.add('Row ' + (index + 2) + ': ' + e.message) }
+                }
+                matched = assignments.size(); categories = assignments*.categoryKey.toSet().size(); changed = 0
+                matchMethods = assignments.countBy { it.method }
+                issueCount = issues.size()
+                if (issues) { issues = issues.take(20); return }
+                if (!apply) return
+                def now = ec.user.nowTimestamp
+                assignments.each { row ->
+                    def category = byCategory[row.categoryKey]?.first()
+                    if (category == null) {
+                        category = ec.entity.makeValue('mantle.product.category.ProductCategory')
+                            .setAll([ownerPartyId:scope.selOrg,categoryName:row.categoryName])
+                        category.setSequencedIdPrimary(); category.create()
+                        byCategory[row.categoryKey] = [category]
+                    }
+                    def members = ec.entity.find('mantle.product.category.ProductCategoryMember')
+                        .condition('productId',row.product.productId).disableAuthz().forUpdate(true).list()
+                    def owned = members.findAll { m -> existingCategories.any { it.productCategoryId == m.productCategoryId } || m.productCategoryId == category.productCategoryId }
+                    def active = owned.find { it.productCategoryId == category.productCategoryId && it.fromDate <= now && (it.thruDate == null || it.thruDate > now) }
+                    def others = owned.findAll { it != active && (it.thruDate == null || it.thruDate > now) }
+                    if (others || !active) changed++
+                    others.each { m -> m.thruDate = m.fromDate > now ? m.fromDate : now; m.update() }
+                    if (!active) {
+                        def start = now
+                        while (owned.any { it.productCategoryId == category.productCategoryId && it.fromDate == start }) start = new java.sql.Timestamp(start.time + 1)
+                        ec.entity.makeValue('mantle.product.category.ProductCategoryMember')
+                            .setAll([productCategoryId:category.productCategoryId,productId:row.product.productId,fromDate:start]).create()
+                    }
+                }
+            ]]></script>
+        </actions>
+    </service>
 </services>

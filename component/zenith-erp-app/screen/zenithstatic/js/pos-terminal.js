@@ -518,6 +518,30 @@ window._posOffline = (function() {
                 }).catch(function(e){ cbtn.disabled=false; cbtn.innerHTML=ot; cres.innerHTML='<span style="color:#e53935">'+piEsc(e.message)+'</span>'; });
             });
         }
+        var catFile=g('pi-category-file'), catPreview=g('pi-category-preview'), catApply=g('pi-category-apply'), catResult=g('pi-category-result');
+        var categoryText='';
+        function categoryRequest(apply){
+            var btn=apply?catApply:catPreview;
+            btn.disabled=true; catResult.textContent=apply?'Applying categories...':'Checking category matches...';
+            piPost('ProductImport/importCategoryAssignments',{csvText:categoryText,apply:apply?'true':'false'}).then(function(d){
+                if(!d||!d.success){ catResult.textContent=(d&&d.error)||'Category check failed'; catApply.disabled=true; return; }
+                var methods=Object.keys(d.matchMethods||{}).map(function(k){ return k+': '+d.matchMethods[k]; }).join(', ');
+                if(d.issueCount){ catResult.textContent=d.matched+' matched ('+methods+'); '+d.issueCount+' need review.\n'+(d.issues||[]).join('\n'); catApply.disabled=true; return; }
+                catResult.textContent=apply?('Categories applied to '+d.changed+' products; '+d.categories+' categories in file.'):('All '+d.matched+' products matched ('+methods+'); '+d.categories+' categories. Ready to apply.');
+                catApply.disabled=apply||!d.matched;
+            }).catch(function(e){ catResult.textContent=e.message; catApply.disabled=true; }).finally(function(){ catPreview.disabled=false; });
+        }
+        if(catFile){ catFile.addEventListener('change',function(){ categoryText=''; catApply.disabled=true; catResult.textContent=''; }); }
+        if(catPreview){ catPreview.addEventListener('click',function(){
+            var file=catFile.files&&catFile.files[0];
+            if(!file){ catResult.textContent='Choose the category CSV first.'; return; }
+            if(file.size>2000000){ catResult.textContent='Category CSV must be under 2 MB.'; return; }
+            var reader=new FileReader(); catPreview.disabled=true;
+            reader.onload=function(){ categoryText=reader.result; categoryRequest(false); };
+            reader.onerror=function(){ catPreview.disabled=false; catResult.textContent='Could not read category CSV.'; };
+            reader.readAsText(file);
+        }); }
+        if(catApply){ catApply.addEventListener('click',function(){ if(categoryText) categoryRequest(true); }); }
     }
     wire();
     setInterval(wire, 600);

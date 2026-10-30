@@ -134,6 +134,22 @@
         <default-response type="none"/>
     </transition>
 
+    <transition name="importCategoryAssignments">
+        <actions><script><![CDATA[
+            def result = ec.service.sync().name('zenith.inventory.CatalogueServices.import#ProductCategories')
+                .parameters([csvText:ec.web.parameters.csvText, apply:ec.web.parameters.apply == 'true']).call()
+            if (ec.message.hasError()) {
+                def error = ec.message.errorsString
+                ec.message.clearErrors()
+                ec.web.sendJsonResponse([success:false,error:error]); return
+            }
+            ec.web.sendJsonResponse([success:true,matched:result.matched,categories:result.categories,
+                changed:result.changed,issueCount:result.issueCount,matchMethods:result.matchMethods,
+                issues:result.issues,applied:ec.web.parameters.apply == 'true' && !result.issueCount])
+        ]]></script></actions>
+        <default-response type="none"/>
+    </transition>
+
     <transition name="addSingleProduct">
         <actions><script><![CDATA[
             def name = ec.web.parameters.productName
@@ -285,6 +301,16 @@
                                 <tr><td style="padding:9px 14px;color:#111827;font-weight:500">Unit</td><td style="padding:9px 14px"><span class="zenith-badge grey nd" style="font-size:11px">No</span></td><td style="padding:9px 14px;color:#6B7280">kg, g, l, ml or pcs (loose/weighed). Blank = piece.</td></tr>
                             </tbody>
                         </table>
+                    </section>
+                    <section style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px">
+                        <div style="font-size:15px;font-weight:700;color:#111827;margin-bottom:6px">Arrange Existing Products by Category</div>
+                        <div style="font-size:12.5px;color:#6B7280;line-height:1.5;margin-bottom:12px">Upload a CSV with <b>SourceProductId,SourceCode,ProductName,Category</b> from the old ERP, or <b>SKU,ProductName,Category</b>. Preview checks every product in this organization. Applying changes category memberships only; product names, prices and stock stay as they are. Current category memberships for matched products are replaced.</div>
+                        <input id="pi-category-file" type="file" accept=".csv,text/csv,text/plain" style="font-size:13px;max-width:100%"/>
+                        <div style="display:flex;gap:8px;margin-top:12px">
+                            <button id="pi-category-preview" type="button" style="padding:9px 15px;border:1px solid #7C3AED;border-radius:8px;background:#fff;color:#7C3AED;font-weight:600;cursor:pointer">Preview Categories</button>
+                            <button id="pi-category-apply" type="button" disabled="disabled" style="padding:9px 15px;border:0;border-radius:8px;background:#7C3AED;color:#fff;font-weight:600;cursor:pointer">Apply Categories</button>
+                        </div>
+                        <div id="pi-category-result" role="status" style="font-size:12.5px;margin-top:10px;white-space:pre-wrap"></div>
                     </section>
                 </div>
             </div>
