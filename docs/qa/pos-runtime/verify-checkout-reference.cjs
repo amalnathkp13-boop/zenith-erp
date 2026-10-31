@@ -34,8 +34,9 @@ module.exports=async function({a,foreign,base,check,q,invoke,post,out}) {
   await page.locator('.pos-cart .aj-q').last().waitFor();
   await clickAndSettle('.pos-cart .aj-q:last-of-type','updateQty');
   check('plus quantity and item count update without duplicate lines',lines().length===1&&Number(lines()[0].quantity)===2&&(await page.locator('#pos-cart-count').innerText())==='1');
-  const price=page.locator('.pos-cart .aj-p');await price.fill('75.50');
-  const priceReply=page.waitForResponse(r=>r.url().includes('/ajaxCart')&&new URLSearchParams(r.request().postData()||'').get('action')==='updatePrice');await price.press('Enter');await priceReply;
+  const price=page.locator('.pos-cart .aj-p');
+  const priceReply=page.waitForResponse(r=>r.url().includes('/ajaxCart')&&new URLSearchParams(r.request().postData()||'').get('action')==='updatePrice');
+  await price.fill('75.50');await price.press('Enter');await priceReply;
   check('editable rate persists decimals and total',Number(lines()[0].unit_price)===75.5&&Number(tx().subtotal)===151,tx());
   await page.locator('.nb-tax button').click();await page.waitForFunction(()=>document.querySelector('.nb-toggle')?.classList.contains('on'));
   check('tax on recalculates real GST',Number(tx().total_tax_amount)>0,tx());

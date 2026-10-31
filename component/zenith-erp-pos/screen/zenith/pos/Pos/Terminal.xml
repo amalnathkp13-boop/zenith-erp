@@ -2267,18 +2267,18 @@
                         ec.web.sendJsonResponse(_r?.receipt ?: [success:false, error:'Transaction not found'])
                         return
                                         } else if (action == 'searchProductsJson') {
-                        def q = p.q ?: ''
+                        def q = (p.q ?: '').toString().trim()
                         def products = []
                         if (q && q.length() >= 1) {
-                            def ql = q.toLowerCase()
-                            def allProds = ec.entity.find("mantle.product.Product")
-                                .condition("productTypeEnumId", "PtAsset").limit(500).list()
-                            def prods = allProds.findAll { pr ->
-                                (pr.productName ?: '').toLowerCase().contains(ql) ||
-                                (pr.pseudoId ?: '').toLowerCase().contains(ql) ||
-                                (pr.productId ?: '').toLowerCase().contains(ql)
-                            }
-                            if (prods.size() > 10) prods = prods.subList(0, 10)
+                            // Match the entire authorized catalog before limiting suggestions.
+                            def cf = ec.entity.conditionFactory
+                            def EC = org.moqui.entity.EntityCondition
+                            def like = '%' + q.replace('\\','\\\\').replace('%','\\%').replace('_','\\_') + '%'
+                            def matches = ['productName','pseudoId','productId'].collect { cf.makeCondition(it,EC.LIKE,like).ignoreCase() }
+                            def prods = ec.entity.find('mantle.product.Product')
+                                .condition('ownerPartyId',posOrganizationPartyId ?: '__NO_ORGANIZATION__')
+                                .condition('productTypeEnumId','PtAsset').condition(cf.makeCondition(matches,EC.OR))
+                                .orderBy('productName,productId').limit(10).list()
                             prods.each { pr ->
                                 def price = pr.mrpAmount ?: 0
                                 if (!price || price == 0) {
@@ -2367,9 +2367,7 @@
                         def search = p.search ?: ''
                         def offset = p.offset ? (p.offset as int) : 0
                         def limit = p.histLimit ? (p.histLimit as int) : 20
-                        // Scope bill history to ALL terminals in the same organization (whole store).
-                        // Works with no active session too: derive the terminal from an explicit
-                        // terminalId param, else from the operator's most recent session.
+                        // History belongs to the chosen terminal; owner dashboards aggregate shops separately.
                         def histTermId = null
                         if (sessionId) {
                             def curSess = ec.entity.find("zenith.erp.pos.PosSession").condition("sessionId", sessionId).one()
@@ -2377,20 +2375,16 @@
                         }
                         if (!histTermId && p.terminalId) histTermId = p.terminalId
                         if (!histTermId) {
-                            def recentSess = ec.entity.find("zenith.erp.pos.PosSession").condition("operatorPartyId", ec.user.userAccount?.partyId).orderBy("-openDate").limit(1).list()
+                            def recentSess = ec.entity.find("zenith.erp.pos.PosSession").condition("organizationPartyId",posOrganizationPartyId).condition("operatorPartyId", ec.user.userAccount?.partyId).orderBy("-openDate").limit(1).list()
                             if (recentSess) histTermId = recentSess[0].terminalId
                         }
-                        def curTerm = histTermId ? ec.entity.find("zenith.erp.pos.PosTerminal").condition("terminalId", histTermId).one() : null
-                        def effOrgId = curTerm?.organizationPartyId
-                        if (!effOrgId) { def _ao = ec.user.getPreference('ACTIVE_ORGANIZATION'); if (_ao && _ao != '_NA_') effOrgId = _ao }
-                        if (!effOrgId) { ec.web.sendJsonResponse([success:true, action:'billHistory', bills:[], total:0, offset:0]); return }
-                        // Scope every completed bill to the store by organizationPartyId (fully populated, and
-                        // avoids a huge sessionId IN-list) and PAGINATE IN THE DB. A large tenant (MARUTHI has
-                        // ~5,700 bills) must never load the whole history into memory + build every bill - that
-                        // hung the history panel on "Loading...". count() gives the total; offset/limit fetch
-                        // only the page actually shown.
-                        def txnBase = ec.entity.find("zenith.erp.pos.PosTransaction")
-                            .condition("organizationPartyId", effOrgId).condition("statusId", "PtCompleted")
+                        def curTerm = histTermId ? ec.entity.find("zenith.erp.pos.PosTerminal").condition("terminalId", histTermId).condition('organizationPartyId',posOrganizationPartyId).one() : null
+                        if (!curTerm) { ec.web.sendJsonResponse([success:true, action:'billHistory', bills:[], total:0, offset:0]); return }
+                        def txnBase = ec.entity.find("zenith.erp.pos.PosTransactionView")
+                            .condition("organizationPartyId",posOrganizationPartyId).condition("terminalId",curTerm.terminalId).condition("statusId", "PtCompleted")
+                        if (!ec.user.isInGroup('ADMIN') && !ec.user.isInGroup('ZENITH_ADMIN') && !ec.user.isInGroup('ZENITH_STORE_MGR')) {
+                            txnBase.condition('operatorPartyId',ec.user.userAccount?.partyId)
+                        }
                         BigDecimal searchAmt = null
                         if (search) {
                             try { searchAmt = new BigDecimal(search) } catch (Exception ignored) {}
@@ -3403,7 +3397,7 @@
 
 
 
-                def totalSaving = BigDecimal.ZERO
+                def totalSaving = (completedTxn.discountTotal ?: 0) as BigDecimal
 
 
 
@@ -3423,7 +3417,7 @@
 
 
 
-                    def saving = (mrp - rate) * qty
+                    def saving = (it.discountAmount ?: 0) as BigDecimal
 
 
 
@@ -3431,7 +3425,7 @@
 
 
 
-                    totalSaving += saving
+                    // The bill discount total already includes explicit line discounts.
 
 
 
@@ -4413,7 +4407,7 @@
                           </div>
                           </#if>
                         ]]></text></render-mode>
-                        <render-mode><text type="html,qvt" template="true"><![CDATA[<img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="try{if(location.pathname.indexOf('/qapps/')===0){location.replace(location.href.replace('/qapps/','/apps/'));}}catch(e){}"/><div style="text-align:center;margin-top:18px"><button id="pos-history-btn-ns" type="button" onclick="window.posOpenHistory&amp;&amp;window.posOpenHistory()" style="padding:10px 24px;border-radius:8px;font-size:14px;font-weight:bold;cursor:pointer;background:#7C3AED;color:#fff;border:1px solid #A78BFA">&#128196; View Bill History<span style="margin-left:7px;padding:1px 6px;border:1px solid rgba(255,255,255,0.7);border-radius:4px;font-size:11px;font-weight:700;opacity:0.9">F9</span></button></div><script src="/zenithstatic/js/pos-terminal.js?perf=1&amp;v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-terminal.js').getLastModified()?c}"></script>]]></text></render-mode>
+                        <render-mode><text type="html,qvt" template="true"><![CDATA[<img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="try{if(location.pathname.indexOf('/qapps/')===0){location.replace(location.href.replace('/qapps/','/apps/'));}}catch(e){}"/><div style="text-align:center;margin-top:18px"><button id="pos-history-btn-ns" type="button" onclick="window.posOpenHistory&amp;&amp;window.posOpenHistory()" style="padding:10px 24px;border-radius:8px;font-size:14px;font-weight:bold;cursor:pointer;background:#7C3AED;color:#fff;border:1px solid #A78BFA">&#128196; View Bill History<span style="margin-left:7px;padding:1px 6px;border:1px solid rgba(255,255,255,0.7);border-radius:4px;font-size:11px;font-weight:700;opacity:0.9">F9</span></button></div><script src="/zenithstatic/js/pos-receipt-layout.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-receipt-layout.js').getLastModified()?c}"></script><script src="/zenithstatic/js/pos-terminal.js?perf=1&amp;v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-terminal.js').getLastModified()?c}"></script>]]></text></render-mode>
 
 
 
@@ -4725,15 +4719,8 @@ function receiptText(value){
 
 
 
-    /* Summary: Qty, Items, Subtotal */
-
-
-
-    h += '<div class="rw sm"><span>Total Qty: ' + d.totalQty + '</span><span>Total Items: ' + d.itemCount + '</span></div>';
-
-
-
-    h += '<div class="rw"><span class="lb">Taxable (after discount)</span><span class="vl">' + cs + d.subtotal + '</span></div>';
+    /* Summary */
+    h += '<div class="rw"><span class="lb">Subtotal</span><span class="vl">' + cs + d.subtotal + '</span></div>';
 
 
 
@@ -4762,18 +4749,6 @@ function receiptText(value){
 
 
     h += '<div class="dl"></div>';
-
-
-
-    /* Payment breakdown */
-
-
-
-    for (var p = 0; p < d.payments.length; p++)
-
-
-
-        h += '<div class="rw"><span class="lb">' + d.payments[p].method + '</span><span class="vl">' + cs + d.payments[p].amount + '</span></div>';
 
 
 
@@ -4836,7 +4811,7 @@ function receiptText(value){
 
 
 
-    var css = '@page{size:80mm auto;margin:0}*{margin:0;padding:0;box-sizing:border-box}body{font-family:"Courier New",monospace;font-size:12px;width:72mm;max-width:72mm;margin:0 auto;padding:4mm 2mm;color:#000}.ct{text-align:center}.r{text-align:right}.c{text-align:center}.b{font-weight:bold}.bg{font-size:14px;font-weight:bold}.sm{font-size:10px}.ln{border-top:1px dashed #000;margin:4px 0}.dl{border-top:2px solid #000;margin:4px 0}.rw{display:flex;justify-content:space-between;margin-bottom:2px}.rw .lb{flex:1}.rw .vl{text-align:right;white-space:nowrap}.sv{font-size:9px;color:#333;padding-left:8px;font-style:italic}table{width:100%;border-collapse:collapse}th{text-align:left;font-size:10px;border-bottom:1px solid #000;padding:2px 0}td{padding:2px 0;font-size:11px;vertical-align:top}th:nth-child(2),td:nth-child(2){text-align:right;width:38px}th:nth-child(3),td:nth-child(3){text-align:center;width:28px}th:nth-child(4),td:nth-child(4){text-align:right;width:44px}th:nth-child(5),td:nth-child(5){text-align:right;width:50px}@media print{body{padding:2mm 1mm}}';
+    var css = '@page{size:80mm auto;margin:0}*{margin:0;padding:0;box-sizing:border-box}body{font-family:"Courier New",monospace;font-size:12px;width:72mm;max-width:72mm;margin:0 auto;padding:4mm 2mm;color:#000}.ct{text-align:center}.r{text-align:right}.c{text-align:center}.b{font-weight:bold}.bg{font-size:14px;font-weight:bold}.sm{font-size:10px}.ln{border-top:1px dashed #000;margin:4px 0}.dl{border-top:2px solid #000;margin:4px 0}.rw{display:flex;justify-content:space-between;margin-bottom:2px}.rw .lb{flex:1}.rw .vl{text-align:right;white-space:nowrap}.sv{font-size:9px;color:#000;padding-left:8px;font-style:italic}table{width:100%;border-collapse:collapse}th{text-align:left;font-size:10px;border-bottom:1px solid #000;padding:2px 0}td{padding:2px 0;font-size:11px;vertical-align:top}th:nth-child(2),td:nth-child(2){text-align:right;width:38px}th:nth-child(3),td:nth-child(3){text-align:center;width:28px}th:nth-child(4),td:nth-child(4){text-align:right;width:44px}th:nth-child(5),td:nth-child(5){text-align:right;width:50px}@media print{body{padding:2mm 1mm}}';
 
 
 
@@ -5142,7 +5117,7 @@ window.sendWhatsAppWithPdf=function() {
 
 
 
-<link rel="stylesheet" href="/zenithstatic/css/pos-checkout.css?perf=1&amp;v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/pos-checkout.css').getLastModified()?c}"/>
+<link rel="stylesheet" href="/zenithstatic/css/pos-checkout.css?perf=2&amp;v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/pos-checkout.css').getLastModified()?c}"/>
 <div id="pos-terminal-root" class="pos-checkout-reference">
 <script>(function(){try{var m=localStorage.getItem('posLayoutMode');document.body.classList.add(m==='advanced'?'pos-mode-advanced':'pos-mode-normal');}catch(e){try{document.body.classList.add('pos-mode-normal');}catch(_){}}})();</script>
 <#if (modeSwitchError!'')?has_content>
@@ -5231,7 +5206,7 @@ window.sendWhatsAppWithPdf=function() {
   
 
     <form method="post" action="Terminal/closeSession" style="display:inline;margin:0"><input type="hidden" name="sessionId" value="${sessionId!''}"/><input type="hidden" name="closingCash" value="0"/><input type="hidden" name="moquiSessionToken" value="${ec.web.sessionToken}"/><button type="submit" class="nb-power" title="Review cash and close this POS session" aria-label="Review cash and close session"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h7"/></svg><span>Close session</span></button></form>
-  <button id="posFullscreenBtn" onclick="posToggleFocus()" class="nb-abtn nb-abtn--icon" title="Full-screen billing — toggle"><span id="fsBtnIcon">&#x26F6;</span></button>
+  <button id="posFullscreenBtn" type="button" onclick="posToggleFocus()" class="nb-abtn nb-abtn--icon" title="Enter fullscreen" aria-label="Enter fullscreen" aria-pressed="false"><span id="fsBtnIcon" aria-hidden="true">&#x26F6;</span></button>
 </div>
 </div>
 
@@ -5986,7 +5961,7 @@ window.sendWhatsAppWithPdf=function() {
 
 
 
-                <div id="pos-last-completed" style="font-size:13px;color:#777">Last: ${lastBillNo?html} / ${lastBillAmt?html}</div>
+                <div id="pos-last-completed" style="font-size:13px;color:#777">Last amount: ${lastBillAmt?html}</div>
 
 
 
@@ -6085,20 +6060,31 @@ window.sendWhatsAppWithPdf=function() {
 
 
 <script src="/zenithstatic/js/pos-clock.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-clock.js').getLastModified()?c}"></script>
-<script src="/zenithstatic/js/pos-terminal.js?perf=1&amp;v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-terminal.js').getLastModified()?c}"></script>
+<script src="/zenithstatic/js/pos-receipt-layout.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-receipt-layout.js').getLastModified()?c}"></script><script src="/zenithstatic/js/pos-terminal.js?perf=1&amp;v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-terminal.js').getLastModified()?c}"></script>
 
 
 
 <script>(function(){
 function applyFocus(on){var r=document.getElementById('pos-terminal-root');if(!r)return;document.body.classList.toggle('pos-focus',on);if(on){r.style.position='fixed';r.style.top='0';r.style.left='0';r.style.right='0';r.style.bottom='0';r.style.zIndex='9999';r.style.background='#fff';}else{['position','top','left','right','bottom','zIndex','background'].forEach(function(k){r.style[k]='';});}}
-function f(){var r=document.getElementById('pos-terminal-root');if(!r)return;var foc=document.body.classList.contains('pos-focus');var t=foc?0:r.getBoundingClientRect().top;var h=window.innerHeight-t;if(h<360)h=360;r.style.height=h+'px';var lg=document.getElementById('posKbLegend');if(lg)lg.style.display=(window.innerHeight<1100?'none':'');var fi=document.getElementById('fsBtnIcon');if(fi){fi.innerHTML=foc?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5"/></svg>';fi.setAttribute('aria-hidden','true');}}
+function fullscreenElement(){return document.fullscreenElement||document.webkitFullscreenElement;}
+function f(){var r=document.getElementById('pos-terminal-root');if(!r)return;var foc=!!fullscreenElement();var t=foc?0:r.getBoundingClientRect().top;var h=window.innerHeight-t;if(h<360)h=360;r.style.height=h+'px';var lg=document.getElementById('posKbLegend');if(lg)lg.style.display=(window.innerHeight<1100?'none':'');var fi=document.getElementById('fsBtnIcon');if(fi){fi.innerHTML=foc?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5"/></svg>';fi.setAttribute('aria-hidden','true');}var btn=document.getElementById('posFullscreenBtn');if(btn){btn.title=foc?'Exit fullscreen':'Enter fullscreen';btn.setAttribute('aria-label',btn.title);btn.setAttribute('aria-pressed',String(foc));}}
 window.posFitTerminal=f;
-window.posToggleFocus=function(){var on=!document.body.classList.contains('pos-focus');try{on?localStorage.setItem('posFocus','1'):localStorage.removeItem('posFocus');}catch(e){}applyFocus(on);if(on){try{(document.documentElement.requestFullscreen||function(){}).call(document.documentElement);}catch(e){}}else{try{if(document.fullscreenElement&&document.exitFullscreen)document.exitFullscreen();}catch(e){}}f();setTimeout(f,80);setTimeout(f,250);};
+function syncFullscreen(){applyFocus(!!fullscreenElement());f();}
+window.posToggleFocus=function(){
+    var target=fullscreenElement()?document:document.documentElement;
+    var method=fullscreenElement()?(document.exitFullscreen||document.webkitExitFullscreen):(target.requestFullscreen||target.webkitRequestFullscreen);
+    if(!method){syncFullscreen();return;}
+    try{var result=method.call(target);if(result&&result.catch)result.catch(syncFullscreen);}catch(e){syncFullscreen();}
+};
+if(window.__posFullscreenSync){document.removeEventListener('fullscreenchange',window.__posFullscreenSync);document.removeEventListener('webkitfullscreenchange',window.__posFullscreenSync);}
+window.__posFullscreenSync=syncFullscreen;
+document.addEventListener('fullscreenchange',syncFullscreen);document.addEventListener('webkitfullscreenchange',syncFullscreen);
+try{localStorage.removeItem('posFocus');sessionStorage.removeItem('posFS');}catch(e){}
+syncFullscreen();
 function syncLayoutChoices(){var normal=document.body.classList.contains('pos-mode-normal');document.querySelectorAll('[data-pos-layout]').forEach(function(btn){var active=(btn.getAttribute('data-pos-layout')==='normal')===normal;btn.classList.toggle('is-active',active);btn.setAttribute('aria-pressed',String(active));});}
 window.posSetLayout=function(mode){if(mode!=='normal'&&mode!=='advanced')return;var normal=mode==='normal';document.body.classList.toggle('pos-mode-normal',normal);document.body.classList.toggle('pos-mode-advanced',!normal);try{localStorage.setItem('posLayoutMode',mode);}catch(e){}syncLayoutChoices();var menu=document.querySelector('.nb-modes');if(menu)menu.open=false;f();var root=document.getElementById('pos-terminal-root');if(root)root.scrollTop=0;setTimeout(f,100);setTimeout(f,320);};
 window.posToggleLayout=function(){window.posSetLayout(document.body.classList.contains('pos-mode-normal')?'advanced':'normal');};
 syncLayoutChoices();
-try{if(localStorage.getItem('posFocus'))applyFocus(true);}catch(e){}
 window.addEventListener('resize',f);window.addEventListener('orientationchange',f);if(document.readyState!=='loading')f();else document.addEventListener('DOMContentLoaded',f);setTimeout(f,150);setTimeout(f,500);setTimeout(f,1200);
 }())</script>
 <style>.cart-dd-item{padding:8px 12px;cursor:pointer;border-bottom:1px solid #eee;font-size:14px;background:#fff}.cart-dd-item:hover,.cart-dd-item.active{background:#e8f5e9}.cart-dd-item .dd-price{float:right;color:#e53935 !important;font-weight:bold;font-size:14px}.cart-dd-item .dd-name{font-weight:600;color:#000 !important;font-size:14px}.cart-dd-item .dd-code{font-size:12px;color:#555 !important}</style>

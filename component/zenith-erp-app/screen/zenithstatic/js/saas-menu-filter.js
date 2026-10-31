@@ -7,8 +7,7 @@
     // for a moment before being removed, briefly exposing privileged navigation. We therefore hide the
     // top-level module nav items until the filter has run, then reveal only the allowed set. This only
     // applies to users who actually get filtered (a server-embedded config is present); the platform
-    // super-admin has no embedded config and is untouched. A fail-safe timer always reveals so the menu
-    // can never stay hidden if something goes wrong.
+    // super-admin has no embedded config and is untouched. Missing configuration keeps navigation hidden until the authenticated policy arrives.
     var HIDE_ID = "zmf-menu-pending";
     function injectHide() {
         if (document.getElementById(HIDE_ID)) return;
@@ -33,6 +32,8 @@
                 hasAllAccess: el.getAttribute("data-all") === "true",
                 posOnly: el.getAttribute("data-pos-only") === "true",
                 isAdmin: el.getAttribute("data-is-admin") !== "false",
+                navRestricted: el.getAttribute('data-nav-restricted') === 'true',
+                isSuperAdmin: el.getAttribute('data-super') === 'true',
                 modules: JSON.parse(el.getAttribute("data-modules") || "[]")
             };
         } catch (e) { return null; }
@@ -41,17 +42,16 @@
     // The Quasar (/qapps) shell renders its module menu client-side via Vue, so the full list — including
     // admin-only Settings and non-plan modules — paints before the filter below can trim it. Hide the
     // module nav up front on /qapps and reveal only once the filter has run. (The /apps shell renders the
-    // menu server-side and this Vue filter never touches it, so no hiding there.) Fail-safe reveal ensures
-    // the menu can never stay hidden.
-    if (location.pathname.indexOf('/qapps/') === 0) { injectHide(); setTimeout(reveal, 3000); }
+    // menu server-side and this Vue filter never touches it, so no hiding there.) Missing or failed configuration must never reveal the unfiltered menu.
+    if (location.pathname.indexOf('/qapps/') === 0) injectHide();
 
     // ZE-NAV-SSR (/qapps): persistent CSS ALLOW-LIST. The Vue navMenuList filter below removes disallowed
-    // modules, but if it is delayed/bypassed the fail-safe reveal would expose them. This injects a persistent
+    // modules, and this allow-list also covers delayed Vue initialization. This injects a persistent
     // style that hides EVERY /qapps module item and reveals ONLY the allowed ones (server-known from data-modules),
     // so an out-of-plan module can never appear in the /qapps nav even if the JS filter never runs. Only applied
     // to users who are actually filtered (a limited-plan tenant); non-tenant / all-access see everything.
     function applyAllowlist(cfg) {
-        if (!cfg || !cfg.isSaasTenant || cfg.hasAllAccess) return;
+        if (!cfg || !(cfg.navRestricted || cfg.posOnly || (cfg.isSaasTenant && !cfg.hasAllAccess))) return;
         var show;
         if (cfg.posOnly) {
             show = ["pos", "inventory", "mypassword"];
@@ -70,8 +70,19 @@
     }
 
     function startFilter(cfg) {
+        if (!cfg || !Array.isArray(cfg.modules)) return;
+        var embedded = document.getElementById('zenith-saas-cfg');
+        if (!embedded) {
+            embedded = document.createElement('div'); embedded.id = 'zenith-saas-cfg'; embedded.hidden = true;
+            [['data-tenant',cfg.isSaasTenant],['data-all',cfg.hasAllAccess],['data-pos-only',cfg.posOnly],
+                ['data-is-admin',cfg.isAdmin],['data-super',cfg.isSuperAdmin],['data-nav-restricted',cfg.navRestricted]]
+                .forEach(function(pair) { embedded.setAttribute(pair[0], String(!!pair[1])); });
+            embedded.setAttribute('data-modules', JSON.stringify(cfg.modules));
+            document.body.appendChild(embedded);
+        }
+        window.dispatchEvent(new Event('zenith:nav-config'));
         var app = document.getElementById("apps-root");
-        if (!app || !app.__vue__) { reveal(); return; }
+        if (!app || !app.__vue__) return;
         applyAllowlist(cfg);
         var vm = app.__vue__;
         var isTenant = !!cfg.isSaasTenant;
@@ -105,8 +116,9 @@
                     // Settings is admin-only (ZENITH_ADMIN/ADMIN) regardless of plan — hide it from
                     // everyone else so they don't navigate into an "Access Restricted" wall.
                     if (name === "settings") return isAdmin;
-                    if (name === "saas-admin" && isTenant) return false;
+                    if (name === "saas-admin") return cfg.isSuperAdmin === true;
                     if (name === "my-subscription" && !isTenant) return false;
+                    if (cfg.navRestricted) return !!alwaysAllowed[name] || !!allowedSet[name];
                     if (!isTenant || hasAll) return true;
                     if (alwaysAllowed[name]) return true;
                     return !!allowedSet[name];
@@ -143,14 +155,14 @@
         var vm = app.__vue__;
         $.ajax({
             type: "GET", url: vm.appRootPath + "/apps/zenith/saasConfig", dataType: "json",
-            success: function(cfg) { if (cfg) startFilter(cfg); else reveal(); },
-            error: function() { reveal(); }
+            success: function(cfg) { if (cfg) startFilter(cfg); },
+            error: function() { /* Keep pending navigation hidden until a valid permission response. */ }
         });
         return true;
     }
 
     // Poll tightly for the Vue app so the filter applies as early as possible (minimising the brief
-    // pending window). Falls back to the fail-safe reveal above if the app never mounts.
+    // pending window). Keep unfiltered navigation hidden if the app never mounts.
     var checkReady = setInterval(function() {
         if (boot()) clearInterval(checkReady);
     }, 30);

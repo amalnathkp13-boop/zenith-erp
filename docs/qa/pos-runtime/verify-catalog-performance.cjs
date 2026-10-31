@@ -71,6 +71,7 @@ module.exports = async function ({a, foreign, base, check, q, invoke}) {
         const rapidSaved=p.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('/ajaxCart')&&
             new URLSearchParams(r.request().postData()||'').get('action')==='updateQty'&&
             new URLSearchParams(r.request().postData()||'').get('newQty')==='12');
+        rapidSaved.catch(()=>{});
         const result=await p.evaluate(async()=>{
             const rows=document.querySelectorAll('.pos-cart tbody tr'), input=rows[1].querySelector('.aj-p');
             input.value='207.25';input.focus();
@@ -93,7 +94,7 @@ module.exports = async function ({a, foreign, base, check, q, invoke}) {
         });
         await p.locator('.pos-cash-panel').waitFor();
         const payment=await p.evaluate(()=>({cash:Number(document.querySelector('.pos-cash-quick').dataset.amt),panel:true}));
-        check('an immediate cash-panel click reads the newly queued total',payment.panel&&payment.cash===1500,payment);
+        check('an immediate cash-panel click includes queued additions and the typed rate',payment.panel&&payment.cash===1507,payment);
         await p.waitForLoadState('networkidle');
         check('queued cart replies cannot dismiss the cash panel',await p.locator('.pos-cash-panel').count()===1);
         const removal=await p.evaluate(async()=>{

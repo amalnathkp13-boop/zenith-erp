@@ -74,6 +74,7 @@
 
     <actions>
         <script><![CDATA[
+            dashboardOrgId = posOrganizationPartyId ?: '__NONE__'
             def userZone = ec.user.timeZone
             def sdf = new java.text.SimpleDateFormat("yyyy-MM-dd"); sdf.setTimeZone(userZone)
             def now = ec.user.nowTimestamp
@@ -144,17 +145,17 @@
             // below (which read _locSessionIds). Locations = the tenant's retail-store FACILITIES (branch/Owner-View)
             // when it runs 2+ stores, else its TERMINALS/counters (multi-counter). Hidden for a single location.
             // Transactions link via sessionId -> PosSession.terminalId -> Terminal.facilityId.
-            def _org = ec.user.getPreference("ACTIVE_ORGANIZATION")
+            def _org = dashboardOrgId
             // ZE-SHOP: the global shop switcher (ACTIVE_SHOP) drives this dashboard's store-mode filter unless the
             // user picked a specific location chip on THIS page (explicit dashLoc always wins).
             if (!dashLoc) { try { def _ass = ec.service.sync().name("zenith.base.ShopServices.get#ActiveShopScope").call(); if (_ass?.activeShopId) dashLoc = _ass.activeShopId } catch (Exception _ge) {} }
-            locMode = 'none'; locOptions = []; _locSessionIds = null
+            locMode = 'none'; locOptions = []; _locSessionIds = dashLoc ? ['__NONE__'] : null
             try {
                 if (_org && _org != '_NA_') {
                     def _terms = ec.entity.find("zenith.erp.pos.PosTerminal").condition("organizationPartyId", _org).list()
                     if (_terms) {
                         def _facIds = _terms.collect { it.facilityId }.findAll { it }.unique()
-                        def _stores = _facIds ? ec.entity.find("mantle.facility.Facility").condition("facilityId","in",_facIds).condition("facilityTypeEnumId","FcTpRetailStore").list() : []
+                        def _stores = _facIds ? ec.entity.find("mantle.facility.Facility").condition("facilityId","in",_facIds).condition("ownerPartyId",dashboardOrgId).condition("facilityTypeEnumId","FcTpRetailStore").list() : []
                         def _locTermIds = null
                         if (_stores.size() >= 2) {
                             locMode = 'store'
@@ -165,13 +166,14 @@
                             _terms.sort { (it.terminalName ?: it.terminalId) }.each { t -> locOptions.add([id:t.terminalId, name:(t.terminalName ?: t.terminalId), url:"?dashDate="+dashDate+"&dashDateTo="+dashDateTo+"&dashLoc="+t.terminalId]) }
                             if (dashLoc) _locTermIds = [dashLoc]
                         }
-                        if (_locTermIds) {
-                            def _ss = ec.entity.find("zenith.erp.pos.PosSession").condition("terminalId","in",_locTermIds).list()
+                        if (dashLoc) {
+                            _locTermIds = _terms.findAll { it.facilityId == dashLoc || it.terminalId == dashLoc }.collect { it.terminalId }
+                            def _ss = _locTermIds ? ec.entity.find("zenith.erp.pos.PosSession").condition("organizationPartyId",dashboardOrgId).condition("terminalId","in",_locTermIds).list() : []
                             _locSessionIds = _ss ? _ss.collect { it.sessionId }.unique() : ['__NONE__']
                         }
                     }
                 }
-            } catch (Exception e) { locMode = 'none'; _locSessionIds = null }
+            } catch (Exception e) { locMode = 'none'; _locSessionIds = dashLoc ? ['__NONE__'] : null }
             urlLocAll = "?dashDate="+dashDate+"&dashDateTo="+dashDateTo
             locName = 'All ' + (locMode=='store' ? 'Shops' : 'Counters')
             if (dashLoc) { def _o = locOptions.find { it.id == dashLoc }; if (_o) locName = _o.name }
@@ -182,6 +184,7 @@
         ]]></script>
 
         <entity-find entity-name="zenith.erp.pos.PosTransaction" list="completedTxns">
+            <econdition field-name="organizationPartyId" from="dashboardOrgId"/>
             <econdition field-name="statusId" value="PtCompleted"/>
             <econdition field-name="entryDate" operator="greater-equals" from="dayStart"/>
             <econdition field-name="entryDate" operator="less-equals" from="dayEnd"/>
@@ -190,6 +193,7 @@
         </entity-find>
 
         <entity-find entity-name="zenith.erp.pos.PosTransaction" list="voidedTxns">
+            <econdition field-name="organizationPartyId" from="dashboardOrgId"/>
             <econdition field-name="statusId" value="PtVoided"/>
             <econdition field-name="entryDate" operator="greater-equals" from="dayStart"/>
             <econdition field-name="entryDate" operator="less-equals" from="dayEnd"/>
@@ -292,7 +296,7 @@
             // Expenses today
             todayExpenses = BigDecimal.ZERO
             try {
-                def _eq = ec.entity.find("zenith.erp.pos.PosExpense")
+                def _eq = ec.entity.find("zenith.erp.pos.PosExpense").condition("organizationPartyId",dashboardOrgId)
                     .condition("expenseDate", "greater-equals", dayStart)
                     .condition("expenseDate", "less-equals", dayEnd)
                 if (_locSessionIds) _eq.condition("sessionId", "in", _locSessionIds)   // ZE-SHOP: scope by selected shop
@@ -304,7 +308,7 @@
             todayCashIn = BigDecimal.ZERO
             todayCashOut = BigDecimal.ZERO
             try {
-                def _cq = ec.entity.find("zenith.erp.pos.PosCashEntry")
+                def _cq = ec.entity.find("zenith.erp.pos.PosCashEntry").condition("organizationPartyId",dashboardOrgId)
                     .condition("entryDate", "greater-equals", dayStart)
                     .condition("entryDate", "less-equals", dayEnd)
                 if (_locSessionIds) _cq.condition("sessionId", "in", _locSessionIds)   // ZE-SHOP: scope by selected shop
@@ -317,7 +321,7 @@
             zeroStockCount = 0
             lowStockCount = 0
             try {
-                def stockList = ec.entity.find("zenith.erp.inventory.ProductStockView").list()
+                def stockList = ec.entity.find("zenith.erp.inventory.ProductStockView").condition("ownerPartyId",dashboardOrgId).list()
                 zeroStockCount = stockList.count { (it.totalQoh ?: 0) <= 0 }
                 lowStockCount = stockList.count { def qoh = (it.totalQoh ?: 0) as BigDecimal; def rp = (it.reorderPoint ?: 0) as BigDecimal; qoh > 0 && rp > 0 && qoh <= rp }
             } catch (Exception e) { /* view may not exist */ }
@@ -325,14 +329,14 @@
             // Active KOTs
             activeKotCount = 0
             try {
-                activeKotCount = ec.entity.find("zenith.erp.pos.KitchenOrderTicket")
+                activeKotCount = ec.entity.find("zenith.erp.pos.KitchenOrderTicket").condition("organizationPartyId",dashboardOrgId)
                     .condition("statusId", "in", ["KotNew", "KotPreparing", "KotReady"]).count() as int
             } catch (Exception e) { /* entity may not exist */ }
 
             // Wastage today
             todayWastage = BigDecimal.ZERO
             try {
-                def wList = ec.entity.find("zenith.erp.pos.PosStockWastage")
+                def wList = ec.entity.find("zenith.erp.pos.PosStockWastage").condition("organizationPartyId",dashboardOrgId)
                     .condition("wastageDate", "greater-equals", dayStart)
                     .condition("wastageDate", "less-equals", dayEnd).list()
                 todayWastage = wList.sum { (it.totalLoss ?: 0) as BigDecimal } ?: BigDecimal.ZERO
@@ -341,7 +345,7 @@
             // Active sessions
             activeSessions = 0
             try {
-                activeSessions = ec.entity.find("zenith.erp.pos.PosSession")
+                activeSessions = ec.entity.find("zenith.erp.pos.PosSession").condition("organizationPartyId",dashboardOrgId)
                     .condition("statusId", "PsOpen").count() as int
             } catch (Exception e) {}
 
@@ -352,7 +356,7 @@
             // and GST are current snapshots. =====
             healthMetrics = []; healthScore = 0; healthLabel = '—'; healthHasData = false; healthColor = '#9e9e9e'
             try {
-                def _orgH = ec.user.getPreference("ACTIVE_ORGANIZATION")
+                def _orgH = dashboardOrgId
                 def _nowH = ec.user.nowTimestamp
                 def _pill = [good:['#DCFCE7','#059669'], warn:['#FEF3C7','#92400E'], bad:['#FEE2E2','#991B1B'], na:['#EEF0F5','#64748B']]
                 def _col = { s -> s >= 80 ? 'good' : (s >= 55 ? 'warn' : 'bad') }
@@ -517,12 +521,12 @@
             def _pDays = (long)(((dayEnd.getTime() - dayStart.getTime()) / (1000L*60*60*24)) + 1)
             def _prevStart = new java.sql.Timestamp(dayStart.getTime() - _pDays*24L*60*60*1000)
             def _prevEnd = new java.sql.Timestamp(dayStart.getTime() - 1000)
-            def _pcq = ec.entity.find("zenith.erp.pos.PosTransaction").condition("statusId","PtCompleted")
+            def _pcq = ec.entity.find("zenith.erp.pos.PosTransaction").condition("organizationPartyId",dashboardOrgId).condition("statusId","PtCompleted")
                 .condition("entryDate", org.moqui.entity.EntityCondition.GREATER_THAN_EQUAL_TO, _prevStart)
                 .condition("entryDate", org.moqui.entity.EntityCondition.LESS_THAN_EQUAL_TO, _prevEnd)
             if (_locSessionIds) _pcq.condition("sessionId","in",_locSessionIds)
             def _prevC = _pcq.list()
-            def _pvq = ec.entity.find("zenith.erp.pos.PosTransaction").condition("statusId","PtVoided")
+            def _pvq = ec.entity.find("zenith.erp.pos.PosTransaction").condition("organizationPartyId",dashboardOrgId).condition("statusId","PtVoided")
                 .condition("entryDate", org.moqui.entity.EntityCondition.GREATER_THAN_EQUAL_TO, _prevStart)
                 .condition("entryDate", org.moqui.entity.EntityCondition.LESS_THAN_EQUAL_TO, _prevEnd)
             if (_locSessionIds) _pvq.condition("sessionId","in",_locSessionIds)

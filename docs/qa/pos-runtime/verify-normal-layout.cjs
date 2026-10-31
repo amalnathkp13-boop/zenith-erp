@@ -36,7 +36,9 @@ module.exports=async({a,base,check,q,invoke,post,out})=>{
    await page.reload({waitUntil:'networkidle'});
    check(shell+' advanced layout persists on reload',await page.locator('body').evaluate(e=>e.classList.contains('pos-mode-advanced'))&&await page.locator('.pos-left-panel').isVisible());
    await choose('normal');await page.reload({waitUntil:'networkidle'});
-   check(shell+' normal layout persists without changing saved items',!await page.locator('.pos-left-panel').isVisible()&&await page.locator('.nb-side').isVisible()&&snapshot()===before);
+   await page.waitForFunction(()=>{const catalog=document.querySelector('.pos-left-panel'),side=document.querySelector('.nb-side');return document.body&&document.body.classList.contains('pos-mode-normal')&&catalog&&side&&!catalog.checkVisibility()&&side.checkVisibility();});
+   const normalState={catalogVisible:await page.locator('.pos-left-panel').isVisible(),sidebarVisible:await page.locator('.nb-side').isVisible(),before,after:snapshot(),layout:await page.locator('body').getAttribute('class'),stored:await page.evaluate(()=>localStorage.getItem('posLayoutMode'))};
+   check(shell+' normal layout persists without changing saved items',!normalState.catalogVisible&&normalState.sidebarVisible&&normalState.after===normalState.before,normalState);
    await page.locator('#pos-customer-btn').click();
    check(shell+' normal Change customer opens the existing picker',await page.locator('#posCustomerOverlay').isVisible());
    await page.locator('#cust-close').click();

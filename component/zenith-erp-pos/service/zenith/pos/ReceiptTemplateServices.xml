@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
+    <!-- Pure presentation mapping shared by editor, checkout/reprint JSON and receipt PDF. -->
+    <service verb="resolve" noun="ReceiptOptions">
+        <in-parameters><parameter name="storedJson"/><parameter name="receiptDesign" default="'normal'"/><parameter name="changesJson"/></in-parameters>
+        <out-parameters><parameter name="options" type="Map"/><parameter name="optionsJson"/></out-parameters>
+        <actions><script><![CDATA[
+            def defaults = [openingPreset:'none',openingMessage:'',greetingAlign:'center',greetingBold:true,greetingSize:'medium',
+                showBillNumber:true,billNumberLabel:'Bill No:',showDate:true,showCustomerRow:true,showCustomerName:true,
+                showCustomerPhone:true,customerLabel:'Customer:',showCashier:true,cashierLabel:'Cashier:',density:'standard',
+                headerAlign:'center',footerAlign:'center',companyBold:true,headerBold:false,footerBold:true]
+            ['greeting','company','header','information','products','amounts','tax','payments','footer'].each { defaults[it+'Tone']='black' }
+            def choices = [openingPreset:['none','Ayya Thunai','Praise the Lord','Mashallah','Bismillah','custom'],
+                greetingAlign:['left','center','right'],headerAlign:['left','center','right'],footerAlign:['left','center','right'],
+                greetingSize:['small','medium','large'],density:['light','standard','dark']]
+            def textLimits = [openingMessage:300,billNumberLabel:60,customerLabel:60,cashierLabel:60]
+            def valid = { key,value ->
+                if (!defaults.containsKey(key)) return false
+                if (defaults[key] instanceof Boolean) return value instanceof Boolean
+                if (!(value instanceof String) || value.find(/[\p{Cc}&&[^\n\r\t]]/)) return false
+                if (key.endsWith('Tone')) return value in ['black','darkGrey','lightGrey']
+                if (choices[key]) return value in choices[key]
+                value.codePointCount(0,value.length()) <= (textLimits[key] ?: 300)
+            }
+            def designs=[:]
+            try { def parsed=new groovy.json.JsonSlurper().parseText(storedJson ?: '{}');if(parsed instanceof Map) designs.putAll(parsed) } catch(Exception ignored) { }
+            designs=designs.findAll { k,v -> k in ['normal','credit','revised'] && v instanceof Map }
+            designs=designs.collectEntries { k,v -> [(k):v.findAll { field,value -> valid(field,value) }] }
+            if (!(receiptDesign in ['normal','credit','revised'])) { ec.message.addError('Choose a valid receipt design.');return }
+            if (changesJson != null) {
+                try {
+                    if (changesJson.toString().length()>12000) throw new IllegalArgumentException()
+                    def changes=new groovy.json.JsonSlurper().parseText(changesJson)
+                    if (!(changes instanceof Map) || changes.any { k,v -> !valid(k,v) }) throw new IllegalArgumentException()
+                    designs[receiptDesign]=(designs[receiptDesign] ?: [:]) + changes
+                } catch(Exception ignored) { ec.message.addError('Invalid receipt options. Check labels, message lengths and appearance choices.');return }
+            }
+            options=defaults + (designs.normal ?: [:]) + (receiptDesign=='normal' ? [:] : (designs[receiptDesign] ?: [:]))
+            ['billNumberLabel','customerLabel','cashierLabel'].each { key -> if(!options[key]?.trim()) options[key]=defaults[key] }
+            optionsJson=groovy.json.JsonOutput.toJson(designs)
+        ]]></script></actions>
+    </service>
+</services>

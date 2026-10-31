@@ -2,6 +2,28 @@
 <services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
           xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
 
+    <!-- Navigation uses the same authenticated role grants on initial render and SPA config requests. -->
+    <service verb="get" noun="ModuleNavigation" authenticate="true">
+        <in-parameters><parameter name="planModules" type="List"/></in-parameters>
+        <out-parameters><parameter name="moduleIds" type="List"/><parameter name="roleRestricted" type="Boolean"/></out-parameters>
+        <actions><script><![CDATA[
+            roleRestricted = !ec.user.isInGroup('ADMIN') && !ec.user.isInGroup('ZENITH_ADMIN')
+            def plan = planModules != null && !planModules.contains('all') ? planModules : null
+            if (!roleRestricted) { moduleIds = plan; return }
+            def groups = (ec.user.userGroupIdSet ?: []) as List
+            def roles = groups.findAll { it?.startsWith('ZENITH_') && it != 'ZENITH_ALL' }
+            def modules = [] as Set
+            if (roles.size() == 1 && roles.contains('ZENITH_CASHIER')) modules.addAll(['pos','inventory'])
+            else if (groups) {
+                ec.entity.find('moqui.security.ArtifactAuthz').condition('userGroupId','in',groups)
+                    .condition('authzTypeEnumId','in',['AUTHZT_ALLOW','AUTHZT_ALWAYS']).disableAuthz().list().each {
+                        if (it.artifactGroupId?.startsWith('Z_')) modules.add(it.artifactGroupId.substring(2).toLowerCase())
+                    }
+            }
+            moduleIds = (plan == null ? modules : modules.findAll { plan.contains(it) }) as List
+        ]]></script></actions>
+    </service>
+
     <!-- ZE-INV-010 (IV-110): does the current user have WRITE (full) access to a module? Mirrors the central write
          gate in ZenithApp.xml so screens can HIDE write features and transitions can ENFORCE them (the gate is
          fail-open; these explicit checks are the robust half). canWrite = ADMIN / ZENITH_ADMIN, OR a POS-cashier-only

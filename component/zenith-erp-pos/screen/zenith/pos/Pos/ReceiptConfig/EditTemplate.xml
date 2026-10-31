@@ -4,18 +4,68 @@
         default-menu-title="Edit Template" default-menu-index="2" default-menu-include="false">
 
     <parameter name="templateId" required="true"/>
+    <parameter name="receiptDesign"/>
 
-    <transition name="updateTemplate">
+    <transition name="updateTemplate" method="post" begin-transaction="true">
         <actions>
+            <set field="receiptDesign" from="receiptDesign ?: 'normal'"/>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'pos']" out-map="_receiptWrite"/>
+            <if condition="!_receiptWrite.canWrite"><return error="true" message="Receipt settings are view-only."/></if>
+            <if condition="!['normal','credit','revised'].contains(receiptDesign)"><return error="true" message="Choose a valid receipt design."/></if>
             <!-- Cross-tenant write-IDOR guard: only the owning org (ADMIN exempt) may mutate this template. -->
             <service-call name="zenith.base.SecurityServices.assert#RecordOrgAccess" in-map="[entityName:'zenith.erp.pos.PosReceiptTemplate', idField:'templateId', idValue:templateId, orgField:'organizationPartyId']" out-map="_acc"/>
             <if condition="!_acc.allowed"><return error="true" message="You do not have access to this record."/></if>
-            <service-call name="update#zenith.erp.pos.PosReceiptTemplate" in-map="context"/>
+            <script><![CDATA[
+                def values = [templateId:templateId]
+                // Explicit fields preserve billing policies and organization ownership.
+                ['facilityId','templateName','companyName','addressLine1','addressLine2','city','state','pincode','phone','email',
+                 'taxRegistrationNumber','receiptWidth','showLogo','logoUrl','showTaxBreakdown','showDiscount',
+                 'showCustomerInfo','showPaymentDetails','showItemTax','isDefault','isActive'].each { key ->
+                    if (ec.web.parameters.containsKey(key)) values[key] = ec.web.parameters.get(key)
+                }
+                ['templateName','companyName'].each { key ->
+                    if (values.containsKey(key) && !values[key]?.toString()?.trim()) ec.message.addError(key+' is required.')
+                }
+                ['showLogo','showTaxBreakdown','showDiscount','showCustomerInfo','showPaymentDetails','showItemTax','isDefault','isActive'].each { key ->
+                    if(values.containsKey(key) && !(values[key] in ['Y','N'])) ec.message.addError('Choose Yes or No for '+key)
+                }
+                values.each { key,value -> if (value != null && value.toString().length()>255) ec.message.addError('Receipt field is too long: '+key) }
+                if (values.logoUrl && !(values.logoUrl.toString() ==~ /https:\/\/[^\s]+|\/(?!\/)[^\s]*/)) ec.message.addError('Use an HTTPS logo URL or an existing application image path.')
+                def tpl = ec.entity.find('zenith.erp.pos.PosReceiptTemplate').condition('templateId',templateId).one()
+                ec.entity.find('mantle.party.Party').condition('partyId',tpl.organizationPartyId).forUpdate(true).one()
+                if (ec.web.parameters.containsKey('optionsJson')) {
+                    def resolved=ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#ReceiptOptions')
+                        .parameters([storedJson:tpl.receiptOptionsJson,receiptDesign:receiptDesign,changesJson:ec.web.parameters.optionsJson]).call()
+                    values.receiptOptionsJson=resolved?.optionsJson
+                }
+                if(values.containsKey('facilityId')) {
+                    values.facilityId=values.facilityId ?: null
+                    if(values.facilityId && !ec.entity.find('mantle.facility.Facility').condition('facilityId',values.facilityId).condition('ownerPartyId',tpl.organizationPartyId).one()) ec.message.addError('Choose a shop in your organization.')
+                }
+                if (ec.message.hasError()) return
+                if (values.receiptWidth && !(values.receiptWidth in ['58mm','80mm'])) {
+                    ec.message.addError('Choose a supported receipt width.')
+                } else {
+                    ['headerText','footerText','termsText'].each { key ->
+                        if (ec.web.parameters.containsKey(key)) {
+                            def target = receiptDesign == 'normal' ? key : receiptDesign + key.substring(0,1).toUpperCase() + key.substring(1)
+                            def value=ec.web.parameters.get(key)?.toString() ?: ''
+                            if(value.length()>(key=='termsText'?4000:1000) || value.find(/[\p{Cc}&&[^\n\r\t]]/)) ec.message.addError('Receipt text is too long or contains control characters.')
+                            values[target] = value
+                        }
+                    }
+                    if (ec.message.hasError()) return
+                    ec.service.sync().name('update#zenith.erp.pos.PosReceiptTemplate').parameters(values).call()
+                }
+            ]]></script>
+            <if condition="ec.message.hasError()"><return/></if>
             <service-call name="zenith.pos.PosServices.enforce#SingleDefaultReceiptTemplate" in-map="[templateId:templateId]"/>
         </actions>
-        <default-response url="."/></transition>
-    <transition name="deleteTemplate">
+        <default-response url="."><parameter name="templateId"/><parameter name="receiptDesign"/></default-response></transition>
+    <transition name="deleteTemplate" method="post" begin-transaction="true">
         <actions>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'pos']" out-map="_receiptWrite"/>
+            <if condition="!_receiptWrite.canWrite"><return error="true" message="Receipt settings are view-only."/></if>
             <!-- Cross-tenant write-IDOR guard: only the owning org (ADMIN exempt) may mutate this template. -->
             <service-call name="zenith.base.SecurityServices.assert#RecordOrgAccess" in-map="[entityName:'zenith.erp.pos.PosReceiptTemplate', idField:'templateId', idValue:templateId, orgField:'organizationPartyId']" out-map="_acc"/>
             <if condition="!_acc.allowed"><return error="true" message="You do not have access to this record."/></if>
@@ -24,221 +74,71 @@
         <default-response url="../Templates"/></transition>
 
     <actions>
+        <set field="receiptDesign" from="receiptDesign ?: 'normal'"/>
         <!-- Cross-tenant IDOR render guard: only the owning org (ADMIN exempt) may open a receipt template.
              Load NOTHING when blocked; widgets show a plain no-access panel instead of another tenant's data. -->
         <service-call name="zenith.base.SecurityServices.assert#RecordOrgAccess" out-map="_acc"
                       in-map="[entityName:'zenith.erp.pos.PosReceiptTemplate', idField:'templateId', idValue:templateId, orgField:'organizationPartyId']"/>
-        <set field="noAccess" from="!_acc.allowed"/>
-        <if condition="_acc.allowed">
+        <set field="noAccess" from="!_acc.allowed || !['normal','credit','revised'].contains(receiptDesign)"/>
+        <if condition="!noAccess">
         <entity-find-one entity-name="zenith.erp.pos.PosReceiptTemplate" value-field="tpl"/>
+        <entity-find entity-name="mantle.facility.Facility" list="receiptFacilities"><econdition field-name="ownerPartyId" from="tpl.organizationPartyId"/><order-by field-name="facilityName"/></entity-find>
+        <script><![CDATA[
+            receiptDesignLabel = [normal:'Normal Bill',credit:'Credit / Pay Later',revised:'Edited / Revised Bill'][receiptDesign]
+            editTpl = new LinkedHashMap(tpl)
+            editTpl.receiptDesign = receiptDesign
+            def textKeys = ['headerText','footerText','termsText']
+            textKeys.each { key ->
+                def target = receiptDesign == 'normal' ? key : receiptDesign + key.substring(0,1).toUpperCase() + key.substring(1)
+                editTpl[key] = tpl.get(target) ?: ''
+            }
+        ]]></script>
+        <service-call name="zenith.pos.ReceiptTemplateServices.resolve#ReceiptOptions" in-map="[storedJson:tpl.receiptOptionsJson,receiptDesign:receiptDesign]" out-map="_receiptOptions"/>
+        <set field="normalTextJson" from="groovy.json.JsonOutput.toJson([headerText:tpl.headerText ?: '',footerText:tpl.footerText ?: '',termsText:tpl.termsText ?: ''])"/>
+        <set field="editorOptionsJson" from="groovy.json.JsonOutput.toJson(_receiptOptions.options)"/>
+        <set field="editorTemplateJson" from="groovy.json.JsonOutput.toJson(editTpl.findAll { k,v -> k in ['templateName','companyName','addressLine1','addressLine2','city','state','pincode','phone','email','taxRegistrationNumber','receiptWidth','showLogo','logoUrl','showTaxBreakdown','showDiscount','showCustomerInfo','showPaymentDetails','showItemTax','headerText','footerText','termsText'] })"/>
         </if>
     </actions>
 
     <widgets>
-        <!-- Cross-tenant / missing template — plain notice, never another org's template/company data -->
-        <section name="NoAccess">
-            <condition><expression>noAccess</expression></condition>
-            <widgets>
-                <container style="zenith-card q-pa-lg bg-white shadow-1 border-radius-md q-mt-md text-center">
-                    <label text="That receipt template isn't part of your account." type="h5" style="text-grey-8 q-mb-xs"/>
-                    <label text="It may belong to another organization, or it may not exist." type="p" style="text-grey-6 q-mb-none"/>
-                </container>
-            </widgets>
-        </section>
+        <section name="NoAccess"><condition><expression>noAccess</expression></condition><widgets><label text="That receipt template is not available for your account." type="p"/></widgets></section>
+        <section name="ReceiptEditor"><condition><expression>!noAccess</expression></condition><widgets>
+        <render-mode><text type="html,qvt" template="true"><![CDATA[
 
-        <section name="TheRecord">
-        <condition><expression>!noAccess</expression></condition>
-        <widgets>
-        <container style="q-pa-md">
-            <container-row>
-                <row-col lg="7" md="7" sm="12">
-                    <label text="Receipt Settings" type="h6" style="text-weight-bold q-mb-md"/>
-                    <container style="zenith-card bg-white shadow-2 q-pa-md q-mb-md border-radius-lg">
-                        <form-single name="EditTemplateForm" transition="updateTemplate" map="tpl">
-                            <field name="templateId"><default-field><hidden/></default-field></field>
-
-                            <field name="templateName"><default-field title="Template Name">
-                                <text-line size="30"/>
-                            </default-field></field>
-                            <field name="isDefault"><default-field title="Default Template">
-                                <drop-down><option key="Y" text="Yes"/><option key="N" text="No"/></drop-down>
-                            </default-field></field>
-                            <field name="isActive"><default-field title="Active">
-                                <drop-down><option key="Y" text="Yes"/><option key="N" text="No"/></drop-down>
-                            </default-field></field>
-
-                            <field name="companyHeader" from="''"><default-field><label text="Company Details" type="h6" style="text-weight-bold q-mt-md"/></default-field></field>
-                            <field name="companyName"><default-field title="Company Name">
-                                <text-line size="40"/>
-                            </default-field></field>
-                            <field name="addressLine1"><default-field title="Address Line 1">
-                                <text-line size="40"/>
-                            </default-field></field>
-                            <field name="addressLine2"><default-field title="Address Line 2">
-                                <text-line size="40"/>
-                            </default-field></field>
-                            <field name="city"><default-field title="City">
-                                <text-line size="20"/>
-                            </default-field></field>
-                            <field name="state"><default-field title="State">
-                                <text-line size="20"/>
-                            </default-field></field>
-                            <field name="pincode"><default-field title="Pincode">
-                                <text-line size="10"/>
-                            </default-field></field>
-                            <field name="phone"><default-field title="Phone">
-                                <text-line size="20"/>
-                            </default-field></field>
-                            <field name="email"><default-field title="Email">
-                                <text-line size="30"/>
-                            </default-field></field>
-                            <field name="taxRegistrationNumber"><default-field title="Tax Reg. No. (GSTIN)">
-                                <text-line size="20"/>
-                            </default-field></field>
-
-                            <field name="contentHeader" from="''"><default-field><label text="Header &amp; Footer" type="h6" style="text-weight-bold q-mt-md"/></default-field></field>
-                            <field name="headerText"><default-field title="Header Text">
-                                <text-line size="50"/>
-                            </default-field></field>
-                            <field name="footerText"><default-field title="Footer Text">
-                                <text-line size="50"/>
-                            </default-field></field>
-                            <field name="termsText"><default-field title="Terms &amp; Conditions">
-                                <text-area rows="3" cols="50"/>
-                            </default-field></field>
-
-                            <field name="printHeader" from="''"><default-field><label text="Print Settings" type="h6" style="text-weight-bold q-mt-md"/></default-field></field>
-                            <field name="receiptWidth"><default-field title="Receipt Width">
-                                <drop-down><option key="80mm" text="80mm (Standard)"/><option key="58mm" text="58mm (Compact)"/></drop-down>
-                            </default-field></field>
-                            <field name="showLogo"><default-field title="Show Logo">
-                                <drop-down><option key="Y" text="Yes"/><option key="N" text="No"/></drop-down>
-                            </default-field></field>
-                            <field name="logoUrl"><default-field title="Logo URL">
-                                <text-line size="50"/>
-                            </default-field></field>
-
-                            <field name="displayHeader" from="''"><default-field><label text="Display Options" type="h6" style="text-weight-bold q-mt-md"/></default-field></field>
-                            <field name="showTaxBreakdown"><default-field title="Show Tax Breakdown">
-                                <drop-down><option key="Y" text="Yes"/><option key="N" text="No"/></drop-down>
-                            </default-field></field>
-                            <field name="showDiscount"><default-field title="Show Discount">
-                                <drop-down><option key="Y" text="Yes"/><option key="N" text="No"/></drop-down>
-                            </default-field></field>
-                            <field name="showCustomerInfo"><default-field title="Show Customer Info">
-                                <drop-down><option key="Y" text="Yes"/><option key="N" text="No"/></drop-down>
-                            </default-field></field>
-                            <field name="showPaymentDetails"><default-field title="Show Payment Details">
-                                <drop-down><option key="Y" text="Yes"/><option key="N" text="No"/></drop-down>
-                            </default-field></field>
-                            <field name="showItemTax"><default-field title="Show Per-Item Tax">
-                                <drop-down><option key="Y" text="Yes"/><option key="N" text="No"/></drop-down>
-                            </default-field></field>
-
-                            <field name="submitBtn">
-                                <conditional-field name="tpl_save_write" condition="modCanWrite" title="">
-                                <submit text="Save Changes" icon="fa fa-save"/>
-                                </conditional-field>
-                                <default-field title="">
-                                <label text="You have view-only access — changes are disabled." type="span" style="text-grey-7"/></default-field></field>
-                        </form-single>
-                    </container>
-
-                    <section name="DeleteTemplate_write"><condition><expression>modCanWrite</expression></condition><widgets>
-                    <container style="q-mt-md">
-                        <link url="deleteTemplate" text="Delete Template" icon="fa fa-trash" btn-type="danger"
-                              parameter-map="[templateId:templateId]"
-                              confirmation="Are you sure you want to delete this template?"/>
-                    </container>
-                    </widgets></section>
-                </row-col>
-
-                <row-col lg="5" md="5" sm="12">
-                    <label text="Receipt Preview" type="h6" style="text-weight-bold q-mb-md"/>
-                    <render-mode><text type="html,qvt" template="true"><![CDATA[
-<div style="background:#fff; border:1px solid #ddd; padding:16px; max-width:320px; font-family:'Courier New',monospace; font-size:12px; line-height:1.5; margin:0 auto;">
-    <#if tpl.showLogo! == 'Y' && tpl.logoUrl?has_content>
-        <div style="text-align:center; margin-bottom:8px;">
-            <img src="${tpl.logoUrl!}" style="max-height:50px; max-width:200px;" alt="Logo"/>
-        </div>
-    </#if>
-    <div style="text-align:center; font-weight:bold; font-size:14px;">${tpl.companyName!'Company Name'}</div>
-    <#if tpl.addressLine1?has_content><div style="text-align:center;">${tpl.addressLine1!}</div></#if>
-    <#if tpl.addressLine2?has_content><div style="text-align:center;">${tpl.addressLine2!}</div></#if>
-    <#if tpl.city?has_content || tpl.state?has_content || tpl.pincode?has_content>
-        <div style="text-align:center;">${tpl.city!}<#if tpl.state?has_content>, ${tpl.state!}</#if> <#if tpl.pincode?has_content>- ${tpl.pincode!}</#if></div>
-    </#if>
-    <#if tpl.phone?has_content><div style="text-align:center;">Ph: ${tpl.phone!}</div></#if>
-    <#if tpl.email?has_content><div style="text-align:center;">${tpl.email!}</div></#if>
-    <#if tpl.taxRegistrationNumber?has_content><div style="text-align:center;">GSTIN: ${tpl.taxRegistrationNumber!}</div></#if>
-
-    <#if tpl.headerText?has_content>
-        <div style="text-align:center; margin-top:6px; font-style:italic;">${tpl.headerText!}</div>
-    </#if>
-
-    <div style="border-top:1px dashed #999; margin:8px 0;"></div>
-
-    <div style="display:flex; justify-content:space-between;">
-        <span>Bill No: <b>INV-0001</b></span>
-        <span>13-06-2026</span>
-    </div>
-    <#if tpl.showCustomerInfo! == 'Y'>
-        <div>Customer: Walk-in Customer</div>
-    </#if>
-    <div>Cashier: John Doe</div>
-
-    <div style="border-top:1px dashed #999; margin:8px 0;"></div>
-
-    <table style="width:100%; font-size:11px;">
-        <tr style="border-bottom:1px solid #ccc;">
-            <th style="text-align:left;">Item</th><th style="text-align:right;">Qty</th><th style="text-align:right;">Rate</th><th style="text-align:right;">Amt</th>
-        </tr>
-        <tr><td>Rice Bag 5kg</td><td style="text-align:right;">2</td><td style="text-align:right;">250.00</td><td style="text-align:right;">500.00</td></tr>
-        <#if tpl.showItemTax! == 'Y'><tr><td colspan="4" style="font-size:10px; color:#666; padding-left:10px;">Tax: 5% = 25.00</td></tr></#if>
-        <tr><td>Cooking Oil 1L</td><td style="text-align:right;">1</td><td style="text-align:right;">180.00</td><td style="text-align:right;">180.00</td></tr>
-        <#if tpl.showItemTax! == 'Y'><tr><td colspan="4" style="font-size:10px; color:#666; padding-left:10px;">Tax: 18% = 32.40</td></tr></#if>
-        <tr><td>Sugar 1kg</td><td style="text-align:right;">3</td><td style="text-align:right;">45.00</td><td style="text-align:right;">135.00</td></tr>
-        <#if tpl.showItemTax! == 'Y'><tr><td colspan="4" style="font-size:10px; color:#666; padding-left:10px;">Tax: 5% = 6.75</td></tr></#if>
-    </table>
-
-    <div style="border-top:1px dashed #999; margin:8px 0;"></div>
-
-    <div style="display:flex; justify-content:space-between;"><span>Subtotal:</span><span>815.00</span></div>
-    <#if tpl.showDiscount! == 'Y'>
-        <div style="display:flex; justify-content:space-between; color:#c00;"><span>Discount:</span><span>-15.00</span></div>
-    </#if>
-    <#if tpl.showTaxBreakdown! == 'Y'>
-        <div style="display:flex; justify-content:space-between;"><span>CGST:</span><span>32.08</span></div>
-        <div style="display:flex; justify-content:space-between;"><span>SGST:</span><span>32.08</span></div>
-    </#if>
-    <div style="display:flex; justify-content:space-between; font-weight:bold; font-size:14px; border-top:1px solid #333; margin-top:4px; padding-top:4px;">
-        <span>Total:</span><span>864.16</span>
-    </div>
-
-    <#if tpl.showPaymentDetails! == 'Y'>
-        <div style="border-top:1px dashed #999; margin:8px 0;"></div>
-        <div style="display:flex; justify-content:space-between;"><span>Cash:</span><span>900.00</span></div>
-        <div style="display:flex; justify-content:space-between;"><span>Change:</span><span>35.84</span></div>
-    </#if>
-
-    <div style="border-top:1px dashed #999; margin:8px 0;"></div>
-
-    <#if tpl.footerText?has_content>
-        <div style="text-align:center; font-size:11px;">${tpl.footerText!}</div>
-    </#if>
-    <#if tpl.termsText?has_content>
-        <div style="text-align:center; font-size:10px; color:#666; margin-top:4px;">${tpl.termsText!}</div>
-    </#if>
-
-    <div style="text-align:center; margin-top:8px; font-size:10px; color:#999;">
-        Width: ${tpl.receiptWidth!'80mm'} | Template: ${tpl.templateName!}
-    </div>
+<#macro field key title multiline=false required=false>
+<label <#if multiline>class="re-wide"</#if>>${title?html}<#if required> *</#if><#if multiline><textarea name="${key}" maxlength="${(key=='termsText')?then(4000,1000)?c}">${(editTpl[key]!'')?html}</textarea><#else><input name="${key}" value="${(editTpl[key]!'')?html}" maxlength="255" <#if required>required</#if>/></#if></label>
+</#macro>
+<#macro choice key title values>
+<label>${title?html}<select name="${key}"><#list values as value><option value="${value?html}" <#if (editTpl[key]!'') == value>selected</#if>><#if value=='Y'>Yes<#elseif value=='N'>No<#else>${value?html}</#if></option></#list></select></label>
+</#macro>
+<#macro option key title values>
+<label>${title?html}<select data-re-option="${key}"><#list values as value><option value="${value?html}"><#if value=='none'>No message<#elseif value=='custom'>Custom message<#else>${value?cap_first?html}</#if></option></#list></select></label>
+</#macro>
+<#macro toggle key title><label class="re-toggle"><input type="checkbox" data-re-option="${key}"/>${title?html}</label></#macro>
+<div id="receiptEditor" data-design="${receiptDesign}" data-write="${modCanWrite?c}">
+ <textarea data-re-fallback hidden>${normalTextJson?html}</textarea><textarea data-re-initial hidden>${editorOptionsJson?html}</textarea><textarea data-re-template hidden>${editorTemplateJson?html}</textarea>
+ <div class="re-top"><div><p>POS / Receipt templates / Edit template</p><h1>Edit receipt template</h1><p>Configure ${receiptDesignLabel?html} and preview your receipt.</p></div><div><a class="re-button" href="${sri.buildUrl('../Templates').url?html}">Back to templates</a> <#if modCanWrite><button class="re-primary" type="submit" form="receiptEditorForm">Save changes</button></#if></div></div>
+ <nav class="re-tabs" aria-label="Receipt design"><#list ['normal','credit','revised'] as design><a class="re-button" data-re-leave href="${sri.buildUrl('.').url?html}?templateId=${templateId?url('UTF-8')}&amp;receiptDesign=${design}" <#if receiptDesign==design>aria-current="page"</#if>><#if design=='normal'>Normal bill<#elseif design=='credit'>Credit / Pay later<#else>Edited / Revised bill</#if></a></#list></nav>
+ <button type="button" class="re-mobile-preview" data-re-preview>Preview receipt</button>
+ <form id="receiptEditorForm" method="post" action="${sri.buildUrl('updateTemplate').url?html}">
+ <input type="hidden" name="moquiSessionToken" value="${(ec.web.sessionToken!'')?html}"/><input type="hidden" name="templateId" value="${templateId?html}"/><input type="hidden" name="receiptDesign" value="${receiptDesign}"/><input type="hidden" name="optionsJson"/>
+ <div class="re-workspace"><div class="re-settings">
+ <details open><summary>Template settings</summary><div class="re-fields"><@field key="templateName" title="Template name" required=true/><@choice key="isDefault" title="Default template" values=['Y','N']/><@choice key="isActive" title="Active" values=['Y','N']/><label>Shop<select name="facilityId"><option value="">All shops (fallback)</option><#list receiptFacilities as shop><option value="${shop.facilityId?html}" <#if (tpl.facilityId!'')==shop.facilityId>selected</#if>>${(shop.facilityName!shop.facilityId)?html}</option></#list></select></label><p class="re-wide">Company and print settings are shared by these three designs. Each design has its own text and appearance.</p></div></details>
+ <details open><summary>Opening message (optional)</summary><div class="re-fields"><@option key="openingPreset" title="Message selection" values=['none','Ayya Thunai','Praise the Lord','Mashallah','Bismillah','custom']/><label class="re-wide">Message<textarea data-re-option="openingMessage" maxlength="300" rows="2"></textarea></label><@option key="greetingAlign" title="Alignment" values=['left','center','right']/><@option key="greetingSize" title="Size" values=['small','medium','large']/><@toggle key="greetingBold" title="Bold greeting"/></div></details>
+ <details open><summary>Company details</summary><div class="re-fields"><@field key="companyName" title="Company name" required=true/><@field key="phone" title="Phone"/><@field key="addressLine1" title="Address line 1"/><@field key="addressLine2" title="Address line 2"/><@field key="city" title="City"/><@field key="state" title="State"/><@field key="pincode" title="Pincode"/><@field key="taxRegistrationNumber" title="GSTIN"/><@field key="email" title="Email"/><@toggle key="companyBold" title="Bold company name"/></div></details>
+ <details open><summary>Invoice / Receipt Information</summary><div class="re-fields"><@toggle key="showBillNumber" title="Show bill number"/><label>Bill number label<input data-re-option="billNumberLabel" maxlength="60"/></label><@toggle key="showDate" title="Show date"/><@toggle key="showCustomerRow" title="Show customer row"/><label>Customer label<input data-re-option="customerLabel" maxlength="60"/></label><@toggle key="showCustomerName" title="Show customer name"/><@toggle key="showCustomerPhone" title="Show customer phone"/><@toggle key="showCashier" title="Show cashier"/><label>Cashier label<input data-re-option="cashierLabel" maxlength="60"/></label><p class="re-wide">Bill numbers, dates, customer and cashier values come from the saved transaction. These controls never change invoice counters.</p></div></details>
+ <details open><summary>Header &amp; footer</summary><div class="re-fields"><@field key="headerText" title="Header text" multiline=true/><@field key="footerText" title="Footer text" multiline=true/><@field key="termsText" title="Terms & conditions" multiline=true/><@option key="headerAlign" title="Header alignment" values=['left','center','right']/><@option key="footerAlign" title="Footer alignment" values=['left','center','right']/><@toggle key="headerBold" title="Bold header"/><@toggle key="footerBold" title="Bold footer"/><p class="re-wide">Blank credit/revised text inherits the normal bill text.</p></div></details>
+ <details open><summary>Print settings</summary><div class="re-fields"><@choice key="receiptWidth" title="Paper width" values=['80mm','58mm']/><@choice key="showLogo" title="Show logo" values=['N','Y']/><@field key="logoUrl" title="Existing image path / HTTPS logo URL"/><p class="re-wide">Use an existing uploaded image or HTTPS image URL. No new file storage or raw printer commands are introduced.</p></div></details>
+ <details><summary>Text Style &amp; Print Appearance</summary><div class="re-fields"><#list ['greeting','company','header','information','products','amounts','tax','payments','footer'] as section><label class="re-tone">${section?cap_first}<select data-re-option="${section}Tone"><option value="black">Black</option><option value="darkGrey">Dark grey</option><option value="lightGrey">Light grey</option></select></label></#list><@option key="density" title="Print emphasis" values=['light','standard','dark']/><p class="re-wide">Black and standard are the safe defaults. Important amounts and bill information always retain readable contrast.</p></div></details>
+ <details><summary>Display options</summary><div class="re-fields"><@choice key="showTaxBreakdown" title="Tax breakdown" values=['Y','N']/><@choice key="showDiscount" title="Discount" values=['Y','N']/><@choice key="showCustomerInfo" title="Customer information" values=['Y','N']/><@choice key="showPaymentDetails" title="Payment details" values=['Y','N']/><@choice key="showItemTax" title="Per-item tax" values=['Y','N']/></div></details>
+ </div><aside class="re-preview" id="receiptLivePreview"><div class="re-top"><h2>Receipt preview</h2><label>Paper size<select data-re-preview-width aria-label="Preview paper size"><option value="80mm">80mm</option><option value="58mm">58mm</option></select></label></div><p>Sample data — not a sale</p><iframe title="Live receipt preview" sandbox="allow-same-origin allow-modals"></iframe><button type="button" data-re-test>Browser sample print</button><p class="re-note">QZ prints through the installed printer driver. Grey tones and Unicode depend on its fonts and raster support. Density here adjusts text emphasis; hardware heat/density is set in the driver. Test on your printer before use. The thermal PDF uses bundled Latin fonts.</p><p data-re-error role="alert"></p></aside></div>
+ <div class="re-actions"><#if modCanWrite><button type="button" class="re-danger" data-re-delete>Delete template</button><#else><span>View-only access</span></#if><div><a class="re-button" data-re-leave href="${sri.buildUrl('../Templates').url?html}">Cancel</a> <#if modCanWrite><button class="re-primary" type="submit">Save changes</button></#if></div></div>
+ </form>
+ <form id="receiptDeleteForm" method="post" action="${sri.buildUrl('deleteTemplate').url?html}"><input type="hidden" name="moquiSessionToken" value="${(ec.web.sessionToken!'')?html}"/><input type="hidden" name="templateId" value="${templateId?html}"/></form>
+ <noscript>Enable JavaScript to configure the live receipt preview.</noscript>
+ <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="" style="display:none" onload="var root=this.closest('#receiptEditor');if(!root.dataset.loading){root.dataset.loading='1';var css=document.createElement('link');css.rel='stylesheet';css.href='/zenithstatic/css/pos-receipt-editor.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/pos-receipt-editor.css').getLastModified()?c}';document.head.appendChild(css);var s=document.createElement('script');s.src='/zenithstatic/js/pos-receipt-layout.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-receipt-layout.js').getLastModified()?c}';s.onload=function(){var e=document.createElement('script');e.src='/zenithstatic/js/pos-receipt-editor.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-receipt-editor.js').getLastModified()?c}';document.head.appendChild(e);};document.head.appendChild(s);}"/>
 </div>
-                    ]]></text></render-mode>
-                </row-col>
-            </container-row>
-        </container>
-        </widgets>
-        </section>
+        ]]></text></render-mode>
+        </widgets></section>
     </widgets>
 </screen>

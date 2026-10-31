@@ -103,7 +103,7 @@ module.exports=async function({browser,base,q,check,out,admin,token}) {
       const c=await browser.newContext();try{
         const username=[b.workspace.adminEmail,...b.cashiers.map(u=>u.username)][i];
         const r=await c.request.get(base+'/apps/zenith/pos/Dashboard',{headers:{Authorization:'Basic '+Buffer.from(username+':'+passwords[i]).toString('base64')}});
-        const p=await c.newPage();await p.goto(base+'/apps/zenith/pos/PosSessions');
+        const p=await c.newPage();await p.goto(base+'/apps/zenith/pos/PosSessions',{waitUntil:'domcontentloaded'});await p.locator('.z-pos-page').first().waitFor();
         check('new login '+(i+1)+' reaches its POS workspace',r.status()===200&&await p.locator('.z-pos-page').count()>0,{status:r.status(),url:p.url(),title:await p.title(),content:(await p.locator('body').innerText()).slice(0,400)});
         if(i===0){
           await p.goto(base+'/apps/zenith/pos/ProductPricing',{waitUntil:'networkidle'});

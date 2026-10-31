@@ -40,7 +40,7 @@
   <mantle.party.Person partyId="POS_QA_A_CUST_INTER" firstName="Synthetic" lastName="POS A INTER" />
   <mantle.party.PartyRole partyId="POS_QA_A_CUST_INTER" roleTypeId="Customer" />
   <zenith.erp.tax.TaxRegistration registrationId="POS_QA_A_CUST_INTER_TAX" partyId="POS_QA_A_CUST_INTER" organizationPartyId="POS_QA_A" regionGeoId="27" countryGeoId="IND" isDefault="Y" />
-  <zenith.erp.pos.PosReceiptTemplate templateId="POS_QA_A_RECEIPT" templateName="Disposable POS A receipt" organizationPartyId="POS_QA_A" companyName="Disposable POS QA A" receiptWidth="80mm" isDefault="Y" isActive="Y" />
+  <zenith.erp.pos.PosReceiptTemplate templateId="POS_QA_A_RECEIPT" showPaymentDetails="N" templateName="Disposable POS A receipt" organizationPartyId="POS_QA_A" companyName="Disposable POS QA A" receiptWidth="80mm" isDefault="Y" isActive="Y" />
   <mantle.party.Party partyId="POS_QA_B" partyTypeEnumId="PtyOrganization" />
   <mantle.party.PartyIdentification partyId="POS_QA_B" partyIdTypeEnumId="PtidOrgCode" idValue="POS_QA_B" />
   <mantle.party.Organization partyId="POS_QA_B" organizationName="Disposable POS QA B" />

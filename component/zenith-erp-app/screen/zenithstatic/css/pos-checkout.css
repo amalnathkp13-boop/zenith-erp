@@ -377,3 +377,9 @@ html body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root.pos-checkout-r
   html body.Terminal.pos-mode-advanced .z-pos-page #pos-terminal-root.pos-checkout-reference { grid-template-rows:60px max-content 52px minmax(220px,1fr) 40px 44px 92px max-content!important; }
   html body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root.pos-checkout-reference { grid-template-rows:58px max-content 40px minmax(180px,1fr) 44px 36px 72px max-content!important; }
 }
+/* Reserve space for all three payment rows when the tablet toolbar wraps. */
+@media (min-width:901px) and (max-width:1150px) and (max-height:900px) {
+  html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference { grid-template-rows:56px max-content 46px minmax(150px,1fr) 36px 70px max-content!important; }
+  html body.Terminal.pos-mode-advanced .z-pos-page #pos-terminal-root.pos-checkout-reference { grid-template-rows:56px max-content 46px minmax(150px,1fr) 36px 44px 70px max-content!important; }
+  html body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root.pos-checkout-reference { grid-template-rows:56px max-content 40px minmax(150px,1fr) 44px 36px 70px max-content!important; }
+}

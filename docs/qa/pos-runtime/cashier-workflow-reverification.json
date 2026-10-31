@@ -1,0 +1,90 @@
+{
+  "date": "2026-10-30",
+  "parentCommit": "58a6cf99862f13efdb65cfea6603c6b047717728",
+  "productionAccess": false,
+  "verificationEnvironment": "Loopback Moqui, synthetic fixtures, in-memory H2; mocked QZ only",
+  "initialRegression": {
+    "checks": 91,
+    "failures": [
+      "product selection focuses its editable rate",
+      "Enter from rate selects quantity",
+      "a typed rate saves without pressing Enter",
+      "lower last-bill strip shows only the last amount",
+      "manual selling-rate overrides are not advertised as a discount",
+      "History rows offer a dedicated Reprint action",
+      "bill editor offers Print bill separately from Save and print",
+      "cashier initial HTML never contains unauthorized Sales links"
+    ]
+  },
+  "focusedAfterFix": {
+    "cashierEditsReprintsSavingsAndTenderSynchronization": {
+      "passed": true,
+      "checks": 51,
+      "failures": 0,
+      "screens": 0,
+      "viewports": 0,
+      "reportSha256": "2f59c9e6f23d0268ba235af40ad1e13e4159de043ed5be796b6de7f5a2c95027"
+    },
+    "organizationAndTerminalIsolation": {
+      "passed": true,
+      "checks": 131,
+      "failures": 0,
+      "screens": 0,
+      "viewports": 0,
+      "reportSha256": "94b5a4c98a995fe4f8b6edabd0b914dc8d86d01fd80ecdb3b673ed2b39e41659"
+    },
+    "interfacesAndViewports": {
+      "passed": true,
+      "checks": 309,
+      "failures": 0,
+      "screens": 56,
+      "viewports": 100,
+      "reportSha256": "94e97be6eb492ab9a36ad11e67aac62d7d5dc08cc24d0a0681687578068e25d2"
+    },
+    "cashCardUpiConfirmation": {
+      "passed": true,
+      "checks": 28,
+      "failures": 0,
+      "screens": 0,
+      "viewports": 0,
+      "reportSha256": "9d2fe0e03c4dc76c4da4d36eb3f4f0a7cf5bf63a466532401af6d764406f7347"
+    }
+  },
+  "additionalRegressionEvidence": {
+    "qzConnectionOnPageEntry": "Failed before; passes after deferring connection until printing",
+    "customizeWrappingAndCatalogHeader": "Failed before; passes after shared flex layout and catalog scoping",
+    "dashboardOrganizationScope": "Complete discovery run exposed a 123.00 foreign-organization contribution; focused independent SQL comparison passes after explicit organization predicates",
+    "bootstrapShowCascade": "Adding Bootstrap 3 .show {display:block!important} reproduces Customize wrapping; the shared priority override passes in Chrome and Edge. The real classic Inventory page also passes. Final combined Quasar/container acceptance is recorded in PR #164."
+  },
+  "standaloneChecks": {
+    "printerRoutingVirtualClock": 11,
+    "sharedHeaderLayout": "Chrome and Edge passed",
+    "navigationPolicyDelayedFailedAndEmpty": "Chrome and Edge passed",
+    "repositoryGuards": 4
+  },
+  "applicationSourceComparison": {
+    "componentFiles": 1050,
+    "lfNormalizedMismatches": []
+  },
+  "changedComponentSha256LfNormalized": {
+    "component/zenith-erp-app/screen/zenith/ZenithApp.xml": "00397e7477eca2ac44e15d69fd0a806259357f53b0f8e1dc78b6675ddcc27584",
+    "component/zenith-erp-app/screen/zenithstatic/css/product-catalog.css": "ed2498d635fbcaa48e52cccd41ec0bf09b41b5c7286c71b47bca5c044c824e68",
+    "component/zenith-erp-app/screen/zenithstatic/css/subnav-manager.css": "86023a41e00b6aec585c5bd30673c531ed40fba76f13edffa2ff539b0e8c845c",
+    "component/zenith-erp-app/screen/zenithstatic/js/pos-terminal.js": "41d5d65be4be8d6e0c6e194f69fc4e42da499c3ecf9f03bfbd6e49d21b843c05",
+    "component/zenith-erp-app/screen/zenithstatic/js/qapps-nav.js": "05dce78e683ecd958a39a1678ec1d4f78175a682fda4f294437a7421f4051ce8",
+    "component/zenith-erp-app/screen/zenithstatic/js/saas-menu-filter.js": "dd55bd34f81f196e999c9c7559f9c10382078ff3a009b4569ea987fb530644ad",
+    "component/zenith-erp-base/service/zenith/base/SecurityServices.xml": "24f246f8b52637a75f00808fde40c9dd54bada12be50f9944427d6756acc679d",
+    "component/zenith-erp-pos/entity/PosEntities.xml": "3e666adfad7843b6d58d1dfbbf19b947ee5a6ad8611a8f7fc470b3fc969ede69",
+    "component/zenith-erp-pos/screen/zenith/pos/Pos/Dashboard.xml": "703cfec144d982513512e62d1478e1a1b0ebd0e7ff655fe25f2ecd018ff61b7e",
+    "component/zenith-erp-pos/screen/zenith/pos/Pos/ReceiptPdf.xml": "25d3e5ad71747feefaa2365a6ff3fbdf1854ce6625bc7c9d852002855a09d0c9",
+    "component/zenith-erp-pos/screen/zenith/pos/Pos/Terminal.xml": "6b916493e740a6b797b4a216e7c21c3129499720111b780c9e976ddd06892be7",
+    "component/zenith-erp-pos/service/zenith/pos/PosAccessServices.xml": "1bdbb1e19f4be80ea9afe0b396e631c6556a097647124ea242028c6b2fbaa8c4",
+    "component/zenith-erp-pos/service/zenith/pos/PosServices.xml": "70433fa44e9a407f5a1b96c84965dc055b1274ea2c380b6759a2a8a0cf6ad6e1"
+  },
+  "completeAcceptance": "Final complete-run totals and exact-head CI links are recorded in PR #164; these focused results are not relabeled as a complete run.",
+  "limitations": [
+    "Trusted QZ certificate/signing configuration and physical printer acceptance remain deployment/workstation requirements.",
+    "No live tenant data was changed. No merge or deployment is performed by this task."
+  ],
+  "finalNavigationVerification": "Billing JavaScript is unchanged by this final CSS correction. A fresh Windows runtime returned unprocessed framework QVT text on Quasar, so that local attempt is not recorded as a pass; final acceptance uses the clean container CI."
+}

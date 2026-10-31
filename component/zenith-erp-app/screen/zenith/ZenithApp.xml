@@ -219,7 +219,7 @@
         <actions>
             <script><![CDATA[
                 def orgId = ec.user.getPreference("ACTIVE_ORGANIZATION")
-                def result = [isSaasTenant:false, hasAllAccess:false, posOnly:false, isAdmin:false, modules:[]]
+                def result = [isSaasTenant:false, hasAllAccess:false, posOnly:false, isAdmin:false, isSuperAdmin:ec.user.isInGroup('ADMIN'), modules:[]]
                 // ZE-SETTINGS-0203: expose admin status so the /qapps menu-filter hides Settings from non-admins.
                 result.isAdmin = ec.user.isInGroup("ZENITH_ADMIN") || ec.user.isInGroup("ADMIN")
                 try {
@@ -240,33 +240,15 @@
                                 .condition("planId", tl[0].planId).list()
                             def mods = pm.collect { it.moduleId.toLowerCase() }
                             result.hasAllAccess = mods.contains("all")
-                            // ZE-ROLES-001: role-scope the module list. This XHR is the /qapps menu source
-                            // (there the #zenith-saas-cfg div carrying the already-role-intersected
-                            // saasVisibleModulesJson is stripped, so the filter falls back to this). Without
-                            // this, a non-posOnly non-admin user with an extra role (e.g. Cashier + HR Manager)
-                            // saw EVERY plan module in the /qapps nav/tiles — an escalation APPEARANCE (the
-                            // server-side role gate still blocks the URLs). Intersect the plan modules with the
-                            // modules the user's ROLES actually grant (mirrors saasVisibleModulesJson). Admins /
-                            // ZENITH_ADMIN keep the full plan list; posOnly is trimmed by the client filter.
-                            // Fail-OPEN to the plan list on any error (never blank a real menu).
-                            if (!result.hasAllAccess && !result.isAdmin && !result.posOnly) {
-                                try {
-                                    def _myG = (ec.user.userGroupIdSet ?: []) as List
-                                    def _roleMods = new HashSet()
-                                    if (_myG) {
-                                        ec.entity.find("moqui.security.ArtifactAuthz")
-                                            .condition("userGroupId", "in", _myG)
-                                            .condition("authzTypeEnumId", "in", ["AUTHZT_ALLOW", "AUTHZT_ALWAYS"])
-                                            .list().each { if (it.artifactGroupId?.startsWith("Z_")) _roleMods.add(it.artifactGroupId.substring(2).toLowerCase()) }
-                                    }
-                                    mods = mods.findAll { _roleMods.contains(it) }
-                                } catch (Exception ex) { /* fail-open: keep the full plan list */ }
-                            }
                             result.modules = mods
                         }
                     } catch (Exception e) {}
                     finally { if (!d) ec.artifactExecution.enableAuthz() }
                 }
+                def navigation = ec.service.sync().name("zenith.base.SecurityServices.get#ModuleNavigation").parameter("planModules", result.isSaasTenant ? result.modules : null).disableAuthz().call()
+                result.modules = navigation.moduleIds ?: []
+                result.navRestricted = navigation.moduleIds != null
+                result.roleRestricted = navigation.roleRestricted ?: false
                 ec.web.sendJsonResponse(result)
             ]]></script>
         </actions>
@@ -335,10 +317,10 @@
             if (html_stylesheets == null) html_stylesheets = []
             html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=302')
             html_stylesheets.add('/zenithstatic/css/sidebar-manager.css?v=3')
-            html_stylesheets.add('/zenithstatic/css/subnav-manager.css?v=2')
+            html_stylesheets.add('/zenithstatic/css/subnav-manager.css?v=3')
             html_stylesheets.add('/zenithstatic/css/my-subscription-reference.css?v=1')
             html_stylesheets.add('/zenithstatic/css/saas-admin.css?v=4')
-            html_stylesheets.add('/zenithstatic/css/product-catalog.css?v=1')
+            html_stylesheets.add('/zenithstatic/css/product-catalog.css?v=2')
             html_stylesheets.add('/zenithstatic/css/receiving-stock.css?v=14')
             html_stylesheets.add('/zenithstatic/css/gate-passes.css?v=12')
             html_stylesheets.add('/zenithstatic/css/shops-reference.css?v=2')
@@ -377,8 +359,8 @@
             html_stylesheets.add('/zenithstatic/css/inventory-responsive.css?v=2')
             html_stylesheets.add('https://fonts.googleapis.com/icon?family=Material+Icons')
             if (footer_scripts == null) footer_scripts = []
-            footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=12')
-            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=44')
+            footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=13')
+            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=46')
             footer_scripts.add('/zenithstatic/js/profile-menu.js?v=1')
             footer_scripts.add('/zenithstatic/js/sidebar-manager.js?v=1')
             footer_scripts.add('/zenithstatic/js/subnav-manager.js?v=2')
@@ -580,44 +562,14 @@
                 }
             } catch (Exception e) { context.posOnlyUser = false }
 
-            // ZE-ROLES-001: role-scope the CLIENT module list. The menu (saas-menu-filter.js) and Dashboard
-            // tiles hid only NON-PLAN modules, so a non-posOnly user with an extra role (e.g. Cashier + HR
-            // Manager) still SAW every plan module — reads as an escalation even though the server-side role
-            // gate below already blocks those URLs. Intersect the plan modules with the modules the user's
-            // ROLES actually grant (ALLOW/ALWAYS authz on Z_<MOD>) so the menu shows only what they can reach.
-            // Admins keep the full plan list; posOnly cashiers are trimmed to POS by the client; non-tenant /
-            // all-access are untouched. Fail-OPEN to the plan list on any error (never blank a real menu).
-            context.saasVisibleModulesJson = context.saasAllowedModulesJson
-            context.saasVisibleModules = context.saasAllowedModules
-            try {
-                if (context.isSaasTenant && !context.saasHasAllAccess && context.saasAllowedModules != null
-                        && !ec.user.isInGroup("ADMIN") && !ec.user.isInGroup("ZENITH_ADMIN") && !context.posOnlyUser) {
-                    def _myG = (ec.user.userGroupIdSet ?: []) as List
-                    def _roleMods = new HashSet()
-                    if (_myG) {
-                        boolean _dz = ec.artifactExecution.disableAuthz()
-                        try {
-                            ec.entity.find("moqui.security.ArtifactAuthz")
-                                    .condition("userGroupId", "in", _myG)
-                                    .condition("authzTypeEnumId", "in", ["AUTHZT_ALLOW", "AUTHZT_ALWAYS"])
-                                    .list().each { if (it.artifactGroupId?.startsWith("Z_")) _roleMods.add(it.artifactGroupId.substring(2).toLowerCase()) }
-                        } finally { if (!_dz) ec.artifactExecution.enableAuthz() }
-                    }
-                    def _vis = context.saasAllowedModules.findAll { _roleMods.contains(it) }
-                    context.saasVisibleModules = _vis as Set
-                    context.saasVisibleModulesJson = '[' + _vis.collect { '"' + it + '"' }.join(',') + ']'
-                }
-            } catch (Exception e) { context.saasVisibleModulesJson = context.saasAllowedModulesJson }
-
-            // ZE-NAV-SSR: server-side nav gate — which module links to RENDER (not just JS-hide) per the tenant's
-            // plan. Non-tenant / all-access = show everything; a limited-plan tenant shows only its plan∩role
-            // modules. Fail-OPEN (default true) so a compute error never blanks a real menu. Dashboard, Shops and
-            // "More Modules" carry no module id and are always shown.
+            def navigation = ec.service.sync().name("zenith.base.SecurityServices.get#ModuleNavigation")
+                .parameter("planModules", context.saasAllowedModules != null ? context.saasAllowedModules as List : null).disableAuthz().call()
+            context.saasVisibleModules = navigation.moduleIds
+            context.navRestricted = navigation.moduleIds != null
+            context.saasVisibleModulesJson = new groovy.json.JsonBuilder(navigation.moduleIds ?: []).toString()
             def _navShow = [:]
-            def _visForNav = (context.saasVisibleModules != null) ? context.saasVisibleModules : context.saasAllowedModules
-            boolean _gateNav = (context.isSaasTenant ?: false) && !(context.saasHasAllAccess ?: false) && _visForNav != null
-            ['contacts','sales','purchase','crm','pos','inventory','manufacturing','project','accounting','payroll','expenses','hr','tax','pricing','barcode'].each { _m ->
-                _navShow[_m] = _gateNav ? _visForNav.contains(_m) : true
+            ["contacts","sales","purchase","crm","pos","inventory","manufacturing","project","accounting","payroll","expenses","hr","tax","pricing","barcode"].each { module ->
+                _navShow[module] = !context.navRestricted || navigation.moduleIds.contains(module)
             }
             context.navShow = _navShow
             context.navCatSalesCrm = (_navShow['sales'] || _navShow['purchase'] || _navShow['crm'] || _navShow['pos'] || _navShow['pricing'])
@@ -790,7 +742,7 @@
              caused admin/cashier menus to flash Super-Admin items). A plain type="html" block renders only
              on /apps; type="html,qvt" renders on BOTH, so the hidden config div is available in either shell. -->
         <render-mode><text type="html,qvt"><![CDATA[
-            <div id="zenith-saas-cfg" style="display:none" data-tenant="${(isSaasTenant!false)?c}" data-all="${(saasHasAllAccess!false)?c}" data-pos-only="${(posOnlyUser!false)?c}" data-is-admin="${(canManageSettings!false)?c}" data-super="${(isSuperAdmin!false)?c}" data-org-name="${(zTopOrgName!'')?html}" data-user-name="${((ec.user.userAccount.userFullName)!(ec.user.username)!'')?html}" data-modules='${saasVisibleModulesJson!saasAllowedModulesJson!"[]"}'></div>
+            <div id="zenith-saas-cfg" style="display:none" data-nav-restricted="${(navRestricted!false)?c}" data-tenant="${(isSaasTenant!false)?c}" data-all="${(saasHasAllAccess!false)?c}" data-pos-only="${(posOnlyUser!false)?c}" data-is-admin="${(canManageSettings!false)?c}" data-super="${(isSuperAdmin!false)?c}" data-org-name="${(zTopOrgName!'')?html}" data-user-name="${((ec.user.userAccount.userFullName)!(ec.user.username)!'')?html}" data-modules='${saasVisibleModulesJson!saasAllowedModulesJson!"[]"}'></div>
             <!-- ZE-SHOP: shop switcher data (rendered server-side to avoid attribute-escaping pitfalls in shop names). -->
             <div id="z-shopdata" style="display:none" data-multishop="${(hasMultiShop!false)?c}" data-active="${(activeShopId!'')?html}" data-token="${(ec.web.sessionToken)!''}"><#if shopList??><#list shopList as s><i data-id="${(s.id!'')?html}" data-name="${(s.name!'')?html}"></i></#list></#if></div>
         ]]></text></render-mode>
@@ -826,7 +778,7 @@
         body.z-side-off #z-subnav{display:none !important}
         /* ZE-NAV: per-module sub-navigation bar (current module's sections as tabs; report Fig 3.x / Image #3) */
         #z-subnav{display:none;background:#fff;border-bottom:1px solid var(--z-border,#E4DFF3);overflow-x:auto;overflow-y:hidden;white-space:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:#DCD3F2 transparent}
-        #z-subnav.show{display:block}
+        #z-subnav.show{display:flex;align-items:stretch;overflow:visible}
         /* Clear wrapped header floats on Contacts so tabs keep full width and receive clicks. */
         #z-subnav.z-contacts-nav{clear:both}
         /* Let wrapped utilities determine the sticky header height on Contacts only. */
@@ -1305,7 +1257,7 @@
             <link rel="stylesheet" href="/zenithstatic/css/zenith-theme-v4.css?v=302"/>
             <link rel="stylesheet" href="/zenithstatic/css/my-subscription-reference.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/saas-admin.css?v=4"/>
-            <link rel="stylesheet" href="/zenithstatic/css/product-catalog.css?v=1"/>
+            <link rel="stylesheet" href="/zenithstatic/css/product-catalog.css?v=2"/>
             <link rel="stylesheet" href="/zenithstatic/css/barcode-module.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/barcode-reference.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/receiving-stock.css?v=14"/>

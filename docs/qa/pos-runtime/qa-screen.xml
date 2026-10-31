@@ -93,6 +93,31 @@
     }
     ec.web.sendJsonResponse([prepared:true])
 ]]></script></actions><default-response type="none"/></transition>
+<transition name="historySearchFixtures" method="post"><actions><script><![CDATA[
+    if (System.getProperty('pos.qa.disposable')!='true' || ec.user.username!='pos.qa' || ec.user.getPreference('ACTIVE_ORGANIZATION')!='POS_QA_A') {
+        ec.web.response.setStatus(403);ec.web.sendJsonResponse([denied:true]);return
+    }
+    // Put the named matches beyond the old first-500 scan in this disposable database.
+    (0..<520).each { n ->
+        def id=String.format('POS_QA_A_SEARCH_%04d',n)
+        ec.entity.makeValue('mantle.product.Product').setAll([productId:id,pseudoId:id,
+            productName:'ZZ History search filler '+n,productTypeEnumId:'PtAsset',ownerPartyId:'POS_QA_A',
+            mrpAmount:1,amountUomId:'OTH_ea',gstSlabId:'GST_0',inventoryTracked:'N']).createOrUpdate()
+    }
+    [['WATER','ZZ History Water Cup',13],['TEA','ZZ History Tea Cup',17],['LITERAL','ZZ History 10%_Cup',19]].each { item ->
+        def id='POS_QA_A_SEARCH_'+item[0]
+        ec.entity.makeValue('mantle.product.Product').setAll([productId:id,pseudoId:id,productName:item[1],
+            productTypeEnumId:'PtAsset',ownerPartyId:'POS_QA_A',mrpAmount:item[2],
+            amountUomId:'OTH_ea',gstSlabId:'GST_0',inventoryTracked:'N']).createOrUpdate()
+    }
+    ec.entity.makeValue('mantle.product.Product').setAll([productId:'POS_QA_B_SEARCH_WATER',
+        productName:'ZZ History Water Cup foreign',productTypeEnumId:'PtAsset',ownerPartyId:'POS_QA_B',
+        mrpAmount:23,amountUomId:'OTH_ea',gstSlabId:'GST_0',inventoryTracked:'N']).createOrUpdate()
+    ec.entity.makeValue('mantle.product.Product').setAll([productId:'POS_QA_A_SEARCH_WEIGHT',
+        productName:'ZZ History weighted sample',productTypeEnumId:'PtAsset',ownerPartyId:'POS_QA_A',
+        mrpAmount:8,amountUomId:'WT_kg',gstSlabId:'GST_0',inventoryTracked:'N']).createOrUpdate()
+    ec.web.sendJsonResponse([prepared:!ec.message.hasError()])
+]]></script></actions><default-response type="none"/></transition>
 <transition name="invoke"><actions><script><![CDATA[
     if (System.getProperty('pos.qa.disposable')!='true' || !['pos.qa','pos.b.qa','pos.cashier.qa'].contains(ec.user.username)) {
         ec.web.response.setStatus(403);ec.web.sendJsonResponse([denied:true]);return

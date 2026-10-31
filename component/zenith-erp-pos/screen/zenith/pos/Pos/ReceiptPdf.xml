@@ -23,28 +23,18 @@
 
         <entity-find entity-name="zenith.erp.pos.PosTransactionItem" list="items">
             <econdition field-name="transactionId"/><order-by field-name="itemSeqId"/></entity-find>
-        <entity-find entity-name="zenith.erp.pos.PosPayment" list="payments">
-            <econdition field-name="transactionId"/></entity-find>
 
         <entity-find-one entity-name="zenith.erp.pos.PosSession" value-field="session">
             <field-map field-name="sessionId" from="txn.sessionId"/></entity-find-one>
         <entity-find-one entity-name="zenith.erp.pos.PosTerminal" value-field="terminal">
             <field-map field-name="terminalId" from="session.terminalId"/></entity-find-one>
 
-        <!-- Receipt template — scoped to THIS bill's org (else an arbitrary tenant's default template
-             could render on the receipt). Prefer the org's default, then any active org template. -->
-        <entity-find entity-name="zenith.erp.pos.PosReceiptTemplate" list="rTplList" limit="1">
-            <econdition field-name="organizationPartyId" from="txn.organizationPartyId"/>
-            <econdition field-name="isDefault" value="Y"/><econdition field-name="isActive" value="Y"/>
+        <entity-find entity-name="zenith.erp.pos.PosReceiptTemplate" list="receiptTemplates">
+            <econdition field-name="organizationPartyId" from="txn.organizationPartyId"/><econdition field-name="isActive" value="Y"/><order-by field-name="-isDefault"/><order-by field-name="templateId"/>
         </entity-find>
-        <set field="rTpl" from="rTplList ? rTplList[0] : null"/>
-        <if condition="!rTpl">
-            <entity-find entity-name="zenith.erp.pos.PosReceiptTemplate" list="rTplList2" limit="1">
-                <econdition field-name="organizationPartyId" from="txn.organizationPartyId"/>
-                <econdition field-name="isActive" value="Y"/></entity-find>
-            <set field="rTpl" from="rTplList2 ? rTplList2[0] : null"/>
-        </if>
+        <set field="rTpl" from="receiptTemplates.find { it.facilityId &amp;&amp; it.facilityId==terminal?.facilityId } ?: receiptTemplates.find { !it.facilityId }"/>
 
+        <service-call name="zenith.tax.TaxServices.get#TaxSummary" in-map="[referenceType:'PosTransactionItem',referenceId:transactionId]" out-map="receiptTaxSummary"/>
         <!-- Operator name -->
         <script><![CDATA[
             operatorName = ''
@@ -63,9 +53,27 @@
             storePhone = rTpl?.phone ?: ''
             storeEmail = rTpl?.email ?: ''
             taxReg = rTpl?.taxRegistrationNumber ?: terminal?.taxRegistrationNumber ?: ''
-            headerText = rTpl?.headerText ?: ''
-            footerText = rTpl?.footerText ?: ''
-            termsText = rTpl?.termsText ?: ''
+            isRevisedBill = ec.entity.find('zenith.erp.pos.PosTransactionAmendment').condition('transactionId',transactionId).count() > 0
+            def receiptDesign = isRevisedBill ? 'revised' : (txn.isCredit == 'Y' ? 'credit' : '')
+            def receiptText = { key ->
+                def overrideKey = receiptDesign ? receiptDesign + key.substring(0,1).toUpperCase() + key.substring(1) : key
+                rTpl?.get(overrideKey) ?: rTpl?.get(key) ?: ''
+            }
+            receiptOptions = ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#ReceiptOptions')
+                .parameters([storedJson:rTpl?.receiptOptionsJson,receiptDesign:receiptDesign ?: 'normal']).call().options
+            receiptTones=[:]
+            ['greeting','company','header','information','products','amounts','tax','payments','footer'].each { section ->
+                receiptTones[section]=receiptOptions[section+'Tone']=='darkGrey' ? '#333' : (receiptOptions[section+'Tone']=='lightGrey' ? (section in ['amounts','information','tax'] ? '#333' : '#707070') : '#000')
+            }
+            paperWidth = rTpl?.receiptWidth == '58mm' ? '58mm' : '80mm'
+            showDiscount = rTpl?.showDiscount != 'N'
+            showTaxBreakdown = rTpl?.showTaxBreakdown != 'N'
+            showCustomer = rTpl?.showCustomerInfo != 'N' && receiptOptions.showCustomerRow
+            showPaymentDetails = rTpl?.showPaymentDetails == 'Y'
+            receiptPayments = showPaymentDetails ? ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId',transactionId).list() : []
+            headerText = receiptText('headerText')
+            footerText = receiptText('footerText')
+            termsText = receiptText('termsText')
 
             // FOP's bundled base fonts do not contain the rupee glyph. Use a readable currency prefix.
             cs = 'Rs. '
@@ -75,16 +83,12 @@
             customerPhone = txn.customerPhone ?: ''
             customerGstin = txn.customerTaxRegNumber ?: ''
 
-            totalQty = items.sum { (it.quantity ?: 0) as BigDecimal } ?: 0
-            totalSaving = BigDecimal.ZERO
-            items.each {
-                def mrp = (it.mrp ?: it.unitPrice ?: 0) as BigDecimal
-                def rate = (it.unitPrice ?: 0) as BigDecimal
-                def qty = (it.quantity ?: 0) as BigDecimal
-                def saving = (mrp - rate) * qty
-                if (saving > 0) totalSaving += saving
-            }
-            paidTotal = payments.sum { (it.amount ?: 0) as BigDecimal } ?: 0
+            pdfUnsupported = [receiptOptions.openingPreset!='none' ? receiptOptions.openingMessage : '',storeName,storeAddr,headerText,footerText,termsText,
+                showCustomer && receiptOptions.showCustomerName ? customerName : '',receiptOptions.showCashier ? operatorName : '',
+                receiptOptions.showBillNumber ? receiptOptions.billNumberLabel : '',showCustomer ? receiptOptions.customerLabel : '',receiptOptions.showCashier ? receiptOptions.cashierLabel : '',
+                items.collect { it.productName }].flatten().find { it && it.toString().codePoints().anyMatch { point -> point > 255 } } != null
+            unitLabels = ['OTH_ea':'Nos','WT_g':'g','WT_kg':'kg','VLIQ_ml':'ml','VLIQ_L':'L','LEN_m':'m','LEN_cm':'cm']
+            totalSaving = (txn.discountTotal ?: 0) as BigDecimal
             // ZE-POS-005: credit/pay-later marker + amount due, computed in Groovy (no FO FreeMarker arithmetic)
             isCreditBill = (txn.isCredit == 'Y')
             creditHasDue = ((txn.payableAmount ?: 0) as BigDecimal) > ((txn.paidAmount ?: 0) as BigDecimal)
@@ -96,35 +100,42 @@
         <render-mode><text type="xsl-fo" template="true" encode="false" no-boundary-comment="true"><![CDATA[
 <fo:root xmlns:fo="http://www.w3.org/1999/XSL/Format">
     <fo:layout-master-set>
-        <fo:simple-page-master master-name="receipt" page-width="80mm" page-height="297mm"
+        <fo:simple-page-master master-name="receipt" page-width="${paperWidth}" page-height="297mm"
                 margin-top="3mm" margin-bottom="3mm" margin-left="3mm" margin-right="3mm">
             <fo:region-body/>
         </fo:simple-page-master>
     </fo:layout-master-set>
 
     <fo:page-sequence master-reference="receipt">
-        <fo:flow flow-name="xsl-region-body">
-
-            <#-- Header Text -->
-            <#if headerText?has_content>
-            <fo:block font-size="7pt" text-align="center" color="#666" space-after="1mm">${headerText}</fo:block>
+        <fo:flow flow-name="xsl-region-body" color="#000" font-weight="${(receiptOptions.density == 'light')?then('normal',(receiptOptions.density == 'dark')?then('bold','600'))}">
+            <#if pdfUnsupported>
+            <fo:block font-size="10pt" font-weight="bold">Unicode receipt printing</fo:block>
+            <fo:block font-size="9pt" space-before="3mm">This PDF renderer has Latin fonts only. To preserve all receipt characters, print this saved bill from POS History using the browser or QZ printer driver with matching fonts. No bill data has been changed.</fo:block>
+            <#else>
+            <#if receiptOptions.openingPreset != 'none' && receiptOptions.openingMessage?has_content>
+            <fo:block text-align="${receiptOptions.greetingAlign}" color="${receiptTones.greeting}" font-weight="${receiptOptions.greetingBold?then('bold','normal')}" font-size="${(receiptOptions.greetingSize=='small')?then('7pt',(receiptOptions.greetingSize=='large')?then('12pt','9pt'))}" linefeed-treatment="preserve">${receiptOptions.openingMessage?xml}</fo:block>
             </#if>
 
             <#-- Store Name -->
-            <fo:block font-size="12pt" font-weight="bold" text-align="center" space-after="0.5mm">${storeName}</fo:block>
+            <fo:block font-size="12pt" font-weight="${receiptOptions.companyBold?then('bold','normal')}" color="${receiptTones.company}" text-align="center" space-after="0.5mm">${storeName?xml}</fo:block>
 
             <#-- Store Address -->
             <#if storeAddr?has_content>
-            <fo:block font-size="7pt" text-align="center" color="#444">${storeAddr}</fo:block>
+            <fo:block font-size="7pt" text-align="center" color="${receiptTones.company}">${storeAddr?xml}</fo:block>
             </#if>
             <#if storePhone?has_content>
-            <fo:block font-size="7pt" text-align="center" color="#444">Ph: ${storePhone}</fo:block>
+            <fo:block font-size="7pt" text-align="center" color="${receiptTones.company}">Ph: ${storePhone?xml}</fo:block>
             </#if>
             <#if storeEmail?has_content>
-            <fo:block font-size="7pt" text-align="center" color="#444">${storeEmail}</fo:block>
+            <fo:block font-size="7pt" text-align="center" color="${receiptTones.company}">${storeEmail?xml}</fo:block>
             </#if>
             <#if taxReg?has_content>
-            <fo:block font-size="7pt" text-align="center" color="#444">Tax Reg: ${taxReg}</fo:block>
+            <fo:block font-size="7pt" text-align="center" color="${receiptTones.company}">GSTIN: ${taxReg?xml}</fo:block>
+            </#if>
+
+            <#-- Header Text -->
+            <#if headerText?has_content>
+            <fo:block font-size="7pt" text-align="${receiptOptions.headerAlign}" font-weight="${receiptOptions.headerBold?then('bold','normal')}" color="${receiptTones.header}" space-after="1mm" linefeed-treatment="preserve">${headerText?xml}</fo:block>
             </#if>
 
             <#-- Separator -->
@@ -132,30 +143,35 @@
 
             <#-- Invoice Header -->
             <fo:block font-size="9pt" font-weight="bold" text-align="center" space-after="1mm"><#if ((txn.totalTaxAmount!0)) gt 0>TAX INVOICE<#else>RECEIPT</#if></fo:block>
+            <#if isRevisedBill>
+            <fo:block font-size="8pt" font-weight="bold" text-align="center" color="#000" space-after="1mm">EDITED / REVISED BILL</fo:block>
+            </#if>
 
+<#if receiptOptions.showBillNumber || receiptOptions.showDate || (receiptOptions.showCashier && operatorName?has_content) || (showCustomer && (receiptOptions.showCustomerName || (receiptOptions.showCustomerPhone && customerPhone?has_content))) || (showCustomer && customerGstin?has_content)>
             <fo:table table-layout="fixed" width="100%">
                 <fo:table-column column-width="25mm"/><fo:table-column column-width="proportional-column-width(1)"/>
                 <fo:table-body>
-                    <fo:table-row><fo:table-cell><fo:block font-size="7pt" color="#666">Bill No:</fo:block></fo:table-cell>
-                        <fo:table-cell><fo:block font-size="7pt" font-weight="bold">${billNo}</fo:block></fo:table-cell></fo:table-row>
-                    <fo:table-row><fo:table-cell><fo:block font-size="7pt" color="#666">Date:</fo:block></fo:table-cell>
-                        <fo:table-cell><fo:block font-size="7pt">${billDate}</fo:block></fo:table-cell></fo:table-row>
-                    <#if operatorName?has_content>
-                    <fo:table-row><fo:table-cell><fo:block font-size="7pt" color="#666">Cashier:</fo:block></fo:table-cell>
-                        <fo:table-cell><fo:block font-size="7pt">${operatorName}</fo:block></fo:table-cell></fo:table-row>
+                    <#if receiptOptions.showBillNumber><fo:table-row><fo:table-cell><fo:block font-size="7pt" color="${receiptTones.information}">${receiptOptions.billNumberLabel?xml}</fo:block></fo:table-cell>
+                        <fo:table-cell><fo:block font-size="7pt" font-weight="bold">${billNo?xml}</fo:block></fo:table-cell></fo:table-row></#if>
+                    <#if receiptOptions.showDate><fo:table-row><fo:table-cell><fo:block font-size="7pt" color="${receiptTones.information}">Date:</fo:block></fo:table-cell>
+                        <fo:table-cell><fo:block font-size="7pt">${billDate?xml}</fo:block></fo:table-cell></fo:table-row></#if>
+                    <#if receiptOptions.showCashier && operatorName?has_content>
+                    <fo:table-row><fo:table-cell><fo:block font-size="7pt" color="${receiptTones.information}">${receiptOptions.cashierLabel?xml}</fo:block></fo:table-cell>
+                        <fo:table-cell><fo:block font-size="7pt">${operatorName?xml}</fo:block></fo:table-cell></fo:table-row>
                     </#if>
-                    <fo:table-row><fo:table-cell><fo:block font-size="7pt" color="#666">Customer:</fo:block></fo:table-cell>
-                        <fo:table-cell><fo:block font-size="7pt">${customerName}</fo:block></fo:table-cell></fo:table-row>
-                    <#if customerPhone?has_content>
-                    <fo:table-row><fo:table-cell><fo:block font-size="7pt" color="#666">Mobile:</fo:block></fo:table-cell>
-                        <fo:table-cell><fo:block font-size="7pt">${customerPhone}</fo:block></fo:table-cell></fo:table-row>
+                    <#if showCustomer && receiptOptions.showCustomerName><fo:table-row><fo:table-cell><fo:block font-size="7pt" color="${receiptTones.information}">${receiptOptions.customerLabel?xml}</fo:block></fo:table-cell>
+                        <fo:table-cell><fo:block font-size="7pt">${customerName?xml}</fo:block></fo:table-cell></fo:table-row></#if>
+                    <#if showCustomer && receiptOptions.showCustomerPhone && customerPhone?has_content>
+                    <fo:table-row><fo:table-cell><fo:block font-size="7pt" color="${receiptTones.information}">Mobile:</fo:block></fo:table-cell>
+                        <fo:table-cell><fo:block font-size="7pt">${customerPhone?xml}</fo:block></fo:table-cell></fo:table-row>
                     </#if>
-                    <#if customerGstin?has_content>
-                    <fo:table-row><fo:table-cell><fo:block font-size="7pt" color="#666">Buyer GSTIN:</fo:block></fo:table-cell>
+                    <#if showCustomer && customerGstin?has_content>
+                    <fo:table-row><fo:table-cell><fo:block font-size="7pt" color="${receiptTones.information}">Buyer GSTIN:</fo:block></fo:table-cell>
                         <fo:table-cell><fo:block font-size="7pt">${customerGstin?xml}</fo:block></fo:table-cell></fo:table-row>
                     </#if>
                 </fo:table-body>
             </fo:table>
+</#if>
 
             <#-- Separator -->
             <fo:block space-before="1.5mm" space-after="1mm" border-bottom="0.5pt solid #000"/>
@@ -177,15 +193,18 @@
                 <fo:table-body>
                     <#list items as item>
                     <fo:table-row>
-                        <fo:table-cell padding="1pt"><fo:block font-size="7pt">${(item.productName!item.productId!'')?xml}</fo:block></fo:table-cell>
-                        <fo:table-cell padding="1pt"><fo:block font-size="7pt" text-align="center">${zinr.inr(ec.l10n.format(item.quantity!0, '#,##0.##'))}</fo:block></fo:table-cell>
-                        <fo:table-cell padding="1pt"><fo:block font-size="7pt" text-align="right">${zinr.inr(ec.l10n.format(item.unitPrice!0, '#,##0.00'))}</fo:block></fo:table-cell>
-                        <fo:table-cell padding="1pt"><fo:block font-size="7pt" text-align="right">${zinr.inr(ec.l10n.format(item.lineTotal!0, '#,##0.00'))}</fo:block></fo:table-cell>
+                        <fo:table-cell padding="1pt"><fo:block font-size="7pt" color="${receiptTones.products}">${(item.productName!item.productId!'')?xml}</fo:block></fo:table-cell>
+                        <fo:table-cell padding="1pt"><fo:block font-size="7pt" color="${receiptTones.products}" text-align="center">${zinr.inr(ec.l10n.format(item.quantity!0, '#,##0.###'))} ${(unitLabels[item.uomId!'']!'')?xml}</fo:block></fo:table-cell>
+                        <fo:table-cell padding="1pt"><fo:block font-size="7pt" color="${receiptTones.amounts}" text-align="right">${zinr.inr(ec.l10n.format(item.unitPrice!0, '#,##0.00'))}</fo:block></fo:table-cell>
+                        <fo:table-cell padding="1pt"><fo:block font-size="7pt" color="${receiptTones.amounts}" text-align="right">${zinr.inr(ec.l10n.format(item.lineTotal!0, '#,##0.00'))}</fo:block></fo:table-cell>
                     </fo:table-row>
-                    <#if ((item.discountAmount!0)) gt 0>
+                    <#if ((rTpl.showItemTax)!'N')=='Y' && ((item.totalTaxAmount!0)) gt 0>
+                    <fo:table-row><fo:table-cell number-columns-spanned="4"><fo:block font-size="6pt" color="${receiptTones.tax}">Tax: ${cs}${zinr.inr(ec.l10n.format(item.totalTaxAmount!0, '#,##0.00'))}</fo:block></fo:table-cell></fo:table-row>
+                    </#if>
+                    <#if showDiscount && ((item.discountAmount!0)) gt 0>
                     <fo:table-row>
                         <fo:table-cell number-columns-spanned="4" padding="0pt">
-                            <fo:block font-size="6pt" color="#666" margin-left="3mm">Disc: -${cs}${zinr.inr(ec.l10n.format(item.discountAmount!0, '#,##0.00'))}</fo:block>
+                            <fo:block font-size="6pt" color="${receiptTones.tax}" margin-left="3mm">Disc: -${cs}${zinr.inr(ec.l10n.format(item.discountAmount!0, '#,##0.00'))}</fo:block>
                         </fo:table-cell>
                     </fo:table-row>
                     </#if>
@@ -197,39 +216,32 @@
             <fo:block space-before="1mm" space-after="1mm" border-bottom="0.5pt dashed #000"/>
 
             <#-- Summary -->
-            <fo:table table-layout="fixed" width="100%">
-                <fo:table-column column-width="proportional-column-width(1)"/><fo:table-column column-width="20mm"/>
-                <fo:table-body>
-                    <fo:table-row>
-                        <fo:table-cell><fo:block font-size="7pt">Total Qty: ${zinr.inr(ec.l10n.format(totalQty, '#,##0.##'))} | Items: ${items.size()}</fo:block></fo:table-cell>
-                        <fo:table-cell><fo:block/></fo:table-cell>
-                    </fo:table-row>
-                </fo:table-body>
-            </fo:table>
-
-            <fo:table table-layout="fixed" width="100%" space-before="1mm">
+            <fo:table table-layout="fixed" width="100%" space-before="1mm" color="${receiptTones.amounts}">
                 <fo:table-column column-width="proportional-column-width(1)"/><fo:table-column column-width="24mm"/>
                 <fo:table-body>
                     <fo:table-row>
-                        <fo:table-cell><fo:block font-size="7pt">Taxable (after discount)</fo:block></fo:table-cell>
+                        <fo:table-cell><fo:block font-size="7pt">Subtotal</fo:block></fo:table-cell>
                         <fo:table-cell><fo:block font-size="7pt" text-align="right">${cs}${zinr.inr(ec.l10n.format(txn.subtotal!0, '#,##0.00'))}</fo:block></fo:table-cell>
                     </fo:table-row>
-                    <#if ((txn.discountTotal!0)) gt 0>
+                    <#if showDiscount && ((txn.discountTotal!0)) gt 0>
                     <fo:table-row>
-                        <fo:table-cell><fo:block font-size="7pt">Discount included</fo:block></fo:table-cell>
+                        <fo:table-cell><fo:block font-size="7pt" color="${receiptTones.tax}">Discount included</fo:block></fo:table-cell>
                         <fo:table-cell><fo:block font-size="7pt" text-align="right">${cs}${zinr.inr(ec.l10n.format(txn.discountTotal!0, '#,##0.00'))}</fo:block></fo:table-cell>
                     </fo:table-row>
                     </#if>
-                    <#if ((txn.totalTaxAmount!0)) gt 0>
-                    <fo:table-row>
-                        <fo:table-cell><fo:block font-size="7pt">Tax</fo:block></fo:table-cell>
-                        <fo:table-cell><fo:block font-size="7pt" text-align="right">${cs}${zinr.inr(ec.l10n.format(txn.totalTaxAmount!0, '#,##0.00'))}</fo:block></fo:table-cell>
-                    </fo:table-row>
+                    <#if showTaxBreakdown && ((txn.totalTaxAmount!0)) gt 0>
+                    <#if receiptTaxSummary.taxSummary?has_content>
+                    <#list receiptTaxSummary.taxSummary as tax>
+                    <fo:table-row color="${receiptTones.tax}"><fo:table-cell><fo:block font-size="7pt">${(tax.taxName!'Tax')?xml}</fo:block></fo:table-cell><fo:table-cell><fo:block font-size="7pt" text-align="right">${cs}${zinr.inr(ec.l10n.format(tax.totalTax!0, '#,##0.00'))}</fo:block></fo:table-cell></fo:table-row>
+                    </#list>
+                    <#else>
+                    <fo:table-row color="${receiptTones.tax}"><fo:table-cell><fo:block font-size="7pt">Tax</fo:block></fo:table-cell><fo:table-cell><fo:block font-size="7pt" text-align="right">${cs}${zinr.inr(ec.l10n.format(txn.totalTaxAmount!0, '#,##0.00'))}</fo:block></fo:table-cell></fo:table-row>
+                    </#if>
                     </#if>
                     <#if ((txn.roundOff!0)) != 0>
                     <fo:table-row>
-                        <fo:table-cell><fo:block font-size="6pt" color="#666">Round Off</fo:block></fo:table-cell>
-                        <fo:table-cell><fo:block font-size="6pt" text-align="right" color="#666">${zinr.inr(ec.l10n.format(txn.roundOff!0, '#,##0.00'))}</fo:block></fo:table-cell>
+                        <fo:table-cell><fo:block font-size="6pt" color="#000">Round Off</fo:block></fo:table-cell>
+                        <fo:table-cell><fo:block font-size="6pt" text-align="right" color="#000">${zinr.inr(ec.l10n.format(txn.roundOff!0, '#,##0.00'))}</fo:block></fo:table-cell>
                     </fo:table-row>
                     </#if>
                 </fo:table-body>
@@ -248,24 +260,21 @@
             </fo:table>
             <fo:block space-before="0.5mm" space-after="1mm" border-bottom="1pt solid #000"/>
 
-            <#-- Payment Breakdown -->
+            <#if showPaymentDetails>
+            <#list receiptPayments as payment><fo:block font-size="7pt" color="${receiptTones.payments}">${(payment.paymentMethod!'')?xml}: ${cs}${zinr.inr(ec.l10n.format(payment.amount!0, '#,##0.00'))}</fo:block></#list>
+            </#if>
+            <#-- Cash change remains useful without repeating the payment method. -->
+            <#if showPaymentDetails && ((txn.changeAmount!0)) gt 0>
             <fo:table table-layout="fixed" width="100%">
                 <fo:table-column column-width="proportional-column-width(1)"/><fo:table-column column-width="24mm"/>
                 <fo:table-body>
-                    <#list payments as pmt>
-                    <fo:table-row>
-                        <fo:table-cell><fo:block font-size="7pt">${pmt.paymentMethod!''}</fo:block></fo:table-cell>
-                        <fo:table-cell><fo:block font-size="7pt" text-align="right">${cs}${zinr.inr(ec.l10n.format(pmt.amount!0, '#,##0.00'))}</fo:block></fo:table-cell>
-                    </fo:table-row>
-                    </#list>
-                    <#if ((txn.changeAmount!0)) gt 0>
                     <fo:table-row>
                         <fo:table-cell><fo:block font-size="7pt" font-weight="bold">Change</fo:block></fo:table-cell>
                         <fo:table-cell><fo:block font-size="7pt" text-align="right" font-weight="bold">${cs}${zinr.inr(ec.l10n.format(txn.changeAmount!0, '#,##0.00'))}</fo:block></fo:table-cell>
                     </fo:table-row>
-                    </#if>
                 </fo:table-body>
             </fo:table>
+            </#if>
 
             <#-- Credit / Pay Later marker + amount due (ZE-POS-005) -->
             <#if isCreditBill>
@@ -283,25 +292,26 @@
             </#if>
 
             <#-- Savings -->
-            <#if (totalSaving gt 0)>
+            <#if showDiscount && (totalSaving gt 0)>
             <fo:block space-before="1.5mm" space-after="1mm" border-bottom="0.5pt dashed #000"/>
-            <fo:block font-size="8pt" font-weight="bold" text-align="center">You Saved: ${cs}${zinr.inr(ec.l10n.format(totalSaving, '#,##0.00'))}</fo:block>
-            </#if>
-
-            <#-- Terms -->
-            <#if termsText?has_content>
-            <fo:block space-before="1.5mm" space-after="1mm" border-bottom="0.5pt dashed #000"/>
-            <fo:block font-size="6pt" text-align="center" color="#666" linefeed-treatment="preserve">${termsText}</fo:block>
+            <fo:block font-size="8pt" font-weight="bold" color="${receiptTones.tax}" text-align="center">You Saved: ${cs}${zinr.inr(ec.l10n.format(totalSaving, '#,##0.00'))}</fo:block>
             </#if>
 
             <#-- Footer -->
             <#if footerText?has_content>
             <fo:block space-before="1mm" border-bottom="0.5pt dashed #000"/>
-            <fo:block font-size="6pt" text-align="center" color="#666" space-before="1mm" linefeed-treatment="preserve">${footerText}</fo:block>
+            <fo:block font-size="6pt" text-align="${receiptOptions.footerAlign}" font-weight="${receiptOptions.footerBold?then('bold','normal')}" color="${receiptTones.footer}" space-before="1mm" linefeed-treatment="preserve">${footerText?xml}</fo:block>
             </#if>
 
-            <fo:block font-size="9pt" font-weight="bold" text-align="center" space-before="2mm">Thank You !!</fo:block>
+            <#-- Terms -->
+            <#if termsText?has_content>
+            <fo:block space-before="1.5mm" space-after="1mm" border-bottom="0.5pt dashed #000"/>
+            <fo:block font-size="6pt" text-align="${receiptOptions.footerAlign}" color="${receiptTones.footer}" linefeed-treatment="preserve">${termsText?xml}</fo:block>
+            </#if>
 
+            <fo:block font-size="9pt" font-weight="bold" color="${receiptTones.footer}" text-align="center" space-before="2mm">Thank You !!</fo:block>
+
+            </#if>
         </fo:flow>
     </fo:page-sequence>
 </fo:root>

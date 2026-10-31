@@ -1,0 +1,30 @@
+{
+  "environment": "Disposable loopback Moqui / in-memory H2; Chrome; synthetic data only",
+  "suites": [
+    {
+      "focus": "receipt-designs",
+      "checks": 78,
+      "passed": true,
+      "finished": "2026-10-31T07:28:11.820Z",
+      "productionAccess": false
+    },
+    {
+      "focus": "hold-print",
+      "checks": 15,
+      "passed": true,
+      "finished": "2026-10-31T07:34:48.640Z",
+      "productionAccess": false
+    },
+    {
+      "focus": "history-window",
+      "checks": 78,
+      "passed": true,
+      "finished": "2026-10-31T07:37:06.455Z",
+      "productionAccess": false
+    }
+  ],
+  "repositoryGuards": 4,
+  "printRoutingCases": 12,
+  "tabletLayoutChecks": 162,
+  "physicalPrinterTested": false
+}

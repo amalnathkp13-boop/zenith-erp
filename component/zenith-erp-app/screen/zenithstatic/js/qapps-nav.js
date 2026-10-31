@@ -52,8 +52,8 @@
     // tenant's allowed plan modules (null = all-access / not a plan-gated tenant)
     function tenantMods() {
         try { var cfg = document.getElementById('zenith-saas-cfg');
-            if (cfg && cfg.getAttribute('data-tenant') === 'true' && cfg.getAttribute('data-all') !== 'true') {
-                var m = []; try { m = JSON.parse(cfg.getAttribute('data-modules') || '[]'); } catch (_e) {} return m.length ? m : null;
+            if (cfg && (cfg.getAttribute('data-nav-restricted') === 'true' || (cfg.getAttribute('data-tenant') === 'true' && cfg.getAttribute('data-all') !== 'true'))) {
+                try { var modules = JSON.parse(cfg.getAttribute('data-modules') || '[]'); return Array.isArray(modules) ? modules : []; } catch (_e) { return []; }
             }
         } catch (_e) {} return null;
     }
@@ -93,6 +93,17 @@
     function el(tag, cls, txt) { var e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
     function mi(name) { var s = el('span', 'material-icons', name); return s; }
     var allLinks = [];
+
+    function onNavClick(e) {
+        if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+        var a = e.target.closest('a[href]');
+        if (!a || a.target || a.hasAttribute('download')) return;
+        var url = new URL(a.href, location.href);
+        if (url.origin !== location.origin || !url.pathname.startsWith('/qapps/zenith') || url.hash) return;
+        if (!window.moqui || !moqui.webrootVue) return;
+        e.preventDefault();
+        moqui.webrootVue.setUrl(url.pathname + url.search);
+    }
 
     // ZE-NAV: "More Modules" (OTHER category) discloses the dashboard's All Modules grid instead of being a
     // dead same-page link. On the dashboard → smooth-scroll to it; elsewhere → flag + let the href navigate
@@ -162,9 +173,9 @@
     function applyRbac(side) {
         try {
             var cfg = document.getElementById('zenith-saas-cfg');
-            if (cfg && cfg.getAttribute('data-tenant') === 'true' && cfg.getAttribute('data-all') !== 'true') {
+            if (cfg && (cfg.getAttribute('data-nav-restricted') === 'true' || (cfg.getAttribute('data-tenant') === 'true' && cfg.getAttribute('data-all') !== 'true'))) {
                 var mods = []; try { mods = JSON.parse(cfg.getAttribute('data-modules') || '[]'); } catch (_e) {}
-                if (mods.length) {
+                if (Array.isArray(mods)) {
                     allLinks.forEach(function (a) { var k = a.getAttribute('data-mod'); if (k && mods.indexOf(k) < 0) a.style.display = 'none'; });
                     [].slice.call(side.querySelectorAll('.zqs-cat')).forEach(function (h) {
                         var n = h.nextElementSibling, any = false;
@@ -214,7 +225,7 @@
             var msep = el('div'); msep.style.cssText = 'height:1px;background:#EEE9F7;margin:5px 6px'; menu.appendChild(msep);
             var mmg = el('a', 'zqsm-item'); mmg.href = '/qapps/zenith/Stores/FindStore'; mmg.style.fontWeight = '700';
             mmg.appendChild(mi('add')); mmg.appendChild(el('span', null, 'Add / manage shops'));
-            mmg.addEventListener('click', function (e) { e.stopPropagation(); });
+            mmg.addEventListener('click', function (e) { onNavClick(e); e.stopPropagation(); });
             menu.appendChild(mmg);
             ov.appendChild(menu);
             ov.addEventListener('click', function (e) { e.stopPropagation(); menu.classList.toggle('show'); });
@@ -272,7 +283,7 @@
                 current = current < 0 ? (e.key === 'ArrowDown' ? 0 : links.length - 1) : (current + (e.key === 'ArrowDown' ? 1 : -1) + links.length) % links.length;
                 links[current].classList.add('sel'); links[current].scrollIntoView({ block: 'nearest' });
             } else if (e.key === 'Enter') {
-                var selected = links[current] || links[0]; if (selected) { e.preventDefault(); location.href = selected.getAttribute('href'); }
+                var selected = links[current] || links[0]; if (selected) { e.preventDefault(); selected.click(); }
             } else if (e.key === 'Escape') { inp.value = ''; res.classList.remove('show'); inp.blur(); }
         });
         document.addEventListener('click', function (e) { if (!sc.contains(e.target)) res.classList.remove('show'); });
@@ -409,14 +420,16 @@
     }
 
     function init() {
+        if (document.getElementById('zq-sidebar')) return true;
+        if (!document.getElementById('zenith-saas-cfg')) return false;
         var header = document.querySelector('.q-header');
         var layout = document.querySelector('.q-layout');
         if (!header || !layout) return false;
         var body = document.body;
         body.classList.add('zq-nav');
         var side = buildSidebar();
-        body.appendChild(side);
         applyRbac(side);
+        body.appendChild(side);
         applyActive();
         buildTopbar(header);
         subBar = el('div'); subBar.id = 'zq-subnav';
@@ -436,6 +449,7 @@
         var fwBurger = header.querySelector('.q-toolbar button');
         if (fwBurger) fwBurger.addEventListener('click', function () { if (window.innerWidth <= 900) body.classList.toggle('zq-side-open'); }, true);
         document.addEventListener('click', function (e) { if (body.classList.contains('zq-side-open') && !side.contains(e.target) && (!fwBurger || !fwBurger.contains(e.target))) body.classList.remove('zq-side-open'); });
+        document.addEventListener('click', onNavClick);
         side.addEventListener('click', function (e) { if (e.target.closest('.zqs-link')) body.classList.remove('zq-side-open'); });
         // re-apply active highlight on SPA route changes (URL is swapped without a full reload)
         var last = location.pathname;
@@ -453,4 +467,5 @@
         if (!document.getElementById('z-shopdata') && tries <= 16) return;
         if (init() || tries > 60) clearInterval(iv);
     }, 250);
+    window.addEventListener('zenith:nav-config', function() { if (init()) clearInterval(iv); });
 })();

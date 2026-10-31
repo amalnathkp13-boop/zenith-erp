@@ -58,12 +58,15 @@ module.exports=async function({a,foreign,base,check,q,invoke,post,out}){
   await dialog.getByText('Customer credit terms and bill due date',{exact:true}).click();
   await dialog.locator('#pch-days').fill(shell==='apps'?'2':'30');await dialog.locator('#pch-terms-reason').fill('Synthetic UI customer term');
   let saved=page.waitForResponse(r=>r.url().includes('/saveCustomerTerms'));await dialog.locator('#pch-save-terms').click();check(`${shell} customer-term Save button persists real settings`,(await (await saved).json()).success&&Number(q(`SELECT credit_days FROM party WHERE party_id='${customer}'`)[0].credit_days)===(shell==='apps'?2:30));
+  await page.waitForFunction(()=>{const button=document.querySelector('#pch-save-terms');return button&&!button.disabled;});
   await dialog.getByText('Customer credit terms and bill due date',{exact:true}).click();
   await dialog.locator('#pch-due').fill(shell==='apps'?'2020-01-02':'2020-01-03');await dialog.locator('#pch-due-reason').fill('Synthetic UI due date');
   saved=page.waitForResponse(r=>r.url().includes('/changeDueDate'));await dialog.locator('#pch-save-due').click();check(`${shell} bill due-date button persists without altering money`,(await (await saved).json()).success&&Number(tx().payable_amount)===118&&Number(tx().paid_amount)===118);
+  await page.waitForFunction(()=>{const button=document.querySelector('#pch-save-due');return button&&!button.disabled;});
   await dialog.getByText('Credit terms change history',{exact:true}).click();check(`${shell} authorized due-date edits show their audit reason`,(await dialog.innerText()).includes('Synthetic UI due date'));
   await dialog.getByText('Reminder settings and attempts',{exact:true}).click();await dialog.locator('#pch-channel').selectOption('WhatsApp');
   saved=page.waitForResponse(r=>r.url().includes('/saveReminderPolicy'));await dialog.locator('#pch-save-reminders').click();check(`${shell} reminder settings save and expose provider blocker`,(await (await saved).json()).success&&q(`SELECT channel FROM pos_credit_reminder_policy WHERE customer_party_id='${customer}'`)[0].channel==='WhatsApp');
+  await page.waitForFunction(()=>{const button=document.querySelector('#pch-save-reminders');return button&&!button.disabled;});
   await page.screenshot({path:path.join(out,`${shell}-credit-history-desktop.png`),fullPage:true});
   await page.setViewportSize({width:390,height:844});await page.screenshot({path:path.join(out,`${shell}-credit-repayment-history.png`),fullPage:true});
   check(`${shell} history dialog fits a narrow screen`,await dialog.locator('.pch-dialog').evaluate(el=>el.getBoundingClientRect().right<=innerWidth));check(`${shell} credit interactions have no JavaScript exceptions`,errors.length===0,errors);await page.close();

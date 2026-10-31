@@ -3,18 +3,26 @@
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         default-menu-title="Templates" default-menu-index="1">
 
-    <transition name="createTemplate">
+    <transition name="createTemplate" method="post" begin-transaction="true">
         <actions>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'pos']" out-map="_receiptWrite"/>
+            <if condition="!_receiptWrite.canWrite"><return error="true" message="Receipt settings are view-only."/></if>
             <set field="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
-            <service-call name="create#zenith.erp.pos.PosReceiptTemplate" in-map="context" out-map="context"/>
+            <if condition="!organizationPartyId || organizationPartyId == '_NA_'"><return error="true" message="Choose your organization before creating a template."/></if>
+            <if condition="receiptWidth &amp;&amp; !['58mm','80mm'].contains(receiptWidth)"><return error="true" message="Choose a supported receipt width."/></if>
+            <if condition="!templateName?.trim() || !companyName?.trim()"><return error="true" message="Template name and company name are required."/></if>
+            <if condition="facilityId &amp;&amp; !ec.entity.find('mantle.facility.Facility').condition('facilityId',facilityId).condition('ownerPartyId',organizationPartyId).one()"><return error="true" message="Choose a shop in your organization."/></if>
+            <entity-find-one entity-name="mantle.party.Party" value-field="_receiptOrgLock" for-update="true"><field-map field-name="partyId" from="organizationPartyId"/></entity-find-one>
+            <service-call name="create#zenith.erp.pos.PosReceiptTemplate" in-map="[organizationPartyId:organizationPartyId,templateName:templateName,companyName:companyName,phone:phone,facilityId:facilityId ?: null,receiptWidth:receiptWidth ?: '80mm']" out-map="context"/>
             <service-call name="zenith.pos.PosServices.enforce#SingleDefaultReceiptTemplate" in-map="[templateId:templateId]"/>
         </actions>
         <default-response url="."/></transition>
     <transition name="editTemplate">
-        <default-response url="../EditTemplate"/>
+        <default-response url="../EditTemplate"><parameter name="templateId"/><parameter name="receiptDesign"/></default-response>
     </transition>
 
     <actions>
+        <entity-find entity-name="mantle.facility.Facility" list="receiptFacilities"><econdition field-name="ownerPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION') ?: '__NONE__'"/><order-by field-name="facilityName"/></entity-find>
         <entity-find entity-name="zenith.erp.pos.PosReceiptTemplate" list="templateList">
             <econdition field-name="organizationPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
             <order-by field-name="templateName"/>
@@ -106,6 +114,7 @@
                     <field name="companyName"><default-field title="Company Name">
                         <text-line size="40"/>
                     </default-field></field>
+                    <field name="facilityId"><default-field title="Shop (blank = organization default)"><drop-down allow-empty="true"><list-options list="receiptFacilities" key="${facilityId}" text="${facilityName}"/></drop-down></default-field></field>
                     <field name="phone"><default-field title="Phone">
                         <text-line size="20"/>
                     </default-field></field>
@@ -137,6 +146,7 @@
                 <container style="z-txntable">
                 <form-list name="TemplateList" list="templateList" list-entry="tpl" skip-form="true">
                     <row-actions>
+                        <set field="shopName" from="receiptFacilities.find { it.facilityId==tpl.facilityId }?.facilityName ?: (tpl.facilityId ?: 'All shops')"/>
                         <set field="rowNum" from="(tplCounter[0] = tplCounter[0] + 1)"/>
                         <set field="defTxt" from="tpl.isDefault == 'Y' ? 'Yes' : 'No'"/>
                         <set field="defCls" from="tpl.isDefault == 'Y' ? 'zenith-badge success nd' : 'zenith-badge grey nd'"/>
@@ -151,6 +161,7 @@
                         </default-field></field>
                     <field name="companyName"><header-field title="Company"/>
                         <default-field><display default-text="-"/></default-field></field>
+                    <field name="facilityId"><header-field title="Shop"/><default-field><label text="${shopName}" type="span"/></default-field></field>
                     <field name="receiptWidth"><header-field title="Width"/>
                         <default-field><display/></default-field></field>
                     <field name="isDefault"><header-field title="Default"/>
@@ -159,10 +170,20 @@
                         <default-field><label text="${actTxt}" type="span" style="${actCls}"/></default-field></field>
                     <field name="editBtn">
                         <conditional-field name="tpl_edit_write" condition="modCanWrite" title="Action">
-                        <link url="editTemplate" text="Edit" icon="fa fa-pencil"
-                              parameter-map="[templateId:tpl.templateId]" link-type="anchor" style="z-obtn"/>
+                        <link url="editTemplate" text="Edit Normal" icon="fa fa-pencil"
+                              parameter-map="[templateId:tpl.templateId,receiptDesign:'normal']" link-type="anchor" style="z-obtn"/>
                         </conditional-field>
                         <default-field title="Action"><label text="" type="span"/></default-field></field>
+                    <field name="editCreditBtn">
+                        <conditional-field name="tpl_credit_write" condition="modCanWrite" title="Credit / Pay Later">
+                        <link url="editTemplate" text="Edit Credit" icon="fa fa-pencil" parameter-map="[templateId:tpl.templateId,receiptDesign:'credit']" link-type="anchor" style="z-obtn"/>
+                        </conditional-field>
+                        <default-field title="Credit / Pay Later"><label text="" type="span"/></default-field></field>
+                    <field name="editRevisedBtn">
+                        <conditional-field name="tpl_revised_write" condition="modCanWrite" title="Revised Bill">
+                        <link url="editTemplate" text="Edit Revised" icon="fa fa-pencil" parameter-map="[templateId:tpl.templateId,receiptDesign:'revised']" link-type="anchor" style="z-obtn"/>
+                        </conditional-field>
+                        <default-field title="Revised Bill"><label text="" type="span"/></default-field></field>
                 </form-list>
                 </container>
             </container>

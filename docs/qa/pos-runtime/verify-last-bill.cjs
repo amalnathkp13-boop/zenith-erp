@@ -18,8 +18,8 @@ module.exports=async function({a,base,check,q,invoke,post,out}) {
   await page.locator('#posCashConfirm').click();check('cashier checkout returns a completed bill',(await (await response).json()).success===true);
   for(let i=0;i<100&&record(cart.transactionId).status_id!=='PtCompleted';i++)await page.waitForTimeout(100);
   const saved=record(cart.transactionId);check('last-bill fixture really completed in the ledger',saved.status_id==='PtCompleted'&&Number(saved.payable_amount)===amount&&Number(saved.paid_amount)===amount);
-  await page.waitForFunction(number=>document.getElementById('pos-last-completed')?.textContent.includes(number),saved.transaction_number);
-  check('AJAX checkout refreshes Last bill number and amount',await page.locator('#pos-last-completed').innerText()===`Last: ${saved.transaction_number} / ${amount.toFixed(2)}`);
+  await page.waitForFunction(number=>document.getElementById('pos-bill-badge')?.textContent.includes(number),saved.transaction_number);
+  check('AJAX checkout refreshes Last bill number and amount',await page.locator('#pos-last-completed').innerText()===`Last amount: ${amount.toFixed(2)}`);
   check('header also shows the most recently completed bill',await page.locator('#pos-bill-badge').innerText()===saved.transaction_number);
   check('completed checkout removes the old cart ID from the refresh URL',!new URL(page.url()).searchParams.has('transactionId'));
   return saved;
@@ -31,11 +31,11 @@ module.exports=async function({a,base,check,q,invoke,post,out}) {
   check('the older cart really finishes after the newer cart',last.entry_date<first.entry_date&&last.completed_date>first.completed_date);
   for(const mode of ['normal','advanced']) {
    await page.evaluate(mode=>{if(document.body.classList.contains('pos-mode-normal')!==(mode==='normal'))window.posToggleLayout();},mode);
-   check(`${mode} layout preserves Last after an empty-cart render`,await page.locator('#pos-last-completed').innerText()===`Last: ${last.transaction_number} / 118.00`);
+   check(`${mode} layout preserves Last after an empty-cart render`,await page.locator('#pos-last-completed').innerText()===`Last amount: 118.00`);
   }
   const frozen=JSON.stringify([record(older.transactionId),record(newer.transactionId)]);
   await page.reload();await page.locator('#pos-last-completed').waitFor();
-  check('Last uses completion order after refresh',await page.locator('#pos-last-completed').innerText()===`Last: ${last.transaction_number} / 118.00`);
+  check('Last uses completion order after refresh',await page.locator('#pos-last-completed').innerText()===`Last amount: 118.00`);
   check('refresh retains an empty new cart with zero payable',await page.locator('.pos-sum-total').innerText().then(text=>/₹0(?:\.00)?\s*$/.test(text)));
   await page.screenshot({path:path.join(out,'last-completed-bill-after-recall.png')});
   await page.locator('#cartInlineSearch').fill('POS_QA_A_P18');
@@ -43,13 +43,13 @@ module.exports=async function({a,base,check,q,invoke,post,out}) {
   const added=page.waitForResponse(r=>r.url().includes('/ajaxCart')&&new URLSearchParams(r.request().postData()||'').get('action')==='addItem');
   await page.locator('#cartInlineSearch').press('Enter');await added;
   await page.waitForFunction(()=>document.querySelector('#pos-side-item-count')?.innerText==='Subtotal (1 item)');
-  check('ordinary AJAX product add preserves the last completed summary',await page.locator('#pos-last-completed').innerText()===`Last: ${last.transaction_number} / 118.00`);
+  check('ordinary AJAX product add preserves the last completed summary',await page.locator('#pos-last-completed').innerText()===`Last amount: 118.00`);
   const draft=q(`SELECT transaction_id FROM pos_transaction WHERE session_id='${session.sessionId}' AND status_id='PtCreated'`)[0];
   check('product after checkout belongs to one new unissued cart',!!draft&&q(`SELECT product_id,quantity FROM pos_transaction_item WHERE transaction_id='${draft.transaction_id}'`).length===1);
   const removed=page.waitForResponse(r=>r.url().includes('/ajaxCart')&&new URLSearchParams(r.request().postData()||'').get('action')==='removeItem');
   await page.locator('.pos-cart .aj-rm').click();await removed;
   await page.waitForFunction(()=>document.querySelector('#pos-side-item-count')?.innerText==='Subtotal (0 items)');
-  check('ordinary AJAX remove preserves Last on the empty new cart',await page.locator('#pos-last-completed').innerText()===`Last: ${last.transaction_number} / 118.00`);
+  check('ordinary AJAX remove preserves Last on the empty new cart',await page.locator('#pos-last-completed').innerText()===`Last amount: 118.00`);
   await invoke('void',{transactionId:draft.transaction_id});
   check('Last display changes no issued bill number or amount',JSON.stringify([record(older.transactionId),record(newer.transactionId)])===frozen);
   check('last-bill checkout and layout updates have no browser errors',errors.length===0,{errors});

@@ -1779,6 +1779,7 @@
         <actions>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[transactionId:transactionId]"/>
             <if condition="!_posAccess.allowed"><return/></if>
+            <service-call name="zenith.tax.TaxServices.get#TaxSummary" in-map="[referenceType:'PosTransactionItem',referenceId:transactionId]" out-map="_receiptTax"/>
             <script><![CDATA[
                 def rTxId = transactionId
                 def txn = ec.entity.find("zenith.erp.pos.PosTransaction").condition("transactionId", rTxId).one()
@@ -1788,8 +1789,16 @@
                 def sess = txn.sessionId ? ec.entity.find("zenith.erp.pos.PosSession").condition("sessionId", txn.sessionId).one() : null
                 def terminal = sess?.terminalId ? ec.entity.find("zenith.erp.pos.PosTerminal").condition("terminalId", sess.terminalId).one() : null
                 def rTplList = ec.entity.find("zenith.erp.pos.PosReceiptTemplate")
-                    .condition("organizationPartyId",txn.organizationPartyId).condition("isActive","Y").orderBy("-isDefault").list()
-                def rTpl = rTplList ? rTplList[0] : null
+                    .condition("organizationPartyId",txn.organizationPartyId).condition("isActive","Y").orderBy("-isDefault,templateId").list()
+                def rTpl = rTplList.find { it.facilityId && it.facilityId==terminal?.facilityId } ?: rTplList.find { !it.facilityId }
+                def isRevised = ec.entity.find('zenith.erp.pos.PosTransactionAmendment').condition('transactionId',rTxId).count() > 0
+                def receiptDesign = isRevised ? 'revised' : (txn.isCredit == 'Y' ? 'credit' : '')
+                def receiptText = { key ->
+                    def overrideKey = receiptDesign ? receiptDesign + key.substring(0,1).toUpperCase() + key.substring(1) : key
+                    rTpl?.get(overrideKey) ?: rTpl?.get(key) ?: ''
+                }
+                def receiptOptions = ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#ReceiptOptions')
+                    .parameters([storedJson:rTpl?.receiptOptionsJson,receiptDesign:receiptDesign ?: 'normal']).call().options
                 def operatorName = ''
                 if (sess?.operatorPartyId) {
                     def opP = ec.entity.find("mantle.party.Person").condition("partyId", sess.operatorPartyId).one()
@@ -1798,30 +1807,28 @@
                 def storeAddr = rTpl ? [rTpl.addressLine1, rTpl.addressLine2, rTpl.city, rTpl.state, rTpl.pincode].findAll{it}.join(', ') : ''
                 def storeName = rTpl?.companyName ?: terminal?.terminalName ?: 'Store'
                 def totalQty = 0 as BigDecimal
-                def totalSaving = 0 as BigDecimal
+                def totalSaving = (txn.discountTotal ?: 0) as BigDecimal
                 items.each {
                     totalQty += (it.quantity ?: 0) as BigDecimal
-                    def mrp = (it.mrp ?: it.unitPrice ?: 0) as BigDecimal
-                    def rate = (it.unitPrice ?: 0) as BigDecimal
-                    def qty = (it.quantity ?: 0) as BigDecimal
-                    def saving = (mrp - rate) * qty
-                    if (saving > 0) totalSaving += saving
                 }
                 receipt = [success:true, action:'receiptData',
                     store:[name:storeName, address:storeAddr, phone:rTpl?.phone ?: '', email:rTpl?.email ?: '',
                         taxReg:rTpl?.taxRegistrationNumber ?: terminal?.taxRegistrationNumber ?: '',
-                        headerText:rTpl?.headerText ?: '', footerText:rTpl?.footerText ?: '', termsText:rTpl?.termsText ?: ''],
+                        headerText:receiptText('headerText'), footerText:receiptText('footerText'), termsText:receiptText('termsText'),receiptWidth:rTpl?.receiptWidth ?: '80mm',
+                        showLogo:rTpl?.showLogo ?: 'N',logoUrl:rTpl?.logoUrl ?: '',showTaxBreakdown:rTpl?.showTaxBreakdown ?: 'Y',
+                        showDiscount:rTpl?.showDiscount ?: 'Y',showCustomerInfo:rTpl?.showCustomerInfo ?: 'Y',
+                        showPaymentDetails:rTpl?.showPaymentDetails ?: 'N',showItemTax:rTpl?.showItemTax ?: 'N'],options:receiptOptions,
                     bill:[number:txn.transactionNumber ?: txn.transactionId,
                         date:ec.l10n.format(txn.completedDate ?: txn.entryDate, 'dd/MM/yyyy hh:mm a'),
                         cashier:operatorName, customer:txn.customerName ?: 'Walk-In Customer',
                         customerPhone:txn.customerPhone ?: ''],
                     items:items.collect{[name:it.productName ?: it.productId ?: '', qty:it.quantity ?: 0,
-                        rate:it.unitPrice ?: 0, total:it.lineTotal ?: 0, discount:it.discountAmount ?: 0, mode:(it.salesModeId ? (ec.entity.find("zenith.erp.pos.PosSalesMode").condition("salesModeId", it.salesModeId).one()?.modeName ?: "") : ""), uom:(it.uomId ? (["OTH_ea":'Nos',"WT_g":'g',"WT_kg":'kg',"VLIQ_ml":'ml',"VLIQ_L":'L',"LEN_m":'m',"LEN_cm":'cm'].get(it.uomId) ?: '') : '')]},
+                        rate:it.unitPrice ?: 0, total:it.lineTotal ?: 0, tax:it.totalTaxAmount ?: 0, discount:it.discountAmount ?: 0, mode:(it.salesModeId ? (ec.entity.find("zenith.erp.pos.PosSalesMode").condition("salesModeId", it.salesModeId).one()?.modeName ?: "") : ""), uom:(it.uomId ? (["OTH_ea":'Nos',"WT_g":'g',"WT_kg":'kg',"VLIQ_ml":'ml',"VLIQ_L":'L',"LEN_m":'m',"LEN_cm":'cm'].get(it.uomId) ?: '') : '')]},
                     summary:[subtotal:txn.subtotal ?: 0, discount:txn.discountTotal ?: 0,
-                        tax:txn.totalTaxAmount ?: 0, roundOff:txn.roundOff ?: 0,
+                        tax:txn.totalTaxAmount ?: 0,taxBreakdown:(_receiptTax.taxSummary ?: []).collect { [name:it.taxName,amount:it.totalTax] }, roundOff:txn.roundOff ?: 0,
                         total:txn.payableAmount ?: 0, totalQty:totalQty, itemCount:items.size()],
                     payments:payments.collect{[method:it.paymentMethod ?: '', amount:it.amount ?: 0]},
-                    change:txn.changeAmount ?: 0, saving:totalSaving, isCredit:(txn.isCredit == "Y"), outstanding:(((txn.payableAmount ?: 0) as BigDecimal) - ((txn.paidAmount ?: 0) as BigDecimal))]
+                    change:txn.changeAmount ?: 0, saving:totalSaving, edited:isRevised, isCredit:(txn.isCredit == "Y"), outstanding:(((txn.payableAmount ?: 0) as BigDecimal) - ((txn.paidAmount ?: 0) as BigDecimal))]
             ]]></script>
         </actions>
     </service>
@@ -2272,6 +2279,7 @@
                 <script><![CDATA[
                     ec.entity.find("zenith.erp.pos.PosReceiptTemplate")
                         .condition("organizationPartyId", _t.organizationPartyId)
+                        .condition("facilityId", _t.facilityId)
                         .condition("isDefault", "Y")
                         .condition("templateId", "not-equals", templateId)
                         .list().each { it.isDefault = "N"; it.update() }

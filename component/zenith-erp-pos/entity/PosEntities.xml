@@ -21,6 +21,7 @@
     <entity entity-name="PosReceiptTemplate" package="zenith.erp.pos" short-alias="PosReceiptTemplates">
         <field name="templateId" type="id" is-pk="true"/>
         <field name="organizationPartyId" type="id"/>
+        <field name="facilityId" type="id"><description>Optional shop scope; blank retains the existing organization-wide fallback.</description></field>
         <field name="templateName" type="text-medium"/>
         <field name="companyName" type="text-medium"/>
         <field name="addressLine1" type="text-medium"/>
@@ -34,6 +35,14 @@
         <field name="headerText" type="text-medium"/>
         <field name="footerText" type="text-medium"/>
         <field name="termsText" type="text-long"/>
+        <!-- Blank overrides retain the normal design for existing templates. -->
+        <field name="creditHeaderText" type="text-medium"/>
+        <field name="creditFooterText" type="text-medium"/>
+        <field name="creditTermsText" type="text-long"/>
+        <field name="revisedHeaderText" type="text-medium"/>
+        <field name="revisedFooterText" type="text-medium"/>
+        <field name="revisedTermsText" type="text-long"/>
+        <field name="receiptOptionsJson" type="text-long"><description>Validated presentation options by normal, credit and revised design; never transaction data.</description></field>
         <field name="receiptWidth" type="text-short" default="'80mm'"><description>58mm or 80mm</description></field>
         <field name="showLogo" type="text-indicator" default="'N'"/>
         <field name="logoUrl" type="text-medium"/>
@@ -632,6 +641,8 @@
             <key-map field-name="terminalId"/></member-entity>
         <alias-all entity-alias="PX"/>
         <alias entity-alias="PT" name="terminalName"/>
+        <alias entity-alias="PT" name="terminalId"/>
+        <alias entity-alias="PT" name="facilityId"/>
         <alias entity-alias="PS" name="operatorPartyId"/>
         <!-- expose member orgs so ZTF_POSSESS / ZTF_POSTERMINAL tenant filters apply to this view -->
         <alias entity-alias="PS" name="ztfSessionOrg" field="organizationPartyId"/>

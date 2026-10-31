@@ -45,6 +45,15 @@
                 def row = ec.entity.find(t[1]).condition(t[2],t[0]).disableAuthz().one()
                 allowed = row != null && row.organizationPartyId == organizationPartyId
             }
+            // Bill-login history, JSON reprints and direct receipt PDFs share this ownership check.
+            if (transactionId && allowed && !ec.user.isInGroup('ADMIN') && !ec.user.isInGroup('ZENITH_ADMIN') && !ec.user.isInGroup('ZENITH_STORE_MGR')) {
+                def bill = ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',transactionId).disableAuthz().one()
+                if (bill?.statusId == 'PtCompleted') {
+                    def billSession = ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',bill.sessionId)
+                        .condition('organizationPartyId',organizationPartyId).disableAuthz().one()
+                    allowed = billSession?.operatorPartyId == ec.user.userAccount?.partyId
+                }
+            }
             if (returnId && allowed) {
                 def ret=ec.entity.find('zenith.erp.pos.PosReturn').condition('returnId',returnId).disableAuthz().one()
                 def session=ret ? ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',ret.sessionId).disableAuthz().one() : null

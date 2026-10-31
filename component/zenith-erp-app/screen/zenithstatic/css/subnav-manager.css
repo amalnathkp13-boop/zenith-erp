@@ -1,8 +1,9 @@
 /* Shared module tab customization; the regular ERP shell owns the header and sidebar. */
 #z-subnav.show, #zq-subnav.show { align-items:stretch; overflow:visible; }
+/* Bootstrap 3 .show uses !important; keep the classic tab row flex as well. */
 #z-subnav.show { display:flex !important; }
 #z-subnav .zsub-grp.show, #zq-subnav .zsn-strip {
-    display:flex; align-items:center; flex:1 1 auto; min-width:0;
+    display:flex !important; align-items:center; flex:1 1 auto; min-width:0;
     overflow-x:auto; overflow-y:hidden; white-space:nowrap; scrollbar-width:thin;
     scrollbar-color:#DCD3F2 transparent;
 }
