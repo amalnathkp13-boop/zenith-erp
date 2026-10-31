@@ -360,7 +360,7 @@
             html_stylesheets.add('https://fonts.googleapis.com/icon?family=Material+Icons')
             if (footer_scripts == null) footer_scripts = []
             footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=13')
-            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=45')
+            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=46')
             footer_scripts.add('/zenithstatic/js/profile-menu.js?v=1')
             footer_scripts.add('/zenithstatic/js/sidebar-manager.js?v=1')
             footer_scripts.add('/zenithstatic/js/subnav-manager.js?v=2')

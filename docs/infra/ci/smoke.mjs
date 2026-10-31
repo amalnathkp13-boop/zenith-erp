@@ -180,6 +180,24 @@ try {
     console.log(`${r.ok ? 'PASS' : 'FAIL'}  [${r.status || '---'}]${r.errSig ? ' <error>' : ''}  ${path}${r.note ? '  ' + r.note : ''}${r.snippet ? '\n       ↳ ' + r.snippet : ''}`);
   }
 
+  // Custom /qapps tabs must use the SPA router: a document reload blanks the workspace in split-window mode.
+  for (const width of [950, 1400]) {
+    try {
+      await page.setViewport({ width, height: 900 });
+      await page.goto(`${BASE}/qapps/zenith/pos/Dashboard`, { waitUntil: 'networkidle2', timeout: 60000 });
+      await page.waitForSelector('#zq-subnav a[href="/qapps/zenith/pos/DailySummary"]', { timeout: 15000 });
+      const documentStart = await page.evaluate(() => performance.timeOrigin);
+      await page.click('#zq-subnav a[href="/qapps/zenith/pos/DailySummary"]');
+      await page.waitForFunction(() => location.pathname === '/qapps/zenith/pos/DailySummary' &&
+        document.querySelector('.q-page h1')?.textContent.trim() === 'Daily Summary', { timeout: 30000 });
+      if (await page.evaluate(() => performance.timeOrigin) !== documentStart) throw new Error('tab reloaded the document');
+      console.log(`PASS  POS Daily Summary one-click SPA navigation at ${width}px`);
+    } catch (error) {
+      failures++;
+      console.log(`FAIL  POS Daily Summary one-click SPA navigation at ${width}px — ${error.message}`);
+    }
+  }
+
   // CRM stays in the existing shell at narrow widths, and one range choice drives
   // every dashboard widget. These checks use the same synthetic staging tenant.
   for (const surface of ['apps', 'qapps']) {
@@ -517,6 +535,6 @@ try {
   await browser.close();
 }
 
-const interactionChecks = 2 * (CRM_SCREENS.length + 1) + 6;
+const interactionChecks = 2 * (CRM_SCREENS.length + 1) + 8;
 console.log(`\n${failures === 0 ? 'SMOKE OK' : 'SMOKE FAILED'} — ${PATHS.length + interactionChecks - failures}/${PATHS.length + interactionChecks} render and interaction checks passed.`);
 process.exit(failures === 0 ? 0 : 1);
