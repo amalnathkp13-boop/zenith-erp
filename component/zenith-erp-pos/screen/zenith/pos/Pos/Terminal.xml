@@ -2646,7 +2646,7 @@
                             def lineTotal = taxable + taxAmt
                             ec.service.sync().name("create#zenith.erp.pos.PosTransactionItem")
                                 .parameters([transactionId:txId, itemSeqId:newSeqId, productId:productId,
-                                    productName:prod.productName ?: productId, productTaxCode:prod.productTaxCode,
+                                    productName:prod.printName ?: prod.productName ?: productId, productTaxCode:prod.productTaxCode,
                                     quantity:addQty, unitPrice:unitPrice, taxableAmount:taxable, totalTaxAmount:taxAmt,
                                     lineTotal:lineTotal, discountPercent:0, discountAmount:0]).call()
                             if (taxedItem?.taxBreakdowns) {

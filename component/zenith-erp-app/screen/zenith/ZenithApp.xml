@@ -333,7 +333,7 @@
         ]]></script>
         <script><![CDATA[
             if (html_stylesheets == null) html_stylesheets = []
-            html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=301')
+            html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=302')
             html_stylesheets.add('/zenithstatic/css/sidebar-manager.css?v=3')
             html_stylesheets.add('/zenithstatic/css/subnav-manager.css?v=2')
             html_stylesheets.add('/zenithstatic/css/my-subscription-reference.css?v=1')
@@ -1302,7 +1302,7 @@
             <link rel="preconnect" href="https://fonts.googleapis.com"/>
             <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"/>
             <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
-            <link rel="stylesheet" href="/zenithstatic/css/zenith-theme-v4.css?v=301"/>
+            <link rel="stylesheet" href="/zenithstatic/css/zenith-theme-v4.css?v=302"/>
             <link rel="stylesheet" href="/zenithstatic/css/my-subscription-reference.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/saas-admin.css?v=4"/>
             <link rel="stylesheet" href="/zenithstatic/css/product-catalog.css?v=1"/>

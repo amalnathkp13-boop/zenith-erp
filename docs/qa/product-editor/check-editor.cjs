@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const root=path.resolve(__dirname,'../../..');
+const read=p=>fs.readFileSync(path.join(root,p),'utf8');
+assert.match(read('component/zenith-erp-inventory/entity/InventoryEntities.xml'),/field name="printName"/,'Product supports an optional persisted print name');
+const screen=read('component/zenith-erp-inventory/screen/zenith/inventory/EditProduct.xml');
+assert.match(read('component/zenith-erp-inventory/template/product/EditProduct.html.ftl'),/Print Name \(on bills\)/,'Product editor exposes the defaultable print name');
+assert.match(read('component/zenith-erp-inventory/template/product/EditProduct.html.ftl'),/product-editor\.css/,'Editor styles are scoped and external for both shells');
+assert.doesNotMatch(screen,/zEpInputFix/,'Editor cannot inject global input overrides');
+assert.match(read('component/zenith-erp-pos/service/zenith/pos/PosServices.xml'),/product\?\.printName \?: product\?\.productName/,'New bill items snapshot the chosen print name');
+console.log('Product editor structure and print-name regression checks pass');

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Test-only overlay, never installed in production. Alters only the synthetic fixture cashier. -->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd" default-menu-include="false">
+<transition name="role" method="post"><actions><script><![CDATA[
+    if (System.getProperty('pos.qa.disposable')!='true' || ec.user.username!='pos.qa' || !(ec.web.parameters.mode in ['view','restore'])) {ec.web.response.setStatus(403);return}
+    def user=ec.entity.find('moqui.security.UserAccount').condition('userId','POS_QA_CASHIER').condition('username','pos.cashier.qa').one()
+    if (!user) {ec.web.response.setStatus(400);return}
+    boolean disabled=ec.artifactExecution.disableAuthz()
+    try {
+        ec.entity.find('moqui.security.UserGroupMember').condition('userId','POS_QA_CASHIER').condition('userGroupId','in',['ZENITH_CASHIER','PRODUCT_QA_VIEW']).deleteAll()
+        ec.service.sync().name('store#moqui.security.UserGroup').parameters([userGroupId:'PRODUCT_QA_VIEW',description:'Disposable product editor read-only group']).call()
+        ec.service.sync().name('store#moqui.security.ArtifactAuthz').parameters([artifactAuthzId:'PRODUCT_QA_VIEW',userGroupId:'PRODUCT_QA_VIEW',artifactGroupId:'Z_INVENTORY',authzTypeEnumId:'AUTHZT_ALLOW',authzActionEnumId:'AUTHZA_VIEW']).call()
+        ec.entity.makeValue('moqui.security.UserGroupMember').setAll([userId:'POS_QA_CASHIER',userGroupId:ec.web.parameters.mode=='view'?'PRODUCT_QA_VIEW':'ZENITH_CASHIER',fromDate:java.sql.Timestamp.valueOf('2020-01-01 00:00:00')]).create()
+    } finally {if(!disabled)ec.artifactExecution.enableAuthz()}
+    ec.web.sendJsonResponse([changed:true])
+]]></script></actions><default-response type="none"/></transition>
+</screen>

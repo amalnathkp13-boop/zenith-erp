@@ -4,6 +4,7 @@
 
     <!-- ========== Generic Product Extensions ========== -->
     <extend-entity entity-name="Product" package="mantle.product">
+        <field name="printName" type="text-medium"><description>Optional bill name; blank follows productName for future bill items.</description></field>
         <field name="mrpAmount" type="currency-amount"><description>Maximum Retail Price</description></field>
         <field name="productTaxCode" type="text-short"><description>Tax classification code (HSN, tax category, etc.)</description></field>
         <field name="taxCategoryId" type="id"><description>Reference to tax category for rate lookup</description></field>
@@ -19,6 +20,14 @@
         <field name="isPerishable" type="text-indicator"><description>Y = perishable (has an expiry date); surfaced in the Wastage module</description></field>
         <field name="inventoryTracked" type="text-indicator"><description>Y = stock tracked/depleted for this item (set when an opening count is entered)</description></field>
     </extend-entity>
+
+    <!-- Images are separate so catalogue/POS product queries do not load binary data. -->
+    <entity entity-name="ProductEditorImage" package="zenith.erp.inventory" cache="never">
+        <field name="productId" type="id" is-pk="true"/>
+        <field name="organizationPartyId" type="id"/>
+        <field name="imageData" type="text-very-long"/>
+        <relationship type="one" related="mantle.product.Product"/>
+    </entity>
 
     <!-- ========== Generic Asset Extensions (Batch/Lot Tracking) ========== -->
     <extend-entity entity-name="Asset" package="mantle.product.asset">
