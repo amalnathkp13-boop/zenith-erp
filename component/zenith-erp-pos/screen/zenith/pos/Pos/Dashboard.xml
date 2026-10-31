@@ -155,7 +155,9 @@
                     def _terms = ec.entity.find("zenith.erp.pos.PosTerminal").condition("organizationPartyId", _org).list()
                     if (_terms) {
                         def _facIds = _terms.collect { it.facilityId }.findAll { it }.unique()
-                        def _stores = _facIds ? ec.entity.find("mantle.facility.Facility").condition("facilityId","in",_facIds).condition("ownerPartyId",dashboardOrgId).condition("facilityTypeEnumId","FcTpRetailStore").list() : []
+                        def _scope = ec.service.sync().name("zenith.base.ShopServices.get#ActiveShopScope").call()
+                        def _storeIds = (_scope.shopList ?: []).collect { it.id }
+                        def _stores = _facIds ? ec.entity.find("mantle.facility.Facility").condition("facilityId","in",_facIds).condition("ownerPartyId",dashboardOrgId).condition("facilityTypeEnumId","FcTpRetailStore").list().findAll { _storeIds.contains(it.facilityId) } : []
                         def _locTermIds = null
                         if (_stores.size() >= 2) {
                             locMode = 'store'

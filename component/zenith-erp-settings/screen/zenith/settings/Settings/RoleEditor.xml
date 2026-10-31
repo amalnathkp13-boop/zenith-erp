@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd" default-menu-title="Create role" default-menu-include="false">
+    <parameter name="userGroupId"/>
+    <transition name="saveRole" method="post" begin-transaction="true">
+        <service-call name="zenith.base.RoleAccessServices.save#OrganizationRole" in-map="context" out-map="saved"/>
+        <default-response url="." parameter-map="[userGroupId:saved.savedRoleId]"/>
+        <error-response url="." parameter-map="[userGroupId:userGroupId]"/>
+    </transition>
+    <pre-actions>
+        <if condition="!(ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN'))"><script>throw new org.moqui.context.ArtifactAuthorizationException('Only an administrator can manage roles.')</script></if>
+        <service-call name="zenith.base.RoleAccessServices.get#RoleOrganization" out-map="scope"/>
+        <if condition="!scope.organizationPartyId"><return error="true" message="Select an organization you administer."/></if>
+        <service-call name="zenith.base.RoleAccessServices.get#RoleCatalogue" out-map="catalogue"/>
+        <script><![CDATA[
+            roleInfo = userGroupId ? ec.entity.find('zenith.erp.base.OrganizationAccessRole')
+                .condition('userGroupId',userGroupId).condition('organizationPartyId',scope.organizationPartyId).disableAuthz().one() : null
+            // EntityFind.one may use its primary-key cache; validate ownership on the returned row too.
+            if (userGroupId && (!roleInfo || roleInfo.organizationPartyId != scope.organizationPartyId))
+                throw new org.moqui.context.ArtifactAuthorizationException('Role not found in your organization.')
+            roleCatalogueJson = groovy.json.JsonOutput.toJson(catalogue.modules)
+            roleDraftJson = selectionsJson ?: roleInfo?.selectionsJson ?: '{}'
+            roleNameValue = roleName ?: roleInfo?.roleName ?: ''
+            roleDescriptionValue = description ?: roleInfo?.description ?: ''
+        ]]></script>
+    </pre-actions>
+    <widgets>
+        <container style="z-users-page">
+            <container style="z-users-heading"><container><label text="${roleInfo ? 'Edit role' : 'Create role'}" type="h1"/><label text="Choose the modules and submodules this role can access. Assign it to users separately." type="p" style="z-users-help"/></container><link url="../Users" text="Back to Users" style="z-users-button"/></container>
+            <render-mode><text type="html,vuet,qvt"><![CDATA[
+            <form id="z-role-editor" class="z-users-card" method="post" data-catalogue="${roleCatalogueJson?html}" data-draft="${roleDraftJson?html}">
+                <input type="hidden" name="moquiSessionToken" value="${ec.web.sessionToken?html}"/>
+                <input type="hidden" name="userGroupId" value="${(userGroupId!'')?html}"/>
+                <input type="hidden" name="selectionsJson" id="z-role-selection" value="${roleDraftJson?html}"/>
+                <div class="z-role-details">
+                    <label>Role name *<input name="roleName" value="${roleNameValue?html}" required maxlength="100" autocomplete="off"/></label>
+                    <label>Description<textarea name="description" rows="2" maxlength="2000">${roleDescriptionValue?html}</textarea></label>
+                </div>
+                <div class="z-role-panels">
+                    <section><h2>Modules</h2><input id="z-role-search" class="z-users-button" type="search" placeholder="Search modules..." aria-label="Search modules"/>
+                        <label><input id="z-role-all-modules" type="checkbox"/> Select all modules</label>
+                        <div id="z-role-modules" class="z-role-list"></div>
+                    </section>
+                    <section><h2 id="z-role-module-title">Submodules</h2><p id="z-role-instruction" class="z-users-help">Select a module and choose Customize.</p>
+                        <input id="z-role-screen-search" class="z-users-button" type="search" placeholder="Search submodules..." aria-label="Search submodules"/>
+                        <label><input id="z-role-all-screens" type="checkbox" disabled/> Select all submodules</label>
+                        <div id="z-role-screens" class="z-role-list"></div>
+                    </section>
+                </div>
+                <p id="z-role-error" class="z-role-error" role="alert" aria-live="polite"></p>
+                <div class="z-role-summary"><span id="z-role-count" role="status" aria-live="polite">0 modules, 0 submodules selected</span>
+                    <button class="z-users-button" id="z-role-reset" type="button">Reset selections</button>
+                    <a class="z-users-button" id="z-role-cancel" href="../Users">Cancel</a>
+                    <button class="z-users-button z-users-primary" id="z-role-save" type="submit" disabled>Save role</button>
+                </div>
+                <noscript>JavaScript is required to select module access. No role has been created.</noscript>
+            </form>
+            <img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" onload="if(window.zInitRoleEditor){window.zInitRoleEditor();}else{var s=document.createElement('script');s.src='/zenithstatic/js/users-access.js?v=1';s.onload=function(){window.zInitRoleEditor();};document.head.appendChild(s);}"/>
+            ]]></text></render-mode>
+        </container>
+    </widgets>
+</screen>

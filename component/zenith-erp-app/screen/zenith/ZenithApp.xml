@@ -6,6 +6,18 @@
     <always-actions>
         <set field="html_title" value="ZetaERP"/>
         <script><![CDATA[
+            // Opt-in custom-role boundary. Unlike navigation preferences this gates every
+            // render, direct JSON request and transition, outside the legacy fail-open gates.
+            if (ec.user.userId && (ec.user.userGroupIdSet ?: []).any { it?.startsWith('ZENITH_ORG_') }) {
+                def roleRoute = ec.service.sync().name('zenith.base.RoleAccessServices.check#RoleRouteAccess').disableAuthz().call()
+                if (!roleRoute?.allowed) {
+                    if (!sri.screenUrlInfo?.targetTransitionActualName && roleRoute?.landingPath)
+                        sri.sendRedirectAndStopRender(roleRoute.landingPath)
+                    throw new org.moqui.context.ArtifactAuthorizationException('Your role does not include this module or submodule.')
+                }
+            }
+        ]]></script>
+        <script><![CDATA[
             // Module gates for TRANSITIONS. pre-actions do NOT run for transition requests, so anything that must
             // stop a transition has to be checked here in always-actions (which DO run for them). A transition
             // request is one where targetTransitionActualName != null; a list SEARCH/filter posts to the SCREEN
@@ -107,12 +119,8 @@
                                 if (_myG) {
                                     boolean _dz = ec.artifactExecution.disableAuthz()
                                     try {
-                                        hasFull = ec.entity.find("moqui.security.ArtifactAuthz")
-                                                .condition("artifactGroupId", "Z_" + _rm.toUpperCase())
-                                                .condition("userGroupId", "in", _myG)
-                                                .condition("authzActionEnumId", "AUTHZA_ALL")
-                                                .condition("authzTypeEnumId", "in", ["AUTHZT_ALLOW", "AUTHZT_ALWAYS"])
-                                                .count() > 0
+                                        hasFull = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess')
+                                                .parameter('moduleId',_rm).call()?.canWrite == true
                                     } finally { if (!_dz) ec.artifactExecution.enableAuthz() }
                                 }
                                 if (!hasFull) {
@@ -249,6 +257,7 @@
                 result.modules = navigation.moduleIds ?: []
                 result.navRestricted = navigation.moduleIds != null
                 result.roleRestricted = navigation.roleRestricted ?: false
+                result.roleScope = ec.service.sync().name('zenith.base.RoleAccessServices.get#AssignedRoleScope').disableAuthz().call()
                 ec.web.sendJsonResponse(result)
             ]]></script>
         </actions>
@@ -277,7 +286,19 @@
                     } finally { if (!_d) ec.artifactExecution.enableAuthz() }
                 }
                 def ru = ec.web.getRequest().getParameter("returnUrl")
-                if (!ru || !ru.startsWith("/apps/zenith")) ru = "/apps/zenith"
+                // Preserve the current shell and date filters, but never carry a stale counter
+                // selection into a newly selected shop. Validate a local route, not just a prefix.
+                def parts = null
+                try { parts = ru ? new java.net.URI(ru) : null } catch (java.net.URISyntaxException ignored) { }
+                if (!parts || parts.isAbsolute() || parts.rawAuthority ||
+                        !(parts.path ==~ /\/(apps|qapps)\/zenith(\/[^\\]*)?/)) {
+                    ru = '/apps/zenith/Dashboard'
+                } else {
+                    def query = (parts.rawQuery ?: '').split('&').findAll {
+                        it && it.split('=',2)[0] != 'dashLoc'
+                    }.join('&')
+                    ru = parts.path + (query ? '?' + query : '')
+                }
                 context.zReturnUrl = ru
             ]]></script>
         </actions>
@@ -315,7 +336,8 @@
         ]]></script>
         <script><![CDATA[
             if (html_stylesheets == null) html_stylesheets = []
-            html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=301')
+            html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=302')
+            html_stylesheets.add('/zenithstatic/css/users-access.css?v=1')
             html_stylesheets.add('/zenithstatic/css/sidebar-manager.css?v=3')
             html_stylesheets.add('/zenithstatic/css/subnav-manager.css?v=3')
             html_stylesheets.add('/zenithstatic/css/my-subscription-reference.css?v=1')
@@ -359,8 +381,8 @@
             html_stylesheets.add('/zenithstatic/css/inventory-responsive.css?v=2')
             html_stylesheets.add('https://fonts.googleapis.com/icon?family=Material+Icons')
             if (footer_scripts == null) footer_scripts = []
-            footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=13')
-            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=46')
+            footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=14')
+            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=47')
             footer_scripts.add('/zenithstatic/js/profile-menu.js?v=1')
             footer_scripts.add('/zenithstatic/js/sidebar-manager.js?v=1')
             footer_scripts.add('/zenithstatic/js/subnav-manager.js?v=2')
@@ -564,6 +586,8 @@
 
             def navigation = ec.service.sync().name("zenith.base.SecurityServices.get#ModuleNavigation")
                 .parameter("planModules", context.saasAllowedModules != null ? context.saasAllowedModules as List : null).disableAuthz().call()
+            def roleNav = ec.service.sync().name('zenith.base.RoleAccessServices.get#AssignedRoleScope').disableAuthz().call()
+            context.roleNavJson = groovy.json.JsonOutput.toJson(roleNav)
             context.saasVisibleModules = navigation.moduleIds
             context.navRestricted = navigation.moduleIds != null
             context.saasVisibleModulesJson = new groovy.json.JsonBuilder(navigation.moduleIds ?: []).toString()
@@ -618,7 +642,7 @@
                 // see everything; POS-only cashiers are handled by the block below; any error / no-groups /
                 // unmapped module FAILS OPEN so nobody is wrongly locked out (MARUTHI's users are all ZENITH_ADMIN
                 // or ZENITH_CASHIER, so this gate is a no-op for them).
-                if (reqMod && gateableModules.contains(reqMod) && !context.posOnlyUser
+                if (reqMod && gateableModules.contains(reqMod) && !context.posOnlyUser && !roleNav.restricted
                         && !ec.user.isInGroup("ZENITH_ADMIN")) {
                     boolean roleGranted = true
                     try {
@@ -742,7 +766,7 @@
              caused admin/cashier menus to flash Super-Admin items). A plain type="html" block renders only
              on /apps; type="html,qvt" renders on BOTH, so the hidden config div is available in either shell. -->
         <render-mode><text type="html,qvt"><![CDATA[
-            <div id="zenith-saas-cfg" style="display:none" data-nav-restricted="${(navRestricted!false)?c}" data-tenant="${(isSaasTenant!false)?c}" data-all="${(saasHasAllAccess!false)?c}" data-pos-only="${(posOnlyUser!false)?c}" data-is-admin="${(canManageSettings!false)?c}" data-super="${(isSuperAdmin!false)?c}" data-org-name="${(zTopOrgName!'')?html}" data-user-name="${((ec.user.userAccount.userFullName)!(ec.user.username)!'')?html}" data-modules='${saasVisibleModulesJson!saasAllowedModulesJson!"[]"}'></div>
+            <div id="zenith-saas-cfg" data-role-scope="${(roleNavJson!'{}')?html}" style="display:none" data-nav-restricted="${(navRestricted!false)?c}" data-tenant="${(isSaasTenant!false)?c}" data-all="${(saasHasAllAccess!false)?c}" data-pos-only="${(posOnlyUser!false)?c}" data-is-admin="${(canManageSettings!false)?c}" data-super="${(isSuperAdmin!false)?c}" data-org-name="${(zTopOrgName!'')?html}" data-user-name="${((ec.user.userAccount.userFullName)!(ec.user.username)!'')?html}" data-modules='${saasVisibleModulesJson!saasAllowedModulesJson!"[]"}'></div>
             <!-- ZE-SHOP: shop switcher data (rendered server-side to avoid attribute-escaping pitfalls in shop names). -->
             <div id="z-shopdata" style="display:none" data-multishop="${(hasMultiShop!false)?c}" data-active="${(activeShopId!'')?html}" data-token="${(ec.web.sessionToken)!''}"><#if shopList??><#list shopList as s><i data-id="${(s.id!'')?html}" data-name="${(s.name!'')?html}"></i></#list></#if></div>
         ]]></text></render-mode>
@@ -1106,6 +1130,13 @@
                   var _posCash={'/pos/Dashboard':1,'/pos/Terminal':1,'/pos/PosTransactions':1,'/pos/DailySummary':1,'/pos/PosSessions':1,'/pos/CreditBills':1,'/pos/CashEntry':1};
                   [].slice.call(sub.querySelectorAll('.zsub-grp[data-match="/pos"] .zsub-tab')).forEach(function(a){var m=a.getAttribute('data-match')||'';if(m&&!_posCash[m])a.style.display='none';});
                 }}catch(_e){}
+              var _roleCfg=document.getElementById('zenith-saas-cfg');
+              var _roleScope=JSON.parse((_roleCfg&&_roleCfg.getAttribute('data-role-scope'))||'{}');
+              if(_roleScope.restricted){[].slice.call(sub.querySelectorAll('.zsub-tab')).forEach(function(a){
+                var path=new URL(a.href,location.href).pathname.replace(/^\/(apps|qapps)\/zenith/,'');
+                var mod=path.split('/')[1]||'', choices=(_roleScope.selections||{})[mod.toLowerCase()]||[];
+                if((_roleScope.legacyModules||[]).indexOf(mod.toLowerCase())<0&&!choices.some(function(r){return path===r||path.indexOf(r+'/')===0;}))a.style.display='none';
+              });}
               var grps=[].slice.call(sub.querySelectorAll('.zsub-grp')),g=null,gLen=-1;
               grps.forEach(function(x){var m=x.getAttribute('data-match')||'';if(m==='/__dash')return;if(m&&rel.indexOf(m)===0&&m.length>gLen){g=x;gLen=m.length;}});
               if(!g&&(rel==='/'||rel==='/Dashboard'||rel==='')){g=sub.querySelector('.zsub-grp[data-match="/__dash"]');}  /* Home → Dashboards hub */
@@ -1254,7 +1285,8 @@
             <link rel="preconnect" href="https://fonts.googleapis.com"/>
             <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"/>
             <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
-            <link rel="stylesheet" href="/zenithstatic/css/zenith-theme-v4.css?v=301"/>
+            <link rel="stylesheet" href="/zenithstatic/css/zenith-theme-v4.css?v=302"/>
+            <link rel="stylesheet" href="/zenithstatic/css/users-access.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/my-subscription-reference.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/saas-admin.css?v=4"/>
             <link rel="stylesheet" href="/zenithstatic/css/product-catalog.css?v=2"/>

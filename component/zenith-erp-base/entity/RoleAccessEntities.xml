@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<entities xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/entity-definition-3.xsd">
+    <entity entity-name="OrganizationAccessRole" package="zenith.erp.base" use="configuration">
+        <field name="userGroupId" type="id" is-pk="true"/>
+        <field name="organizationPartyId" type="id"/>
+        <field name="roleName" type="text-medium"/>
+        <field name="nameKey" type="text-medium"/>
+        <field name="description" type="text-long"/>
+        <field name="selectionsJson" type="text-very-long"/>
+        <relationship type="one" related="moqui.security.UserGroup"/>
+        <relationship type="one" related="mantle.party.Party"><key-map field-name="organizationPartyId" related="partyId"/></relationship>
+        <index name="ZROLE_ORG_NAME" unique="true"><index-field name="organizationPartyId"/><index-field name="nameKey"/></index>
+        <seed-data>
+            <moqui.security.EntityFilter entityFilterId="ZTF_ORG_ROLE" entityFilterSetId="MANTLE_ACTIVE_ORG"
+                entityName="zenith.erp.base.OrganizationAccessRole"
+                filterMap="[organizationPartyId: ec.user.getPreference('ACTIVE_ORGANIZATION') ?: null]"/>
+        </seed-data>
+    </entity>
+</entities>

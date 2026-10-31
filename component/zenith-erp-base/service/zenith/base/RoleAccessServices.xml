@@ -1,0 +1,243 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
+    <service verb="get" noun="RoleOrganization" authenticate="true" transaction="ignore">
+        <out-parameters><parameter name="organizationPartyId"/></out-parameters>
+        <actions><script><![CDATA[
+            organizationPartyId = null
+            if (ec.user.isInGroup('ADMIN')) {
+                def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
+                organizationPartyId = org && org != '_NA_' ? org : null
+            } else if (ec.user.userAccount?.partyId) {
+                def info = ec.service.sync().name('mantle.party.PartyServices.get#PartyOrganizationInfo')
+                    .parameter('partyId',ec.user.userAccount.partyId).disableAuthz().call()
+                if ((info?.userOrgIds ?: []).contains(info?.activeOrgId)) organizationPartyId = info.activeOrgId
+            }
+        ]]></script></actions>
+    </service>
+
+    <!-- Mounted module screens define the submodule catalogue, including installed extensions.
+         A selected submodule includes its nested workflow screens and transitions. -->
+    <service verb="get" noun="RoleCatalogue" authenticate="true" transaction="ignore">
+        <out-parameters><parameter name="modules" type="List"/></out-parameters>
+        <actions>
+            <service-call name="zenith.base.RoleAccessServices.get#RoleOrganization" out-map="scope"/>
+            <script><![CDATA[
+                modules = []
+                if (!scope.organizationPartyId) return
+                def tenant = ec.entity.find('zenith.erp.saas.SaasTenant').condition('organizationPartyId',scope.organizationPartyId)
+                    .condition('statusId','SaasTenantActive').disableAuthz().useCache(true).one()
+                def plan = tenant ? ec.entity.find('zenith.erp.saas.SaasPlanModule').condition('planId',tenant.planId)
+                    .disableAuthz().useCache(true).list().collect { it.moduleId?.toLowerCase() } : null
+                def groups = ec.entity.find('moqui.security.ArtifactGroup').condition('artifactGroupId','like','Z_%')
+                    .disableAuthz().useCache(true).list().collectEntries { [(it.artifactGroupId):it.description] }
+                def root = ec.screen.getScreenDefinition('component://zenith-erp-app/screen/zenith/ZenithApp.xml')
+                root.subscreensItemsSorted.each { mod ->
+                    def id = mod.name.toLowerCase()
+                    def group = 'Z_' + id.toUpperCase()
+                    if (!groups.containsKey(group) || (plan != null && !plan.contains('all') && !plan.contains(id))) return
+                    def screens = []
+                    // Read the module's mounted children only. Loading every detail screen compiles
+                    // hundreds of unrelated actions and makes first-time role creation unresponsive.
+                    ec.screen.getScreenDefinition(mod.location).subscreensItemsSorted.each { child ->
+                        screens.add([id:'/' + mod.name + '/' + child.name,
+                            name:child.menuTitle ?: child.name, location:child.location])
+                    }
+                    if (!screens) screens.add([id:'/' + mod.name, name:mod.menuTitle ?: mod.name, location:mod.location])
+                    modules.add([id:id, name:mod.menuTitle ?: mod.name, description:groups[group], artifactGroupId:group, screens:screens])
+                }
+                modules.sort { it.name }
+            ]]></script>
+        </actions>
+    </service>
+
+    <service verb="get" noun="AssignableRoles" authenticate="true" transaction="ignore">
+        <out-parameters><parameter name="roles" type="List"/></out-parameters>
+        <actions>
+            <service-call name="zenith.base.RoleAccessServices.get#RoleOrganization" out-map="scope"/>
+            <script><![CDATA[
+                roles = []
+                if (!scope.organizationPartyId || !(ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN'))) return
+                def owned = ec.entity.find('zenith.erp.base.OrganizationAccessRole').condition('organizationPartyId',scope.organizationPartyId)
+                    .disableAuthz().list().collectEntries { [(it.userGroupId):it.roleName] }
+                roles = ec.entity.find('moqui.security.UserGroup').condition('userGroupId','like','ZENITH_%').disableAuthz().list()
+                    .findAll { !it.userGroupId.startsWith('ZENITH_ORG_') || owned.containsKey(it.userGroupId) }
+                    .collect { [userGroupId:it.userGroupId, description:owned[it.userGroupId] ?: (it.description ?: it.userGroupId).split(' — ',2)[0],
+                        custom:owned.containsKey(it.userGroupId)] }.sort { it.description }
+            ]]></script>
+        </actions>
+    </service>
+
+    <service verb="save" noun="OrganizationRole" authenticate="true">
+        <in-parameters><parameter name="userGroupId"/><parameter name="roleName" required="true"/>
+            <parameter name="description"/><parameter name="selectionsJson" required="true"/></in-parameters>
+        <out-parameters><parameter name="savedRoleId"/></out-parameters>
+        <actions>
+            <if condition="!(ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN'))"><return error="true" message="Only an administrator can create or edit roles."/></if>
+            <service-call name="zenith.base.RoleAccessServices.get#RoleOrganization" out-map="scope"/>
+            <if condition="!scope.organizationPartyId"><return error="true" message="Select an organization you administer."/></if>
+            <service-call name="zenith.base.RoleAccessServices.get#RoleCatalogue" out-map="catalogue"/>
+            <script><![CDATA[
+                def name = roleName?.trim()
+                if (!name || name.length() > 100) { ec.message.addError('Enter a role name of 1 to 100 characters.'); return }
+                if ((description ?: '').length() > 2000 || selectionsJson.length() > 65536) { ec.message.addError('Role details are too large.'); return }
+                def draft
+                try { draft = new groovy.json.JsonSlurper().parseText(selectionsJson) }
+                catch (Exception ignored) { ec.message.addError('Invalid role selections.'); return }
+                if (!(draft instanceof Map)) { ec.message.addError('Invalid role selections.'); return }
+                def available = catalogue.modules.collectEntries { [(it.id):it] }
+                def clean = [:]
+                for (def entry in draft) {
+                    if (!(entry.key instanceof String) || !available.containsKey(entry.key) || !(entry.value instanceof List)) {
+                        ec.message.addError('Choose modules available to your organization.'); return
+                    }
+                    def valid = available[entry.key].screens.collect { it.id } as Set
+                    if (entry.value.any { !(it instanceof String) || !valid.contains(it) } || entry.value.size() != (entry.value as Set).size()) {
+                        ec.message.addError('Choose valid submodules for each enabled module.'); return
+                    }
+                    if (entry.value) clean[entry.key] = entry.value.sort()
+                }
+                if (!clean) { ec.message.addError('Select at least one module and one submodule.'); return }
+                // Serialize organization role edits to enforce case-insensitive name uniqueness.
+                ec.entity.find('mantle.party.Party').condition('partyId',scope.organizationPartyId).disableAuthz().forUpdate(true).one()
+                def role = userGroupId ? ec.entity.find('zenith.erp.base.OrganizationAccessRole')
+                    .condition('userGroupId',userGroupId).condition('organizationPartyId',scope.organizationPartyId).disableAuthz().one() : null
+                if (userGroupId && (!role || role.organizationPartyId != scope.organizationPartyId)) {
+                    ec.message.addError('Role not found in your organization.'); return
+                }
+                def duplicate = ec.entity.find('zenith.erp.base.OrganizationAccessRole').condition('organizationPartyId',scope.organizationPartyId)
+                    .condition('nameKey',name.toLowerCase(java.util.Locale.ROOT)).disableAuthz().one()
+                if (duplicate && duplicate.userGroupId != userGroupId) { ec.message.addError('A role with that name already exists in this organization.'); return }
+                def id = role?.userGroupId ?: 'ZENITH_ORG_' + java.util.UUID.randomUUID().toString().replace('-','').substring(0,24)
+                boolean disabled = ec.artifactExecution.disableAuthz()
+                try {
+                    ec.entity.makeValue('moqui.security.UserGroup').setAll([userGroupId:id,description:name]).createOrUpdate()
+                    ec.entity.makeValue('zenith.erp.base.OrganizationAccessRole').setAll([userGroupId:id,organizationPartyId:scope.organizationPartyId,
+                        roleName:name,nameKey:name.toLowerCase(java.util.Locale.ROOT),description:description ?: '',
+                        selectionsJson:groovy.json.JsonOutput.toJson(clean)]).createOrUpdate()
+                    // Conditional module grants use the aggregate, current user's scope. Unselected
+                    // modules deny even a baseline role grant; direct REST calls cannot borrow a UI route.
+                    if (!role) ec.entity.find('moqui.security.ArtifactGroup').condition('artifactGroupId','like','Z_%').list()
+                        .findAll { it.artifactGroupId != 'Z_BASE_APP' }.each { group ->
+                            def grant = ec.entity.makeValue('moqui.security.ArtifactAuthz').setAll([
+                                userGroupId:id,artifactGroupId:group.artifactGroupId,authzTypeEnumId:'AUTHZT_DENY',authzActionEnumId:'AUTHZA_ALL',
+                                authzServiceName:'zenith.base.RoleAccessServices.check#RoleArtifactAccess']).setSequencedIdPrimary().create()
+                            if (group.artifactGroupId == 'Z_ALL_ENTITIES') ec.entity.makeValue('moqui.security.ArtifactAuthzFilter')
+                                .setAll([artifactAuthzId:grant.artifactAuthzId,entityFilterSetId:'MANTLE_ACTIVE_ORG']).create()
+                        }
+                    savedRoleId = id
+                    ec.message.addMessage('Role saved. Assign it to users separately.')
+                } finally { if (!disabled) ec.artifactExecution.enableAuthz() }
+            ]]></script>
+        </actions>
+    </service>
+
+    <service verb="save" noun="UserRoles" authenticate="true">
+        <in-parameters><parameter name="userId" required="true"/><parameter name="selectedRoles" type="List"/></in-parameters>
+        <actions>
+            <service-call name="zenith.settings.SettingsServices.check#UserInActiveOrg" in-map="[userId:userId]"/>
+            <if condition="ec.message.hasError()"><return/></if>
+            <service-call name="zenith.base.RoleAccessServices.get#RoleOrganization" out-map="scope"/>
+            <service-call name="zenith.base.RoleAccessServices.get#AssignableRoles" out-map="available"/>
+            <script><![CDATA[
+                def target = ec.entity.find('moqui.security.UserAccount').condition('userId',userId).disableAuthz().one()
+                def inOrg = target?.partyId && scope.organizationPartyId && ec.entity.find('mantle.party.PartyRelationship')
+                    .condition('fromPartyId',target.partyId).condition('toPartyId',scope.organizationPartyId)
+                    .condition('toRoleTypeId','OrgInternal').condition('relationshipTypeEnumId','in',['PrtEmployee','PrtAgent','PrtMember'])
+                    .conditionDate('fromDate','thruDate',ec.user.nowTimestamp).disableAuthz().count() > 0
+                if (!inOrg) { ec.message.addError('The user must belong to the selected organization.'); return }
+                def valid = available.roles.collect { it.userGroupId } as Set
+                def wanted = (selectedRoles ?: []).findAll { it } as Set
+                if (!valid.containsAll(wanted)) { ec.message.addError('Choose roles available to your organization.'); return }
+                def current = ec.entity.find('moqui.security.UserGroupMember').condition('userId',userId)
+                    .conditionDate('fromDate','thruDate',ec.user.nowTimestamp).list().findAll { valid.contains(it.userGroupId) }
+                    .collect { it.userGroupId } as Set
+                for (def id in current - wanted) {
+                    ec.service.sync().name('zenith.settings.SettingsServices.remove#UserRole').parameters([userId:userId,userGroupId:id]).call()
+                    if (ec.message.hasError()) return
+                }
+                for (def id in wanted - current) ec.service.sync().name('create#moqui.security.UserGroupMember')
+                    .parameters([userId:userId,userGroupId:id,fromDate:ec.user.nowTimestamp]).call()
+                if (!ec.message.hasError()) ec.message.addMessage('Access roles updated.')
+            ]]></script>
+        </actions>
+    </service>
+
+    <service verb="get" noun="AssignedRoleScope" authenticate="true" transaction="ignore">
+        <out-parameters><parameter name="restricted" type="Boolean"/><parameter name="selections" type="Map"/><parameter name="legacyModules" type="List"/><parameter name="legacyWriteModules" type="List"/></out-parameters>
+        <actions><script><![CDATA[
+            restricted = false; selections = [:]; legacyModules = []; legacyWriteModules = []
+            if (ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN')) return
+            def groups = (ec.user.userGroupIdSet ?: []) as List
+            def custom = groups.findAll { it?.startsWith('ZENITH_ORG_') }
+            if (!custom) return
+            restricted = true
+            def scope = ec.service.sync().name('zenith.base.RoleAccessServices.get#RoleOrganization').disableAuthz().call()
+            if (!scope.organizationPartyId) return
+            def roles = ec.entity.find('zenith.erp.base.OrganizationAccessRole').condition('organizationPartyId',scope.organizationPartyId)
+                .condition('userGroupId','in',custom).disableAuthz().useCache(true).list()
+            roles.each { role ->
+                def saved = new groovy.json.JsonSlurper().parseText(role.selectionsJson)
+                saved.each { mod, screens -> selections[mod] = ((selections[mod] ?: []) + screens).unique() }
+            }
+            def builtin = groups.findAll { it != 'ZENITH_ALL' && !it.startsWith('ZENITH_ORG_') }
+            if (builtin) {
+                def grants = ec.entity.find('moqui.security.ArtifactAuthz').condition('userGroupId','in',builtin)
+                    .condition('authzTypeEnumId','in',['AUTHZT_ALLOW','AUTHZT_ALWAYS']).disableAuthz().useCache(true).list()
+                    .findAll { it.artifactGroupId?.startsWith('Z_') }
+                legacyModules = grants.collect { it.artifactGroupId.substring(2).toLowerCase() }.unique()
+                legacyWriteModules = grants.findAll { it.authzActionEnumId == 'AUTHZA_ALL' }
+                    .collect { it.artifactGroupId.substring(2).toLowerCase() }.unique()
+            }
+        ]]></script></actions>
+    </service>
+
+    <service verb="check" noun="RoleRouteAccess" authenticate="true" transaction="ignore">
+        <out-parameters><parameter name="allowed" type="Boolean"/><parameter name="landingPath"/></out-parameters>
+        <actions><script><![CDATA[
+            allowed = true; landingPath = null
+            def policy = ec.service.sync().name('zenith.base.RoleAccessServices.get#AssignedRoleScope').disableAuthz().call()
+            if (!policy.restricted) return
+            def uri = (ec.web?.request?.requestURI ?: '').replaceFirst(/^\/menuData(?=\/(apps|qapps)\/zenith(?:\/|$))/, '')
+            // Quasar fetches the shell template before fetching the selected child screen.
+            if (uri ==~ /\/(apps|qapps)\/zenith\.qvt/) return
+            def match = uri =~ /^\/(?:qapps|apps|fop)\/zenith(\/[^?]*)?$/
+            if (!match.matches()) { allowed = false; return }
+            def route = (match[0][1] ?: '').replaceFirst(/\.(qvt|vuet|html|pdf)$/, '')
+            def mod = route.tokenize('/').find()?.toLowerCase()
+            def personal = ['MyPassword','MySecurity','MyNotifications','MyWorkspace','saasConfig','getSaasContext','getSidebarConfiguration',
+                'saveSidebarConfiguration','getSubnavConfiguration','saveSubnavConfiguration','setActiveShop']
+            if (personal.contains(route.tokenize('/').find())) return
+            if (uri.endsWith('.qvt') && route.tokenize('/').size() == 1 &&
+                    (policy.selections.containsKey(mod) || policy.legacyModules.contains(mod))) return
+            allowed = policy.legacyModules.contains(mod) || (policy.selections[mod] ?: []).any { route == it || route.startsWith(it + '/') }
+            def first = (policy.selections[mod] ?: policy.selections.values().flatten()).find()
+            if (first) landingPath = (uri.startsWith('/qapps/') ? '/qapps/zenith' : '/apps/zenith') + first
+        ]]></script></actions>
+    </service>
+
+    <!-- Framework callback: applies to both screen and service authorization, not a cosmetic menu filter. -->
+    <service verb="check" noun="RoleArtifactAccess" authenticate="true" transaction="ignore">
+        <in-parameters><parameter name="userId"/><parameter name="artifactName"/><parameter name="artifactTypeEnumId"/><parameter name="authzActionEnumId"/></in-parameters>
+        <out-parameters><parameter name="authzTypeEnumId"/></out-parameters>
+        <actions><script><![CDATA[
+            authzTypeEnumId = 'AUTHZT_DENY'
+            def policy = ec.service.sync().name('zenith.base.RoleAccessServices.get#AssignedRoleScope').disableAuthz().call()
+            if (!policy.restricted) { authzTypeEnumId = 'AUTHZT_ALLOW'; return }
+            def uri = (ec.web?.request?.requestURI ?: '').replaceFirst(/^\/menuData(?=\/(apps|qapps)\/zenith(?:\/|$))/, '')
+            // These read-only shell requests never accept a target user/organization. The
+            // existing framework service derives organization membership from the signed-in user.
+            if (authzActionEnumId == 'AUTHZA_VIEW' && (
+                    (uri ==~ /\/(apps|qapps)\/zenith(\/[^\/.]+)?\.qvt/) ||
+                    (uri == '/rest/s1/mantle/my/userOrgInfo' && ec.web.request.method == 'GET'))) {
+                authzTypeEnumId = 'AUTHZT_ALLOW'; return
+            }
+            def match = uri =~ /^\/(?:qapps|apps|fop)\/zenith(\/[^?]*)?$/
+            if (!match.matches()) return
+            def route = (match[0][1] ?: '').replaceFirst(/\.(qvt|vuet|html|pdf)$/, '')
+            def mod = route.tokenize('/').find()?.toLowerCase()
+            def legacyAllowed = authzActionEnumId == 'AUTHZA_VIEW' ? policy.legacyModules : policy.legacyWriteModules
+            if (legacyAllowed.contains(mod) || (policy.selections[mod] ?: []).any { route == it || route.startsWith(it + '/') })
+                authzTypeEnumId = 'AUTHZT_ALLOW'
+        ]]></script></actions>
+    </service>
+</services>

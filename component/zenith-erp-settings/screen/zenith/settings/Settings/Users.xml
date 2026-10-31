@@ -75,10 +75,16 @@
         <default-response type="none"/>
     </transition>
 
+    <transition name="saveRoles" begin-transaction="true">
+        <actions><service-call name="zenith.base.RoleAccessServices.save#UserRoles" in-map="[userId:userId, selectedRoles:selectedRoles]"/></actions>
+        <default-response url="."/>
+    </transition>
+
     <transition name="assignRole">
         <actions>
             <service-call name="zenith.settings.SettingsServices.check#UserInActiveOrg" in-map="[userId:userId]"/>
-            <script>if (!(userGroupId?.startsWith('ZENITH_'))) ec.message.addError('Only Zenith roles can be assigned')</script>
+            <service-call name="zenith.base.RoleAccessServices.get#AssignableRoles" out-map="assignable"/>
+            <script>if (!assignable.roles.any { it.userGroupId == userGroupId }) ec.message.addError('Choose a role available to your organization.')</script>
             <if condition="!ec.message.hasError()">
                 <!-- ZE-ROLE-001: a role must be UNIQUE per user. UserGroupMember's PK includes fromDate, so a
                      plain create makes a fresh duplicate row every time. Only create when the user has no
@@ -257,196 +263,127 @@
                 userList = userList.findAll { _roleUsers.contains(it.userId) }
             }
         ]]></script>
-        <entity-find entity-name="moqui.security.UserGroup" list="allRolesList">
-            <econdition field-name="userGroupId" operator="like" value="ZENITH_%"/>
-            <order-by field-name="description"/>
-        </entity-find>
+        <service-call name="zenith.base.RoleAccessServices.get#AssignableRoles" out-map="availableRoles"/>
+        <set field="allRolesList" from="availableRoles.roles"/>
+        <script><![CDATA[
+            roleNamesById = allRolesList.collectEntries { [(it.userGroupId):it.description] }
+            def visibleUserIds = userList.collect { it.userId }
+            def memberships = visibleUserIds ? ec.entity.find('moqui.security.UserGroupMember')
+                .condition('userId','in',visibleUserIds).conditionDate('fromDate','thruDate',ec.user.nowTimestamp).list()
+                .findAll { roleNamesById.containsKey(it.userGroupId) }.unique { it.userId + ':' + it.userGroupId } : []
+            userRolesById = memberships.groupBy { it.userId }
+            userRoleIdsById = userRolesById.collectEntries { id, roles -> [(id):roles.collect { it.userGroupId }] }
+            usersWithTwoFactor = visibleUserIds ? ec.entity.find('moqui.security.UserAuthcFactor')
+                .condition('userId','in',visibleUserIds).disableAuthz().list().collect { it.userId } as Set : [] as Set
+        ]]></script>
         <set field="canSettingsAdmin" from="ec.user.isInGroup('ZENITH_ADMIN') || ec.user.isInGroup('ADMIN')"/>
     </actions>
 
     <widgets>
         <section name="SettingsViewGate" condition="canSettingsAdmin"><widgets>
-        <render-mode><text type="html,vuet,qvt"><![CDATA[
-        <details open style="background:#e8f0fe;border:1px solid #4285f4;border-left:6px solid #1a73e8;border-radius:10px;padding:10px 16px;margin:0 0 16px 0;font-family:'Segoe UI',Arial,sans-serif">
-            <summary style="cursor:pointer;font-weight:800;font-size:15px;color:#174ea6;outline:none">&#128100; Users &amp; Roles &mdash; what this page is for <span style="font-weight:600;color:#5f6368;font-size:12px">(click to hide / show)</span></summary>
-            <div style="font-size:13.5px;color:#202124;line-height:1.85;margin-top:10px">
-                Everyone who logs in needs their own <b>user account</b>. This page is where you add people and decide what they can do.<br>
-                <b>1</b>&nbsp;Click <b>Create New User</b> &mdash; enter their name, a username and a password.<br>
-                <b>2</b>&nbsp;Click <b>+ Role</b> next to their name to give them a job role (e.g. Cashier). The <b>role</b> decides what they can see and do.<br>
-                <b>3</b>&nbsp;<b>Reset Pwd</b> sets a new password if someone forgets it. <b>Disable</b> blocks login when someone leaves &mdash; their past sales stay intact.<br>
-                You only see and manage users in <b>your own organization</b>.
-            </div>
-        </details>
-        ]]></text></render-mode>
-        <container style="zenith-grid-container glass-panel">
-            <container layout="horizontal" style="items-center q-mb-md">
-                <label text="Users &amp; Role Assignment" type="h3"/>
-                <container-dialog id="CreateUserDialog" button-text="Create New User">
-                    <form-single name="CreateUserForm" transition="createUser">
-                        <field name="username"><default-field title="Username"><text-line size="20"/></default-field></field>
-                        <field name="userFullName"><default-field title="Full Name"><text-line size="40"/></default-field></field>
-                        <field name="newPassword"><default-field title="Password"><password size="20"/></default-field></field>
-                        <field name="newPasswordVerify"><default-field title="Verify Password"><password size="20"/></default-field></field>
-                        <field name="submitButton"><default-field title="Create User"><submit/></default-field></field>
-                    </form-single>
-                </container-dialog>
-                <!-- ZE-ROLE-013: export the user list as CSV. Plain GET link with target=_blank so the browser
-                     downloads the attachment instead of the SPA trying to navigate to it. Render as
-                     html,vuet,qvt — a bare type="html" block is emitted on /apps ONLY, so the Export button
-                     was INVISIBLE on the /qapps Quasar SPA (the reported bug). target=_blank makes the click a
-                     real HTTP GET to the transition (not SPA routing), so the CSV downloads on both surfaces. -->
-                <render-mode><text type="html,vuet,qvt"><![CDATA[
-                <a href="${ec.web.getRequest().getRequestURI()}/exportUsers" target="_blank"
-                   style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;margin-left:12px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#1a73e8;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer">&#11015;&nbsp;Export CSV</a>
-                ]]></text></render-mode>
+        <container style="z-users-page">
+            <container style="z-users-heading">
+                <container><label text="Users" type="h1"/><label text="Manage staff accounts and what they can access." type="p" style="z-users-help"/></container>
+                <container style="z-users-actions">
+                    <container-dialog id="CreateUserDialog" button-text="Add user" button-class="z-users-button z-users-primary">
+                        <form-single name="CreateUserForm" transition="createUser">
+                            <field name="username"><default-field title="Username *" validate-service="org.moqui.impl.UserServices.create#UserAccount" validate-parameter="username"><text-line size="30"/></default-field></field>
+                            <field name="userFullName"><default-field title="Full name *" validate-service="zenith.settings.SettingsServices.update#User" validate-parameter="userFullName"><text-line size="40"/></default-field></field>
+                            <field name="newPassword"><default-field title="Password *" validate-service="org.moqui.impl.UserServices.create#UserAccount" validate-parameter="newPassword"><password size="25"/></default-field></field>
+                            <field name="newPasswordVerify"><default-field title="Confirm password *" validate-service="org.moqui.impl.UserServices.create#UserAccount" validate-parameter="newPasswordVerify"><password size="25"/></default-field></field>
+                            <field name="submitButton"><default-field title="Add user"><submit/></default-field></field>
+                        </form-single>
+                    </container-dialog>
+                    <link url="../RoleEditor" text="Create role" style="z-users-button"/>
+                    <render-mode><text type="html,vuet,qvt"><![CDATA[
+                    <a class="z-users-button" href="${ec.web.request.requestURI?replace('\\.(qvt|vuet|html)$','','r')}/exportUsers" target="_blank" rel="noopener">Export CSV</a>
+                    ]]></text></render-mode>
+                </container>
             </container>
-
-            <!-- ZE-ROLE-008: search users by username / full name / email. A plain GET form (not a Moqui
-                 m-form, which POSTs via AJAX) so the term lives in the URL: it survives a refresh, is
-                 shareable, and combines with the column sort — Moqui's sort links already carry the current
-                 params, and the hidden orderByField carries the active sort back through a new search.
-                 ZE-ROLE-008 /qapps follow-up: rendered html,vuet,qvt (a bare type="html" block is /apps-ONLY,
-                 so the search box was missing on the Quasar SPA). onsubmit sets action=location.pathname — the
-                 LIVE browser path — because getRequestURI() yields the internal /apps/...Users.qvt on a qvt
-                 render (wrong nav target); the full GET then reloads the current surface with ?searchTerm,
-                 which /qapps propagates to the server filter exactly like /apps (verified 60->6). -->
             <render-mode><text type="html,vuet,qvt"><![CDATA[
-            <form method="get" onsubmit="this.action=location.pathname;return true;" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 16px 0">
-                <#if (currentSort!'')?has_content><input type="hidden" name="orderByField" value="${currentSort?html}"/></#if>
-                <input type="text" name="searchTerm" value="${(searchTerm!'')?html}" autocomplete="off"
-                       placeholder="Search users by username, name or email"
-                       style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;min-width:240px;outline:none"/>
-                <!-- ZE-USERS filter enhancement: Status + Role dropdowns. onchange sets action=location.pathname
-                     (a programmatic form.submit() bypasses onsubmit) then submits, so the GET reloads the current
-                     surface with every filter; they combine with the search and the column sort (carried via the
-                     hidden orderByField). -->
-                <select name="statusFilter" onchange="this.form.action=location.pathname;this.form.submit();"
-                        style="padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;background:#fff;cursor:pointer">
-                    <option value=""<#if !(currentStatus!'')?has_content> selected</#if>>All statuses</option>
-                    <option value="active"<#if (currentStatus!'')=='active'> selected</#if>>Active</option>
-                    <option value="disabled"<#if (currentStatus!'')=='disabled'> selected</#if>>Disabled</option>
-                </select>
-                <select name="roleFilter" onchange="this.form.action=location.pathname;this.form.submit();"
-                        style="padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;background:#fff;cursor:pointer;max-width:220px">
-                    <option value=""<#if !(currentRole!'')?has_content> selected</#if>>All roles</option>
-                    <#list (allRolesList![]) as r>
-                    <option value="${r.userGroupId}"<#if (currentRole!'') == r.userGroupId> selected</#if>>${(r.description!r.userGroupId)?html}</option>
-                    </#list>
-                </select>
-                <button type="submit" style="padding:8px 18px;background:#1a73e8;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer">Search</button>
-                <#if (searchTerm!'')?has_content || (currentStatus!'')?has_content || (currentRole!'')?has_content><a href="#" onclick="location.href=location.pathname<#if (currentSort!'')?has_content>+'?orderByField=${currentSort}'</#if>;return false;" style="padding:8px 12px;color:#5f6368;text-decoration:none;font-size:14px">Clear filters</a></#if>
-            </form>
+            <div class="z-users-role-library"><span>Custom roles:</span>
+                <#list (allRolesList![]) as r><#if r.custom><a class="z-users-button" href="RoleEditor?userGroupId=${r.userGroupId?url('UTF-8')}">${r.description?html}</a></#if></#list>
+                <span class="z-users-help">Create a role, then use Manage roles to assign it.</span>
+            </div>
             ]]></text></render-mode>
-
-            <form-list name="UserList" list="userList" skip-form="true">
-                <field name="username">
-                    <header-field title="Username" show-order-by="true"/>
-                    <default-field><display/></default-field>
-                </field>
-                <field name="userFullName">
-                    <header-field title="Full Name" show-order-by="true"/>
-                    <default-field><display/></default-field>
-                </field>
-                <field name="status">
-                    <header-field title="Status"/>
-                    <default-field>
-                        <label text="${disabled == 'Y' ? 'Disabled' : 'Active'}"/>
-                    </default-field>
-                </field>
-                <field name="currentRoles">
-                    <header-field title="Assigned Roles"/>
-                    <default-field>
-<!-- ZE-ROLE-006: only show ZENITH_ functional roles as removable badges. A user's TENANT_* organisation
-                             membership is the anchor that keeps them in this org-scoped list; it is NOT a manageable role,
-                             and removing it made the user vanish from the list. Filtering it out (and blocking its removal in
-                             remove#UserRole) means removing roles can never hide the user — the TENANT_ anchor always remains. -->
-                        <section-iterate name="UserRolesSection"
-                                         list="ec.entity.find('moqui.security.UserGroupMember').condition('userId', userId).conditionDate('fromDate', 'thruDate', ec.user.nowTimestamp).list().findAll { it.userGroupId?.startsWith('ZENITH_') }.unique { it.userGroupId }"
-                                         entry="roleMap">
-                            <widgets>
-                                <container layout="horizontal" style="items-center q-gutter-xs q-mb-xs">
-                                    <label text="${roleMap.userGroupId}" style="text-caption"/>
-                                    <link url="removeRole" text="x" btn-type="danger" style="q-btn--dense q-btn--flat"
-                                          confirmation="Remove role ${roleMap.userGroupId} from this user?">
-                                        <parameter name="userId"/>
-                                        <parameter name="userGroupId" from="roleMap.userGroupId"/>
-                                    </link>
-                                </container>
-                            </widgets>
-                        </section-iterate>
-                    </default-field>
-                </field>
-                <field name="actions">
-                    <header-field title="Actions"/>
-                    <default-field>
-                        <!-- ZE-ROLE-012: edit user details (username + full name); the edit is audited. -->
-                        <container-dialog id="EditUserDialog" button-text="Edit">
-                            <form-single name="EditUserForm" transition="editUser">
+            <container style="z-users-card">
+                <render-mode><text type="html,vuet,qvt"><![CDATA[
+                <form method="get" class="z-users-filters" onsubmit="this.action=location.pathname;return true;">
+                    <#if (currentSort!'')?has_content><input type="hidden" name="orderByField" value="${currentSort?html}"/></#if>
+                    <input type="search" name="searchTerm" aria-label="Search users by name or email" value="${(searchTerm!'')?html}" placeholder="Search by name or email..." autocomplete="off"/>
+                    <select name="statusFilter" aria-label="Account status" onchange="this.form.action=location.pathname;this.form.submit();">
+                        <option value="">All statuses</option><option value="active"<#if (currentStatus!'')=='active'> selected</#if>>Active</option><option value="disabled"<#if (currentStatus!'')=='disabled'> selected</#if>>Disabled</option>
+                    </select>
+                    <select name="roleFilter" aria-label="Access role" onchange="this.form.action=location.pathname;this.form.submit();">
+                        <option value="">All roles</option>
+                        <#list (allRolesList![]) as r><option value="${r.userGroupId?html}"<#if (currentRole!'')==r.userGroupId> selected</#if>>${(r.description!r.userGroupId)?html}</option></#list>
+                    </select>
+                    <button class="z-users-button" type="submit">Search</button>
+                    <#if (searchTerm!'')?has_content || (currentStatus!'')?has_content || (currentRole!'')?has_content><a class="z-users-button" href="?">Clear filters</a></#if>
+                </form>
+                <p class="z-users-help">${userList?size} users</p>
+                ]]></text></render-mode>
+                <form-list name="UserList" list="userList" skip-form="true">
+                    <field name="userFullName"><header-field title="User" show-order-by="true"/><default-field>
+                        <render-mode><text type="html,vuet,qvt"><![CDATA[
+                        <span class="z-user-name">${(userFullName!username!'User')?html}</span><span class="z-user-email">${(emailAddress!username!'')?html}</span>
+                        ]]></text></render-mode>
+                    </default-field></field>
+                    <field name="status"><header-field title="Status"/><default-field>
+                        <render-mode><text type="html,vuet,qvt"><![CDATA[<span class="z-user-status<#if (disabled!'N')=='Y'> is-disabled</#if>"><#if (disabled!'N')=='Y'>Disabled<#else>Active</#if></span>]]></text></render-mode>
+                    </default-field></field>
+                    <field name="currentRoles"><header-field title="Access roles"/><default-field>
+                        <section-iterate name="UserRolesSection" list="userRolesById[userId] ?: []" entry="roleMap"><widgets>
+                            <label text="${roleNamesById[roleMap.userGroupId] ?: roleMap.userGroupId}" style="z-role-chip"/>
+                        </widgets></section-iterate>
+                        <container-dialog id="AssignRoleDialog" button-text="Manage roles" button-class="z-users-button">
+                            <form-single name="AssignRoleForm" transition="saveRoles">
                                 <field name="userId"><default-field><hidden/></default-field></field>
-                                <field name="username"><default-field title="Username"><text-line size="30"/></default-field></field>
-                                <field name="userFullName"><default-field title="Full Name"><text-line size="40"/></default-field></field>
-                                <field name="submitButton"><default-field title="Save Changes"><submit/></default-field></field>
+                                <field name="selectedRoles" entry-name="userRoleIdsById[userId]"><default-field title="Access roles"><drop-down allow-empty="true" allow-multiple="true"><list-options list="allRolesList" key="${userGroupId}" text="${description}"/></drop-down></default-field></field>
+                                <field name="submitButton"><default-field title="Save roles"><submit/></default-field></field>
                             </form-single>
                         </container-dialog>
-                        <container-dialog id="AssignRoleDialog" button-text="+ Role">
-                            <form-single name="AssignRoleForm" transition="assignRole">
-                                <field name="userId"><default-field><hidden/></default-field></field>
-                                <field name="userGroupId">
-                                    <default-field title="Select Role">
-                                        <drop-down>
-                                            <list-options list="allRolesList" key="${userGroupId}" text="${description} [${userGroupId}]"/>
-                                        </drop-down>
-                                    </default-field>
-                                </field>
-                                <field name="submitButton"><default-field title="Assign"><submit/></default-field></field>
-                            </form-single>
-                        </container-dialog>
-                        <container-dialog id="ResetPasswordDialog" button-text="Reset Pwd">
-                            <form-single name="ResetPasswordForm" transition="resetPassword">
-                                <field name="userId"><default-field><hidden/></default-field></field>
-                                <field name="newPassword"><default-field title="New Password"><password size="20"/></default-field></field>
-                                <field name="newPasswordVerify"><default-field title="Verify"><password size="20"/></default-field></field>
-                                <field name="submitButton"><default-field title="Reset"><submit/></default-field></field>
-                            </form-single>
-                        </container-dialog>
-                        <!-- ZE-AUTH-022: only shown when this user actually has two-factor login set up. -->
-                        <section name="Reset2faSection">
-                            <condition><expression>ec.entity.find('moqui.security.UserAuthcFactor').condition('userId', userId).disableAuthz().count() > 0</expression></condition>
-                            <widgets>
-                                <link url="resetTwoFactor" text="Reset 2FA" btn-type="warning" style="q-btn--dense q-ml-xs"
-                                      confirmation="Turn off two-factor login for this user? They'll sign in with just their password until they set it up again. Only do this if they've lost their authenticator and backup codes.">
-                                    <parameter name="userId"/>
-                                </link>
-                            </widgets>
-                        </section>
-                        <section name="DisableEnableSection">
-                            <condition><expression>disabled != 'Y'</expression></condition>
-                            <widgets>
-                                <link url="disableUser" text="Disable" btn-type="danger" style="q-btn--dense"
-                                      confirmation="Disable this user account?">
-                                    <parameter name="userId"/>
-                                </link>
-                            </widgets>
-                            <fail-widgets>
-                                <link url="enableUser" text="Enable" btn-type="success" style="q-btn--dense">
-                                    <parameter name="userId"/>
-                                </link>
-                            </fail-widgets>
-                        </section>
-                        <!-- ZE-ROLE-010: permanently delete (frees the username). Service refuses self/admins/
-                             users with activity; a fresh role-less user deletes cleanly. -->
-                        <link url="deleteUser" text="Delete" btn-type="danger" style="q-btn--dense q-ml-xs"
-                              confirmation="Permanently delete this user and free their username? This cannot be undone. (A user with any activity can't be deleted — disable them instead.)">
-                            <parameter name="userId"/>
-                        </link>
-                    </default-field>
-                </field>
-            </form-list>
-            <!-- ZE-ROLE-008 + filter enhancement: empty state when the search / status / role filters match nothing -->
-            <section name="NoUserResults" condition="!userList &amp;&amp; ((searchTerm ?: '') || (currentStatus ?: '') || (currentRole ?: ''))"><widgets>
-                <label text="No users match the current filters. Adjust the search, status or role — or click Clear filters." type="p" style="text-grey-7 q-pa-md"/>
-            </widgets></section>
+                    </default-field></field>
+                    <field name="actions"><header-field title="Actions"/><default-field>
+                        <container style="z-user-row-actions">
+                            <container-dialog id="EditUserDialog" button-text="Edit" button-class="z-users-button">
+                                <form-single name="EditUserForm" transition="editUser">
+                                    <field name="userId"><default-field><hidden/></default-field></field>
+                                    <field name="username"><default-field title="Username *" validate-service="org.moqui.impl.UserServices.create#UserAccount" validate-parameter="username"><text-line size="30"/></default-field></field>
+                                    <field name="userFullName"><default-field title="Full name *" validate-service="zenith.settings.SettingsServices.update#User" validate-parameter="userFullName"><text-line size="40"/></default-field></field>
+                                    <field name="submitButton"><default-field title="Save changes"><submit/></default-field></field>
+                                </form-single>
+                            </container-dialog>
+                            <render-mode><text type="html,vuet,qvt"><![CDATA[<details class="z-user-more"><summary aria-label="More actions for ${(userFullName!username!'user')?html}">...</summary><div class="z-user-more-menu">]]></text></render-mode>
+                            <container-dialog id="ResetPasswordDialog" button-text="Reset password" button-class="z-users-button">
+                                <label text="Set a new password for ${userFullName ?: username}. The existing password is never displayed." type="p"/>
+                                <form-single name="ResetPasswordForm" transition="resetPassword">
+                                    <field name="userId"><default-field><hidden/></default-field></field>
+                                    <field name="newPassword"><default-field title="New password *"><password size="25"/></default-field></field>
+                                    <field name="newPasswordVerify"><default-field title="Confirm password *" validate-service="org.moqui.impl.UserServices.create#UserAccount" validate-parameter="newPasswordVerify"><password size="25"/></default-field></field>
+                                    <field name="submitButton"><default-field title="Reset password"><submit/></default-field></field>
+                                </form-single>
+                            </container-dialog>
+                            <render-mode><text type="html,vuet,qvt"><![CDATA[
+                            <#if usersWithTwoFactor?seq_contains(userId)>
+                            <form method="post" action="${ec.web.request.requestURI?replace('\\.(qvt|vuet|html)$','','r')}/resetTwoFactor" onsubmit="return confirm('Reset two-factor login? This user must enroll again.');">
+                                <input type="hidden" name="moquiSessionToken" value="${ec.web.sessionToken?html}"/><input type="hidden" name="userId" value="${userId?html}"/>
+                                <button class="z-users-button" type="submit">Reset two-factor login</button>
+                            </form>
+                            </#if>
+                            <form method="post" action="${ec.web.request.requestURI?replace('\\.(qvt|vuet|html)$','','r')}/<#if (disabled!'N')=='Y'>enableUser<#else>disableUser</#if>" onsubmit="return confirm('Change sign-in access for this user? Their history is preserved.');">
+                                <input type="hidden" name="moquiSessionToken" value="${ec.web.sessionToken?html}"/><input type="hidden" name="userId" value="${userId?html}"/>
+                                <button class="z-users-button" type="submit"><#if (disabled!'N')=='Y'>Enable account<#else>Disable account</#if></button>
+                            </form>
+                            ]]></text></render-mode>
+                            <container><link url="deleteUser" text="Delete account" btn-type="danger" confirmation="Permanently delete ${userFullName ?: username} (${username})? This cannot be undone. Accounts with activity must be disabled instead."><parameter name="userId"/></link></container>
+                            <render-mode><text type="html,vuet,qvt"><![CDATA[</div></details>]]></text></render-mode>
+                        </container>
+                    </default-field></field>
+                </form-list>
+                <section name="NoUserResults" condition="!userList"><widgets><label text="No users match your search. Adjust or clear the filters, or add a user." type="p" style="z-users-empty"/></widgets></section>
+            </container>
         </container>
-        </widgets><fail-widgets><container style="text-center q-pa-xl"><label text="Access Restricted" type="h4" style="text-negative text-weight-bold q-mt-lg"/><label text="This section is available to administrators only." type="p" style="text-grey-7 q-mt-sm"/></container></fail-widgets></section>
+        </widgets><fail-widgets><container style="text-center q-pa-xl"><label text="Access Restricted" type="h4"/><label text="This section is available to administrators only." type="p"/></container></fail-widgets></section>
     </widgets>
 </screen>
