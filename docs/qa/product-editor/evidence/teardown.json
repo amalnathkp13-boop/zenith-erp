@@ -1,0 +1,7 @@
+{
+  "ifExistsProbeExit": 1,
+  "listenersRemaining": 0,
+  "productionTouched": false,
+  "databaseStorage": "In-memory database removed when QA JVM stopped",
+  "stoppedPid": 18960
+}

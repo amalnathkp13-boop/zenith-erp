@@ -7,16 +7,22 @@
 
     <transition name="findProduct"><default-response url="../FindProduct"/></transition>
     <!-- ZE-POS-014: guarded delete - the service blocks products with bills/invoices/orders/stock history -->
-    <transition name="deleteProduct">
+    <transition name="deleteProduct" method="post">
+        <actions>
+        <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'inventory']" out-map="writeAccess"/>
+        <if condition="!writeAccess.canWrite"><return error="true" message="You have view-only access."/></if>
         <service-call name="zenith.inventory.InventoryServices.delete#Product" in-map="[productId:productId]"/>
+        </actions>
         <conditional-response url=".">
             <condition><expression>ec.message.hasError()</expression></condition>
         </conditional-response>
         <default-response url="../FindProduct"/>
     </transition>
     
-    <transition name="updateProduct">
+    <transition name="updateProduct" method="post" begin-transaction="true">
         <actions>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'inventory']" out-map="writeAccess"/>
+            <if condition="!writeAccess.canWrite"><return error="true" message="You have view-only access."/></if>
             <service-call name="zenith.barcode.BarcodeServices.get#AuthorizedActiveOrganization" out-map="barcodeScope"/>
             <set field="activeOrg" from="barcodeScope.activeOrgId"/>
             <entity-find-one entity-name="mantle.product.Product" value-field="curProd"/>
@@ -29,17 +35,74 @@
                 if (curProd.ownerPartyId) ec.entity.find('mantle.party.Party').condition('partyId',curProd.ownerPartyId).forUpdate(true).disableAuthz().one()
                 ec.entity.find('mantle.product.Product').condition('productId',productId).forUpdate(true).one()
             ]]></script>
-            <!-- ZE-INV-001 f/u: reject a negative selling price (a -10 typo makes stock value negative
-                 everywhere). Blank stays allowed; non-numeric falls through to framework coercion. -->
             <script><![CDATA[
-                mrpNegative = false
-                if (mrpAmount != null && mrpAmount.toString().trim() != '') {
-                    try { if ((mrpAmount.toString().trim() as BigDecimal) < 0G) mrpNegative = true } catch (ignored) {}
+                // Only editor fields may be changed; never accept owner, IDs, stock or document state.
+                productChanges = [productId:productId, ownerPartyId:curProd.ownerPartyId]
+                def supplied = ec.web.parameters
+                def limits = [productName:255, printName:255, pseudoId:100, description:500, comments:2000, hsnCode:20, sacCode:20]
+                limits.each { key, max ->
+                    if (supplied.containsKey(key)) {
+                        def value = (supplied[key] ?: '').toString().trim()
+                        if (value.length() > max || value.any { Character.isISOControl((char)it) && !(key in ['description','comments'] && it in ['\n','\r','\t']) })
+                            ec.message.addError(key+' is too long or contains unsupported characters.')
+                        productChanges[key] = value ?: null
+                    }
+                }
+                if (supplied.containsKey('productName') && !productChanges.productName) ec.message.addError('Product Name is required.')
+                def nextName=productChanges.containsKey('productName') ? productChanges.productName : curProd.productName
+                // A null override follows future renames. A deliberately different name stays fixed.
+                if (productChanges.containsKey('printName') && productChanges.printName==nextName) productChanges.printName=null
+                [productTypeEnumId:['PtAsset','PtService','PtDigitalAsset'], uqcEnumId:['','NOS','KGS','MTR','PCS','LTR'],
+                    isGstExempt:['Y','N'],enableBatchTracking:['Y','N'],enableSerialTracking:['Y','N']].each { key, values ->
+                    if (supplied.containsKey(key)) {
+                        def value=(supplied[key] ?: '').toString()
+                        if (!(value in values) && value!=curProd.get(key)) ec.message.addError('Choose a valid '+key+'.')
+                        else productChanges[key]=value ?: null
+                    }
+                }
+                ['mrpAmount','reorderPoint'].each { key ->
+                    if (supplied.containsKey(key)) {
+                        def value=(supplied[key] ?: '').toString().trim()
+                        try {
+                            def number=value ? new BigDecimal(value) : null
+                            if (number!=null && (number.signum()<0 || number.precision()>18 || number.scale()>6)) throw new IllegalArgumentException()
+                            productChanges[key]=number
+                        } catch (Exception ignored) { ec.message.addError(key+' must be 0 or a positive number (up to 6 decimal places).') }
+                    }
+                }
+                if (supplied.containsKey('gstSlabId')) {
+                    def slab=(supplied.gstSlabId ?: '').toString()
+                    if (slab && !ec.entity.find('zenith.erp.india.IndiaGstSlab').condition('gstSlabId',slab).one()) ec.message.addError('Choose an existing GST rate.')
+                    else productChanges.gstSlabId=slab ?: null
+                }
+                preparedImage=null
+                def image=(supplied.imageData ?: '').toString()
+                if (image) {
+                    try {
+                        if (image.length()>2800000 || !(image ==~ /data:image\/(png|jpeg);base64,[A-Za-z0-9+\/=]+/)) throw new IllegalArgumentException()
+                        byte[] bytes=Base64.decoder.decode(image.substring(image.indexOf(',')+1))
+                        if (bytes.length>2097152) throw new IllegalArgumentException()
+                        def stream=javax.imageio.ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))
+                        try {
+                            def readers=javax.imageio.ImageIO.getImageReaders(stream)
+                            if (!readers.hasNext()) throw new IllegalArgumentException()
+                            def reader=readers.next()
+                            try {
+                                reader.setInput(stream)
+                                if (reader.getWidth(0)>4096 || reader.getHeight(0)>4096) throw new IllegalArgumentException()
+                                def detected=reader.getFormatName().toLowerCase()
+                                if (!(detected in ['jpeg','jpg','png'])) throw new IllegalArgumentException()
+                                def format=detected in ['jpeg','jpg'] ? 'jpeg' : 'png'
+                                def buffer=new ByteArrayOutputStream()
+                                javax.imageio.ImageIO.write(reader.read(0),format,buffer)
+                                if (buffer.size()>2097152) throw new IllegalArgumentException()
+                                preparedImage='data:image/'+format+';base64,'+Base64.encoder.encodeToString(buffer.toByteArray())
+                            } finally { reader.dispose() }
+                        } finally { stream.close() }
+                    } catch (Exception ignored) { ec.message.addError('Use a valid JPG or PNG image, at most 2 MB and 4096 pixels per side.') }
                 }
             ]]></script>
-            <if condition="mrpNegative">
-                <return error="true" message="Selling Price / MRP can't be negative — please enter 0 or a positive amount."/>
-            </if>
+            <if condition="ec.message.hasError()"><return/></if>
             <if condition="pseudoId">
                 <set field="pseudoId" from="pseudoId.toString().trim()"/>
                 <!-- Uniqueness: a scan code must be unique within the organization, else the till can't tell
@@ -63,7 +126,7 @@
                     }
                 ]]></script>
             </if>
-            <service-call name="update#mantle.product.Product" in-map="context + [ownerPartyId:curProd.ownerPartyId]"/>
+            <service-call name="update#mantle.product.Product" in-map="productChanges"/>
             <!-- ZE-PRC-008 (PRC-031): record a Price History (PriceChangeLog) row when the Selling Price (mrpAmount)
                  changes on the product screen, so the change is auditable like a price-list edit. priceListId is
                  null (this is the product-level MRP, not a price-list item). Best-effort — a log failure must never
@@ -83,6 +146,14 @@
                             changedByUserId: ec.user.userId, changeDate: ec.user.nowTimestamp]).call()
                     }
                 } catch (Throwable e) { ec.logger.warn("Price history log skipped for product " + productId + ": " + e.message) }
+            ]]></script>
+            <script><![CDATA[
+                def imageRow=ec.entity.find('zenith.erp.inventory.ProductEditorImage').condition('productId',productId)
+                    .condition('organizationPartyId',curProd.ownerPartyId).one()
+                if (preparedImage) {
+                    if (imageRow) { imageRow.imageData=preparedImage;imageRow.update() }
+                    else ec.entity.makeValue('zenith.erp.inventory.ProductEditorImage').setAll([productId:productId,organizationPartyId:curProd.ownerPartyId,imageData:preparedImage]).create()
+                } else if (ec.web.parameters.removeImage=='Y' && imageRow) imageRow.delete()
             ]]></script>
             <!-- Keep the rich ProductBarcode table in sync (mirror the code as the primary barcode).
                  Mirror conflicts roll back the product update, preventing ambiguous scan codes. -->
@@ -106,6 +177,7 @@
         <set field="noAccess" from="!_acc.allowed"/>
         <if condition="_acc.allowed">
         <entity-find-one entity-name="mantle.product.Product" value-field="product"/>
+        <if condition="!product"><set field="noAccess" from="true"/><return/></if>
 
         <entity-find entity-name="zenith.erp.inventory.StockByFacilityView" list="stockList">
             <econdition field-name="productId"/>
@@ -119,12 +191,17 @@
             <order-by field-name="-lastUpdatedStamp"/>
         </entity-find>
 
+        <entity-find entity-name="zenith.erp.india.IndiaGstSlab" list="gstSlabs"><order-by field-name="gstRate"/></entity-find>
+        <entity-find-one entity-name="zenith.erp.inventory.ProductEditorImage" value-field="productImage"><field-map field-name="productId"/></entity-find-one>
         <set field="currSymbol" value="₹"/>
         <set field="totalQoh" from="0"/>
         <script><![CDATA[
             // ZE-INV-IV-035 f/u: fully-qualified below (no `import` — this script is now nested in <if allowed>,
             // and a Groovy import must be top-level, not inside a block).
             def ef = ec.entity
+            def ownedFacilities=ef.find('mantle.facility.Facility').condition('ownerPartyId',product.ownerPartyId).list()*.facilityId as Set
+            stockList=stockList.findAll { ownedFacilities.contains(it.facilityId) }
+            if (productImage?.organizationPartyId != product.ownerPartyId) productImage=null
             for (def stock : stockList) {
                 totalQoh += (stock.totalQoh ?: 0)
             }
@@ -135,6 +212,7 @@
             def _mrp = (product?.mrpAmount ?: 0G) as java.math.BigDecimal
             def _pa = ef.find("mantle.product.asset.Asset")
                         .condition("productId", productId)
+                        .condition("ownerPartyId", product.ownerPartyId)
                         .condition("assetTypeEnumId", "AstTpInventory")
                         .condition("quantityOnHandTotal", org.moqui.entity.EntityCondition.GREATER_THAN, 0G).list()
             for (a in _pa) {
@@ -146,193 +224,19 @@
                 def k = (a.facilityId ?: '') + '|' + (a.lotId ?: '')
                 stockValueByRow[k] = (stockValueByRow[k] ?: 0G) + val
             }
+            totalAtp=stockList.sum { it.totalAtp ?: 0G } ?: 0G
+            totalStockValue=stockList.sum { stockValueByRow[(it.facilityId ?: '')+'|'+(it.lotId ?: '')] ?: 0G } ?: 0G
         ]]></script>
         </if>
     </actions>
 
     <widgets>
-        <!-- Quasar input-sizing fix. /qapps strips both literal <style> AND inline <script> tags from
-             screen content, but inline event attributes survive, so inject the CSS from an <img onload>. -->
-        <render-mode><text type="html,qvt" template="true"><![CDATA[
-            <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="if(!document.getElementById('zEpInputFix')){var s=document.createElement('style');s.id='zEpInputFix';s.textContent='.q-field__control{min-height:40px !important}.q-field__native,.q-field__input{padding-top:12px !important}.q-field__label{top:12px !important}';document.head.appendChild(s);}"/>
-        ]]></text></render-mode>
-        <link url="findProduct" text="Back to Catalog" link-type="anchor"/>
-
-        <!-- ZE-INV-IV-035 f/u: cross-tenant / missing product — plain notice, never another org's product data -->
-        <section name="NoAccess">
-            <condition><expression>noAccess</expression></condition>
-            <widgets>
-                <container style="zenith-card q-pa-lg bg-white shadow-1 border-radius-md q-mt-md text-center">
-                    <label text="That product isn't part of your account." type="h5" style="text-grey-8 q-mb-xs"/>
-                    <label text="It may belong to another organization, or it may not exist. Use “Back to Catalog” above to return to your list." type="p" style="text-grey-6 q-mb-none"/>
-                </container>
-            </widgets>
-        </section>
-
-        <section name="TheProduct">
-        <condition><expression>!noAccess</expression></condition>
-        <widgets>
-        <section name="EditProductDeleteBtn"><condition><expression>invCanWrite</expression></condition><widgets>
-        <link url="deleteProduct" text="Delete Product" icon="delete" parameter-map="[productId:productId]"
-              confirmation="Permanently delete this product? Only possible while it has no bills, invoices, orders or stock history."
-              class="q-btn--flat bg-red-1 text-negative q-ml-sm"/>
+        <section name="NoAccess"><condition><expression>noAccess</expression></condition><widgets>
+            <label text="That product isn't part of your account." type="h4"/>
+            <link url="findProduct" text="Back to Products"/>
         </widgets></section>
-        
-        <!-- Profile Banner -->
-        <container style="zenith-profile-banner q-pa-lg bg-white shadow-1 border-radius-lg q-mb-lg">
-            <container style="row items-center justify-between no-wrap">
-                <container style="row items-center">
-                    <container style="zenith-avatar q-mr-lg text-white rounded-borders bg-teal-8 q-pa-md flex flex-center">
-                        <label text="PRD" type="span" style="text-weight-bold text-h6"/>
-                    </container>
-                    <container style="column">
-                        <label text="${product?.productName} [${product?.pseudoId ?: productId}]" type="h3" style="text-primary text-weight-bold q-my-none"/>
-                        <label text="${product?.productTypeEnumId == 'PtService' ? 'Service' : 'Physical Asset'}" type="p" style="text-grey-7 text-subtitle2 q-mt-xs q-mb-none"/>
-                    </container>
-                </container>
-                
-                <container style="column items-end text-right">
-                    <label text="Total In Stock" type="span" style="text-grey-7"/>
-                    <label text="${totalQoh}" type="strong" style="text-h4 text-dark"/>
-                </container>
-            </container>
-        </container>
-
-        <container-row>
-            <row-col lg="6">
-                <!-- Core Details -->
-                <container style="zenith-card q-pa-md bg-white shadow-1 border-radius-md q-mb-md">
-                    <label text="Basic Information" type="h5" style="text-primary text-weight-bold q-mb-md border-bottom q-pb-sm"/>
-                    <form-single name="ProductBasicForm" transition="updateProduct" map="product">
-                        <field name="productId"><default-field><hidden/></default-field></field>
-                        
-                        <field name="pseudoId"><default-field title="Item Code / Barcode"><text-line size="30"/>
-                            <label text="The product's barcode or short code. Type it here, or click the box and scan the barcode with a scanner gun. At billing, scanning (or typing) this code instantly adds this product to the cart — so any item you want to scan needs a code here." style="text-grey-6 text-caption" type="p"/></default-field></field>
-                        <field name="productName"><default-field title="Product Name"><text-line size="60"/></default-field></field>
-                        <field name="description"><default-field title="Description"><text-area rows="3"/></default-field></field>
-                        
-                        <field name="productTypeEnumId">
-                            <default-field title="Product Type">
-                                <drop-down>
-                                    <option key="PtAsset" text="Physical product (something you stock &amp; count)"/>
-                                    <option key="PtService" text="Service (no stock, e.g. repair, delivery)"/>
-                                    <option key="PtDigitalAsset" text="Digital product (download / online)"/>
-                                </drop-down>
-                            </default-field>
-                        </field>
-                        
-                        <field name="submitButton">
-                            <conditional-field name="save_basic_write" condition="invCanWrite" title="Save Basic Info"><submit/></conditional-field>
-                            <default-field><label text="You have view-only access — changes are disabled." type="span" style="text-grey-7"/></default-field>
-                        </field>
-                    </form-single>
-                </container>
-            </row-col>
-            
-            <row-col lg="6">
-                <!-- Indian Statutory Details -->
-                <container style="zenith-card q-pa-md bg-white shadow-1 border-radius-md q-mb-md border-left border-indigo">
-                    <label text="Tax Details (GST)" type="h5" style="text-indigo-8 text-weight-bold q-mb-md border-bottom q-pb-sm"/>
-                    <form-single name="ProductTaxForm" transition="updateProduct" map="product">
-                        <field name="productId"><default-field><hidden/></default-field></field>
-                        
-                        <field name="hsnCode"><default-field title="Tax Code – HSN (for products)"><text-line size="10"/></default-field></field>
-                        <field name="sacCode"><default-field title="Tax Code – SAC (for services)"><text-line size="10"/></default-field></field>
-                        
-                        <field name="uqcEnumId">
-                            <default-field title="Unit (how you sell it)">
-                                <drop-down allow-empty="true">
-                                    <option key="NOS" text="NOS - Numbers"/>
-                                    <option key="KGS" text="KGS - Kilograms"/>
-                                    <option key="MTR" text="MTR - Meters"/>
-                                    <option key="PCS" text="PCS - Pieces"/>
-                                    <option key="LTR" text="LTR - Liters"/>
-                                </drop-down>
-                            </default-field>
-                        </field>
-
-                        <field name="gstSlabId">
-                            <default-field title="GST Tax Rate">
-                                <drop-down allow-empty="true">
-                                    <entity-options key="${gstSlabId}" text="${slabName} (${gstRate}%)">
-                                        <entity-find entity-name="zenith.erp.india.IndiaGstSlab"/>
-                                    </entity-options>
-                                </drop-down>
-                            </default-field>
-                        </field>
-                        
-                        <field name="isGstExempt">
-                            <default-field title="Tax-free item?">
-                                <drop-down no-current-selected-key="N">
-                                    <option key="N" text="No (Taxable)"/>
-                                    <option key="Y" text="Yes (Nil-Rated/Exempt)"/>
-                                </drop-down>
-                            </default-field>
-                        </field>
-
-                        <field name="mrpAmount"><default-field title="Selling Price (MRP)"><text-line size="10"/>
-                            <label text="The price you charge customers. This is what shows up at the POS and on bills." style="text-grey-6 text-caption" type="p"/></default-field></field>
-                        
-                        <field name="enableBatchTracking">
-                            <default-field title="Track by batch / lot?">
-                                <drop-down><option key="Y" text="Yes"/><option key="N" text="No"/></drop-down>
-                            </default-field>
-                        </field>
-
-                        <!-- ZE-INV-IV-090: the "Track by serial number?" flag drives the Serial Numbers module
-                             (only enableSerialTracking='Y' products can have serials registered + serials follow
-                             the goods on transfers). The field existed but had NO UI to set it, so no product was
-                             ever serial-trackable and the Register Serial "Product" dropdown was always empty. -->
-                        <field name="enableSerialTracking">
-                            <default-field title="Track by serial number?">
-                                <drop-down no-current-selected-key="N"><option key="Y" text="Yes"/><option key="N" text="No"/></drop-down>
-                                <label text="For items you track one-by-one (electronics, appliances). Turn this on to register serial numbers for this product under Inventory → Serial Numbers." style="text-grey-6 text-caption" type="p"/>
-                            </default-field>
-                        </field>
-
-                        <!-- ZE-INV-004: reorder point (low-stock alert level). Drives the Inventory Dashboard
-                             "low on stock" count when on-hand qty falls to/below it. Pre-fills from the product. -->
-                        <field name="reorderPoint"><default-field title="Reorder Point (low-stock alert)"><text-line size="10"/>
-                            <label text="Flag this item as low on stock when its quantity falls to this level or below. Leave blank for no alert." style="text-grey-6 text-caption" type="p"/></default-field></field>
-
-                        <field name="submitButton">
-                            <conditional-field name="save_tax_write" condition="invCanWrite" title="Save Tax Info"><submit/></conditional-field>
-                            <default-field><label text="You have view-only access — changes are disabled." type="span" style="text-grey-7"/></default-field>
-                        </field>
-                    </form-single>
-                </container>
-            </row-col>
-        </container-row>
-
-        <!-- Stock by Facility -->
-        <container style="zenith-card q-pa-md bg-white shadow-1 border-radius-md q-mb-lg" condition="product?.productTypeEnumId != 'PtService'">
-            <label text="Stock by Store / Warehouse" type="h5" style="text-primary text-weight-bold q-mb-md border-bottom q-pb-sm"/>
-            <form-list name="FacilityStockList" list="stockList" skip-form="true">
-                <field name="facilityName"><default-field title="Store / Warehouse"><label text="${facilityName ?: '— No store —'}" type="strong" style="text-dark"/></default-field></field>
-                <field name="totalQoh"><default-field title="Quantity on Hand"><label text="${totalQoh}" type="span" style="text-weight-bold"/></default-field></field>
-                <field name="totalAtp"><default-field title="Free to Sell"><label text="${totalAtp}" type="span"/></default-field></field>
-                <field name="rowStockValue"><default-field title="Stock Value (${currSymbol})"><label text="${zinr.inr(ec.l10n.format((stockValueByRow[(facilityId ?: '') + '|' + (lotId ?: '')] ?: 0), '#,##,##0.00'))}" type="span"/></default-field></field>
-            </form-list>
-        </container>
-
-        <!-- ZE-PRC-008 (PRC-031): Price History for this product (Selling Price/MRP changes + any price-list logs). -->
-        <container style="zenith-card q-pa-md bg-white shadow-1 border-radius-md q-mb-lg">
-            <label text="Price History" type="h5" style="text-primary text-weight-bold q-mb-md border-bottom q-pb-sm"/>
-            <section name="HasPriceHistory"><condition><expression>priceHistory</expression></condition><widgets>
-                <form-list name="PriceHistoryList" list="priceHistory" skip-form="true">
-                    <field name="changeDate"><default-field title="Date"><display format="dd-MMM-yyyy HH:mm"/></default-field></field>
-                    <field name="previousPrice"><default-field title="Old Price"><display format="₹#,##0.00"/></default-field></field>
-                    <field name="newPrice"><default-field title="New Price"><display format="₹#,##0.00"/></default-field></field>
-                    <field name="changeReason"><default-field title="Reason"><display/></default-field></field>
-                    <field name="changedByUserId"><default-field title="Changed By"><display/></default-field></field>
-                </form-list>
-            </widgets></section>
-            <section name="NoPriceHistory"><condition><expression>!priceHistory</expression></condition><widgets>
-                <label text="No price changes recorded yet. Update the Selling Price above to start the history." type="p" style="text-grey-6 q-mb-none"/>
-            </widgets></section>
-        </container>
-        </widgets>
-        </section>
-
+        <section name="ProductEditor"><condition><expression>!noAccess</expression></condition><widgets>
+            <render-mode><text type="html,qvt" location="component://zenith-erp-inventory/template/product/EditProduct.html.ftl"/></render-mode>
+        </widgets></section>
     </widgets>
 </screen>

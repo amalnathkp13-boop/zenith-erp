@@ -452,7 +452,7 @@
             <!-- Get product details -->
             <entity-find-one entity-name="mantle.product.Product" value-field="product">
                 <field-map field-name="productId"/></entity-find-one>
-            <set field="productName" from="product?.productName ?: productId"/>
+            <set field="productName" from="product?.printName ?: product?.productName ?: productId"/>
             <!-- Look up session/terminal up-front: needed for org-aware pricing AND tax -->
             <entity-find-one entity-name="zenith.erp.pos.PosSession" value-field="session">
                 <field-map field-name="sessionId" from="txn.sessionId"/></entity-find-one>

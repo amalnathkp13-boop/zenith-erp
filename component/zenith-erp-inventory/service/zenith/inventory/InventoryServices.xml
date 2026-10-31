@@ -584,6 +584,7 @@
                 // audit: an irreversible delete on a live system must be reconstructable from the logs
                 ec.logger.warn("delete#Product AUDIT: user " + (ec.user.username ?: "?") + " permanently deleting product " + productId + " (org " + prod.ownerPartyId + "): " + groovy.json.JsonOutput.toJson(new HashMap(prod)))
                 try {
+                    ec.entity.find("zenith.erp.inventory.ProductEditorImage").condition("productId", productId).condition("organizationPartyId",prod.ownerPartyId).deleteAll()
                     ec.entity.find("mantle.product.ProductPrice").condition("productId", productId).deleteAll()
                     ec.entity.find("zenith.erp.pos.PosProductModePrice").condition("productId", productId).deleteAll()
                     ec.entity.find("mantle.product.category.ProductCategoryMember").condition("productId", productId).deleteAll()

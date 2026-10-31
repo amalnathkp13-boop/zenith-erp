@@ -1,0 +1,367 @@
+{
+  "productionAccess": false,
+  "results": [
+    {
+      "name": "Synthetic fixtures initialize",
+      "passed": true
+    },
+    {
+      "name": "apps editor exposes all reference sections",
+      "passed": true
+    },
+    {
+      "name": "apps print name defaults to product name",
+      "passed": true
+    },
+    {
+      "name": "apps automatic print name follows typing",
+      "passed": true
+    },
+    {
+      "name": "apps explicit print name survives product rename",
+      "passed": true
+    },
+    {
+      "name": "apps reset returns to automatic name",
+      "passed": true
+    },
+    {
+      "name": "apps real form save persists and uses null automatic override",
+      "passed": true,
+      "product_name": "Disposable editor product renamed",
+      "print_name": null,
+      "mrp_amount": "100.0000",
+      "owner_party_id": "POS_QA_A",
+      "hsn_code": null,
+      "description": "Synthetic editor save"
+    },
+    {
+      "name": "apps editor no horizontal overflow at 1440",
+      "passed": true,
+      "width": 1186,
+      "scroll": 1186
+    },
+    {
+      "name": "apps editor no horizontal overflow at 1024",
+      "passed": true,
+      "width": 770,
+      "scroll": 770
+    },
+    {
+      "name": "apps editor no horizontal overflow at 768",
+      "passed": true,
+      "width": 738,
+      "scroll": 738
+    },
+    {
+      "name": "apps editor no horizontal overflow at 390",
+      "passed": true,
+      "width": 360,
+      "scroll": 360
+    },
+    {
+      "name": "qapps editor exposes all reference sections",
+      "passed": true
+    },
+    {
+      "name": "qapps print name defaults to product name",
+      "passed": true
+    },
+    {
+      "name": "qapps automatic print name follows typing",
+      "passed": true
+    },
+    {
+      "name": "qapps explicit print name survives product rename",
+      "passed": true
+    },
+    {
+      "name": "qapps reset returns to automatic name",
+      "passed": true
+    },
+    {
+      "name": "qapps real form save persists and uses null automatic override",
+      "passed": true,
+      "product_name": "Disposable editor product renamed",
+      "print_name": null,
+      "mrp_amount": "100.0000",
+      "owner_party_id": "POS_QA_A",
+      "hsn_code": null,
+      "description": "Synthetic editor save"
+    },
+    {
+      "name": "qapps editor no horizontal overflow at 1440",
+      "passed": true,
+      "width": 1186,
+      "scroll": 1186
+    },
+    {
+      "name": "qapps editor no horizontal overflow at 1024",
+      "passed": true,
+      "width": 770,
+      "scroll": 770
+    },
+    {
+      "name": "qapps editor no horizontal overflow at 768",
+      "passed": true,
+      "width": 738,
+      "scroll": 738
+    },
+    {
+      "name": "qapps editor no horizontal overflow at 390",
+      "passed": true,
+      "width": 360,
+      "scroll": 360
+    },
+    {
+      "name": "Unpriced product keeps a blank MRP input",
+      "passed": true
+    },
+    {
+      "name": "Saving unpriced product does not turn it into a free item",
+      "passed": true
+    },
+    {
+      "name": "Custom print name persists",
+      "passed": true
+    },
+    {
+      "name": "Partial product rename preserves explicit print name",
+      "passed": true
+    },
+    {
+      "name": "Invalid input rejected productName",
+      "passed": true
+    },
+    {
+      "name": "Invalid input rejected mrpAmount",
+      "passed": true
+    },
+    {
+      "name": "Invalid input rejected mrpAmount",
+      "passed": true
+    },
+    {
+      "name": "Invalid input rejected reorderPoint",
+      "passed": true
+    },
+    {
+      "name": "Invalid input rejected printName",
+      "passed": true
+    },
+    {
+      "name": "Invalid input rejected gstSlabId",
+      "passed": true
+    },
+    {
+      "name": "Invalid input rejected productTypeEnumId",
+      "passed": true
+    },
+    {
+      "name": "Invalid input rejected pseudoId",
+      "passed": true
+    },
+    {
+      "name": "Invalid input rejected imageData",
+      "passed": true
+    },
+    {
+      "name": "Forged ownership ignored",
+      "passed": true
+    },
+    {
+      "name": "Foreign update rejected",
+      "passed": true
+    },
+    {
+      "name": "Missing CSRF rejected",
+      "passed": true
+    },
+    {
+      "name": "Foreign page hides product identity",
+      "passed": true
+    },
+    {
+      "name": "Real image upload form persists separately from catalogue rows",
+      "passed": true
+    },
+    {
+      "name": "Saved image survives reload",
+      "passed": true
+    },
+    {
+      "name": "Explicit image removal persists",
+      "passed": true
+    },
+    {
+      "name": "Price changes retain real audit history",
+      "passed": true
+    },
+    {
+      "name": "Editor changes do not modify invoices",
+      "passed": true
+    },
+    {
+      "name": "POS open succeeds",
+      "passed": true,
+      "result": {
+        "sessionId": "100000"
+      },
+      "errors": []
+    },
+    {
+      "name": "POS cart succeeds",
+      "passed": true,
+      "result": {
+        "transactionId": "100000"
+      },
+      "errors": []
+    },
+    {
+      "name": "POS add succeeds",
+      "passed": true,
+      "result": {
+        "itemSeqId": "00001"
+      },
+      "errors": []
+    },
+    {
+      "name": "New POS item snapshots custom print name",
+      "passed": true
+    },
+    {
+      "name": "POS pay succeeds",
+      "passed": true,
+      "result": {
+        "paymentId": "100000"
+      },
+      "errors": []
+    },
+    {
+      "name": "POS complete succeeds",
+      "passed": true,
+      "result": {},
+      "errors": []
+    },
+    {
+      "name": "POS receipt succeeds",
+      "passed": true,
+      "result": {
+        "receipt": {
+          "success": true,
+          "action": "receiptData",
+          "store": {
+            "name": "Disposable POS QA A",
+            "address": "",
+            "phone": "",
+            "email": "",
+            "taxReg": "",
+            "headerText": "",
+            "footerText": "",
+            "termsText": ""
+          },
+          "bill": {
+            "number": "POS/20261031/00001",
+            "date": "31/10/2026 02:56 pm",
+            "cashier": "Disposable POS QA",
+            "customer": "Walk-In Customer",
+            "customerPhone": ""
+          },
+          "items": [
+            {
+              "name": "Synthetic receipt cup",
+              "qty": 1,
+              "rate": 100,
+              "total": 100,
+              "discount": 0,
+              "mode": "Retail",
+              "uom": "Nos"
+            }
+          ],
+          "summary": {
+            "subtotal": 100,
+            "discount": 0,
+            "tax": 0,
+            "roundOff": 0,
+            "total": 100,
+            "totalQty": 1,
+            "itemCount": 1
+          },
+          "payments": [
+            {
+              "method": "Cash",
+              "amount": 100
+            }
+          ],
+          "change": 0,
+          "saving": 0,
+          "isCredit": false,
+          "outstanding": 0
+        }
+      },
+      "errors": []
+    },
+    {
+      "name": "Reprinting issued bill retains its saved custom name",
+      "passed": true
+    },
+    {
+      "name": "Editing names does not alter or renumber issued invoice",
+      "passed": true
+    },
+    {
+      "name": "Blank override follows later rename",
+      "passed": true
+    },
+    {
+      "name": "POS cart succeeds",
+      "passed": true,
+      "result": {
+        "transactionId": "100001"
+      },
+      "errors": []
+    },
+    {
+      "name": "POS add succeeds",
+      "passed": true,
+      "result": {
+        "itemSeqId": "00001"
+      },
+      "errors": []
+    },
+    {
+      "name": "New default-name bill uses renamed product",
+      "passed": true
+    },
+    {
+      "name": "POS void succeeds",
+      "passed": true,
+      "result": {},
+      "errors": []
+    },
+    {
+      "name": "POS close succeeds",
+      "passed": true,
+      "result": {},
+      "errors": []
+    },
+    {
+      "name": "Disposable view-only role enabled",
+      "passed": true
+    },
+    {
+      "name": "View-only editor disables changes",
+      "passed": true
+    },
+    {
+      "name": "Direct view-only update cannot change data",
+      "passed": true
+    },
+    {
+      "name": "Synthetic cashier role restored",
+      "passed": true
+    }
+  ],
+  "checks": 62,
+  "failures": 0
+}
