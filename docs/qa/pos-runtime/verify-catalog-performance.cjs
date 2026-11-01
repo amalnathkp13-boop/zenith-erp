@@ -48,16 +48,27 @@ module.exports = async function ({a, foreign, base, check, q, invoke}) {
         check(shell+' catalog transition rejects GET',get.status()!==200,{status:get.status()});
     }
     const cashierContext=await a.c.browser().newContext({serviceWorkers:'block'});
+    let cashierSession,cashier;
     try {
         await cashierContext.request.get(base+'/apps/zenith/pos/Terminal',{
             headers:{Authorization:'Basic '+Buffer.from('pos.cashier.qa:moqui').toString('base64')}
         });
         const cashierPage=await cashierContext.newPage();
-        await cashierPage.goto(base+'/apps/zenith/pos/Terminal?sessionId='+sessionId,{waitUntil:'networkidle'});
-        const cashier={c:cashierContext,t:await cashierPage.locator('[name=moquiSessionToken]').first().inputValue()};
-        const {r,body}=await request({},cashier);
+        await cashierPage.goto(base+'/apps/zenith/pos/Terminal',{waitUntil:'networkidle'});
+        cashier={c:cashierContext,t:await cashierPage.locator('[name=moquiSessionToken]').first().inputValue()};
+        // A billing login must use its own session on the explicitly assigned counter.
+        await invoke('assignTerminal',{userId:'POS_QA_CASHIER',terminalId:'POS_QA_A_TERM2'});
+        cashierSession=await invoke('open',{terminalId:'POS_QA_A_TERM2',openingCash:'0'},false,cashier);
+        const denied=await request({},cashier);
+        check('catalog denies the cashier an admin-owned session',denied.r.status()===403||denied.body.success===false);
+        await cashierPage.goto(base+'/apps/zenith/pos/Terminal?sessionId='+cashierSession.sessionId,{waitUntil:'networkidle'});
+        const {r,body}=await request({sessionId:cashierSession.sessionId},cashier);
         check('a cashier retains authorized catalog access',r.status()===200&&body.success&&body.products.length>0,{status:r.status()});
-    } finally {await cashierContext.close();}
+    } finally {
+        if(cashierSession)await invoke('close',{sessionId:cashierSession.sessionId,closingCash:'0'},false,cashier);
+        await invoke('assignTerminal',{userId:'POS_QA_CASHIER',terminalId:'POS_QA_A_TERM1'});
+        await cashierContext.close();
+    }
     check('catalog browsing leaves persisted carts, money, prices and stock unchanged',snapshot()===before);
     const cart=await invoke('cart',{sessionId,reuseOpenCart:'false'});
     await invoke('add',{transactionId:cart.transactionId,productId:'POS_QA_A_P18',quantity:'1',taxOn:'N'});

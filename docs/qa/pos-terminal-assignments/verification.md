@@ -35,6 +35,9 @@ accounts, assignments, bills or hardware configuration were changed for this PR.
   assignments, fixed terminal display, session/bill boundaries, payment/receipt
   completion, reassignment rules and CSRF.
 - Existing focused history/shop regression: 60 assertions, zero failures.
+- Catalog acceptance fixtures now open a cashier-owned session on an explicitly
+  assigned counter and assert that an admin-owned session is rejected. Focused
+  catalog acceptance (including bootstrap checks): 123 assertions, zero failures.
 - Existing wrapped-tablet checkout: 162 assertions, zero failures.
 - Receipt layout/options, 12 QZ routing cases, shared chrome and navigation guards:
   passed. The exact production access script also passed the standalone Groovy
