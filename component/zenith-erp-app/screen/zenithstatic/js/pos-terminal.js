@@ -2581,8 +2581,28 @@ window.posToggleFullscreen = function() {
         var qzPrinter = '';
         try { qzPrinter = localStorage.getItem('posPrinter') || ''; } catch(e) {}
 
+        var QZ_CERT = "-----BEGIN CERTIFICATE-----\nMIIDQzCCAiugAwIBAgIUZkbpbAL3gGfcBrr5rxN1X7YE1s0wDQYJKoZIhvcNAQEL\nBQAwMTEUMBIGA1UEAwwLWmV0YUVSUCBQT1MxGTAXBgNVBAoMEFpldGFFUlAgUGxh\ndGZvcm0wHhcNMjYxMDMxMTYwNDE2WhcNMzYxMDI4MTYwNDE2WjAxMRQwEgYDVQQD\nDAtaZXRhRVJQIFBPUzEZMBcGA1UECgwQWmV0YUVSUCBQbGF0Zm9ybTCCASIwDQYJ\nKoZIhvcNAQEBBQADggEPADCCAQoCggEBALngd59q7TFHGEwWXSa6lX8RMf7FJfyk\nNe5LRUgQkzvDrFrwHsmWT6xHPZv4LiEl2hfTvr3cQAu+zqadGFMoNk5ZISNHclXl\nwzDOYwZ/vtV4hmGWd2U80bpJb1jA1GDh4MbnQrFwnTn+YjW5g87HzAc61rH1qevC\njr11aD5PeclGgAFlSxYgKWg9JH6WyoF7AJBTGKiKT0Q+RqRuaeSsEif/fBmQkhLE\npj/R/Oewg53ghd0zxE8yz/errgS0iHc6ryY52uHxhFT23eiiO5Rnc+25fAqSJNX6\n2Pw+OJ0QKnSF4aOOmSpnP5c5aW3UwdaNWdUZjYK6Y/eELChB7PnwNQ8CAwEAAaNT\nMFEwHQYDVR0OBBYEFOLJawO9QyRTntz0Q3Icj2806j1FMB8GA1UdIwQYMBaAFOLJ\nawO9QyRTntz0Q3Icj2806j1FMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQEL\nBQADggEBAJsomo0uSqFqg42WgA+E7bTifHdLfjUogqszxFjtawDAN6MXaoDL/x1R\n50GICuqGCMy9Gw6EZ/6M9mNp305+PVySZT27Nvvayj4/uCBENL2/CIZtHPPAgyLA\n41B1Lbsz+WcYz8s2yo5fxKXNdzNyzOo1B6A8VJbE6SFBFz8P26Q/iFHbIz0s7AkX\np9QvCSwGcwdyhcZe4RLWyoWWVwplFKghrm5obv2m33Cz3qaM+oUvZF6g5LmHRfPb\nkWVRze3558Z6MB2IicvDqlT9KqFXw3t8/L/RYnhRHvh1N41EOSauLNWy5sKQzMaS\nhDdKy72Sct97bx4uhhwKtrGm0jHfWBM=\n-----END CERTIFICATE-----";
+        var qzSecured = false;
+        function qzSecuritySetup() {
+            if (qzSecured || typeof qz === 'undefined' || !qz.security) return;
+            qzSecured = true;
+            try {
+                qz.security.setSignatureAlgorithm('SHA1');  // Moqui /apps/qzSign signs SHA1withRSA
+                qz.security.setCertificatePromise(function(resolve) { resolve(QZ_CERT); });
+                qz.security.setSignaturePromise(function(toSign) {
+                    return function(resolve) {
+                        fetch('/apps/qzSign?message=' + encodeURIComponent(toSign), { credentials: 'same-origin' })
+                            .then(function(r) { if (!r.ok) throw new Error('qzSign HTTP ' + r.status); return r.text(); })
+                            .then(function(sig) { console.log('[qz-signing] signed OK len=' + (sig||'').length); resolve(sig); },
+                                  function(e) { console.warn('[qz-signing] SIGN FAILED:', (e && e.message) || e); resolve(); });
+                    };
+                });
+            } catch (e) {}
+        }
+
         function qzConnect() {
             if (typeof qz === 'undefined') return Promise.reject('QZ Tray library not loaded');
+            qzSecuritySetup();  // trusted-cert signing -> QZ Tray silent print (no per-print prompt)
             if (!qzConnection && qz.websocket.isActive()) return Promise.resolve();
             // Checkout can overlap the background probe or QZ's permission prompt.
             // Share the real connection, including after a caller's deadline expires.
@@ -2703,7 +2723,7 @@ window.posToggleFullscreen = function() {
             setTimeout(triggerBanner, 6000);
         }
 
-        function offerBrowserPrint(html, billNum) {
+        function offerBrowserPrint(html, billNum, qzErr) {
             // Never force a native print dialog over fullscreen after a QZ failure.
             // A retry prints only this receipt; it does not repeat checkout/payment.
             var panel = document.createElement('div');
@@ -2719,6 +2739,7 @@ window.posToggleFullscreen = function() {
                 + '<button type="button" class="pos-print-browser">Print using browser</button>'
                 + '<button type="button" class="pos-print-cancel">Close</button></div></div>';
             document.body.appendChild(panel);
+            if (qzErr) { try { panel.querySelector('.pos-print-status').textContent = 'QZ Tray did not print. Reason: ' + qzErr + '. Retry, or print via browser.'; } catch(e) {} }
             panel.querySelectorAll('button').forEach(function(button) {
                 button.style.cssText = 'padding:10px 14px;border:1px solid #7C3AED;border-radius:8px;background:#fff;color:#5b21b6;font-size:14px;cursor:pointer';
             });
@@ -2752,7 +2773,7 @@ window.posToggleFullscreen = function() {
                     return qzPrint(html + '</body></html>', billNum).catch(function(err) {
                         if (err === 'cancelled') return;
                         console.warn('QZ Tray did not confirm receipt printing:', err);
-                        offerBrowserPrint(html, billNum);
+                        offerBrowserPrint(html, billNum, err);
                     }).finally(function() { if (connecting) connecting.remove(); });
                 } else if (document.fullscreenElement || document.webkitFullscreenElement) {
                     offerBrowserPrint(html, billNum);
