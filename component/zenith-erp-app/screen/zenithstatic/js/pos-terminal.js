@@ -2592,7 +2592,9 @@ window.posToggleFullscreen = function() {
                 qz.security.setSignaturePromise(function(toSign) {
                     return function(resolve) {
                         fetch('/apps/qzSign?message=' + encodeURIComponent(toSign), { credentials: 'same-origin' })
-                            .then(function(r) { return r.text(); }).then(resolve, function() { resolve(); });
+                            .then(function(r) { if (!r.ok) throw new Error('qzSign HTTP ' + r.status); return r.text(); })
+                            .then(function(sig) { console.log('[qz-signing] signed OK len=' + (sig||'').length); resolve(sig); },
+                                  function(e) { console.warn('[qz-signing] SIGN FAILED:', (e && e.message) || e); resolve(); });
                     };
                 });
             } catch (e) {}
