@@ -37,6 +37,15 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  if(process.env.POS_QA_FOCUS==='credit-terms'){await require('./verify-credit-terms.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='confirmation'){await require('./verify-checkout-confirmation.cjs')({a,base,check,q,invoke,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='rate-sync'){await require('./verify-rate-sync.cjs')({a,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
+ if(process.env.POS_QA_FOCUS==='terminal-workflows'){
+  await require('./verify-free-items.cjs')({browser,base,q,check,out});
+  await require('./verify-cashier-entry.cjs')({a,base,check,q,invoke,post,out});
+  await require('./verify-history-scope.cjs')({a,foreign,base,check,q,invoke,post,out});
+  await require('./verify-rate-sync.cjs')({a,base,check,q,invoke,post,out});
+  await require('./verify-receipt-designs.cjs')({a,foreign,base,check,q,invoke,post,out});
+  await require('./verify-hold-print.cjs')({a,base,check,q,invoke,post});
+  await browser.close();browser=null;return;
+ }
  if(process.env.POS_QA_FOCUS==='catalog'){await require('./verify-catalog-performance.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='history-scope'){
   await require('./verify-history-scope.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;

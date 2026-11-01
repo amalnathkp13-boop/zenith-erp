@@ -77,19 +77,45 @@ module.exports = async function ({a, foreign, base, check, q, invoke, post, out}
 
         await page.locator('.nb-abtn--history').click();
         await page.locator(`.hist-bill-row[data-tx-id="${bill.transactionId}"]`).click();
-        await page.locator('#ced-add').fill('water cup');
-        const water = page.locator('#ced-add-res .ced-pi[data-pid="POS_QA_A_SEARCH_WATER"]');
-        const visible = await water.waitFor({state:'visible',timeout:5000}).then(()=>true).catch(()=>false);
-        observe('History editor offers the same Water Cup as billing', visible);
-        if (visible) {
-            await water.click();
-            await page.locator('#ced-add').fill('tea cup');
-            await page.locator('#ced-add-res .ced-pi[data-pid="POS_QA_A_SEARCH_TEA"]').click();
-            check('History editor adds both late-catalog matches to its draft',
-                (await page.locator('#ced-rows').innerText()).includes('ZZ History Water Cup') &&
-                (await page.locator('#ced-rows').innerText()).includes('ZZ History Tea Cup'));
-            if(out)await page.screenshot({path:path.join(out,'history-search-editor.png')});
+        // A cold staging search may outlast the old five-second DOM deadline.
+        // Delay one real request to keep that failure reproducible without mocking its data.
+        const delayedSearch = async route => {
+            const params = new URLSearchParams(route.request().postData() || '');
+            if (params.get('action') === 'searchProductsJson' && params.get('q') === 'water cup') {
+                await new Promise(resolve => setTimeout(resolve, 6000));
+            }
+            await route.continue();
+        };
+        await page.route('**/Terminal/ajaxCart', delayedSearch);
+        async function addSearchResult(term, productId) {
+            const started = Date.now();
+            const responsePending = page.waitForResponse(response => {
+                const params = new URLSearchParams(response.request().postData() || '');
+                return new URL(response.url()).pathname.endsWith('/Terminal/ajaxCart') &&
+                    params.get('action') === 'searchProductsJson' && params.get('q') === term;
+            }, {timeout:20000});
+            await page.locator('#ced-add').fill(term);
+            const response = await responsePending;
+            let data = {}; try { data = await response.json(); } catch {}
+            check('History editor search returns the authorized '+term+' product',
+                response.ok() && data.success && data.products?.some(product => product.pid === productId) &&
+                data.products.length <= 10 && data.products.every(product => !product.pid.startsWith('POS_QA_B')),
+                {status:response.status(), elapsedMs:Date.now()-started, ...data});
+            const result = page.locator(`#ced-add-res .ced-pi[data-pid="${productId}"]`);
+            await result.waitFor({state:'visible', timeout:5000});
+            check('History editor offers the same '+term+' as billing', await result.isVisible());
+            await result.click();
         }
+        try {
+            await addSearchResult('water cup', 'POS_QA_A_SEARCH_WATER');
+            await addSearchResult('tea cup', 'POS_QA_A_SEARCH_TEA');
+        } finally {
+            await page.unroute('**/Terminal/ajaxCart', delayedSearch);
+        }
+        check('History editor adds both late-catalog matches to its draft',
+            (await page.locator('#ced-rows').innerText()).includes('ZZ History Water Cup') &&
+            (await page.locator('#ced-rows').innerText()).includes('ZZ History Tea Cup'));
+        if(out)await page.screenshot({path:path.join(out,'history-search-editor.png')});
         await page.locator('#ced-cancel').click();
         check('search and cancelled history edits leave the issued test bill unchanged', snapshot()===before);
 

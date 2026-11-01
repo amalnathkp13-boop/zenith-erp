@@ -44,6 +44,42 @@ accounts, assignments, bills or hardware configuration were changed for this PR.
   regression for assigned, missing, inactive and foreign terminals.
 - Four repository lint guards, JavaScript syntax and modified XML parsing: passed.
 
+## PR #170 staging follow-up
+
+The cashier catalog fixture now uses an explicitly assigned terminal and a
+cashier-owned session; the rejected admin-session assertion stays in place.
+Existing billing logins must be assigned by an admin before the deployment
+cutover described below. There is no permissive fallback for an unassigned login.
+
+The subsequent [staging run](https://github.com/amalnathkp13-boop/zenith-erp/actions/runs/41321874720)
+failed at the history editor's five-second product-visibility assertion. The API
+catalog and scope assertions passed. A controlled six-second delay reproduced
+that failure locally (80 checks, one failure). The revised test waits at most
+20 seconds for the exact search response, validates its HTTP status, expected
+product, result bound and tenant scope, then retains a five-second DOM-render
+deadline. Missing, unauthorized or unrendered products still fail the test.
+
+The regression deliberately delays the real Water Cup request by six seconds;
+it does not replace the server response with mock product data. Focused acceptance
+passed all 84 checks, including adding Water Cup and Tea Cup to the draft and
+proving cancellation leaves the issued bill, tender rows and totals unchanged.
+The measured Water Cup response was HTTP 200 in 6.4 seconds. All four lint guards
+and the modified test's JavaScript syntax check passed. This follow-up changes
+the acceptance tests and documentation only.
+
+The wider local run completed 1,645 assertions and 100 viewport cases before
+stopping in the free-item fixture: it also submitted cashier requests against an
+admin-owned session, receiving the expected access denial before the free-item
+policy could run. That fixture now creates a separate terminal, assigns it through
+the real admin service, opens it as the cashier, and builds cashier-owned carts.
+Its payment rejection asserts the manager-approval error specifically. Cleanup
+voids remaining unpaid drafts, closes the session, then restores the cashier's
+assignment so subsequent history tests can safely reassign it. The existing
+manager, PIN, foreign-tenant, approval-audit and payment assertions remain intact.
+`POS_QA_FOCUS=terminal-workflows` runs this fixture and the remaining cashier,
+history-scope, rate-sync, receipt-design and hold-print groups together.
+That focused continuation passed all 339 assertions with no failures.
+
 Synthetic previews are in `evidence/`. Browser/QZ stubs do not certify physical
 printer margins or installed driver paper settings. A physical receipt check
 remains necessary after deployment. CI status is recorded separately on the PR.
