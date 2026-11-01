@@ -2723,7 +2723,7 @@ window.posToggleFullscreen = function() {
             setTimeout(triggerBanner, 6000);
         }
 
-        function offerBrowserPrint(html, billNum) {
+        function offerBrowserPrint(html, billNum, qzErr) {
             // Never force a native print dialog over fullscreen after a QZ failure.
             // A retry prints only this receipt; it does not repeat checkout/payment.
             var panel = document.createElement('div');
@@ -2739,6 +2739,7 @@ window.posToggleFullscreen = function() {
                 + '<button type="button" class="pos-print-browser">Print using browser</button>'
                 + '<button type="button" class="pos-print-cancel">Close</button></div></div>';
             document.body.appendChild(panel);
+            if (qzErr) { try { panel.querySelector('.pos-print-status').textContent = 'QZ Tray did not print. Reason: ' + qzErr + '. Retry, or print via browser.'; } catch(e) {} }
             panel.querySelectorAll('button').forEach(function(button) {
                 button.style.cssText = 'padding:10px 14px;border:1px solid #7C3AED;border-radius:8px;background:#fff;color:#5b21b6;font-size:14px;cursor:pointer';
             });
@@ -2772,7 +2773,7 @@ window.posToggleFullscreen = function() {
                     return qzPrint(html + '</body></html>', billNum).catch(function(err) {
                         if (err === 'cancelled') return;
                         console.warn('QZ Tray did not confirm receipt printing:', err);
-                        offerBrowserPrint(html, billNum);
+                        offerBrowserPrint(html, billNum, err);
                     }).finally(function() { if (connecting) connecting.remove(); });
                 } else if (document.fullscreenElement || document.webkitFullscreenElement) {
                     offerBrowserPrint(html, billNum);
