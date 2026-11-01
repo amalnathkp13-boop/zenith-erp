@@ -510,5 +510,10 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
   await require('./verify-receipt-designs.cjs')({a,foreign,base,check,q,invoke,post,out});
   await require('./verify-hold-print.cjs')({a,base,check,q,invoke,post});
  }
+ if(process.env.POS_QA_UI_ONLY!=='true'){
+  await require('./verify-kitchen-tables.cjs')({a,foreign,base,post,rows,count,check});
+  await require('./verify-kitchen-print.cjs')({a,foreign,base,post,rows,count,check,out});
+ }
+ cp.execFileSync(process.execPath,[path.join(__dirname,'check-kitchen-navigation.cjs')],{stdio:'inherit'});
  await browser.close();browser=null;
 }catch(e){if(!report.failures.length)report.failures.push({name:'runner',error:e.message});throw e}finally{if(browser)await browser.close();report.passed=report.failures.length===0;report.finished=new Date().toISOString();fs.writeFileSync(path.join(out,'report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({passed:report.passed,checks:report.checks.length,failures:report.failures.length,pages:report.pages.length,layouts:report.layouts.length}));}})().catch(e=>{console.error(e.stack||e.message);process.exitCode=1});

@@ -1,0 +1,14 @@
+{
+  "chrome": {
+    "checks": 113,
+    "failed": 0
+  },
+  "edge": {
+    "checks": 40,
+    "failed": 0
+  },
+  "webkit": {
+    "checks": 40,
+    "failed": 0
+  }
+}

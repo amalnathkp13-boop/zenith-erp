@@ -532,6 +532,8 @@
         <field name="terminalId" type="id"/>
         <field name="kotNumber" type="text-short"/>
         <field name="tableNumber" type="text-short"/>
+        <field name="tableId" type="id"><description>Stable selected restaurant table; tableNumber remains the historical printed label.</description></field>
+        <field name="orderReceiptJson" type="text-very-long"><description>Read-only unpaid order receipt snapshot. Never substitutes for a finalized sale.</description></field>
         <field name="waiterName" type="text-medium"/>
         <field name="kotDate" type="date-time"/>
         <field name="printCount" type="number-integer" default="1"/>

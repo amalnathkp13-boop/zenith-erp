@@ -315,7 +315,7 @@
         ]]></script>
         <script><![CDATA[
             if (html_stylesheets == null) html_stylesheets = []
-            html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=301')
+            html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=304')
             html_stylesheets.add('/zenithstatic/css/sidebar-manager.css?v=3')
             html_stylesheets.add('/zenithstatic/css/subnav-manager.css?v=3')
             html_stylesheets.add('/zenithstatic/css/my-subscription-reference.css?v=1')
@@ -387,6 +387,10 @@
             html_stylesheets.add('/zenithstatic/css/barcode-reference.css?v=1')
             if (html_scripts == null) html_scripts = []
             html_scripts.add('/zenithstatic/js/qapps-shell-boot.js?v=1')
+            html_scripts.add('/zenithstatic/js/kitchen-display.js?v=1')
+            html_scripts.add('/zenithstatic/js/pos-receipt-layout.js?v=2')
+            html_scripts.add('/zenithstatic/js/kitchen-print.js?v=1')
+            html_stylesheets.add('/zenithstatic/css/kitchen-display.css?v=1')
             // ZE-DASH-0402: neutralise the stock framework "notifications disabled" nag toast (Safari fires it
             // on every load). HEAD script so it runs before WebrootVue's mounted() hook. Both surfaces.
             html_scripts.add('/zenithstatic/js/notif-nag-fix.js?v=2')
@@ -1254,7 +1258,7 @@
             <link rel="preconnect" href="https://fonts.googleapis.com"/>
             <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"/>
             <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
-            <link rel="stylesheet" href="/zenithstatic/css/zenith-theme-v4.css?v=301"/>
+            <link rel="stylesheet" href="/zenithstatic/css/zenith-theme-v4.css?v=304"/>
             <link rel="stylesheet" href="/zenithstatic/css/my-subscription-reference.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/saas-admin.css?v=4"/>
             <link rel="stylesheet" href="/zenithstatic/css/product-catalog.css?v=2"/>

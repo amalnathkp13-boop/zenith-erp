@@ -2,8 +2,8 @@
  * Loaded via an <img onload> bootstrap from Tables.xml so it runs on both /apps (Bootstrap)
  * and /qapps (Quasar/Vue, which strips inline <script>). Plain JS here — no Vue-template constraints. */
 (function () {
-  if (window.__tmInit) return;
-  window.__tmInit = true;
+  if (window.__tmRoot === document.getElementById('tm-wrap')) return;
+  window.__tmRoot = document.getElementById('tm-wrap');
 
   function qsa(sel) { return Array.prototype.slice.call(document.querySelectorAll(sel)); }
   function base() {
@@ -24,6 +24,7 @@
 
   // Read-only redirect transitions (goTerminal/goTransactions) — plain GET is fine.
   window.tmGo = function (path) { location.href = base() + '/' + path; };
+  window.tmOpenBilling = function (tableId) { location.href = base().replace(/Tables$/, 'KotBilling') + '?tableId=' + encodeURIComponent(tableId); };
 
   // State-changing transitions must be POSTed with the session token (Moqui CSRF guard).
   window.tmPost = function (path, params) {
@@ -110,12 +111,18 @@
   window.tmAddSave = function () {
     var num = document.getElementById('tm-f-num');
     if (!num || !num.value.trim()) { if (num) num.focus(); return; }
+    var fac = document.getElementById('tm-f-fac'), error = document.getElementById('tm-f-error');
+    if (!fac || !fac.value) {
+      if (error) error.textContent = 'Select a facility for this table.';
+      if (fac) { fac.setAttribute('aria-invalid', 'true'); fac.focus(); }
+      return;
+    }
+    fac.removeAttribute('aria-invalid'); if (error) error.textContent = '';
     var body = new URLSearchParams();
     body.append('tableNumber', num.value.trim());
     body.append('tableName', (document.getElementById('tm-f-name') || {}).value || '');
     body.append('seatingCapacity', (document.getElementById('tm-f-seat') || {}).value || '4');
     body.append('sectionName', (document.getElementById('tm-f-sec') || {}).value || 'Main');
-    var fac = document.getElementById('tm-f-fac');
     if (fac && fac.value) body.append('facilityId', fac.value);
     body.append('statusId', 'TblAvailable');
     body.append('moquiSessionToken', tok());

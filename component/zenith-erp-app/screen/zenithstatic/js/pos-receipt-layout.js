@@ -24,7 +24,8 @@
         h+=block(s.address,'company','font-size:11px')+block(s.phone?'Ph: '+s.phone:'','company','font-size:11px')+block(s.email,'company','font-size:11px');
         if(s.taxReg)h+=block('GSTIN: '+s.taxReg,'company','font-size:11px');
         h+=block(s.headerText,'header','text-align:'+align('headerAlign')+';font-weight:'+(o.headerBold?700:400));
-        h+='<div class="sep"></div><div class="c b">'+(isTax?'POS TAX RECEIPT':'RECEIPT')+'</div>';
+        h+='<div class="sep"></div><div class="c b">'+(d.preview?'ORDER BILL':isTax?'POS TAX RECEIPT':'RECEIPT')+'</div>';
+        if(d.preview)h+='<div class="notice">UNPAID ORDER - NOT A TAX INVOICE</div>';
         if(edited||d.edited)h+='<div class="notice">EDITED / REVISED BILL</div>';
         var metadata='';
         if(enabled('showBillNumber')&&b.number)metadata+=row(o.billNumberLabel||'Bill No:',b.number,'information',true);
@@ -34,6 +35,8 @@
             if(enabled('showCustomerPhone')&&b.customerPhone)metadata+=row('Mobile:',b.customerPhone,'information');
         }
         if(enabled('showCashier')&&b.cashier)metadata+=row(o.cashierLabel||'Cashier:',b.cashier,'information');
+        if(b.table)metadata+=row('Table:',b.table,'information');
+        if(b.orderType)metadata+=row('Order Type:',b.orderType,'information');
         if(metadata)h+='<table class="meta">'+metadata+'</table>';
         h+='<div class="sep2"></div><table><thead><tr><th>#</th><th style="text-align:left">Item</th><th>Qty</th><th class="r">Rate</th><th class="r">Total</th></tr></thead><tbody>';
         (d.items||[]).forEach(function(it,i){
@@ -58,6 +61,7 @@
         if(d.isCredit)h+='<div class="sep"></div><div class="notice">'+(Number(d.outstanding)>0?'CREDIT / PAY LATER':'CREDIT / PAID IN FULL')+'</div><table>'+row('Amount Due',number(d.outstanding),'amounts',true)+'</table>';
         if(shown('showDiscount')&&Number(d.saving)>0)h+='<div class="sep"></div>'+block('You Saved: '+number(d.saving),'tax','font-weight:700');
         h+='<div class="sep"></div>'+block(s.footerText||'Thank You !!','footer','text-align:'+align('footerAlign')+';font-weight:'+(o.footerBold===false?400:700));
+        if(d.notes)h+=block(d.notes,'footer');
         h+=block(s.termsText,'footer','text-align:'+align('footerAlign')+';font-size:10px');
         h+='<div class="block" style="font-size:8px;color:'+tone('footer')+'">Powered by ZetaERP</div></div>';
         return h;

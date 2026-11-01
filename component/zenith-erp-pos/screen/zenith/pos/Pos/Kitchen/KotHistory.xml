@@ -3,6 +3,19 @@
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         default-menu-title="KOT History" default-menu-index="3">
 
+    <transition name="printRecord" method="post">
+        <actions><script><![CDATA[
+            def result=ec.service.sync().name('zenith.pos.KitchenPrintServices.get#HistoryPrintRecord').parameters([kotId:ec.context.kotId,kind:ec.context.kind]).call()
+            ec.web.sendJsonResponse([success:!ec.message.hasError(),record:result?.record,error:ec.message.errorsString])
+        ]]></script></actions><default-response type="none"/>
+    </transition>
+    <transition name="ackKotPrint" method="post" begin-transaction="true">
+        <actions><script><![CDATA[
+            def result=ec.service.sync().name('zenith.pos.KotServices.reprint#KitchenOrderTicket').parameter('kotId',ec.context.kotId).call()
+            ec.web.sendJsonResponse([success:!ec.message.hasError(),printCount:result?.printCount,error:ec.message.errorsString])
+        ]]></script></actions><default-response type="none"/>
+    </transition>
+
     <transition name="goTerminal"><default-response url="../../Terminal"/></transition>
     <transition name="goTransactions"><default-response url="../../PosTransactions"/></transition>
     <transition name="goDashboard"><default-response url="../../Dashboard"/></transition>
@@ -36,6 +49,10 @@
             def zenithIndex = uri.indexOf('/zenith/')
             cancelAction = (zenithIndex > 0 ? uri.substring(0, zenithIndex) : '') +
                 '/zenith/pos/Kitchen/KotHistory/cancelKot'
+            def txIds=kotList.collect { it.transactionId }.findAll { it }
+            linkedBillIds=txIds ? ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId','in',txIds)
+                .condition('organizationPartyId',ec.user.getPreference('ACTIVE_ORGANIZATION')).condition('statusId','PtCompleted')
+                .list().findAll { !!it.transactionNumber }.collect { it.transactionId } : []
             kitchenToken = ec.web?.sessionToken ?: ''
             totalKots = kotList.size()
             servedCount = kotList.count { it.statusId == 'KotServed' }
@@ -117,8 +134,26 @@
                 </row-col>
             </container-row>
 
+            <render-mode><text type="html,qvt" template="true"><![CDATA[
+            <div class="zk-history-actions" id="zk-history-toolbar">
+              <a href="${cancelAction?keep_before('/cancelKot')?html}">Reset filters</a>
+              <label><input type="checkbox" data-kitchen-select-all="true"/> Select all visible</label>
+              <span data-kitchen-selected-count="true" aria-live="polite">0 selected</span>
+              <#if modCanWrite>
+              <button type="button" data-kitchen-bulk="kot" disabled="disabled">Print KOT (Selected)</button>
+              <button type="button" data-kitchen-bulk="bill" disabled="disabled">Print Bill (Selected)</button>
+              </#if>
+            </div>
+            <p id="zk-print-status" role="status" aria-live="polite"></p>
+            ]]></text></render-mode>
+
             <form-list name="KotHistoryList" list="kotList" list-entry="k" skip-form="true"
                        show-csv-button="true" show-xlsx-button="true">
+                <field name="selected"><default-field title="Select">
+                    <render-mode><text type="html,qvt" template="true"><![CDATA[
+                    <input type="checkbox" data-kitchen-select="${k.kotId?html}" aria-label="Select KOT ${k.kotNumber?html}"/>
+                    ]]></text></render-mode>
+                </default-field></field>
                 <field name="kotNumber"><default-field title="KOT #">
                     <display default-text="${k.kotId}"/>
                 </default-field></field>
@@ -138,7 +173,18 @@
                     <display-entity entity-name="moqui.basic.StatusItem" key-field-name="statusId" text="${description}"/>
                 </default-field></field>
                 <field name="printCount"><default-field title="Prints">
-                    <display/>
+                    <render-mode><text type="html,qvt" template="true"><![CDATA[<span data-kitchen-print-count="${k.kotId?html}">${k.printCount!0}</span>]]></text></render-mode>
+                </default-field></field>
+                <field name="printOptions"><default-field title="Print Options">
+                    <render-mode><text type="html,qvt" template="true"><![CDATA[
+                    <div class="zk-history-actions">
+                    <#if modCanWrite>
+                    <button type="button" data-kitchen-print="kot" data-kot-id="${k.kotId?html}">KOT Print</button>
+                    <button type="button" data-kitchen-print="bill" data-kot-id="${k.kotId?html}" <#if !(linkedBillIds?seq_contains(k.transactionId!''))>disabled="disabled" title="No finalized customer bill is linked to this KOT."</#if>>Bill Print</button>
+                    </#if>
+                    <button type="button" data-kitchen-print="view" data-kot-id="${k.kotId?html}">View</button>
+                    </div>
+                    ]]></text></render-mode>
                 </default-field></field>
                 <field name="cancelBtn"><default-field title="">
                     <render-mode><text type="html,qvt" template="true"><![CDATA[

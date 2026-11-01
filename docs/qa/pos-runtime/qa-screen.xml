@@ -159,6 +159,7 @@
         recall:['zenith.pos.PosServices.recall#Transaction',['heldId','sessionId']],
         void:['zenith.pos.PosServices.void#PosTransaction',['transactionId']],
         receipt:['zenith.pos.PosServices.get#PosReceiptData',['transactionId']],
+        kot:['zenith.pos.KotServices.create#KitchenOrderTicket',['posTransactionId','tableId','tableNumber','items']],
         sync:['zenith.pos.PosSyncServices.sync#PosTransactionInvoice',['transactionId']],
         reprice:['zenith.pos.PosServices.reprice#PosTransaction',['transactionId','salesModeId','taxOn']],
         mode:['zenith.pos.PosServices.set#PosTransactionItemMode',['transactionId','itemSeqId','salesModeId','taxOn']],

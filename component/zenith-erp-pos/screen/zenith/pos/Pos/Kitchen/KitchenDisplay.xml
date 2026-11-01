@@ -8,7 +8,7 @@
             <service-call name="zenith.pos.KotServices.update#KotStatus"
                           in-map="[kotId:kotId, statusId:statusId]"/>
         </actions>
-        <default-response url="."/>
+        <default-response url="." parameter-map="[filterStatus:filterStatus]"/>
     </transition>
     <transition name="goTerminal"><default-response url="../../Terminal"/></transition>
     <transition name="goTransactions"><default-response url="../../PosTransactions"/></transition>
@@ -26,163 +26,54 @@
             kitchenToken = ec.web?.sessionToken ?: ''
             def kotQuery = ec.entity.find("zenith.erp.pos.KotView")
             kotQuery.condition('organizationPartyId', org && org != '_NA_' ? org : '__NO_ORGANIZATION__')
-            if (filterStatus) {
-                kotQuery.condition("statusId", filterStatus)
-            } else {
-                kotQuery.condition("statusId", "in", ["KotNew", "KotPreparing", "KotReady"])
-            }
-            activeKots = kotQuery.orderBy("-kotDate").list()
-
-            kotItemsMap = [:]
-            activeKots.each { kot ->
-                def items = ec.entity.find("zenith.erp.pos.KotItem")
-                    .condition("kotId", kot.kotId).orderBy("kotItemSeqId").list()
-                kotItemsMap[kot.kotId] = items
-            }
-
-            newCount = activeKots.count { it.statusId == 'KotNew' }
-            preparingCount = activeKots.count { it.statusId == 'KotPreparing' }
-            readyCount = activeKots.count { it.statusId == 'KotReady' }
+            def statuses=['KotNew','KotPreparing','KotReady']
+            if (!(filterStatus in statuses)) filterStatus=''
+            def allActive=kotQuery.condition('statusId','in',statuses).orderBy('-kotDate,kotId').list()
+            newCount=allActive.count { it.statusId=='KotNew' }
+            preparingCount=allActive.count { it.statusId=='KotPreparing' }
+            readyCount=allActive.count { it.statusId=='KotReady' }
+            activeKots=filterStatus ? allActive.findAll { it.statusId==filterStatus } : allActive
+            kotItemsMap=activeKots ? ec.entity.find('zenith.erp.pos.KotItem').condition('kotId','in',activeKots*.kotId)
+                .orderBy('kotItemSeqId').list().groupBy { it.kotId } : [:]
+            kitchenPageUrl=kitchenAction.substring(0,kitchenAction.lastIndexOf('/'))
         ]]></script>
     </actions>
 
     <widgets>
-        <container style="q-pa-md">
-            <container style="row items-center justify-end q-mb-md q-gutter-sm">
-                <link url="goTerminal" text="Billing Terminal" icon="fa fa-calculator" btn-type="success" style="q-btn--dense"/>
-                <link url="goTransactions" text="Transactions" icon="fa fa-list" btn-type="primary" style="q-btn--dense"/>
-                <link url="goDashboard" text="Dashboard" icon="fa fa-dashboard" style="q-btn--dense"/>
-            </container>
-            <container-row>
-                <row-col lg="3" md="3" sm="4">
-                    <container style="zenith-card bg-blue-1 shadow-1 q-pa-md q-mb-md text-center border-radius-lg">
-                        <label text="New Orders" style="text-grey-7 text-caption"/>
-                        <label text="${newCount}" type="h4" style="text-weight-bold text-blue-8 q-my-xs"/>
-                    </container>
-                </row-col>
-                <row-col lg="3" md="3" sm="4">
-                    <container style="zenith-card bg-orange-1 shadow-1 q-pa-md q-mb-md text-center border-radius-lg">
-                        <label text="Preparing" style="text-grey-7 text-caption"/>
-                        <label text="${preparingCount}" type="h4" style="text-weight-bold text-orange-8 q-my-xs"/>
-                    </container>
-                </row-col>
-                <row-col lg="3" md="3" sm="4">
-                    <container style="zenith-card bg-green-1 shadow-1 q-pa-md q-mb-md text-center border-radius-lg">
-                        <label text="Ready" style="text-grey-7 text-caption"/>
-                        <label text="${readyCount}" type="h4" style="text-weight-bold text-green-8 q-my-xs"/>
-                    </container>
-                </row-col>
-                <row-col lg="3" md="3" sm="12">
-                    <container style="q-pa-sm q-mb-md">
-                        <form-single name="StatusFilter" transition="." body-parameters="">
-                            <field name="filterStatus"><default-field title="Filter">
-                                <drop-down allow-empty="true">
-                                    <option key="" text="Active (All)"/>
-                                    <option key="KotNew" text="New Only"/>
-                                    <option key="KotPreparing" text="Preparing Only"/>
-                                    <option key="KotReady" text="Ready Only"/>
-                                </drop-down>
-                            </default-field></field>
-                            <field name="searchBtn"><default-field title="">
-                                <submit text="Filter" icon="fa fa-filter"/>
-                            </default-field></field>
-                        </form-single>
-                    </container>
-                </row-col>
-            </container-row>
-
-            <render-mode><text type="html,qvt" template="true"><![CDATA[
-<div style="display:flex; flex-wrap:wrap; gap:14px;">
-    <#if activeKots?? && (activeKots?size > 0)>
-    <#list activeKots as kot>
-        <#assign borderColor = "#1976D2"/>
-        <#assign bgColor = "#E3F2FD"/>
-        <#assign statusLabel = "NEW"/>
-        <#if kot.statusId == "KotPreparing">
-            <#assign borderColor = "#F57C00"/>
-            <#assign bgColor = "#FFF3E0"/>
-            <#assign statusLabel = "PREPARING"/>
-        <#elseif kot.statusId == "KotReady">
-            <#assign borderColor = "#388E3C"/>
-            <#assign bgColor = "#E8F5E9"/>
-            <#assign statusLabel = "READY"/>
-        </#if>
-        <#assign elapsed = ""/>
-        <#if kot.kotDate??>
-            <#assign diffMs = .now?long - kot.kotDate?long/>
-            <#assign diffMin = (diffMs / 60000)?int/>
-            <#if diffMin < 60>
-                <#assign elapsed = diffMin + " min"/>
-            <#else>
-                <#assign elapsed = (diffMin / 60)?int + "h " + (diffMin % 60) + "m"/>
-            </#if>
-        </#if>
-
-        <div style="width:280px; border-top:4px solid ${borderColor}; background:${bgColor}; border-radius:10px; box-shadow:0 2px 6px rgba(0,0,0,0.1); overflow:hidden;">
-            <div style="padding:12px 14px 8px; display:flex; justify-content:space-between; align-items:center;">
-                <div>
-                    <span style="font-weight:bold; font-size:18px;">KOT #${(kot.kotNumber!kot.kotId!'')?html}</span>
-                    <#if kot.tableNumber?has_content>
-                        <span style="margin-left:8px; background:#fff; padding:2px 8px; border-radius:4px; font-size:12px; border:1px solid #ddd;">Table ${kot.tableNumber?html}</span>
-                    </#if>
-                </div>
-                <span style="background:${borderColor}; color:#fff; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:bold;">${statusLabel}</span>
-            </div>
-
-            <div style="padding:0 14px 6px; font-size:12px; color:#666;">
-                <#if kot.waiterName?has_content>Waiter: ${kot.waiterName?html} &nbsp;|&nbsp;</#if>
-                <#if elapsed?has_content>${elapsed} ago</#if>
-                <#if kot.terminalName?has_content> &nbsp;|&nbsp; ${kot.terminalName?html}</#if>
-            </div>
-
-            <div style="padding:4px 14px; border-top:1px solid rgba(0,0,0,0.08);">
-                <#assign items = kotItemsMap[kot.kotId]![]/>
-                <#if items?size == 0>
-                    <div style="padding:8px 0; color:#999; font-size:13px;">No items</div>
-                <#else>
-                    <table style="width:100%; font-size:13px; border-collapse:collapse;">
-                        <#list items as item>
-                        <tr style="border-bottom:1px dotted #ddd;">
-                            <td style="padding:5px 0; font-weight:500;">${(item.productName!item.productId!'')?html}</td>
-                            <td style="padding:5px 0; text-align:right; font-weight:bold; width:40px;">x${item.quantity!1}</td>
-                        </tr>
-                        <#if item.specialInstructions?has_content>
-                        <tr><td colspan="2" style="padding:0 0 4px 10px; font-size:11px; color:#E65100; font-style:italic;">&#9888; ${item.specialInstructions?html}</td></tr>
-                        </#if>
-                        </#list>
-                    </table>
-                </#if>
-            </div>
-
-            <#if kot.notes?has_content>
-                <div style="padding:4px 14px 6px; font-size:11px; color:#555; background:rgba(0,0,0,0.03);">
-                    &#128221; ${kot.notes?html}
-                </div>
-            </#if>
-
-            <#if modCanWrite>
-            <div style="padding:8px 14px 10px; display:flex; gap:6px; justify-content:flex-end; background:rgba(0,0,0,0.03);">
-                <#if kot.statusId == "KotNew">
-                    <form method="post" action="${kitchenAction?html}" style="margin:0"><input type="hidden" name="moquiSessionToken" value="${kitchenToken?html}"/><input type="hidden" name="kotId" value="${kot.kotId?html}"/><input type="hidden" name="statusId" value="KotPreparing"/><button type="submit" style="background:#F57C00; color:#fff; padding:5px 14px; border:0; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer">&#9997; Start Preparing</button></form>
-                    <form method="post" action="${kitchenAction?html}" style="margin:0"><input type="hidden" name="moquiSessionToken" value="${kitchenToken?html}"/><input type="hidden" name="kotId" value="${kot.kotId?html}"/><input type="hidden" name="statusId" value="KotCancelled"/><button type="submit" style="background:#D32F2F; color:#fff; padding:5px 14px; border:0; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer">&#10005; Cancel</button></form>
-                <#elseif kot.statusId == "KotPreparing">
-                    <form method="post" action="${kitchenAction?html}" style="margin:0"><input type="hidden" name="moquiSessionToken" value="${kitchenToken?html}"/><input type="hidden" name="kotId" value="${kot.kotId?html}"/><input type="hidden" name="statusId" value="KotReady"/><button type="submit" style="background:#388E3C; color:#fff; padding:5px 14px; border:0; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer">&#10003; Ready</button></form>
-                <#elseif kot.statusId == "KotReady">
-                    <form method="post" action="${kitchenAction?html}" style="margin:0"><input type="hidden" name="moquiSessionToken" value="${kitchenToken?html}"/><input type="hidden" name="kotId" value="${kot.kotId?html}"/><input type="hidden" name="statusId" value="KotServed"/><button type="submit" style="background:#1565C0; color:#fff; padding:5px 14px; border:0; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer">&#127869; Served</button></form>
-                </#if>
-            </div>
-            </#if>
-        </div>
-    </#list>
+        <render-mode><text type="html,qvt" template="true"><![CDATA[
+<main class="zk-display" aria-labelledby="zk-title">
+    <header class="zk-heading"><span class="zk-heading-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 9a4 4 0 0 1 2-7 5 5 0 0 1 8 0 4 4 0 0 1 2 7v10H6Z"/><path d="M6 15h12"/></svg></span><div><h1 id="zk-title">Kitchen Display</h1><p>Track and manage food orders in the kitchen by order status.</p></div></header>
+    <section class="zk-overview" aria-label="Kitchen order summary">
+        <article class="zk-metric zk-metric-new"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 3h14v18l-3-2-4 2-4-2-3 2Z"/><path d="M8 7h8M8 11h8M8 15h4"/></svg><div><h2>New Orders</h2><strong data-kitchen-count="KotNew">${newCount}</strong></div></article>
+        <article class="zk-metric zk-metric-preparing"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 19h18M5 16a7 7 0 0 1 14 0H5ZM12 5v2M8 2v2M16 2v2"/></svg><div><h2>Preparing</h2><strong data-kitchen-count="KotPreparing">${preparingCount}</strong></div></article>
+        <article class="zk-metric zk-metric-ready"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m7 12 3 3 7-7"/></svg><div><h2>Ready</h2><strong data-kitchen-count="KotReady">${readyCount}</strong></div></article>
+        <form class="zk-filter" method="get" action="${kitchenPageUrl?html}"><label for="zk-order-filter">Order Filter</label><select id="zk-order-filter" name="filterStatus"><option value="">Active (All)</option><option value="KotNew"<#if filterStatus=='KotNew'> selected</#if>>New Only</option><option value="KotPreparing"<#if filterStatus=='KotPreparing'> selected</#if>>Preparing Only</option><option value="KotReady"<#if filterStatus=='KotReady'> selected</#if>>Ready Only</option></select><button type="submit"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 4h18l-7 8v7l-4 2v-9Z"/></svg>Filter</button></form>
+    </section>
+    <#if activeKots?size gt 0>
+    <section class="zk-orders" aria-label="Active kitchen orders">
+        <#list activeKots as kot>
+        <#assign state='new', label='New'/>
+        <#if kot.statusId=='KotPreparing'><#assign state='preparing',label='Preparing'/><#elseif kot.statusId=='KotReady'><#assign state='ready',label='Ready'/></#if>
+        <article class="zk-order zk-order-${state}" data-kot-id="${kot.kotId?html}">
+            <header><div><h2>KOT #${(kot.kotNumber!kot.kotId!'')?html}</h2><#if kot.tableNumber?has_content><span class="zk-table">Table ${kot.tableNumber?html}</span></#if></div><span class="zk-status">${label}</span></header>
+            <div class="zk-order-meta"><#if kot.waiterName?has_content><span>Waiter: ${kot.waiterName?html}</span></#if><#if kot.kotDate??><#assign minutes=((.now?long-kot.kotDate?long)/60000)?int/><span>${(minutes gt 0)?then(minutes,0)} min ago</span></#if><#if kot.terminalName?has_content><span>${kot.terminalName?html}</span></#if></div>
+            <ul class="zk-items"><#list kotItemsMap[kot.kotId]![] as item><li><div><strong>${(item.productName!item.productId!'')?html}</strong><#if item.specialInstructions?has_content><p class="zk-instruction">${item.specialInstructions?html}</p></#if></div><b>&#215; ${item.quantity!1}</b></li><#else><li>No items</li></#list></ul>
+            <#if kot.notes?has_content><p class="zk-notes">${kot.notes?html}</p></#if>
+            <#if modCanWrite><footer>
+                <#if kot.statusId=='KotNew'><#assign nextStatus='KotPreparing',buttonLabel='Start Preparing'/><#elseif kot.statusId=='KotPreparing'><#assign nextStatus='KotReady',buttonLabel='Ready'/><#else><#assign nextStatus='KotServed',buttonLabel='Served'/></#if>
+                <form method="post" action="${kitchenAction?html}"><input type="hidden" name="moquiSessionToken" value="${kitchenToken?html}"/><input type="hidden" name="kotId" value="${kot.kotId?html}"/><input type="hidden" name="statusId" value="${nextStatus}"/><input type="hidden" name="filterStatus" value="${filterStatus?html}"/><button type="submit" class="zk-primary">${buttonLabel}</button></form>
+                <#if kot.statusId=='KotNew'><form method="post" action="${kitchenAction?html}"><input type="hidden" name="moquiSessionToken" value="${kitchenToken?html}"/><input type="hidden" name="kotId" value="${kot.kotId?html}"/><input type="hidden" name="statusId" value="KotCancelled"/><input type="hidden" name="filterStatus" value="${filterStatus?html}"/><button type="submit" class="zk-cancel">Cancel</button></form></#if>
+            </footer></#if>
+        </article>
+        </#list>
+    </section>
     <#else>
-        <div style="width:100%; text-align:center; padding:40px; color:#999;">
-            <div style="font-size:48px; margin-bottom:10px;">&#127859;</div>
-            <div style="font-size:16px;">No active kitchen orders</div>
-            <div style="font-size:13px; margin-top:4px;">Orders will appear here when created from the billing terminal</div>
-        </div>
+    <section class="zk-empty" aria-labelledby="zk-empty-title">
+        <svg viewBox="0 0 160 120" aria-hidden="true"><g fill="none" stroke="#9B7EE8" stroke-width="2"><path d="m97 10 42 4-6 70-44-4Z"/><path d="m105 28 25 2m-26 10 24 2m-25 10 24 2M20 94h115M30 87a41 41 0 0 1 82 0ZM66 40v6m-4-9h8M49 29l-3-9m-8 19-7-5m8 65h67"/></g><path d="M31 87a41 41 0 0 1 80 0Z" fill="#F1EBFF" stroke="#9B7EE8" stroke-width="2"/></svg>
+        <h2 id="zk-empty-title"><#if filterStatus?has_content>No ${filterStatus?replace('Kot','')?lower_case} kitchen orders<#else>No active kitchen orders</#if></h2><p>Orders from the billing terminal will appear here.</p>
+    </section>
     </#if>
-</div>
-            ]]></text></render-mode>
-        </container>
+</main>
+        ]]></text></render-mode>
     </widgets>
 </screen>
