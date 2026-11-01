@@ -31,6 +31,14 @@
     ec.user.setPreference('ACTIVE_ORGANIZATION','POS_QA_A')
     ec.web.sendJsonResponse([initialized:true,normalSeedBaseline:baseline])
 ]]></script></actions><default-response type="none"/></transition>
+<transition name="seedSearch" method="post"><actions><script><![CDATA[
+    if (System.getProperty('pos.qa.disposable')!='true' || ec.user.username!='pos.qa' || !ec.user.isInGroup('ZENITH_ADMIN')) {ec.web.response.setStatus(403);return}
+    def names=(1..65).collect { 'PP '+it.toString().padLeft(2,'0')+'-size' }+(1..12).collect { 'Appalam '+it }+['PP 100% special','PP 100_ special']
+    names.eachWithIndex { name,i -> ec.entity.makeValue('mantle.product.Product').setAll([
+        productId:'POS_QA_SEARCH_'+i,pseudoId:'SYN_SEARCH_'+i,productName:name,productTypeEnumId:'PtAsset',ownerPartyId:'POS_QA_A',mrpAmount:10,inventoryTracked:'N']).createOrUpdate() }
+    ec.entity.makeValue('mantle.product.Product').setAll([productId:'POS_QA_SEARCH_FOREIGN',pseudoId:'SYN_SEARCH_FOREIGN',productName:'PP 05 foreign',productTypeEnumId:'PtAsset',ownerPartyId:'POS_QA_B',mrpAmount:20,inventoryTracked:'N']).createOrUpdate()
+    ec.web.sendJsonResponse([seeded:true])
+]]></script></actions><default-response type="none"/></transition>
 <transition name="cleanWorkspace" method="post"><actions><script><![CDATA[
     if (System.getProperty('pos.qa.disposable')!='true' || !(ec.user.username in ['john.doe','pos.qa'])) {ec.web.response.setStatus(403);return}
     def catalog=ec.web.parameters.bundleJson
