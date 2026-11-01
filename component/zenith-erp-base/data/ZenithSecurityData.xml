@@ -697,4 +697,12 @@
             authzTypeEnumId="AUTHZT_ALLOW" authzActionEnumId="AUTHZA_ALL"/>
     <moqui.security.ArtifactAuthzFilter artifactAuthzId="ZA_ALL_ENTITY" entityFilterSetId="MANTLE_ACTIVE_ORG"/>
 
+    <!-- Role policy is managed only by the explicitly org-checked services. Generic
+         entity REST must not bypass validation or a primary-key ownership check. -->
+    <moqui.security.ArtifactGroup artifactGroupId="ORG_ROLE_PRIVATE" description="Organization role policy service boundary"/>
+    <moqui.security.ArtifactGroupMember artifactGroupId="ORG_ROLE_PRIVATE" artifactName="zenith.erp.base.OrganizationAccessRole"
+        artifactTypeEnumId="AT_ENTITY" inheritAuthz="N"/>
+    <moqui.security.ArtifactAuthz artifactAuthzId="ZA_ROLE_PRIVATE" userGroupId="ZENITH_ALL" artifactGroupId="ORG_ROLE_PRIVATE"
+        authzTypeEnumId="AUTHZT_DENY" authzActionEnumId="AUTHZA_ALL"/>
+
 </entity-facade-xml>

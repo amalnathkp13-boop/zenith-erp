@@ -58,6 +58,17 @@
         } catch (_e) {} return null;
     }
 
+    function roleAllows(path) {
+        var cfg = document.getElementById('zenith-saas-cfg'), scope;
+        if (!cfg || !cfg.hasAttribute('data-role-scope')) return false;
+        try { scope = JSON.parse((cfg && cfg.getAttribute('data-role-scope')) || '{}'); } catch (_) { return false; }
+        if (!scope.restricted) return true;
+        var module = (path.split('/')[1] || '').toLowerCase();
+        return (scope.legacyModules || []).indexOf(module) >= 0 || ((scope.selections || {})[module] || []).some(function (route) {
+            return path === route || path.indexOf(route + '/') === 0;
+        });
+    }
+
     // module → sidebar entry. hrefs stay on /qapps (stay in the SPA); the billing Terminal is /apps-only.
     var CATS = [
         { cat: '', items: [
@@ -375,6 +386,7 @@
             subBar.appendChild(el('span', 'zqsub-title', 'Dashboards'));
             var mods = tenantMods();
             DASHBOARDS.forEach(function (d) {
+                if (!roleAllows(d[2])) return;
                 if (d[3] && mods && mods.indexOf(d[3]) < 0) return;   // module not in the tenant's plan → skip
                 var a = el('a', 'zqsub-tab', d[0]); a.href = d[1];
                 a.setAttribute('data-match', d[2]);
@@ -406,7 +418,7 @@
         var active = null, alen = -1;
         for (var i = 1; i < arr.length; i++) {
             var pair = arr[i], ci = pair.indexOf(':'), seg = pair.slice(0, ci), label = pair.slice(ci + 1);
-            if (posCash && !posCash[seg]) continue;
+            if ((posCash && !posCash[seg]) || !roleAllows(key + '/' + seg)) continue;
             var href = (mount === 'pos' && seg === 'Terminal') ? '/apps/zenith/pos/Terminal' : ('/qapps/zenith/' + mount + '/' + seg);
             var a = el('a', 'zqsub-tab', label); a.href = href;
             a.setAttribute('data-match', key + '/' + seg);
