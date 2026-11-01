@@ -67,6 +67,11 @@ selects WebKit; `POS_QA_CHROME` can select Edge. Existing POS CI also invokes th
 new table/print groups and navigation harness. See synthetic evidence alongside
 this document. No production requests, sales or account changes were performed.
 
+On 2 November the branch was reconciled with master `01e796eb`, retaining its
+role-access controls and Users stylesheet on both surfaces alongside the Kitchen
+assets. The complete native Chrome Kitchen verifier passed again: 113 checks,
+zero failures. The four repository guards and merged shared-app XML parsing passed.
+
 ## Deployment and remaining hardware checks
 
 Deploy the complete component changes and restart Moqui so the optional KOT
