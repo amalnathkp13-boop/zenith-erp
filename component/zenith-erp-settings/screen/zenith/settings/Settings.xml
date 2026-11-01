@@ -7,7 +7,14 @@
          Only users with Z_SETTINGS_APP Authz (i.e. ZENITH_ADMIN) should see this app. -->
     <pre-actions><script>context.canManageSettings = ec.user.isInGroup('ZENITH_ADMIN') || ec.user.isInGroup('ADMIN')
         // ZE-SETTINGS-003: the Roles &amp; Access catalogue is platform-admin-only; hide its menu item from tenant admins.
-        context.isPlatformAdmin = ec.user.isInGroup('ADMIN')</script></pre-actions>
+        context.isPlatformAdmin = ec.user.isInGroup('ADMIN')
+        // Quasar loads Settings.qvt as a parent template; its browser URL still names
+        // the child page. This is presentation only, never an authorization decision.
+        def settingsPath = ec.web.request.requestURI ?: ''
+        def referringPage = (ec.web.request.getHeader('Referer') ?: '').split('[?]',2)[0]
+        context.cleanSettingsPage = settingsPath.matches('.*?/Settings/(Users|RoleEditor)(\\..*)?') ||
+            (settingsPath.endsWith('/Settings.qvt') &amp;&amp; referringPage.matches('https?://[^/]+/qapps/zenith/Settings/(Users|RoleEditor)'))
+        </script></pre-actions>
 
     <transition name="apps"><default-response url="/apps"/></transition>
 
@@ -18,6 +25,7 @@
              link below (isPlatformAdmin); tenant admins are also redirected away in Roles.xml pre-actions. -->
         <subscreens-item name="Roles" location="component://zenith-erp-settings/screen/zenith/settings/Settings/Roles.xml" menu-include="false"/>
         <subscreens-item name="Users" location="component://zenith-erp-settings/screen/zenith/settings/Settings/Users.xml"/>
+        <subscreens-item name="RoleEditor" location="component://zenith-erp-settings/screen/zenith/settings/Settings/RoleEditor.xml" menu-include="false"/>
         <!-- ChangePassword moved to a top-level "My Password" screen (ZenithApp.xml) so all staff — not just
              admins — can self-serve; kept here as a hidden alias so any old /Settings/ChangePassword link still resolves. -->
         <subscreens-item name="ChangePassword" location="component://zenith-erp-settings/screen/zenith/settings/Settings/ChangePassword.xml" menu-include="false"/>
@@ -31,7 +39,7 @@
     <widgets>
 
         <!-- Glassmorphism header container -->
-        <container style="zenith-header glass-panel">
+        <section name="LegacySettingsHeading" condition="!cleanSettingsPage"><widgets><container style="zenith-header glass-panel">
             <container layout="horizontal">
                 <label text="Settings &amp; Custom Roles" type="h2"/>
             </container>
@@ -42,7 +50,7 @@
                     <link url="Roles" text="Roles &amp; Access" icon="fa fa-key" btn-type="primary" style="q-btn--dense"/>
                 </widgets></section>
             </container>
-        </container>
+        </container></widgets></section>
 
         <!-- Main content container -->
         <container style="zenith-body">

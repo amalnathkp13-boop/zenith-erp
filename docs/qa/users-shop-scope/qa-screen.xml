@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copy to the disposable runtime only. Never mount this helper in production. -->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd" default-menu-include="false">
+    <transition name="probe" method="post"><actions><script><![CDATA[
+        if (System.getProperty('users.scope.qa.disposable') != 'true' ||
+                !(ec.user.username in ['pos.qa','pos.b.qa']) || !ec.user.isInGroup('ZENITH_ADMIN') ||
+                !(ec.user.getPreference('ACTIVE_ORGANIZATION') in ['POS_QA_A','POS_QA_B'])) {
+            ec.web.response.setStatus(403); ec.web.sendJsonResponse([denied:true]); return
+        }
+        def op = ec.web.parameters.op
+        if (op == 'prepare' && ec.user.username == 'pos.qa') {
+            boolean disabled = ec.artifactExecution.disableAuthz()
+            try {
+                ['A','B'].each { suffix ->
+                    def group = 'TENANT_POS_QA_' + suffix
+                    ec.entity.makeValue('moqui.security.UserGroup').setAll([userGroupId:group,description:'Disposable access fixture']).createOrUpdate()
+                    def users = suffix == 'A' ? ['POS_QA_MANAGER','POS_QA_CASHIER'] : ['POS_QA_MANAGER_B']
+                    users.each { uid -> ec.entity.makeValue('moqui.security.UserGroupMember').setAll([
+                        userGroupId:group,userId:uid,fromDate:java.sql.Timestamp.valueOf('2020-01-01 00:00:00')]).createOrUpdate() }
+                }
+                ec.entity.makeValue('moqui.security.UserGroupMember').setAll([userGroupId:'ZENITH_ALL',userId:'POS_QA_CASHIER',
+                    fromDate:java.sql.Timestamp.valueOf('2020-01-01 00:00:00')]).createOrUpdate()
+                [['ONE','POS_QA_A_FAC'],['TWO','POS_QA_A_FAC2']].each { row ->
+                    ec.entity.makeValue('zenith.erp.stores.Store').setAll([storeId:'POS_QA_STORE_'+row[0],
+                        storeName:'Synthetic shop '+row[0],organizationPartyId:'POS_QA_A',facilityId:row[1],statusId:'StActive']).createOrUpdate()
+                }
+                ec.entity.makeValue('zenith.erp.pos.PosTerminal').setAll([terminalId:'POS_QA_SCOPE_TERM3',organizationPartyId:'POS_QA_A',
+                    terminalName:'Synthetic third counter',facilityId:'POS_QA_A_FAC2',isActive:'Y',stateCode:'33']).createOrUpdate()
+                [['1','POS_QA_A_TERM1','POS_QA_MANAGER',10],['2','POS_QA_A_TERM2','POS_QA_CASHIER',20],['3','POS_QA_SCOPE_TERM3','POS_QA_MANAGER',40]].each { row ->
+                    def sid='POS_QA_SCOPE_SESSION'+row[0]
+                    ec.entity.makeValue('zenith.erp.pos.PosSession').setAll([sessionId:sid,organizationPartyId:'POS_QA_A',terminalId:row[1],
+                        operatorPartyId:row[2],statusId:'PsClosed',openDate:ec.user.nowTimestamp]).createOrUpdate()
+                    ec.entity.makeValue('zenith.erp.pos.PosTransaction').setAll([transactionId:'POS_QA_SCOPE_BILL'+row[0],
+                        organizationPartyId:'POS_QA_A',sessionId:sid,statusId:'PtCompleted',entryDate:ec.user.nowTimestamp,
+                        grandTotal:row[3],subtotal:row[3],payableAmount:row[3]]).createOrUpdate()
+                }
+            } finally { if (!disabled) ec.artifactExecution.enableAuthz() }
+            ec.web.sendJsonResponse([prepared:!ec.message.hasError(),errors:ec.message.errorsString]); return
+        }
+        if (op == 'inspect') {
+            def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
+            def roles = ec.entity.find('zenith.erp.base.OrganizationAccessRole').condition('organizationPartyId',org).disableAuthz().list()
+            def memberships = ec.entity.find('moqui.security.UserGroupMember').condition('userId','in',
+                org == 'POS_QA_A' ? ['POS_QA_CASHIER','POS_QA_MANAGER'] : ['POS_QA_MANAGER_B']).disableAuthz().list()
+            def grants = roles ? ec.entity.find('moqui.security.ArtifactAuthz').condition('userGroupId','in',roles*.userGroupId).disableAuthz().list() : []
+            ec.web.sendJsonResponse([roles:roles.collect { [id:it.userGroupId,name:it.roleName,selections:it.selectionsJson] },
+                memberships:memberships.collect { [userId:it.userId,role:it.userGroupId] },
+                entityFilters:grants.findAll { it.artifactGroupId == 'Z_ALL_ENTITIES' }.collect { grant ->
+                    ec.entity.find('moqui.security.ArtifactAuthzFilter').condition('artifactAuthzId',grant.artifactAuthzId).disableAuthz().count() },
+                billAmounts:ec.entity.find('zenith.erp.pos.PosTransaction').condition('organizationPartyId',org)
+                    .condition('transactionId','like','POS_QA_SCOPE_%').disableAuthz().list().collect { it.grandTotal }]); return
+        }
+        if (op == 'scope') {
+            def value=ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').parameters([
+                facilityId:ec.web.parameters.facilityId,includePosScope:true]).call()
+            ec.web.sendJsonResponse(value); return
+        }
+        ec.web.response.setStatus(400); ec.web.sendJsonResponse([invalid:true])
+    ]]></script></actions><default-response type="none"/></transition>
+</screen>

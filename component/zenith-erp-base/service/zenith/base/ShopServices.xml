@@ -46,6 +46,15 @@
                             .condition("ownerPartyId", org)
                             .condition("facilityTypeEnumId", "FcTpRetailStore")
                             .useCache(true).list()
+                    // Once shops are registered, their linked facilities are authoritative. An
+                    // unused onboarding stock facility is not an additional customer-facing shop.
+                    // Older organizations with no Store rows keep their existing facility list.
+                    def registered = ec.entity.find('zenith.erp.stores.Store')
+                            .condition('organizationPartyId', org).useCache(true).list()
+                    if (registered) {
+                        def registeredIds = registered.collect { it.facilityId }.findAll { it } as Set
+                        shops = shops.findAll { registeredIds.contains(it.facilityId) }
+                    }
                     shops = shops ? shops.sort { (it.facilityName ?: it.facilityId) } : []
                     shopCount = shops.size()
                     hasMultiShop = shopCount >= 2
@@ -68,6 +77,7 @@
                         terminalIds = terms ? terms.collect { it.terminalId }.unique() : []
                         if (terminalIds) {
                             def ss = ec.entity.find("zenith.erp.pos.PosSession")
+                                    .condition("organizationPartyId", org)
                                     .condition("terminalId", "in", terminalIds)
                                     .useCache(true).list()
                             sessionIds = ss ? ss.collect { it.sessionId }.unique() : ['__NONE__']
