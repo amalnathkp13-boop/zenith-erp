@@ -17,6 +17,15 @@
         <relationship type="one" related="mantle.facility.Facility"/>
     </entity>
 
+    <!-- One administrator-controlled terminal per login in each organization. -->
+    <entity entity-name="PosTerminalAssignment" package="zenith.erp.pos">
+        <field name="organizationPartyId" type="id" is-pk="true"/>
+        <field name="userId" type="id" is-pk="true"/>
+        <field name="terminalId" type="id"/>
+        <relationship type="one" related="moqui.security.UserAccount"/>
+        <relationship type="one" related="zenith.erp.pos.PosTerminal"/>
+    </entity>
+
     <!-- ========== POS Receipt Template ========== -->
     <entity entity-name="PosReceiptTemplate" package="zenith.erp.pos" short-alias="PosReceiptTemplates">
         <field name="templateId" type="id" is-pk="true"/>

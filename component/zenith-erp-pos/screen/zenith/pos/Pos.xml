@@ -25,6 +25,8 @@
                     expenseId:p.expenseId, wastageId:p.wastageId, facilityId:p.facilityId, printerId:p.printerId, kotId:p.kotId, waiterId:p.waiterId, qrPaymentId:p.qrPaymentId]).call()
                 if (!access?.allowed) throw new org.moqui.context.ArtifactAuthorizationException('You do not have access to this POS organization or record.')
                 context.posOrganizationPartyId = access.organizationPartyId
+                context.posTerminalRestricted = access.terminalRestricted
+                context.posAllowedTerminalIds = access.allowedTerminalIds
             }
         ]]></script>
     </always-actions>

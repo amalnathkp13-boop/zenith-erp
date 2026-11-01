@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<eecas xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/entity-eca-3.xsd">
+    <!-- Auto entity services must not give cashiers an alternate assignment write path. -->
+    <eeca entity="zenith.erp.pos.PosTerminalAssignment" on-create="true" on-update="true" on-delete="true" run-before="true">
+        <actions><script><![CDATA[
+            if (!ec.user.isInGroup('ADMIN') && !ec.user.isInGroup('ZENITH_ADMIN'))
+                throw new org.moqui.context.ArtifactAuthorizationException('Only an administrator can change terminal assignments.')
+            if (organizationPartyId != ec.user.getPreference('ACTIVE_ORGANIZATION'))
+                throw new org.moqui.context.ArtifactAuthorizationException('Switch to the assignment organization before changing it.')
+            def terminal=terminalId ? ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',terminalId).disableAuthz().one() : null
+            if (terminal && terminal.organizationPartyId != organizationPartyId)
+                throw new org.moqui.context.ArtifactAuthorizationException('The assigned terminal must belong to this organization.')
+        ]]></script></actions>
+    </eeca>
+</eecas>

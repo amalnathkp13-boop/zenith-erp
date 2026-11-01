@@ -17,7 +17,8 @@ module.exports=async function({a,foreign,base,check,q,invoke,post,out}) {
  }
  try {
   for(let i=0;i<3;i++)await post('PosTerminals','createTerminal',{terminalId:ids[i],terminalName:'Disposable scope counter '+(i+1),facilityId:i<2?'POS_QA_A_FAC':'POS_QA_A_FAC2',organizationPartyId:'POS_QA_A',stateCode:'33',countryGeoId:'IND',isActive:'Y'});
-  const own=await sale(0,cashier,11),otherCounter=await sale(1,cashier,22),otherShop=await sale(2,a,33);
+  await invoke('assignTerminal',{userId:'POS_QA_CASHIER',terminalId:ids[0]});
+  const own=await sale(0,cashier,11),otherCounter=await sale(1,a,22),otherShop=await sale(2,a,33);
   const foreignTerminal='POS_QA_SCOPE_B';
   await post('PosTerminals','createTerminal',{terminalId:foreignTerminal,terminalName:'Foreign synthetic scope counter',facilityId:'POS_QA_B_FAC',organizationPartyId:'POS_QA_B',stateCode:'33',isActive:'Y'},foreign);
   const foreignSession=await invoke('open',{terminalId:foreignTerminal,openingCash:'0'},false,foreign);sessions.push({session:foreignSession,actor:foreign});
@@ -30,9 +31,9 @@ module.exports=async function({a,foreign,base,check,q,invoke,post,out}) {
   const history=await api(cashier,{action:'billHistory',sessionId:own.session.sessionId,histLimit:'100'});
   check('cashier history contains only this terminal and login',history.d.success&&history.d.bills.length===1&&history.d.bills[0].txId===own.tx.transactionId,history.d);
   const next=await api(cashier,{action:'billHistory',terminalId:ids[1],histLimit:'100'});
-  check('same login on another counter receives that counter only',next.d.success&&next.d.bills.length===1&&next.d.bills[0].txId===otherCounter.tx.transactionId,next.d);
+  check('cashier cannot switch history to an unassigned counter',next.r.status()===403||next.d.success===false,next.d);
   const empty=await api(cashier,{action:'billHistory',terminalId:ids[2]});
-  check('forged shop terminal cannot expose another login history',empty.d.success&&empty.d.bills.length===0,empty.d);
+  check('forged shop terminal cannot expose another login history',empty.r.status()===403||empty.d.success===false,empty.d);
   const foreignHistory=await api(cashier,{action:'billHistory',terminalId:'POS_QA_B_TERM1'});
   check('foreign tenant terminal history is rejected',foreignHistory.r.status()===403||foreignHistory.d.success===false,foreignHistory.d);
   for(const id of [otherLogin.tx.transactionId,otherShop.tx.transactionId]){
@@ -85,5 +86,6 @@ module.exports=async function({a,foreign,base,check,q,invoke,post,out}) {
  }finally{
   for(const {session,actor} of sessions){if(q(`SELECT status_id FROM pos_session WHERE session_id='${session.sessionId}'`)[0]?.status_id==='PsOpen')await invoke('close',{sessionId:session.sessionId,closingCash:'0'},false,actor);}
   await c.close();
+  await invoke('assignTerminal',{userId:'POS_QA_CASHIER',terminalId:'POS_QA_A_TERM1'});
  }
 };

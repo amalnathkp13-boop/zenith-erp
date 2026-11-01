@@ -49,6 +49,7 @@ const cases = [
         const h=harness(),printing=h.context.qzPrint('<div data-paper-width="58">QA receipt</div>','QA');
         await tick();h.connections[0].resolve();await printing;
         assert.equal(h.jobs[0].config.options.size.width,58);assert.equal(h.jobs[0].data[0].options.pageWidth,58);
+        assert.equal(h.jobs[0].data[0].flavor,'plain','the rendered receipt is HTML content, not a relative web address');
     }],
     ['opening billing never requests QZ permission', async () => { const h=harness(); await h.advance(5000); assert.equal(h.connections.length,0); }],
     ['overlapping first receipts share one printer-selection request', async () => {

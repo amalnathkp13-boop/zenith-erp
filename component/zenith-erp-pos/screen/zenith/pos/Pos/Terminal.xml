@@ -2374,15 +2374,16 @@
                             histTermId = curSess?.terminalId
                         }
                         if (!histTermId && p.terminalId) histTermId = p.terminalId
+                        if (!histTermId && posTerminalRestricted) histTermId = (posAllowedTerminalIds ?: []).find()
                         if (!histTermId) {
                             def recentSess = ec.entity.find("zenith.erp.pos.PosSession").condition("organizationPartyId",posOrganizationPartyId).condition("operatorPartyId", ec.user.userAccount?.partyId).orderBy("-openDate").limit(1).list()
                             if (recentSess) histTermId = recentSess[0].terminalId
                         }
                         def curTerm = histTermId ? ec.entity.find("zenith.erp.pos.PosTerminal").condition("terminalId", histTermId).condition('organizationPartyId',posOrganizationPartyId).one() : null
-                        if (!curTerm) { ec.web.sendJsonResponse([success:true, action:'billHistory', bills:[], total:0, offset:0]); return }
+                        if (!curTerm || (posTerminalRestricted && !(posAllowedTerminalIds ?: []).contains(curTerm.terminalId))) { ec.web.sendJsonResponse([success:true, action:'billHistory', bills:[], total:0, offset:0]); return }
                         def txnBase = ec.entity.find("zenith.erp.pos.PosTransactionView")
                             .condition("organizationPartyId",posOrganizationPartyId).condition("terminalId",curTerm.terminalId).condition("statusId", "PtCompleted")
-                        if (!ec.user.isInGroup('ADMIN') && !ec.user.isInGroup('ZENITH_ADMIN') && !ec.user.isInGroup('ZENITH_STORE_MGR')) {
+                        if (posTerminalRestricted) {
                             txnBase.condition('operatorPartyId',ec.user.userAccount?.partyId)
                         }
                         BigDecimal searchAmt = null
@@ -3039,6 +3040,8 @@
 
 
             <entity-find entity-name="zenith.erp.pos.PosSession" list="openSessions" limit="1">
+                <econdition field-name="organizationPartyId" from="posOrganizationPartyId"/>
+                <econdition field-name="terminalId" operator="in" from="posTerminalRestricted ? (posAllowedTerminalIds ?: ['__NONE__']) : null" ignore-if-empty="true"/>
 
 
 
@@ -3974,6 +3977,7 @@
              keep busy ones selectable but labelled "(in use)", and pre-select the first available one. The
              "busy" test mirrors open#PosSession exactly: PsOpen session that has ≥1 PtCompleted transaction
              (an open-but-empty session is auto-closed on open, so it is NOT treated as busy). -->
+        <set field="terminalList" from="posTerminalRestricted ? (terminalList ?: []).findAll { (posAllowedTerminalIds ?: []).contains(it.terminalId) } : terminalList"/>
         <set field="_blockedTerms" from="(terminalList ?: []).findAll{ _t -> ec.entity.find('zenith.erp.pos.PosSession').condition('terminalId', _t.terminalId).condition('statusId', 'PsOpen').list().any{ _s -> ec.entity.find('zenith.erp.pos.PosTransaction').condition('sessionId', _s.sessionId).condition('statusId', 'PtCompleted').count() > 0 } }.collect{ it.terminalId } as Set"/>
         <!-- A recorded sale means the terminal cannot be silently recycled. Give the operator a
              direct path to the existing, org-guarded session detail for a counted close. -->
@@ -3992,13 +3996,14 @@
         <set field="terminalList" from="(terminalList ?: []).findAll{ !_blockedTerms.contains(it.terminalId) }.collect{ [terminalId: it.terminalId, terminalName: (it.terminalName ?: it.terminalId)] } + (terminalList ?: []).findAll{ _blockedTerms.contains(it.terminalId) }.collect{ [terminalId: it.terminalId, terminalName: ((it.terminalName ?: it.terminalId) + ' (in use)')] }"/>
         <script><![CDATA[
             def checkoutNames=(terminalList ?: []).collectEntries { [(it.terminalId):it.terminalName] }
-            checkoutCounters=sessionId ? ec.entity.find('zenith.erp.pos.PosSession')
+            checkoutCounters=sessionId && !posTerminalRestricted ? ec.entity.find('zenith.erp.pos.PosSession')
                 .condition('organizationPartyId',posOrganizationPartyId).condition('operatorPartyId',ec.user.userAccount?.partyId)
                 .condition('statusId','PsOpen').orderBy('-openDate').limit(100).list().collect { s ->
                     [sessionId:s.sessionId,name:checkoutNames[s.terminalId] ?: s.terminalId]
                 } : []
         ]]></script>
         <set field="defaultTerminalId" from="terminalList ? terminalList[0].terminalId : ''"/>
+        <set field="defaultTerminalName" from="terminalList ? terminalList[0].terminalName : ''"/>
 
 
 
@@ -4348,11 +4353,12 @@
 
 
 
-                        <form-single name="OpenSessionForm" transition="openSession">
+                        <section name="NoAssignedTerminal" condition="posTerminalRestricted &amp;&amp; !terminalList"><widgets><label text="No active terminal is assigned to this login. Ask your administrator to assign a terminal under POS → Terminals." type="p" style="pos-terminal-assignment-empty"/></widgets></section>
+                        <section name="AssignedTerminalAvailable" condition="terminalList"><widgets><form-single name="OpenSessionForm" transition="openSession">
 
 
 
-                            <field name="terminalId"><default-field title="Select Terminal">
+                            <field name="terminalId"><conditional-field name="locked_terminal" condition="posTerminalRestricted" title="Assigned Terminal"><hidden default-value="${defaultTerminalId}"/><label text="${defaultTerminalName}"/></conditional-field><default-field title="Select Terminal">
 
 
 
@@ -4397,6 +4403,7 @@
 
 
                         </form-single>
+                        </widgets></section>
                         <render-mode><text type="html,qvt,vuet" template="true"><![CDATA[
                           <#if busySessionLinks?has_content>
                           <div class="pos-busy-session-note" style="margin-top:18px;padding:14px;border:1px solid #f3d99c;border-radius:8px;background:#fffbeb;color:#664d03;font-size:13px;line-height:1.5">
@@ -5134,9 +5141,11 @@ window.sendWhatsAppWithPdf=function() {
 <div class="pos-header nb-header">
   <div class="nb-hrow">
     <#if (posOnlyUser!false)><a class="pos-logo-link nb-brand" href="/apps/zenith/Dashboard" title="Go to the Dashboard"><img src="/zenithstatic/img/zetaerp-logo.svg?v=2" alt="ZetaERP"/></a><#else><a class="pos-logo-link nb-brand" href="/qapps/zenith" title="Back to the app (dashboard)"><img src="/zenithstatic/img/zetaerp-logo.svg?v=2" alt="ZetaERP"/></a></#if>
+    <#if (posTerminalRestricted!false)><span class="nb-pill" title="Terminal assigned by your administrator">${((terminal.terminalName)!'Assigned terminal')?html}</span><#else>
     <details class="nb-counter"><summary class="nb-pill" title="Switch between your open counters"><span>${((terminal.terminalName)!'Terminal')?html}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
       <div class="nb-counter-menu"><span>Your open counters</span><#list (checkoutCounters![]) as counter><a href="/apps/zenith/pos/Terminal?sessionId=${counter.sessionId?url('UTF-8')}" <#if counter.sessionId==sessionId>aria-current="true"</#if>>${counter.name?html}</a></#list><a href="/apps/zenith/pos/PosTerminals">Manage counters</a></div>
     </details>
+    </#if>
     <span class="nb-status" role="status"><span class="nb-dot"></span><span id="pos-connection-status">Online</span></span>
     <span class="nb-meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg><span id="nb-date">${dispDate!''}</span></span>
     <span class="nb-meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><span id="nb-clock" data-server-epoch="${ec.user.nowTimestamp.time?c}" data-time-zone="${ec.user.timeZone.ID?html}">${dispTime!''}</span></span>

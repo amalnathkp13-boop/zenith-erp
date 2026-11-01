@@ -12,6 +12,11 @@
         <out-parameters><parameter name="sessionId"/></out-parameters>
         <actions>
             <if condition="openingCash &lt; 0"><return error="true" message="Opening cash cannot be negative."/></if>
+            <!-- Serialize session opening with the administrator's assignment change. -->
+            <script><![CDATA[
+                if (!ec.user.isInGroup('ADMIN') && !ec.user.isInGroup('ZENITH_ADMIN'))
+                    ec.entity.find('moqui.security.UserAccount').condition('userId',ec.user.userId).forUpdate(true).disableAuthz().one()
+            ]]></script>
             <entity-find-one entity-name="zenith.erp.pos.PosTerminal" value-field="_openTerminal" for-update="true"/>
             <if condition="!_openTerminal || _openTerminal.isActive != 'Y'"><return error="true" message="Choose an active POS terminal."/></if>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[terminalId:terminalId]"/>

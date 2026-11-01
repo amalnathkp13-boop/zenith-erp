@@ -3,6 +3,17 @@
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         default-menu-title="Terminals" default-menu-index="5">
 
+    <always-actions><script><![CDATA[
+        if (!ec.user.isInGroup('ADMIN') && !ec.user.isInGroup('ZENITH_ADMIN'))
+            throw new org.moqui.context.ArtifactAuthorizationException('Only an administrator can manage POS terminals and assignments.')
+    ]]></script></always-actions>
+    <transition name="saveAssignment" method="post" begin-transaction="true">
+        <actions>
+            <if condition="!ec.web.parameters.moquiSessionToken || ec.web.parameters.moquiSessionToken != ec.web.sessionToken"><return error="true" message="Submit the assignment form with a valid session token."/></if>
+            <service-call name="zenith.pos.PosAccessServices.save#TerminalAssignment" in-map="[userId:userId,terminalId:terminalId]"/>
+        </actions><default-response url="."/>
+    </transition>
+
     <transition name="createTerminal" begin-transaction="true">
         <actions>
             <!-- Let Quasar resolve the form target; enforce POST and CSRF before every write. -->
@@ -73,6 +84,16 @@
             // (a 1-element list) that row-actions can increment across rows (writes to a row's own context
             // don't persist, but mutating a shared object does).
             context.termCounter = [0]
+            def parties=ec.entity.find('mantle.party.PartyRelationship').condition('toPartyId',activeOrgId)
+                .condition('toRoleTypeId','OrgInternal').conditionDate('fromDate','thruDate',ec.user.nowTimestamp).disableAuthz().list()*.fromPartyId
+            assignmentUsers=ec.entity.find('moqui.security.UserAccount').condition('partyId','in',parties ?: ['__NONE__'])
+                .orderBy('username').disableAuthz().list().findAll { it.disabled!='Y' }
+            def assignments=ec.entity.find('zenith.erp.pos.PosTerminalAssignment').condition('organizationPartyId',activeOrgId).list()
+            def names=terminalList.collectEntries { [(it.terminalId):it.terminalName ?: it.terminalId] }
+            assignmentRows=assignmentUsers.collect { u ->
+                def assigned=assignments.find { it.userId==u.userId }
+                [username:u.username,terminalName:assigned ? names[assigned.terminalId] ?: 'Unavailable terminal' : 'Not assigned']
+            }
         ]]></script>
     </actions>
 
@@ -159,6 +180,19 @@
             </container>
 
             <!-- Terminals table (inline-editable rows) -->
+            <container style="zenith-card bg-white q-pa-md q-mb-lg">
+                <label text="Billing login assignments" type="h4"/>
+                <label text="Only administrators assign terminals. Billing logins are locked to the assigned terminal and its shop. Close the user's sessions before reassigning." type="p"/>
+                <form-single name="AssignTerminalForm" transition="saveAssignment">
+                    <field name="userId"><default-field title="Billing login"><drop-down><list-options list="assignmentUsers" key="${userId}" text="${username}"/></drop-down></default-field></field>
+                    <field name="terminalId"><default-field title="Assigned terminal"><drop-down allow-empty="true"><list-options list="terminalList" key="${terminalId}" text="${terminalName ?: terminalId}"/></drop-down></default-field></field>
+                    <field name="submitButton"><default-field><submit text="Save terminal assignment"/></default-field></field>
+                </form-single>
+                <form-list name="TerminalAssignmentList" list="assignmentRows" skip-form="true">
+                    <field name="username"><default-field title="Billing login"><display/></default-field></field>
+                    <field name="terminalName"><default-field title="Assigned terminal"><display/></default-field></field>
+                </form-list>
+            </container>
             <container id="pos-terminals-table" style="zenith-card bg-white shadow-2 border-radius-lg q-pa-md z-termtable">
                 <form-list name="TerminalList" list="terminalList" transition="updateTerminal">
                     <row-actions>

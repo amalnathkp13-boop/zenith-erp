@@ -29,6 +29,8 @@
     // The platform-admin migration probe needs a valid POS scope to traverse Pos.xml.
     // This helper runs only in the newly initialized disposable synthetic database.
     ec.user.setPreference('ACTIVE_ORGANIZATION','POS_QA_A')
+    ec.service.sync().name('zenith.pos.PosAccessServices.save#TerminalAssignment')
+        .parameters([userId:'POS_QA_CASHIER',terminalId:'POS_QA_A_TERM1']).call()
     ec.web.sendJsonResponse([initialized:true,normalSeedBaseline:baseline])
 ]]></script></actions><default-response type="none"/></transition>
 <transition name="cleanWorkspace" method="post"><actions><script><![CDATA[
@@ -138,6 +140,8 @@
         return
     }
     def calls=[
+        assignTerminal:['zenith.pos.PosAccessServices.save#TerminalAssignment',['userId','terminalId']],
+        terminalAccess:['zenith.pos.PosAccessServices.assert#PosAccess',['terminalId','sessionId','transactionId']],
         wastage:['zenith.pos.PosStockServices.record#PosWastage',['productId','facilityId','requestId','quantity','unitCost','wastageReason','batchNumber','wastageDate','description']],
         gift:['zenith.pos.PosServices.pay#WithGiftCard',['transactionId','cardNumber','amount']],
         points:['zenith.pos.PosServices.redeem#LoyaltyPoints',['transactionId','customerPartyId','pointsToRedeem']],
