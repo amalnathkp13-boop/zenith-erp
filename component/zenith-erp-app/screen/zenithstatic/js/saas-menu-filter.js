@@ -34,7 +34,8 @@
                 isAdmin: el.getAttribute("data-is-admin") !== "false",
                 navRestricted: el.getAttribute('data-nav-restricted') === 'true',
                 isSuperAdmin: el.getAttribute('data-super') === 'true',
-                modules: JSON.parse(el.getAttribute("data-modules") || "[]")
+                modules: JSON.parse(el.getAttribute("data-modules") || "[]"),
+                roleScope: JSON.parse(el.getAttribute('data-role-scope') || '{}')
             };
         } catch (e) { return null; }
     }
@@ -78,6 +79,7 @@
                 ['data-is-admin',cfg.isAdmin],['data-super',cfg.isSuperAdmin],['data-nav-restricted',cfg.navRestricted]]
                 .forEach(function(pair) { embedded.setAttribute(pair[0], String(!!pair[1])); });
             embedded.setAttribute('data-modules', JSON.stringify(cfg.modules));
+            embedded.setAttribute('data-role-scope', JSON.stringify(cfg.roleScope || {}));
             document.body.appendChild(embedded);
         }
         window.dispatchEvent(new Event('zenith:nav-config'));

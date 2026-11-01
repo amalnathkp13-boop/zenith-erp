@@ -2681,7 +2681,7 @@ window.posToggleFullscreen = function() {
                     size: {width: /data-paper-width="58"/.test(html) ? 58 : 80}, units: 'mm', colorType: 'grayscale',
                     margins: {top: 0, right: 0, bottom: 0, left: 0}, scaleContent: false
                 });
-                var data = [{type: 'pixel', format: 'html', data: html,
+                var data = [{type: 'pixel', format: 'html', flavor: 'plain', data: html,
                     options: {pageWidth: /data-paper-width="58"/.test(html) ? 58 : 80, pageHeight: null}}];
                 return qz.print(cfg, data);
             }).then(function() {

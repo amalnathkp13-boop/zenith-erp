@@ -10,6 +10,12 @@
             roleRestricted = !ec.user.isInGroup('ADMIN') && !ec.user.isInGroup('ZENITH_ADMIN')
             def plan = planModules != null && !planModules.contains('all') ? planModules : null
             if (!roleRestricted) { moduleIds = plan; return }
+            def customScope = ec.service.sync().name('zenith.base.RoleAccessServices.get#AssignedRoleScope').disableAuthz().call()
+            if (customScope.restricted) {
+                def granted = (customScope.selections.keySet() + customScope.legacyModules).unique()
+                moduleIds = (plan == null ? granted : granted.findAll { plan.contains(it) }) as List
+                return
+            }
             def groups = (ec.user.userGroupIdSet ?: []) as List
             def roles = groups.findAll { it?.startsWith('ZENITH_') && it != 'ZENITH_ALL' }
             def modules = [] as Set
@@ -37,6 +43,12 @@
                 canWrite = false
                 if (ec.user.userId == null) { return }
                 if (ec.user.isInGroup("ADMIN") || ec.user.isInGroup("ZENITH_ADMIN")) { canWrite = true; return }
+                def customScope = ec.service.sync().name('zenith.base.RoleAccessServices.get#AssignedRoleScope').disableAuthz().call()
+                if (customScope.restricted) {
+                    canWrite = (customScope.selections.containsKey(moduleId.toLowerCase()) || customScope.legacyWriteModules.contains(moduleId.toLowerCase())) &&
+                        ec.service.sync().name('zenith.base.RoleAccessServices.check#RoleRouteAccess').disableAuthz().call()?.allowed == true
+                    return
+                }
                 def _zr = (ec.user.userGroupIdSet ?: []).findAll { it?.startsWith("ZENITH_") && it != "ZENITH_ALL" }
                 if (_zr.size() == 1 && _zr.contains("ZENITH_CASHIER")) { canWrite = true; return }   // posOnly: gate-exempt
                 def _myG = (ec.user.userGroupIdSet ?: []) as List
