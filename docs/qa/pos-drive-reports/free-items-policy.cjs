@@ -122,11 +122,21 @@ module.exports=async function({manager,cashier,foreign,session,id,free,credit,ca
   await page.locator('#pos-free-approval [type=submit]').click();const paid=await (await payment).json();
   check(shell+' cash checkout asks for and persists the approval reason',paid.success&&rows(ui)[0]?.reason==='Synthetic browser approved sample'&&q(`SELECT status_id FROM pos_transaction WHERE transaction_id='${ui}'`)[0].status_id==='PtCompleted');await page.close();
  }
- const offlinePage=await manager.c.newPage();await offlinePage.goto(base+'/apps/zenith/pos/Terminal?sessionId='+session.sessionId+'&taxOn=N',{waitUntil:'domcontentloaded'});
+ const offlineCart=(await cashier.invoke('cart',{sessionId:session.sessionId,reuseOpenCart:'false'})).result.transactionId;
+ const offlinePage=await manager.c.newPage();
+ const warmed=offlinePage.waitForResponse(response=>{const params=new URLSearchParams(response.request().postData()||'');return response.url().includes('/Terminal/ajaxCart')&&params.get('action')==='refresh'&&params.get('transactionId')===offlineCart;});
+ await offlinePage.goto(base+'/apps/zenith/pos/Terminal?sessionId='+session.sessionId+'&transactionId='+offlineCart+'&taxOn=N',{waitUntil:'domcontentloaded'});
+ const warmedData=await (await warmed).json();check('Offline free-item fixture caches its own empty draft',warmedData.success&&warmedData.transactionId===offlineCart&&warmedData.items.length===0);
  await offlinePage.waitForFunction(()=>window._posOffline?.lookup('POS_QA_A_FREE'));
- const queued=await offlinePage.evaluate(async()=>{window._posOffline.add('POS_QA_A_FREE',0);return(await window._posOffline.getQueue()).length;});
- await offlinePage.locator('.ofl-pay[data-m="Cash"]').click();
- check('Offline zero-price item stays in cart without a queued bill',await offlinePage.locator('.ofl-qi').count()===1&&(await offlinePage.evaluate(()=>window._posOffline.getQueue())).length===queued&&await offlinePage.locator('#pos-offline-frame').count()===0);
+ await manager.c.setOffline(true);
+ await offlinePage.locator('.pos-offline-payments').waitFor();
+ const queued=await offlinePage.evaluate(async()=>{window._posOffline.add('POS_QA_A_FREE');return(await window._posOffline.getQueue()).length;});
+ await offlinePage.locator('.ofl-price').fill('0');
+ check('Offline zero-price fixture uses the visible rate field',await offlinePage.locator('.ofl-price').inputValue()==='0');
+ await offlinePage.keyboard.press('F2');
+ const offlineBlocked={items:await offlinePage.locator('.ofl-qi').count(),queued:(await offlinePage.evaluate(()=>window._posOffline.getQueue())).length,frames:await offlinePage.locator('#pos-offline-frame').count()};
+ check('Offline zero-price item stays in cart without a queued bill',offlineBlocked.items===1&&offlineBlocked.queued===queued&&offlineBlocked.frames===0,offlineBlocked);
+ await manager.c.setOffline(false);
  await offlinePage.close();
  const locked=await cart();for(let n=0;n<5;n++)await approve(locked,{managerPin:'000000'},cashier);
  check('Five failed PIN attempts persist a lockout despite rejected approval transactions',q("SELECT * FROM pos_manager_pin_attempt WHERE user_id='POS_QA_CASHIER' AND organization_party_id='POS_QA_A'")[0]?.locked_until!=null);

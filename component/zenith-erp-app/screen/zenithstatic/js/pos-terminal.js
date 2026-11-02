@@ -765,14 +765,15 @@ window._posOffline = (function () {
             return false;
         }
         if (!draft) {
-            draft = newDraft();
             var sourceId = (document.querySelector('#cartInlineAddForm [name=transactionId]') || {}).value;
-            if (sourceId && !snapshot) {
+            if (sourceId && (!snapshot || snapshot.transactionId !== sourceId)) {
                 serverDraftPaused = true;
                 banner(true);
                 return false;
             }
-            if (snapshot && snapshot.transactionId) {
+            draft = newDraft();
+            // A new empty bill must never inherit the previous bill's cached rows.
+            if (sourceId && snapshot && snapshot.transactionId) {
                 if (!snapshot.sourceRevision || Number(snapshot.paid) > 0) {
                     serverDraftPaused = true;
                     banner(true);
