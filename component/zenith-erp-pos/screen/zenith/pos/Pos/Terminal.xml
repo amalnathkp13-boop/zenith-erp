@@ -1444,19 +1444,8 @@
 
                 if (term) {
                     def posOrg = ec.service.sync().name('zenith.barcode.BarcodeServices.get#AuthorizedActiveOrganization').call().activeOrgId
-                    // Match in SQL before limiting suggestions, so catalogue order cannot hide a valid code.
-                    def products=[]
-                    if(posOrg){
-                        def cf=ec.entity.conditionFactory;def EC=org.moqui.entity.EntityCondition
-                        def like='%'+term.toString().trim().replace('\\','\\\\').replace('%','\\%').replace('_','\\_')+'%'
-                        def codes=ec.service.sync().name('zenith.barcode.BarcodeServices.get#ScanAliases').parameters([code:term.toString().trim()]).call().aliases
-                        def aliases=ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('organizationPartyId',posOrg).condition('isActive','Y')
-                            .condition(cf.makeCondition([cf.makeCondition('barcodeValue',EC.LIKE,like).ignoreCase(),cf.makeCondition('barcodeValue',EC.IN,codes)],EC.OR)).list().collect{it.productId}
-                        def parts=['productName','pseudoId','productId'].collect{cf.makeCondition(it,EC.LIKE,like).ignoreCase()}
-                        if(aliases)parts.add(cf.makeCondition('productId',EC.IN,aliases))
-                        products=ec.entity.find('mantle.product.Product').condition('ownerPartyId',posOrg).condition('productTypeEnumId','PtAsset')
-                            .condition(cf.makeCondition(parts,EC.OR)).orderBy('productName').limit(10).list()
-                    }
+                    def products = ec.service.sync().name('zenith.pos.PosCheckoutServices.search#PosProducts')
+                        .parameters([term:term,pageSize:60]).call().products ?: []
                     products.each { p ->
 
 
@@ -2270,15 +2259,8 @@
                         def q = (p.q ?: '').toString().trim()
                         def products = []
                         if (q && q.length() >= 1) {
-                            // Match the entire authorized catalog before limiting suggestions.
-                            def cf = ec.entity.conditionFactory
-                            def EC = org.moqui.entity.EntityCondition
-                            def like = '%' + q.replace('\\','\\\\').replace('%','\\%').replace('_','\\_') + '%'
-                            def matches = ['productName','pseudoId','productId'].collect { cf.makeCondition(it,EC.LIKE,like).ignoreCase() }
-                            def prods = ec.entity.find('mantle.product.Product')
-                                .condition('ownerPartyId',posOrganizationPartyId ?: '__NO_ORGANIZATION__')
-                                .condition('productTypeEnumId','PtAsset').condition(cf.makeCondition(matches,EC.OR))
-                                .orderBy('productName,productId').limit(10).list()
+                            def prods = ec.service.sync().name('zenith.pos.PosCheckoutServices.search#PosProducts')
+                                .parameters([term:p.q,pageSize:60]).call().products ?: []
                             prods.each { pr ->
                                 def price = pr.mrpAmount ?: 0
                                 if (!price || price == 0) {

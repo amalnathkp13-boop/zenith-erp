@@ -839,13 +839,15 @@ window._posOffline = (function() {
             });
             var addSearch = listEl.querySelector('#hist-add-search');
             var addResults = listEl.querySelector('#hist-add-results');
-            var addTimer = null;
+            var addTimer = null, addVersion = 0;
             if (addSearch) addSearch.addEventListener('input', function() {
                 clearTimeout(addTimer);
-                var q = addSearch.value.trim();
-                if (q.length < 1) { addResults.style.display = 'none'; return; }
+                var q = addSearch.value, version = ++addVersion;
+                addResults.replaceChildren(); addResults.style.display = 'none';
+                if (!q.trim()) { addResults.style.display = 'none'; return; }
                 addTimer = setTimeout(function() {
                     historyPost({action:'searchProductsJson', q:q}).then(function(d) {
+                        if (version !== addVersion || addSearch.value !== q || !addSearch.isConnected) return;
                         if (!d || !d.success || !d.products || d.products.length === 0) {
                             addResults.innerHTML = '<div style="padding:12px;color:#999;font-size:13px">No products found</div>';
                             addResults.style.display = 'block'; return;
@@ -1053,13 +1055,15 @@ window._posOffline = (function() {
                 rowsEl.querySelectorAll('.ced-undo').forEach(function(b){ b.addEventListener('click', function(){ work[+b.dataset.idx].removed=false; renderRows(); }); });
             }
             // Add-item search
-            var addInp = ed.querySelector('#ced-add'), addRes = ed.querySelector('#ced-add-res'), addTimer=null;
+            var addInp = ed.querySelector('#ced-add'), addRes = ed.querySelector('#ced-add-res'), addTimer=null, addVersion=0;
             addInp.addEventListener('input', function(){
                 clearTimeout(addTimer);
-                var q = addInp.value.trim();
-                if (q.length < 1) { addRes.style.display='none'; return; }
+                var q = addInp.value, version = ++addVersion;
+                addRes.replaceChildren(); addRes.style.display='none';
+                if (!q.trim()) { addRes.style.display='none'; return; }
                 addTimer = setTimeout(function(){
                     historyPost({action:'searchProductsJson', q:q}).then(function(d){
+                        if (version !== addVersion || addInp.value !== q || !addInp.isConnected) return;
                         if (!d || !d.success || !d.products || !d.products.length) { addRes.innerHTML='<div style="padding:10px;color:#999;font-size:13px">No products found</div>'; addRes.style.display='block'; return; }
                         var rh='';
                         d.products.forEach(function(pr){ rh += '<div class="ced-pi" data-pid="'+pr.pid+'" data-name="'+(pr.name||'').replace(/"/g,'&quot;')+'" data-price="'+pr.price+'" style="padding:9px 12px;cursor:pointer;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center" onmouseover="this.style.background=\'#ECE8FB\'" onmouseout="this.style.background=\'#fff\'"><div><div style="font-weight:600;font-size:13px">'+pr.name+'</div><div style="font-size:11px;color:#999">'+pr.pid+'</div></div><span style="font-weight:700;color:#2e7d32">&#8377;'+f2(pr.price)+'</span></div>'; });
@@ -3085,7 +3089,7 @@ window.posToggleFullscreen = function() {
                 h += '</div></td>';
                 h += '<td style="padding:4px;text-align:center;vertical-align:middle"><div style="display:flex;align-items:center;justify-content:center;gap:0">';
                 h += '<button data-seq="'+cartText(it.seq)+'" data-q="'+(Number(it.qty)-1)+'" class="aj-q" style="width:34px;height:34px;border:2px solid #e53935;background:#fff;font-size:19px;font-weight:bold;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;border-radius:8px 0 0 8px;color:#e53935">-</button>';
-                h += '<input type="number" step="any" value="'+Number(it.qty)+'" data-seq="'+cartText(it.seq)+'" class="aj-qi" style="width:58px;text-align:center;font-weight:bold;font-size:16px;border-top:2px solid #ccc;border-bottom:2px solid #ccc;border-left:none;border-right:none;height:34px;background:#fff;color:#000;outline:none;box-sizing:border-box"/>';
+                h += '<input type="text" inputmode="decimal" value="'+Number(it.qty)+'" data-seq="'+cartText(it.seq)+'" class="aj-qi" style="width:58px;text-align:center;font-weight:bold;font-size:16px;border-top:2px solid #ccc;border-bottom:2px solid #ccc;border-left:none;border-right:none;height:34px;background:#fff;color:#000;outline:none;box-sizing:border-box"/>';
                 h += '<button data-seq="'+cartText(it.seq)+'" data-q="'+(Number(it.qty)+1)+'" class="aj-q" style="width:34px;height:34px;border:2px solid #2e7d32;background:#fff;font-size:19px;font-weight:bold;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;border-radius:0 8px 8px 0;color:#2e7d32">+</button>';
                 if (it.uom) h += '<span class="pos-cart-uom" style="font-size:11px;color:#e65100;font-weight:700;margin-left:5px;white-space:nowrap;flex-shrink:0">'+cartText(it.uom)+'</span>';
                 h += '</div>';
@@ -3564,11 +3568,21 @@ window.posToggleFullscreen = function() {
                 }
             });
             cart.addEventListener('keydown', function(e) {
-                if (e.key !== 'Enter' || !e.target.matches('.aj-p,.aj-qi')) return;
+                var input = e.target;
+                if (!input.matches('.aj-p,.aj-qi') || e.isComposing) return;
+                var price = input.classList.contains('aj-p'), next;
+                if (e.key === 'Enter') {
+                    next = price ? input.closest('tr').querySelector('.aj-qi') : document.getElementById('cartInlineSearch');
+                } else if (!e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && input.selectionStart === input.selectionEnd) {
+                    if (e.key === 'ArrowLeft' && !price && input.selectionStart === 0) next = input.closest('tr').querySelector('.aj-p');
+                    if (e.key === 'ArrowRight' && price && input.selectionEnd === input.value.length) next = input.closest('tr').querySelector('.aj-qi');
+                }
+                if (!next || next.readOnly) return;
                 e.preventDefault();
-                if (!commitLineInput(e.target)) { e.target.reportValidity(); return; }
-                var next = e.target.classList.contains('aj-p') ? e.target.closest('tr').querySelector('.aj-qi') : document.getElementById('cartInlineSearch');
-                if (next) { next.focus(); next.select(); }
+                if (!commitLineInput(input)) { input.reportValidity(); return; }
+                next.focus();
+                if (e.key === 'Enter') next.select();
+                else { var caret = e.key === 'ArrowLeft' ? next.value.length : 0; next.setSelectionRange(caret, caret); }
             });
             // Typeable quantity (decimals for loose/weighed goods); price auto-recalculates server-side
             cart.addEventListener('change', function(e) {
@@ -3625,11 +3639,11 @@ window.posToggleFullscreen = function() {
             more.disabled = true;
             var offset = Number(more.dataset.nextOffset);
             var input = document.getElementById('cartInlineSearch');
-            var term = input ? input.value.trim() : '';
+            var term = input ? input.value : '';
             var cat = CATID;
             fetchCatalog({productOffset: offset, searchTerm: term, catId: term ? '' : cat})
                 .then(function(doc) {
-                    if (CATID !== cat || (input && input.value.trim() !== term) || !more.isConnected) return;
+                    if (CATID !== cat || (input && input.value !== term) || !more.isConnected) return;
                     var next = doc.querySelector('.pos-product-grid');
                     if (!next) throw new Error('Product page unavailable');
                     var grid = more.parentElement;
@@ -3697,7 +3711,7 @@ window.posToggleFullscreen = function() {
             });
         }
         window._gridSearch = function(term) {
-            return loadCatalog(term ? {searchTerm: term, catId: ''} : {catId: CATID || ''});
+            return term ? loadCatalog({searchTerm: term, catId: ''}) : loadCatalog({catId: CATID || ''}, CATID ? null : __allGridCache);
         };
 
         /* --- Category strip: AJAX. ZE-POS-0204: ALL ITEMS used to grey-out the grid (opacity 0.4 +
@@ -4275,24 +4289,36 @@ window.posToggleFullscreen = function() {
         var si = document.getElementById('cartInlineSearch');
         var dd = document.getElementById('cartSearchDropdown');
         if (!si || !dd) { setTimeout(initCartSearch, 300); return; }
-        var dt, aidx = -1, keyTimes = [];
+        var dt, aidx = -1, keyTimes = [], searchVersion = 0, searchAbort;
+        if (si.dataset.posSearchBound) return;
+        si.dataset.posSearchBound = 'true';
+        function resetSearch() {
+            ++searchVersion;
+            clearTimeout(dt); clearTimeout(window._gridSyncTimer);
+            if (searchAbort) searchAbort.abort();
+            dd.replaceChildren(); dd.style.display = 'none'; aidx = -1;
+        }
         function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
         // A physical barcode scanner emits keys far faster (<50ms apart) than a human types.
         function isScan() { if (keyTimes.length < 3) return false; var avg = (keyTimes[keyTimes.length - 1] - keyTimes[0]) / (keyTimes.length - 1); return avg < 160; }  /* ZE-BC-090: was 50ms — too tight for Safari/Edge Bluetooth-HID delivery (scans misread as typing). Chrome is ~20ms so unaffected; server scanAdd also resolves by name, so a misclassified fast-type still finds the product. */
         si.addEventListener('keydown', function(e) { if (e.key && e.key.length === 1) { keyTimes.push(Date.now()); if (keyTimes.length > 30) keyTimes.shift(); } });  /* ZE-BC-090: was 'keypress' (deprecated + fires unreliably for HID input in Safari/Edge); keydown fires consistently — track printable keys only. */
         si.addEventListener('input', function() {
-            var t = this.value.trim(); clearTimeout(dt); aidx = -1;
+            var t = this.value; resetSearch(); var version = searchVersion;
             if (window._gridSearch) {
                 clearTimeout(window._gridSyncTimer);
-                window._gridSyncTimer = setTimeout(function() { window._gridSearch(si.value.trim()); }, 600);
+                if (!t.trim()) window._gridSearch('');
+                else window._gridSyncTimer = setTimeout(function() { if (version === searchVersion) window._gridSearch(t); }, 600);
             }
-            if (t.length < 1) { dd.style.display = 'none'; return; }
+            if (!t.trim()) { keyTimes = []; return; }
             dt = setTimeout(function() {
                 var tk = (document.querySelector('#cartInlineAddForm [name=moquiSessionToken]') || {}).value || '';
+                searchAbort = new AbortController();
                 fetch('Terminal/lookupProducts', {
+                    signal: searchAbort.signal,
                     method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'},
                     body: 'term=' + encodeURIComponent(t) + '&moquiSessionToken=' + encodeURIComponent(tk), credentials: 'same-origin'
-                }).then(function(r) { return r.json(); }).then(function(data) {
+                }).then(function(r) { if (!r.ok) throw new Error('Product search unavailable'); return r.json(); }).then(function(data) {
+                    if (version !== searchVersion || si.value !== t || !si.isConnected) return;
                     if (!data || data.length === 0) {
                         dd.innerHTML = '<div style="padding:10px;color:#999;font-size:13px;text-align:center">No products found</div>';
                         dd.style.display = 'block'; return;
@@ -4306,7 +4332,7 @@ window.posToggleFullscreen = function() {
                         h += '<div class="dd-code" style="font-size:12px;color:#555;margin-top:2px">' + esc(p.pseudoId || '') + '</div></div>';
                     }
                     dd.innerHTML = h; dd.style.display = 'block'; aidx = -1;
-                });
+                }).catch(function() { if (version === searchVersion) { dd.replaceChildren(); dd.style.display = 'none'; } });
             }, 250);
         });
         si.addEventListener('keydown', function(e) {
@@ -4325,11 +4351,11 @@ window.posToggleFullscreen = function() {
                 } else {
                     if (window._posAjax) window._posAjax(items[0].dataset.pid, items[0].dataset.price, items[0].dataset.name);
                 }
-                dd.style.display = 'none'; si.value = ''; si.focus();
+                resetSearch(); si.value = ''; si.focus();
                 if (window._gridSearch) window._gridSearch('');
                 keyTimes = [];
             }
-            else if (e.key === 'Escape') { dd.style.display = 'none'; }
+            else if (e.key === 'Escape') { resetSearch(); }
             for (var i = 0; i < items.length; i++) items[i].style.background = (i === aidx) ? '#e8f5e9' : '#fff';
         });
         dd.addEventListener('click', function(e) {
@@ -4337,12 +4363,12 @@ window.posToggleFullscreen = function() {
             if (!item) return;
             if (window._posAjax) {
                 window._posAjax(item.dataset.pid, item.dataset.price, item.dataset.name);
-                dd.style.display = 'none'; si.value = ''; si.focus();
+                resetSearch(); si.value = ''; si.focus();
                 if (window._gridSearch) window._gridSearch('');
                 return;
             }
         });
-        document.addEventListener('click', function(e) { if (!si.contains(e.target) && !dd.contains(e.target)) dd.style.display = 'none'; });
+        document.addEventListener('click', function(e) { if (!si.contains(e.target) && !dd.contains(e.target)) resetSearch(); });
     }
     initCartSearch();
 })();
