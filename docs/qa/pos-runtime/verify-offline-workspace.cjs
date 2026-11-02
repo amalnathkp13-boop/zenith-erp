@@ -103,5 +103,15 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
   let modeRows=[];for(let i=0;i<30;i++){modeRows=q("SELECT i.sales_mode_id FROM pos_transaction_item i JOIN pos_offline_transaction o ON o.created_transaction_id=i.transaction_id WHERE o.transaction_data_json LIKE '%"+separateModes.offlineId+"%'");if(modeRows.length===2)break;await new Promise(r=>setTimeout(r,200));}
   check('replay keeps separate line modes instead of merging equal-price items',modeRows.length===2&&new Set(modeRows.map(r=>r.sales_mode_id)).size===2,modeRows);
   await page.screenshot({path:path.join(out,'offline-workspace.png')});
- } finally {await context.setOffline(false);await context.close();}
+ } finally {
+  await context.setOffline(false);
+  await context.close();
+  // Leave no active drawer for the next scenario's no-session landing assertions.
+  // These are synthetic tenders only; reconcile this fixture through the real close workflow.
+  const summary=await post('Terminal','ajaxCart',{action:'sessionSummary',sessionId:session.sessionId});
+  const cash=await summary.json();
+  check('offline fixture exposes its final cash reconciliation',summary.ok()&&cash.success&&Number.isFinite(Number(cash.expectedCash)),cash);
+  await invoke('close',{sessionId:session.sessionId,closingCash:String(cash.expectedCash)});
+  check('offline fixture closes its own session before the next scenario',q("SELECT status_id FROM pos_session WHERE session_id='"+session.sessionId+"'")[0]?.status_id==='PsClosed');
+ }
 };

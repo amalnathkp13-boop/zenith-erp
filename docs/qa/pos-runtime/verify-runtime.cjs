@@ -373,6 +373,9 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  {offlineId:'POS-QA-LEGACY-FOREIGN',terminalId:'POS_QA_B_TERM1',sessionId:foreignRecoverySession.sessionId,items:[],total:100},
  {offlineId:'POS-QA-LEGACY-UNKNOWN',terminalId:'POS_QA_A_TERM2',sessionId:'POS-QA-MISSING-SESSION',items:[],total:100}];
  await lp.evaluate(sales=>new Promise((resolve,reject)=>{const r=indexedDB.open('ZenithPosOffline',1);r.onupgradeneeded=()=>r.result.createObjectStore('queue',{keyPath:'offlineId'});r.onsuccess=()=>{const tx=r.result.transaction('queue','readwrite');sales.forEach(s=>tx.objectStore('queue').put(s));tx.oncomplete=()=>{r.result.close();resolve()};tx.onerror=reject};r.onerror=reject}),legacySales);
+ // Keep automatic boot-time delivery from racing the read-only migration probes below.
+ // This scenario controls failed/partial/exact acknowledgements explicitly before testing removal.
+ await lp.route('**/Terminal/syncOfflineTransactions',route=>route.fulfill({status:500,contentType:'application/json',body:'{}'}));
  await lp.goto(base+'/apps/zenith/pos/Terminal?sessionId='+recoverySession.sessionId,{waitUntil:'networkidle'});
  const beforePickerInvoices=JSON.stringify(q('SELECT * FROM invoice ORDER BY invoice_id'));
  await lp.evaluate(()=>window.posOpenCustomer());
@@ -383,7 +386,9 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  await invoke('void',{transactionId:pickerTx},false,recovery);
  const recoveryBefore=JSON.stringify(q('SELECT * FROM pos_transaction ORDER BY transaction_id'));
  const scope=await post('Terminal','resolveLegacyOfflineScope',{organizationPartyId:'POS_QA_A',candidates:JSON.stringify(legacySales)},recovery);const scopeResult=await scope.json();
- check('legacy resolver validates original session/terminal ownership without a billing write',scope.status()===200&&JSON.stringify(scopeResult.eligibleIds)===JSON.stringify(['POS-QA-LEGACY-OWN'])&&JSON.stringify(q('SELECT * FROM pos_transaction ORDER BY transaction_id'))===recoveryBefore,{status:scope.status(),result:scopeResult});
+ const recoveryAfter=q('SELECT * FROM pos_transaction ORDER BY transaction_id'),beforeById=new Map(JSON.parse(recoveryBefore).map(row=>[row.transaction_id,row]));
+ const recoveryChanges=recoveryAfter.filter(row=>JSON.stringify(row)!==JSON.stringify(beforeById.get(row.transaction_id))).map(row=>({before:beforeById.get(row.transaction_id),after:row}));
+ check('legacy resolver validates original session/terminal ownership without a billing write',scope.status()===200&&JSON.stringify(scopeResult.eligibleIds)===JSON.stringify(['POS-QA-LEGACY-OWN'])&&JSON.stringify(recoveryAfter)===recoveryBefore,{status:scope.status(),result:scopeResult,changedRows:recoveryChanges});
  const forged=await post('Terminal','resolveLegacyOfflineScope',{organizationPartyId:'POS_QA_B',candidates:JSON.stringify(legacySales)},recovery);check('legacy resolver rejects a forged active organization',forged.status()===403);
  await lp.goto(base+'/apps/zenith/pos/Terminal?sessionId='+recoverySession.sessionId,{waitUntil:'networkidle'});await lp.waitForFunction(()=>window._posOffline?.recoverLegacy);
  await lp.evaluate(()=>window._posOffline.recoverLegacy());let recovered=await lp.evaluate(()=>window._posOffline.getQueue());
