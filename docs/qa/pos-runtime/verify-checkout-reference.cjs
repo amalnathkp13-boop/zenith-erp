@@ -20,9 +20,15 @@ module.exports=async function({a,foreign,base,check,q,invoke,post,out}) {
   await page.setViewportSize({width:1672,height:941});
   await page.goto(`${base}/apps/zenith/pos/Terminal?sessionId=${session.sessionId}&transactionId=${cart.transactionId}&taxOn=N`);
   await page.locator('.pos-checkout-reference').waitFor();
+  const palette=[['pos-discount','rgb(240, 232, 255)','rgb(111, 38, 190)'],['pos-pay-cash','rgb(224, 245, 239)','rgb(8, 105, 94)'],['pos-pay-card','rgb(225, 240, 255)','rgb(14, 101, 190)'],['pos-credit','rgb(255, 240, 229)','rgb(183, 68, 15)'],['pos-pay-upi','rgb(240, 232, 255)','rgb(111, 38, 190)'],['pos-split','rgb(229, 240, 255)','rgb(22, 103, 180)'],['pos-hold','rgb(255, 240, 229)','rgb(183, 68, 15)'],['pos-copilot','rgb(237, 232, 255)','rgb(91, 54, 177)']];
+  async function checkActions(stage){
+   const actual=await page.evaluate(()=>[...document.querySelectorAll('.pos-reference-payments button')].map(e=>{const s=getComputedStyle(e),icon=getComputedStyle(e,'::before');return [e.id,s.backgroundColor,s.color,icon.maskImage||icon.webkitMaskImage];}));
+   check(stage+' has eight pastel actions with consistent SVG symbols and no Void button',actual.length===8&&palette.every(([id,bg,ink])=>actual.some(x=>x[0]===id&&x[1]===bg&&x[2]===ink&&x[3]&&x[3]!=='none'))&&!await page.locator('#pos-void').count(),actual);
+  }
+  await checkActions('initial billing');
   check('billing header removes technical terminal, cashier badge and duplicate Search control',await page.locator('.nb-cashier,#pos-search-toggle').count()===0&&!(await page.locator('.nb-hrow').innerText()).includes(terminalId));
   await page.locator('.nb-modes summary').click();await page.locator('[data-pos-layout="advanced"]').click();
-  check('reference empty cart keeps all tender buttons disabled',await page.locator('.pos-reference-payments button:disabled').count()===8&&await page.locator('#pos-copilot').isEnabled());
+  check('reference empty cart keeps all tender buttons disabled',await page.locator('.pos-reference-payments button:disabled').count()===7&&await page.locator('#pos-copilot').isEnabled());
   check('counter and Back to POS target registered POS screens',(await page.locator('.nb-counter a').last().getAttribute('href'))==='/apps/zenith/pos/PosTerminals'&&(await page.locator('.nb-back').getAttribute('href'))==='/apps/zenith/pos/Dashboard');
   const stock=await api({action:'cardStock',productIds:'POS_QA_A_STOCK,POS_QA_B_P18'});
   check('card stock is real and excludes foreign products',stock.d.success&&Number(stock.d.stock.POS_QA_A_STOCK.quantity)===Number(q("SELECT sum(quantity_on_hand_total) AS n FROM asset WHERE product_id='POS_QA_A_STOCK' AND owner_party_id='POS_QA_A' AND facility_id='POS_QA_A_FAC'")[0].n)&&!stock.d.stock.POS_QA_B_P18,stock.d);
@@ -30,6 +36,7 @@ module.exports=async function({a,foreign,base,check,q,invoke,post,out}) {
   check('foreign operator cannot read this counter stock',deniedStock.r.status()===403||!deniedStock.d.success);
   const product='.pos-product-grid form:has(input[name=productId][value=POS_QA_A_P18]) button';
   await clickAndSettle(product,'addItem');
+  await checkActions('billing after cart refresh');
   check('one product click creates one item at its live price',lines().length===1&&Number(lines()[0].quantity)===1&&Number(lines()[0].unit_price)===100&&Number(tx().total_tax_amount)===0);
   await page.locator('.pos-cart .aj-q').last().waitFor();
   await clickAndSettle('.pos-cart .aj-q:last-of-type','updateQty');
@@ -118,7 +125,7 @@ module.exports=async function({a,foreign,base,check,q,invoke,post,out}) {
   await page.locator('.pos-cart-heading h2').click();await page.keyboard.press('F2');await page.locator('.pos-cash-panel').waitFor();
   check('F2 cash Proceed is reachable',await page.locator('.pos-cash-confirm').evaluate(e=>{const r=e.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;}));
   await page.locator('.pos-cash-cancel').click();
-  check('payment shortcuts exist immediately after cancelling Cash',await page.evaluate(()=>['pos-discount','pos-pay-cash','pos-pay-card','pos-credit','pos-pay-upi','pos-split','pos-hold','pos-void'].every(id=>document.getElementById(id))));
+  check('payment shortcuts exist immediately after cancelling Cash',await page.evaluate(()=>['pos-discount','pos-pay-cash','pos-pay-card','pos-credit','pos-pay-upi','pos-split','pos-hold'].every(id=>document.getElementById(id))));
   const heldRequest=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('/holdSale'));
   await page.locator('.pos-cart-heading h2').click();await page.keyboard.press('F7');await heldRequest;
   await page.locator('#pos-held-wrap summary').waitFor();
@@ -128,9 +135,9 @@ module.exports=async function({a,foreign,base,check,q,invoke,post,out}) {
   await page.locator('.nb-held__item').first().click();await recalled;await page.locator('.pos-cart .aj-qi').waitFor();
   check('F9 held picker recalls items',q(`SELECT * FROM pos_held_transaction WHERE session_id='${session.sessionId}' AND status_id='PhHeld'`).length===0);
   const recalledTx=await page.locator('#cartInlineAddForm input[name=transactionId]').inputValue();
-  const voided=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('/voidSale'));
-  await page.locator('.pos-cart-heading h2').click();await page.keyboard.press('F8');await voided;
-  check('F8 void cancels only the open draft',q(`SELECT * FROM pos_transaction WHERE transaction_id='${recalledTx}' AND status_id='PtVoided'`).length===1&&tx().status_id==='PtCompleted');
+  await page.locator('.pos-cart-heading h2').click();await page.keyboard.press('F8');
+  check('removed Void action cannot cancel the recalled bill with F8',q(`SELECT * FROM pos_transaction WHERE transaction_id='${recalledTx}' AND status_id='PtVoided'`).length===0&&tx().status_id==='PtCompleted');
+  await invoke('void',{transactionId:recalledTx});
   await page.locator('.pos-cart-heading h2').click();await page.keyboard.press('c');await page.locator('#posCloseSessionOverlay').waitFor();
   check('C opens exactly one cash-review dialog',await page.locator('#posCloseSessionOverlay').count()===1);
   await page.locator('.pos-close-cancel').click();

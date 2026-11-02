@@ -386,9 +386,9 @@ window._posOffline = (function() {
             var s='<div class="pos-sum-strip" style="display:flex;justify-content:space-between;font-size:13px;color:#777;margin-bottom:6px"><span style="color:#c62828;font-weight:700">OFFLINE</span><span>Qty: <b>'+qty+'</b></span></div>'
                 +'<div class="pos-sum-total" style="background:#c62828;color:#fff;padding:clamp(5px,1vh,12px) 20px;border-radius:10px;display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><span style="font-size:16px;font-weight:600">Offline TOTAL</span><span style="font-size:28px;font-weight:800">&#8377;'+f2(total)+'</span></div>';
             if(cart.length){ s+='<div class="pos-paywrap pos-reference-payments pos-offline-payments" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">'
-                +'<button type="button" class="ofl-pay" id="pos-pay-cash" data-m="Cash" style="padding:clamp(8px,1.4vh,15px) 8px;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;background:#4caf50;color:#fff">&#128176; CASH<kbd>F2</kbd></button>'
-                +'<button type="button" class="ofl-pay" id="pos-pay-card" data-m="Card" style="padding:clamp(8px,1.4vh,15px) 8px;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;background:#2196f3;color:#fff">&#128179; CARD<kbd>F3</kbd></button>'
-                +'<button type="button" class="ofl-pay" id="pos-pay-upi" data-m="UPI" style="padding:clamp(8px,1.4vh,15px) 8px;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;background:#9c27b0;color:#fff">&#128241; UPI<kbd>F5</kbd></button></div>';
+                +'<button type="button" class="ofl-pay" id="pos-pay-cash" data-m="Cash" style="padding:clamp(8px,1.4vh,15px) 8px;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;background:#4caf50;color:#fff">Cash<kbd>F2</kbd></button>'
+                +'<button type="button" class="ofl-pay" id="pos-pay-card" data-m="Card" style="padding:clamp(8px,1.4vh,15px) 8px;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;background:#2196f3;color:#fff">Card<kbd>F3</kbd></button>'
+                +'<button type="button" class="ofl-pay" id="pos-pay-upi" data-m="UPI" style="padding:clamp(8px,1.4vh,15px) 8px;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;background:#9c27b0;color:#fff">UPI<kbd>F5</kbd></button></div>';
             } else { s+='<div class="pos-paywrap pos-reference-payments" style="justify-content:center;text-align:center;padding:16px;color:#aaa">Offline &mdash; tap products to add items</div>'; }
             sm.innerHTML=s; }
     }
@@ -2838,15 +2838,14 @@ window.posToggleFullscreen = function() {
             var disabled = !d.items.length;
             var badge = function(key) { return '<kbd>'+key+'</kbd>'; };
             var html = '<div class="pos-paywrap pos-reference-payments">'
-                + '<button type="button" id="pos-discount" class="pos-discount-btn">&#127991; DISCOUNT / ROUND-OFF'+badge('F1')+'</button>'
-                + '<button type="button" id="pos-pay-cash" class="pos-cash-btn">&#128176; CASH'+badge('F2')+'</button>'
-                + payBtn('Card','&#128179; CARD'+badge('F3'),'#009dff')
-                + '<button id="pos-credit" type="button" onclick="posCreditSale()">&#128196; CREDIT'+badge('F4')+'</button>'
-                + payBtn('UPI','&#128241; UPI'+badge('F5'),'#9518dd')
-                + '<button id="pos-split" type="button" class="pos-split-btn">&#8596; SPLIT PAYMENT'+badge('F6')+'</button>'
-                + actionBtn('holdSale','&#10074;&#10074; HOLD'+badge('F7'),'#ff9b00')
-                + actionBtn('voidSale','&#10005; VOID / CANCEL'+badge('F8'),'#ff3f49','Void this sale?')
-                + '<button id="pos-copilot" type="button" onclick="posCheckoutCopilot()">&#9635; AI Copilot</button></div>';
+                + '<button type="button" id="pos-discount" class="pos-discount-btn">Discount / Roundoff'+badge('F1')+'</button>'
+                + '<button type="button" id="pos-pay-cash" class="pos-cash-btn">Cash'+badge('F2')+'</button>'
+                + payBtn('Card','Card'+badge('F3'),'#009dff')
+                + '<button id="pos-credit" type="button" onclick="posCreditSale()">Credit'+badge('F4')+'</button>'
+                + payBtn('UPI','UPI'+badge('F5'),'#9518dd')
+                + '<button id="pos-split" type="button" class="pos-split-btn">Split Payment'+badge('F6')+'</button>'
+                + actionBtn('holdSale','Hold'+badge('F7'),'#ff9b00')
+                + '<button id="pos-copilot" type="button" onclick="posCheckoutCopilot()">AI Copilot</button></div>';
             if (disabled) html=html.replace(/<button(?![^>]*id="pos-copilot")/g,'<button disabled');
             return html;
         }

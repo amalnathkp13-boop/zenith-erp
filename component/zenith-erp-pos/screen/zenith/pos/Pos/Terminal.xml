@@ -6002,31 +6002,29 @@ window.sendWhatsAppWithPdf=function() {
 
             <#assign _empty=!(transactionId?has_content && cartItems?? && cartItems?size > 0)/>
             <div class="pos-paywrap pos-reference-payments">
-              <button id="pos-discount" class="pos-discount-btn" type="button" <#if _empty>disabled</#if>>&#127991; DISCOUNT / ROUND-OFF<kbd>F1</kbd></button>
+              <button id="pos-discount" class="pos-discount-btn" type="button" <#if _empty>disabled</#if>>Discount / Roundoff<kbd>F1</kbd></button>
               <#list ['Cash','Card'] as _method>
               <form method="post" action="Terminal/payAndComplete" class="pos-pay-form" onsubmit="return window.${(_method=='Cash')?then('posPayCash','posPayDigital')}(this)">
                 <input type="hidden" name="transactionId" value="${transactionId!''}"/><input type="hidden" name="sessionId" value="${sessionId!''}"/>
                 <input type="hidden" name="paymentMethod" value="${_method}"/><input type="hidden" name="amount" value="${cartAmt!0}"/>
                 <input type="hidden" name="salesModeId" value="${salesModeId!''}"/><input type="hidden" name="customerPhone" value=""/><input type="hidden" name="moquiSessionToken" value="${ec.web.sessionToken}"/>
-                <button id="pos-pay-${_method?lower_case}" type="submit" <#if _empty>disabled</#if>>${(_method=='Cash')?then('&#128176; CASH','&#128179; CARD')}<kbd>${(_method=='Cash')?then('F2','F3')}</kbd></button>
+                <button id="pos-pay-${_method?lower_case}" type="submit" <#if _empty>disabled</#if>>${_method}<kbd>${(_method=='Cash')?then('F2','F3')}</kbd></button>
               </form>
               </#list>
-              <button id="pos-credit" type="button" onclick="posCreditSale()" <#if _empty>disabled</#if>>&#128196; CREDIT<kbd>F4</kbd></button>
+              <button id="pos-credit" type="button" onclick="posCreditSale()" <#if _empty>disabled</#if>>Credit<kbd>F4</kbd></button>
               <form method="post" action="Terminal/payAndComplete" class="pos-pay-form" onsubmit="return window.posPayDigital(this)">
                 <input type="hidden" name="transactionId" value="${transactionId!''}"/><input type="hidden" name="sessionId" value="${sessionId!''}"/>
                 <input type="hidden" name="paymentMethod" value="UPI"/><input type="hidden" name="amount" value="${cartAmt!0}"/>
                 <input type="hidden" name="salesModeId" value="${salesModeId!''}"/><input type="hidden" name="customerPhone" value=""/><input type="hidden" name="moquiSessionToken" value="${ec.web.sessionToken}"/>
-                <button id="pos-pay-upi" type="submit" <#if _empty>disabled</#if>>&#128241; UPI<kbd>F5</kbd></button>
+                <button id="pos-pay-upi" type="submit" <#if _empty>disabled</#if>>UPI<kbd>F5</kbd></button>
               </form>
-              <button id="pos-split" type="button" class="pos-split-btn" <#if _empty>disabled</#if>>&#8596; SPLIT PAYMENT<kbd>F6</kbd></button>
-              <#list ['holdSale','voidSale'] as _action>
-              <form method="post" action="Terminal/${_action}">
+              <button id="pos-split" type="button" class="pos-split-btn" <#if _empty>disabled</#if>>Split Payment<kbd>F6</kbd></button>
+              <form method="post" action="Terminal/holdSale">
                 <input type="hidden" name="transactionId" value="${transactionId!''}"/><input type="hidden" name="sessionId" value="${sessionId!''}"/>
                 <input type="hidden" name="taxOn" value="${taxOn!'N'}"/><input type="hidden" name="salesModeId" value="${salesModeId!''}"/><input type="hidden" name="moquiSessionToken" value="${ec.web.sessionToken}"/>
-                <button id="pos-${(_action=='holdSale')?then('hold','void')}" type="submit" <#if _empty>disabled</#if> <#if _action=='voidSale'>onclick="return confirm('Void this sale?')"</#if>>${(_action=='holdSale')?then('&#10074;&#10074; HOLD','&#10005; VOID / CANCEL')}<kbd>${(_action=='holdSale')?then('F7','F8')}</kbd></button>
+                <button id="pos-hold" type="submit" <#if _empty>disabled</#if>>Hold<kbd>F7</kbd></button>
               </form>
-              </#list>
-              <button id="pos-copilot" type="button" onclick="posCheckoutCopilot()">&#9635; AI Copilot</button>
+              <button id="pos-copilot" type="button" onclick="posCheckoutCopilot()">AI Copilot</button>
             </div>
 
 
