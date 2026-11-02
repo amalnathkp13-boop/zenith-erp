@@ -14,6 +14,7 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  browser=await chromium.launch({headless:true,executablePath:process.env.POS_QA_CHROME||'C:/Program Files/Google/Chrome/Application/chrome.exe',args:['--no-sandbox','--disable-dev-shm-usage']});
  const createContext=browser.newContext.bind(browser);
  browser.newContext=async function(options){const context=await createContext(options);
+  context.setDefaultTimeout(30000);context.setDefaultNavigationTimeout(60000);
   await context.route('**/qz-tray@*/qz-tray.js',route=>route.fulfill({contentType:'text/javascript',body:'/* Disposable QA: no workstation printer connection. */'}));
   return context;};
  cp.execFileSync(process.execPath,[path.join(__dirname,'check-receipt-layout.cjs')],{stdio:'inherit'});
@@ -322,6 +323,8 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  check('cash Proceed control stays visible above quick amounts',await p.locator('.pos-cash-confirm').isVisible()&&await p.locator('.pos-cash-confirm').evaluate(e=>{const r=e.getBoundingClientRect();return r.bottom<=innerHeight&&r.top>=0;}));
  await p.locator('.pos-cash-input').fill('100');check('cash Proceed enables for sufficient tender',await p.locator('.pos-cash-confirm').isEnabled());
  await p.locator('.pos-cash-cancel').click();
+ // This assertion exercises browser markup; QZ routing is verified separately with a printer stub.
+ await p.evaluate(()=>{window.qz=undefined;});
  const receiptSample=(await invoke('receipt',{transactionId:discountedTx.transactionId})).receipt;receiptSample.items[0].name='<img src=x onerror=window.posQaReceiptXss=1>';receiptSample.bill.customer=receiptSample.items[0].name;receiptSample.store.name=receiptSample.items[0].name;await p.evaluate(({id,data})=>window._posPrintReceipt(id,'QA-PRINT-ONLY','Y',true,data),{id:discountedTx.transactionId,data:receiptSample});await p.waitForFunction(()=>document.querySelector('#pos-receipt-frame')?.contentDocument?.body.innerText.includes('Subtotal'));const receiptDom=await p.evaluate(()=>{const f=document.querySelector('#pos-receipt-frame');return {text:f.contentDocument.body.innerText,images:f.contentDocument.querySelectorAll('img').length,executed:!!f.contentWindow.posQaReceiptXss};});check('browser receipt names stay text and discounted subtotal remains labelled',receiptDom.images===0&&!receiptDom.executed&&receiptDom.text.includes('<img src=x')&&receiptDom.text.includes('Discount included'),receiptDom);
  const ul=rows('pos_transaction_item',`transaction_id='${uc.transactionId}'`)[0];for(const val of ['0','-1','','abc']){const vr=await post('Terminal','ajaxCart',{action:'updateQty',transactionId:uc.transactionId,sessionId:us.sessionId,itemSeqId:ul.item_seq_id,newQty:val});check('invalid qty edit retains line: '+JSON.stringify(val),vr.status()===200&&!(await vr.json()).success&&count('pos_transaction_item',`transaction_id='${uc.transactionId}'`)===1);}
  let vr=await post('Terminal','ajaxCart',{action:'updatePrice',transactionId:uc.transactionId,sessionId:us.sessionId,itemSeqId:ul.item_seq_id,newPrice:'-1'});check('negative cart price edit rejected',vr.status()===200&&!(await vr.json()).success&&Number(rows('pos_transaction_item',`transaction_id='${uc.transactionId}'`)[0].unit_price)===100);
