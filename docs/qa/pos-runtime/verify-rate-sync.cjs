@@ -4,7 +4,7 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
  await post('PosTerminals','createTerminal',{terminalId,terminalName:'Disposable edit synchronization',facilityId:'POS_QA_A_FAC',organizationPartyId:'POS_QA_A',stateCode:'33',isActive:'Y'});
  const session=await invoke('open',{terminalId,openingCash:'0'});
  const page=await a.c.newPage();page.setDefaultTimeout(15000);page.on('dialog',d=>d.dismiss());
- await page.addInitScript(()=>{localStorage.setItem('posPrinter','Synthetic QA printer');window.__jobs=[];window.qz={websocket:{isActive:()=>true},configs:{create:()=>({})},print:(_cfg,data)=>{window.__jobs.push(data);return Promise.resolve();}};});
+ await page.addInitScript(()=>{localStorage.setItem('posPrinter','Synthetic QA printer');window.__jobs=[];window.qz=window.__qaQzStub={websocket:{isActive:()=>true},configs:{create:()=>({})},print:(_cfg,data)=>{window.__jobs.push(data);return Promise.resolve();}};});
  let mode='slow',payRequests=0;
  await page.route('**/Terminal/ajaxCart',async route=>{
   const params=new URLSearchParams(route.request().postData()||'');
@@ -19,6 +19,7 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
    const tx=await invoke('cart',{sessionId:session.sessionId});
    await invoke('add',{transactionId:tx.transactionId,productId:'POS_QA_A_P18',quantity:'1',taxOn:'N'});
    await page.goto(`${base}/apps/zenith/pos/Terminal?sessionId=${session.sessionId}&transactionId=${tx.transactionId}&taxOn=N`);
+   check(method+' rate synchronization uses an isolated printer stub',await page.evaluate(()=>window.qz===window.__qaQzStub));
    await page.locator('.aj-p').fill('73');await page.locator('#pos-pay-'+method.toLowerCase()).click();
    const overlay=page.locator(method==='Cash'?'#posCashTenderOverlay':'#posPayConfirmOverlay');await overlay.waitFor();
    check(method+' confirmation uses the rate saved before opening',(await overlay.innerText()).includes('73'));

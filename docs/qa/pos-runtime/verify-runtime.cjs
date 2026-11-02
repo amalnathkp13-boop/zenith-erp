@@ -13,7 +13,8 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  for(let i=0;;i++){try{if((await fetch(base+'/Login')).status<500)break}catch{}if(i>60)throw Error('POS runtime did not start');await new Promise(r=>setTimeout(r,1000))}
  browser=await chromium.launch({headless:true,executablePath:process.env.POS_QA_CHROME||'C:/Program Files/Google/Chrome/Application/chrome.exe',args:['--no-sandbox','--disable-dev-shm-usage']});
  const createContext=browser.newContext.bind(browser);
- browser.newContext=async function(options){const context=await createContext(options);
+ // Service-worker responses bypass request interception and can replace the QZ stub.
+ browser.newContext=async function(options){const context=await createContext({serviceWorkers:'block',...options});
   context.setDefaultTimeout(30000);context.setDefaultNavigationTimeout(60000);
   await context.route('**/qz-tray@*/qz-tray.js',route=>route.fulfill({contentType:'text/javascript',body:'/* Disposable QA: no workstation printer connection. */'}));
   return context;};
