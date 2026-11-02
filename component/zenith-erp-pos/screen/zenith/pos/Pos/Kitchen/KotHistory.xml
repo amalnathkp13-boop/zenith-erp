@@ -160,7 +160,7 @@
                     ]]></text></render-mode>
                 </default-field></field>
                 <field name="kotNumber"><default-field title="KOT #">
-                    <display default-text="${k.kotId}"/>
+                    <render-mode><text type="html,qvt" template="true"><![CDATA[<#if k.kotNumber?has_content>${k.kotNumber?html}<#else>${k.kotId?html}</#if>]]></text></render-mode>
                 </default-field></field>
                 <field name="tableNumber"><default-field title="Table">
                     <display default-text="-"/>

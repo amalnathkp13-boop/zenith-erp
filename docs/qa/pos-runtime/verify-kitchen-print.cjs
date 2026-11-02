@@ -91,6 +91,8 @@ module.exports=async function({a,foreign,base,post,rows,count,check,out}){
  r=await post('Kitchen/KotHistory','printRecord',{kotId:linked.kotId,kind:'bill'});data=await r.json();
  check('linked History bill comes from the real saved receipt',data.success&&Number(data.record.summary.total)===118&&data.record.bill.number===rows('pos_transaction',`transaction_id='${txn.transactionId}'`)[0].transaction_number,{data,transaction:rows('pos_transaction',`transaction_id='${txn.transactionId}'`)[0],linked});
  await page.goto(base+'/apps/zenith/pos/Kitchen/KotHistory');await page.locator('#zk-history-toolbar').waitFor();
+ const historyNumber=(await page.locator(`tr:has([data-kitchen-select="${linked.kotId}"]) td`).nth(1).innerText()).trim();
+ check('POS-linked KOT without a number shows its stable ID in History',historyNumber===linked.kotId,{historyNumber,linked});
  check('History has live filtered cards and the order and item filters',await page.locator('[data-kitchen-history-count]').count()===4&&await page.locator('[name="filterOrderType"]').count()===1&&await page.locator('[name="filterQuery"]').count()===1);
  check('History rows show item summaries and order type',await page.locator(`[data-kitchen-history-items="${kot.kot_id}"]`).innerText().then(x=>x.includes('Disposable POS A P5'))&&await page.locator(`[data-kitchen-history-type="${kot.kot_id}"]`).innerText()==='Dine In');
  await page.goto(base+'/apps/zenith/pos/Kitchen/KotHistory?filterQuery=P5');await page.locator('#zk-history-toolbar').waitFor();
