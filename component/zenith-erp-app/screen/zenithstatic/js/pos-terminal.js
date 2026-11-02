@@ -205,244 +205,1607 @@ console.log('[posterm] script loaded v120 — posOpenHistory defined:', (typeof 
 /* === Offline Mode: IndexedDB catalog cache + offline cart + sale capture + sync ===
    Self-contained: takes over the cart UI only while navigator is offline; the online
    flow is untouched. _posAjax/_posScan delegate here when offline. === */
-window._posOffline = (function() {
-    var afScope=document.getElementById('cartInlineAddForm');
-    var orgScope=afScope && afScope.querySelector('[name=posOrganizationPartyId]');
-    var orgFallback=document.getElementById('pos-offline-org');
-    var orgId=orgScope ? orgScope.value : (orgFallback ? orgFallback.value : '');
+window._posOffline = (function () {
+    var afScope = document.getElementById('cartInlineAddForm');
+    var orgScope = afScope && afScope.querySelector('[name=posOrganizationPartyId]');
+    var orgFallback = document.getElementById('pos-offline-org');
+    var orgId = orgScope ? orgScope.value : orgFallback ? orgFallback.value : '';
     // New queues are per organization; verified legacy sales are copied without changing amounts.
-    var DBN = 'ZenithPosOffline-'+encodeURIComponent(orgId), DBV = 1, db = null;
-    var catalog = {};   // productId -> {productId,name,price,uom,taxCode,barcode}
+    var DBN = 'ZenithPosOffline-' + encodeURIComponent(orgId),
+        DBV = 2,
+        db = null;
+    var catalog = {}; // productId -> {productId,name,price,uom,taxCode,barcode}
     var cart = [];
     var booted = false;
     var syncing = false;
     var payPending = false;
     var serverDraftPaused = false;
-    function active(){ return !navigator.onLine; }
-    function esc(x){ return String(x==null?'':x).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
-    function f2(x){ return Number(x||0).toFixed(2); }
-    function tCtx(){ var af=document.getElementById('cartInlineAddForm'); function v(n){ var el=af&&af.querySelector?af.querySelector('[name='+n+']'):null; return el?el.value:''; } var tEl=document.querySelector('input[name=posTerminalId]'); return { sessionId:v('sessionId'), terminalId: tEl?tEl.value:'' }; }
-    function openDB(){ if(!orgId) return Promise.reject(new Error('No active POS organization')); return new Promise(function(res,rej){ var rq=indexedDB.open(DBN,DBV); rq.onupgradeneeded=function(e){ var d=e.target.result; if(!d.objectStoreNames.contains('catalog'))d.createObjectStore('catalog',{keyPath:'productId'}); if(!d.objectStoreNames.contains('queue'))d.createObjectStore('queue',{keyPath:'offlineId'}); }; rq.onsuccess=function(e){db=e.target.result;res(db);}; rq.onerror=function(e){rej(e);}; }); }
+    function active() {
+        return !navigator.onLine || localEditing;
+    }
+    function esc(x) {
+        return String(x == null ? '' : x).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+    function f2(x) {
+        return Number(x || 0).toFixed(2);
+    }
+    function tCtx() {
+        var af = document.getElementById('cartInlineAddForm');
+        function v(n) {
+            var el = af && af.querySelector ? af.querySelector('[name=' + n + ']') : null;
+            return el ? el.value : '';
+        }
+        var tEl = document.querySelector('input[name=posTerminalId]');
+        return { sessionId: v('sessionId'), terminalId: tEl ? tEl.value : '' };
+    }
+    function openDB() {
+        if (!orgId) return Promise.reject(new Error('No active POS organization'));
+        return new Promise(function (res, rej) {
+            var rq = indexedDB.open(DBN, DBV);
+            rq.onupgradeneeded = function (e) {
+                var d = e.target.result;
+                if (!d.objectStoreNames.contains('catalog'))
+                    d.createObjectStore('catalog', { keyPath: 'productId' });
+                if (!d.objectStoreNames.contains('queue'))
+                    d.createObjectStore('queue', { keyPath: 'offlineId' });
+                if (!d.objectStoreNames.contains('state')) d.createObjectStore('state', { keyPath: 'key' });
+            };
+            rq.onsuccess = function (e) {
+                db = e.target.result;
+                res(db);
+            };
+            rq.onerror = function (e) {
+                rej(e);
+            };
+        });
+    }
     // Copy only sales whose original terminal/session ownership the server verifies.
     // Original values remain in the legacy DB until that exact sale is acknowledged.
-    var legacyDb = null, legacyCopied = Object.create(null), recoveryInFlight = null;
+    var legacyDb = null,
+        legacyCopied = Object.create(null),
+        recoveryInFlight = null;
     function legacyNotice(show) {
         var notice = document.getElementById('pos-legacy-offline-notice');
         if (!notice && show) {
-            notice = document.createElement('div'); notice.id = 'pos-legacy-offline-notice';
-            notice.setAttribute('role','status');
-            notice.style.cssText = 'padding:10px;margin:8px;border:1px solid #b7791f;background:#fffbeb;color:#744210';
-            notice.textContent = 'Older offline sales remain on this device. Verified sales are available in this organization\'s pending queue. Keep this device available for the owner to reconcile any unresolved sales; do not clear browser storage.';
+            notice = document.createElement('div');
+            notice.id = 'pos-legacy-offline-notice';
+            notice.setAttribute('role', 'status');
+            notice.style.cssText =
+                'padding:10px;margin:8px;border:1px solid #b7791f;background:#fffbeb;color:#744210';
+            notice.textContent =
+                "Older offline sales remain on this device. Verified sales are available in this organization's pending queue. Keep this device available for the owner to reconcile any unresolved sales; do not clear browser storage.";
             var parent = document.querySelector('.pos-cart') || document.body;
-            parent.parentNode.insertBefore(notice,parent);
+            parent.parentNode.insertBefore(notice, parent);
         }
         if (notice) notice.hidden = !show;
     }
     function readLegacy() {
-        return new Promise(function(resolve,reject) {
-            if (legacyDb) { read(); return; }
+        return new Promise(function (resolve, reject) {
+            if (legacyDb) {
+                read();
+                return;
+            }
             var request = indexedDB.open('ZenithPosOffline');
             // Abort creation if this till never had a legacy database.
-            request.onupgradeneeded = function() { request.transaction.abort(); };
-            request.onerror = function() {
+            request.onupgradeneeded = function () {
+                request.transaction.abort();
+            };
+            request.onerror = function () {
                 if (request.error && request.error.name === 'AbortError') resolve([]);
                 else reject(new Error('Legacy offline storage could not be read'));
             };
-            request.onblocked = function() { reject(new Error('Legacy offline storage is busy')); };
-            request.onsuccess = function() { legacyDb = request.result; read(); };
+            request.onblocked = function () {
+                reject(new Error('Legacy offline storage is busy'));
+            };
+            request.onsuccess = function () {
+                legacyDb = request.result;
+                read();
+            };
             function read() {
-                if (!legacyDb.objectStoreNames.contains('queue')) { resolve([]); return; }
-                var transaction = legacyDb.transaction('queue','readonly');
+                if (!legacyDb.objectStoreNames.contains('queue')) {
+                    resolve([]);
+                    return;
+                }
+                var transaction = legacyDb.transaction('queue', 'readonly');
                 var rows = transaction.objectStore('queue').getAll();
-                rows.onsuccess = function() { resolve(rows.result || []); };
-                rows.onerror = function() { reject(new Error('Legacy offline queue could not be read')); };
+                rows.onsuccess = function () {
+                    resolve(rows.result || []);
+                };
+                rows.onerror = function () {
+                    reject(new Error('Legacy offline queue could not be read'));
+                };
             }
         });
     }
     function copyVerifiedLegacy(sales) {
-        return ensureDb().then(function(database) {
+        return ensureDb().then(function (database) {
             if (!database) throw new Error('Offline storage unavailable');
-            return new Promise(function(resolve,reject) {
-                var copied = [], transaction = database.transaction('queue','readwrite');
+            return new Promise(function (resolve, reject) {
+                var copied = [],
+                    transaction = database.transaction('queue', 'readwrite');
                 var store = transaction.objectStore('queue');
-                sales.forEach(function(sale) {
-                    var row = Object.assign({},sale,{organizationPartyId:orgId});
+                sales.forEach(function (sale) {
+                    var row = Object.assign({}, sale, { organizationPartyId: orgId });
                     var existing = store.get(row.offlineId);
-                    existing.onsuccess = function() {
+                    existing.onsuccess = function () {
                         // Never overwrite a newer or different sale that happens to reuse the id.
-                        if (!existing.result) { store.add(row); copied.push({id:row.offlineId,source:JSON.stringify(sale),payload:JSON.stringify(row)}); }
-                        else if (JSON.stringify(existing.result) === JSON.stringify(row)) copied.push({id:row.offlineId,source:JSON.stringify(sale),payload:JSON.stringify(row)});
+                        if (!existing.result) {
+                            store.add(row);
+                            copied.push({
+                                id: row.offlineId,
+                                source: JSON.stringify(sale),
+                                payload: JSON.stringify(row),
+                            });
+                        } else if (JSON.stringify(existing.result) === JSON.stringify(row))
+                            copied.push({
+                                id: row.offlineId,
+                                source: JSON.stringify(sale),
+                                payload: JSON.stringify(row),
+                            });
                     };
                 });
-                transaction.oncomplete = function() { copied.forEach(function(copy) { legacyCopied[copy.id] = copy; }); resolve(copied.length); };
-                transaction.onerror = transaction.onabort = function() { reject(new Error('Legacy sales were not copied')); };
+                transaction.oncomplete = function () {
+                    copied.forEach(function (copy) {
+                        legacyCopied[copy.id] = copy;
+                    });
+                    resolve(copied.length);
+                };
+                transaction.onerror = transaction.onabort = function () {
+                    reject(new Error('Legacy sales were not copied'));
+                };
             });
         });
     }
     function recoverLegacy() {
         if (recoveryInFlight) return recoveryInFlight;
-        recoveryInFlight = readLegacy().then(function(sales) {
-            legacyNotice(sales.length > 0);
-            if (!sales.length || !navigator.onLine || !orgId) return 0;
-            var token = document.querySelector('[name=moquiSessionToken]');
-            if (!token || !token.value) return 0;
-            var eligible = Object.create(null), batches = [], candidates = sales.filter(function(sale) {
-                return sale && sale.offlineId && sale.sessionId && sale.terminalId && (!sale.organizationPartyId || sale.organizationPartyId === orgId);
-            });
-            for (var i=0;i<candidates.length;i+=200) batches.push(candidates.slice(i,i+200));
-            return batches.reduce(function(previous,batch) {
-                return previous.then(function() {
-                    return fetch('Terminal/resolveLegacyOfflineScope',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-                        moquiSessionToken:token.value,organizationPartyId:orgId,
-                        candidates:JSON.stringify(batch.map(function(sale) { return {offlineId:sale.offlineId,organizationPartyId:sale.organizationPartyId,sessionId:sale.sessionId,terminalId:sale.terminalId}; }))
-                    })}).then(function(response) { if (!response.ok) throw new Error('Legacy ownership could not be verified'); return response.json(); })
-                    .then(function(result) {
-                        if (result.organizationPartyId !== orgId || !Array.isArray(result.eligibleIds)) throw new Error('Organization changed during recovery');
-                        result.eligibleIds.forEach(function(id) { if (batch.some(function(sale) { return sale.offlineId === id; })) eligible[id] = true; });
+        recoveryInFlight = readLegacy()
+            .then(function (sales) {
+                legacyNotice(sales.length > 0);
+                if (!sales.length || !navigator.onLine || !orgId) return 0;
+                var token = document.querySelector('[name=moquiSessionToken]');
+                if (!token || !token.value) return 0;
+                var eligible = Object.create(null),
+                    batches = [],
+                    candidates = sales.filter(function (sale) {
+                        return (
+                            sale &&
+                            sale.offlineId &&
+                            sale.sessionId &&
+                            sale.terminalId &&
+                            (!sale.organizationPartyId || sale.organizationPartyId === orgId)
+                        );
                     });
-                });
-            },Promise.resolve()).then(function() { return copyVerifiedLegacy(candidates.filter(function(sale) { return eligible[sale.offlineId]; })); });
-        }).catch(function() { legacyNotice(true); return 0; });
-        return recoveryInFlight.then(function(count) { recoveryInFlight = null; return count; },function(error) { recoveryInFlight = null; throw error; });
+                for (var i = 0; i < candidates.length; i += 200) batches.push(candidates.slice(i, i + 200));
+                return batches
+                    .reduce(function (previous, batch) {
+                        return previous.then(function () {
+                            return fetch('Terminal/resolveLegacyOfflineScope', {
+                                method: 'POST',
+                                credentials: 'same-origin',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    moquiSessionToken: token.value,
+                                    organizationPartyId: orgId,
+                                    candidates: JSON.stringify(
+                                        batch.map(function (sale) {
+                                            return {
+                                                offlineId: sale.offlineId,
+                                                organizationPartyId: sale.organizationPartyId,
+                                                sessionId: sale.sessionId,
+                                                terminalId: sale.terminalId,
+                                            };
+                                        }),
+                                    ),
+                                }),
+                            })
+                                .then(function (response) {
+                                    if (!response.ok)
+                                        throw new Error('Legacy ownership could not be verified');
+                                    return response.json();
+                                })
+                                .then(function (result) {
+                                    if (
+                                        result.organizationPartyId !== orgId ||
+                                        !Array.isArray(result.eligibleIds)
+                                    )
+                                        throw new Error('Organization changed during recovery');
+                                    result.eligibleIds.forEach(function (id) {
+                                        if (
+                                            batch.some(function (sale) {
+                                                return sale.offlineId === id;
+                                            })
+                                        )
+                                            eligible[id] = true;
+                                    });
+                                });
+                        });
+                    }, Promise.resolve())
+                    .then(function () {
+                        return copyVerifiedLegacy(
+                            candidates.filter(function (sale) {
+                                return eligible[sale.offlineId];
+                            }),
+                        );
+                    });
+            })
+            .catch(function () {
+                legacyNotice(true);
+                return 0;
+            });
+        return recoveryInFlight.then(
+            function (count) {
+                recoveryInFlight = null;
+                return count;
+            },
+            function (error) {
+                recoveryInFlight = null;
+                throw error;
+            },
+        );
     }
-    function acknowledgeLegacy(ids,sent) {
-        var acknowledged = ids.filter(function(id) {
-            return legacyCopied[id] && sent.some(function(sale) { return sale.offlineId === id && JSON.stringify(sale) === legacyCopied[id].payload; });
+    function acknowledgeLegacy(ids, sent) {
+        var acknowledged = ids.filter(function (id) {
+            return (
+                legacyCopied[id] &&
+                sent.some(function (sale) {
+                    return sale.offlineId === id && JSON.stringify(sale) === legacyCopied[id].payload;
+                })
+            );
         });
         if (!legacyDb || !acknowledged.length) return Promise.resolve();
-        return new Promise(function(resolve,reject) {
-            var transaction = legacyDb.transaction('queue','readwrite'), store = transaction.objectStore('queue');
-            acknowledged.forEach(function(id) {
+        return new Promise(function (resolve, reject) {
+            var transaction = legacyDb.transaction('queue', 'readwrite'),
+                store = transaction.objectStore('queue');
+            acknowledged.forEach(function (id) {
                 var current = store.get(id);
-                current.onsuccess = function() { if (current.result && JSON.stringify(current.result) === legacyCopied[id].source) store.delete(id); };
+                current.onsuccess = function () {
+                    if (current.result && JSON.stringify(current.result) === legacyCopied[id].source)
+                        store.delete(id);
+                };
             });
-            transaction.oncomplete = function() { acknowledged.forEach(function(id) { delete legacyCopied[id]; }); readLegacy().then(function(rows) { legacyNotice(rows.length > 0); }).catch(function() { legacyNotice(true,'Legacy offline storage could not be checked. Keep this device and retry.'); }); resolve(); };
-            transaction.onerror = transaction.onabort = function() { reject(new Error('Acknowledged legacy rows remain on the device')); };
+            transaction.oncomplete = function () {
+                acknowledged.forEach(function (id) {
+                    delete legacyCopied[id];
+                });
+                readLegacy()
+                    .then(function (rows) {
+                        legacyNotice(rows.length > 0);
+                    })
+                    .catch(function () {
+                        legacyNotice(
+                            true,
+                            'Legacy offline storage could not be checked. Keep this device and retry.',
+                        );
+                    });
+                resolve();
+            };
+            transaction.onerror = transaction.onabort = function () {
+                reject(new Error('Acknowledged legacy rows remain on the device'));
+            };
         });
     }
 
-    function putCatalog(items){ return new Promise(function(res){ if(!db){res(0);return;} var tx=db.transaction(['catalog'],'readwrite'); var s=tx.objectStore('catalog'); s.clear(); catalog={}; items.forEach(function(p){ s.put(p); catalog[p.productId]=p; }); tx.oncomplete=function(){res(items.length);}; tx.onerror=function(){res(0);}; }); }
-    function loadCatalog(){ return new Promise(function(res){ if(!db){res();return;} var tx=db.transaction(['catalog'],'readonly'); var rq=tx.objectStore('catalog').getAll(); rq.onsuccess=function(){ catalog={}; (rq.result||[]).forEach(function(p){catalog[p.productId]=p;}); res(); }; rq.onerror=function(){res();}; }); }
-    function cacheCatalog(){ return fetch('Terminal/exportPosCatalog',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({terminalId:tCtx().terminalId}),credentials:'same-origin'}).then(function(r){return r.json();}).then(function(d){ var prods=(d.products||[]).map(function(p){ return {productId:p.productId, name:p.productName||p.productId, price:Number(p.listPrice||0), uom:p.uom||'', taxCode:p.taxCode||'', taxRate:p.taxRate, barcode:p.barcode||''}; }); return putCatalog(prods); }).catch(function(){ return 0; }); }
-    // PS-111 (ZE-POS-017): the queue ops can be called BEFORE boot() opened the DB — e.g. opening Bill History
-    // right after an offline page load/redirect, within boot's 1.5s delay. Previously getQueue() returned [] when
-    // db was null, so the offline-history fallback saw an empty queue and showed "Couldn't load bill history" even
-    // though the offline bills were persisted in IndexedDB. ensureDb lazily opens the DB so the persisted queue is
-    // ALWAYS readable/writable regardless of boot timing.
-    function ensureDb(){ return db ? Promise.resolve(db) : openDB().catch(function(){ return null; }); }
-    function enqueue(sale){ return ensureDb().then(function(d){ if(!d) throw new Error('Offline storage unavailable'); return new Promise(function(res,rej){ var tx=d.transaction(['queue'],'readwrite'); tx.objectStore('queue').put(sale); tx.oncomplete=function(){res();}; tx.onerror=function(){rej(new Error('Offline sale could not be saved'));}; }); }); }
-    function getQueue(){ return ensureDb().then(function(d){ if(!d) return []; return new Promise(function(res){ var tx=d.transaction(['queue'],'readonly'); var rq=tx.objectStore('queue').getAll(); rq.onsuccess=function(){res(rq.result||[]);}; rq.onerror=function(){res([]);}; }); }); }
-    function clearQueue(){ return ensureDb().then(function(d){ if(!d) return; return new Promise(function(res){ var tx=d.transaction(['queue'],'readwrite'); tx.objectStore('queue').clear(); tx.oncomplete=function(){res();}; tx.onerror=function(){res();}; }); }); }
-    function toast(msg,bg){ var t=document.createElement('div'); t.textContent=msg; t.style.cssText='position:fixed;top:52px;left:50%;transform:translateX(-50%);z-index:9999999;background:'+(bg||'#2e7d32')+';color:#fff;padding:14px 28px;border-radius:10px;font-weight:700;box-shadow:0 6px 24px rgba(0,0,0,0.3);max-width:90vw;text-align:center'; document.body.appendChild(t); setTimeout(function(){t.remove();},3000); }
-    function hasServerDraft(){
-        var tx=document.querySelector('#cartInlineAddForm [name=transactionId]');
-        return !!((tx&&tx.value)||document.querySelector('.pos-cart .aj-qi'));
+    var settings = {},
+        draft = null,
+        holds = [],
+        localEditing = false,
+        snapshot = null,
+        writeTail = Promise.resolve(),
+        storageError = false;
+    var scope = tCtx().terminalId + ':' + ((document.getElementById('pos-offline-user') || {}).value || '');
+    function stateRead(key) {
+        return ensureDb().then(function (d) {
+            if (!d) throw Error('Offline storage unavailable');
+            return new Promise(function (resolve, reject) {
+                var r = d.transaction('state', 'readonly').objectStore('state').get(key);
+                r.onsuccess = function () {
+                    resolve(r.result && r.result.value);
+                };
+                r.onerror = function () {
+                    reject(r.error);
+                };
+            });
+        });
     }
-    function paused(){ return serverDraftPaused; }
-    function banner(show){
-        var b=document.getElementById('pos-offline-banner');
-        if(!b){
-            b=document.createElement('div'); b.id='pos-offline-banner'; b.setAttribute('role','status');
-            b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:999991;background:#c62828;color:#fff;text-align:center;padding:7px 12px;font-weight:700;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,0.3)';
-            document.body.appendChild(b);
-        }
-        b.style.display=show?'block':'none';
-        if(!show) return;
-        function message(count){
-            return (serverDraftPaused?'OFFLINE — current bill is paused. Reconnect to verify items and total before payment.':'OFFLINE — new sales can be saved on this device.')
-                +(count?' '+count+' sale(s) queued for sync.':'');
-        }
-        b.textContent=message(0);
-        getQueue().then(function(q){ if(!navigator.onLine && b.style.display!=='none') b.textContent=message(q.length); });
+    function stateWrite(key, value) {
+        return ensureDb().then(function (d) {
+            if (!d) throw Error('Offline storage unavailable');
+            return new Promise(function (resolve, reject) {
+                var t = d.transaction('state', 'readwrite');
+                t.objectStore('state').put({ key: key, value: value });
+                t.oncomplete = resolve;
+                t.onerror = t.onabort = function () {
+                    reject(t.error || Error('Offline storage failed'));
+                };
+            });
+        });
     }
-    function pauseServerDraft(){
-        if(!serverDraftPaused && hasServerDraft()) serverDraftPaused=true;
-        if(serverDraftPaused) banner(true);
+    function copy(value) {
+        return JSON.parse(JSON.stringify(value));
+    }
+    function saveDraft() {
+        var saved = copy(draft);
+        writeTail = writeTail
+            .catch(function () {})
+            .then(function () {
+                return stateWrite('draft:' + scope, saved);
+            });
+        writeTail.then(
+            function () {
+                storageError = false;
+            },
+            function () {
+                storageError = true;
+                toast('Draft could not be saved on this device. Do not close this page.', '#c62828');
+            },
+        );
+        return writeTail;
+    }
+    function loadCatalog() {
+        return stateRead('config:' + scope).then(function (config) {
+            settings = config || {};
+            catalog = {};
+            (settings.products || []).forEach(function (p) {
+                catalog[p.productId] = p;
+            });
+        });
+    }
+    function cacheCatalog() {
+        if (localEditing) return Promise.resolve(0);
+        return fetch('Terminal/exportPosCatalog', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ terminalId: tCtx().terminalId }),
+            credentials: 'same-origin',
+        })
+            .then(function (r) {
+                if (!r.ok) throw Error('Catalog unavailable');
+                return r.json();
+            })
+            .then(function (d) {
+                var user = (document.getElementById('pos-offline-user') || {}).value || '';
+                if (
+                    d.version !== 2 ||
+                    d.organizationPartyId !== orgId ||
+                    d.terminalId !== tCtx().terminalId ||
+                    d.userId !== user
+                )
+                    throw Error('Offline catalog identity differs');
+                d.products = (d.products || []).map(function (p) {
+                    return Object.assign({}, p, {
+                        name: p.productName || p.productId,
+                        price: Number(p.listPrice || 0),
+                        uom: p.uom || '',
+                    });
+                });
+                return stateWrite('config:' + scope, d).then(function () {
+                    var form = document.getElementById('cartInlineAddForm'),
+                        data = new URLSearchParams(new FormData(form));
+                    data.set('action', 'refresh');
+                    return fetch('Terminal/ajaxCart', {
+                        method: 'POST',
+                        body: data,
+                        credentials: 'same-origin',
+                    })
+                        .then(function (r) {
+                            if (!r.ok) throw Error('Draft snapshot unavailable');
+                            return r.json();
+                        })
+                        .then(function (snapshotData) {
+                            if (!snapshotData.success) throw Error('Draft snapshot unavailable');
+                            remember(snapshotData);
+                            settings = d;
+                            catalog = {};
+                            d.products.forEach(function (p) {
+                                catalog[p.productId] = p;
+                            });
+                            return d.products.length;
+                        });
+                });
+            })
+            .catch(function () {
+                return 0;
+            });
+    }
+    function ensureDb() {
+        return db
+            ? Promise.resolve(db)
+            : openDB().catch(function () {
+                  return null;
+              });
+    }
+    function enqueue(sale) {
+        return ensureDb().then(function (d) {
+            if (!d) throw Error('Offline storage unavailable');
+            return new Promise(function (resolve, reject) {
+                var t = d.transaction(['queue', 'state'], 'readwrite');
+                t.objectStore('queue').add(sale);
+                t.objectStore('state').put({ key: 'draft:' + scope, value: null });
+                t.objectStore('state').put({ key: 'snapshot:' + scope, value: null });
+                t.oncomplete = resolve;
+                t.onerror = t.onabort = function () {
+                    reject(t.error || Error('Sale could not be saved'));
+                };
+            });
+        });
+    }
+    function getQueue() {
+        return ensureDb().then(function (d) {
+            if (!d) return [];
+            return new Promise(function (resolve, reject) {
+                var r = d.transaction('queue', 'readonly').objectStore('queue').getAll();
+                r.onsuccess = function () {
+                    resolve(
+                        (r.result || []).filter(function (s) {
+                            return (
+                                s.terminalId === tCtx().terminalId &&
+                                (!s.userId || s.userId === settings.userId)
+                            );
+                        }),
+                    );
+                };
+                r.onerror = function () {
+                    reject(r.error);
+                };
+            });
+        });
+    }
+    function toast(msg, bg) {
+        var t = document.createElement('div');
+        t.textContent = msg;
+        t.setAttribute('role', 'alert');
+        t.style.cssText =
+            'position:fixed;top:55px;left:5%;right:5%;z-index:9999999;padding:14px;background:' +
+            (bg || '#2e7d32') +
+            ';color:white;text-align:center';
+        document.body.appendChild(t);
+        setTimeout(function () {
+            t.remove();
+        }, 5000);
+    }
+    function paused() {
         return serverDraftPaused;
     }
-    function taxEnabled(){return typeof window._posCurrentTax==='function' ? window._posCurrentTax()!=='N' : true;}
-    function taxAmount(it){return taxEnabled() ? Math.round(Number(it.qty)*Number(it.price)*Number(it.taxRate||0))/100 : 0;}
-    function payable(){return Math.round(cart.reduce(function(a,it){return a+Number(it.qty)*Number(it.price)+taxAmount(it);},0));}
-    function render(){
-        if(serverDraftPaused) return;
-        var tb=document.querySelector('.pos-cart tbody');
-        if(tb){ var h=''; if(!cart.length) h='<tr><td colspan="8" style="text-align:center;padding:40px;color:#aaa;font-size:16px">Offline &mdash; tap products to add items</td></tr>';
-            cart.forEach(function(it,i){ h+='<tr style="border-bottom:1px solid #e0e0e0">'
-                +'<td style="padding:8px 10px;text-align:center;font-weight:700;color:#777;width:30px">'+(i+1)+'</td>'
-                +'<td style="padding:8px 10px"><div style="font-size:14px;font-weight:600;color:#000">'+esc(it.name)+'</div><div style="font-size:11px;color:#555">'+esc(it.productId)+'</div></td>'
-                +'<td style="padding:8px;color:#7780a3">Cached</td>'
-                +'<td style="padding:8px 10px;text-align:right;color:#000">'+f2(it.price)+'</td>'
-                +'<td style="padding:4px;text-align:center"><div style="display:flex;align-items:center;justify-content:center">'
-                +'<button data-i="'+i+'" class="ofl-minus" style="width:32px;height:38px;border:2px solid #e53935;background:#fff;font-size:20px;font-weight:bold;cursor:pointer;border-radius:8px 0 0 8px;color:#e53935">-</button>'
-                +'<input data-i="'+i+'" class="ofl-qi" type="number" step="any" value="'+Number(it.qty)+'" style="width:52px;height:38px;text-align:center;font-weight:bold;font-size:15px;border-top:2px solid #ccc;border-bottom:2px solid #ccc;border-left:none;border-right:none;box-sizing:border-box;outline:none"/>'
-                +'<button data-i="'+i+'" class="ofl-plus" style="width:32px;height:38px;border:2px solid #2e7d32;background:#fff;font-size:20px;font-weight:bold;cursor:pointer;border-radius:0 8px 8px 0;color:#2e7d32">+</button>'
-                +'</div>'+(it.uom?'<div style="font-size:11px;color:#e65100;font-weight:700;text-align:center;margin-top:2px">'+esc(it.uom)+'</div>':'')+'</td>'
-                +'<td>'+f2(taxAmount(it))+'</td>'
-                +'<td style="padding:8px 10px;text-align:right;font-weight:700;color:#000">'+f2(it.qty*it.price+taxAmount(it))+'</td>'
-                +'<td style="padding:4px;text-align:center"><button data-i="'+i+'" class="ofl-rm" style="width:30px;height:30px;border:none;background:#e53935;color:#fff;border-radius:6px;cursor:pointer">&#10005;</button></td></tr>'; });
-            tb.innerHTML=h; }
-        var sm=document.querySelector('.pos-summary');
-        if(sm){ var total=payable(); var qty=cart.reduce(function(a,it){return a+Number(it.qty);},0);
-            var s='<div class="pos-sum-strip" style="display:flex;justify-content:space-between;font-size:13px;color:#777;margin-bottom:6px"><span style="color:#c62828;font-weight:700">OFFLINE</span><span>Qty: <b>'+qty+'</b></span></div>'
-                +'<div class="pos-sum-total" style="background:#c62828;color:#fff;padding:clamp(5px,1vh,12px) 20px;border-radius:10px;display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><span style="font-size:16px;font-weight:600">Offline TOTAL</span><span style="font-size:28px;font-weight:800">&#8377;'+f2(total)+'</span></div>';
-            if(cart.length){ s+='<div class="pos-paywrap pos-reference-payments pos-offline-payments" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">'
-                +'<button type="button" class="ofl-pay" id="pos-pay-cash" data-m="Cash" style="padding:clamp(8px,1.4vh,15px) 8px;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;background:#4caf50;color:#fff">&#128176; CASH<kbd>F2</kbd></button>'
-                +'<button type="button" class="ofl-pay" id="pos-pay-card" data-m="Card" style="padding:clamp(8px,1.4vh,15px) 8px;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;background:#2196f3;color:#fff">&#128179; CARD<kbd>F3</kbd></button>'
-                +'<button type="button" class="ofl-pay" id="pos-pay-upi" data-m="UPI" style="padding:clamp(8px,1.4vh,15px) 8px;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;background:#9c27b0;color:#fff">&#128241; UPI<kbd>F5</kbd></button></div>';
-            } else { s+='<div class="pos-paywrap pos-reference-payments" style="justify-content:center;text-align:center;padding:16px;color:#aaa">Offline &mdash; tap products to add items</div>'; }
-            sm.innerHTML=s; }
+    function banner(show) {
+        var b = document.getElementById('pos-offline-banner');
+        if (!b) {
+            b = document.createElement('span');
+            b.id = 'pos-offline-banner';
+            b.setAttribute('role', 'status');
+            b.style.cssText =
+                'position:fixed;top:0;left:0;right:0;z-index:999991;background:#92400e;color:white;text-align:center;padding:7px';
+            document.body.appendChild(b);
+        }
+        b.hidden = !show;
+        var strip = document.querySelector('.pos-sum-strip');
+        if (strip && !serverDraftPaused) {
+            strip.prepend(b);
+            b.style.cssText = 'color:#92400e;font-weight:600;margin-right:12px';
+        }
+        if (show) {
+            b.textContent = serverDraftPaused
+                ? 'Offline snapshot unavailable. Reconnect before changing this draft.'
+                : 'Offline workspace';
+            getQueue()
+                .then(function (q) {
+                    if (!b.hidden) b.textContent += ' Pending: ' + q.length;
+                })
+                .catch(function () {});
+        }
     }
-    function add(pid, price){ if(serverDraftPaused){toast('Reconnect to verify the current bill before adding items.','#c62828');return;} var p=catalog[pid]||{}; var pr=Number(price||p.price||0); var ex=cart.find(function(it){return it.productId===pid && Number(it.price)===pr;}); if(ex) ex.qty=Number(ex.qty)+1; else cart.push({productId:pid,name:p.name||pid,price:pr,qty:1,uom:p.uom||'',taxRate:p.taxRate}); render(); }
-    function scan(code){ var lc=(code||'').toLowerCase(); var found=null; for(var k in catalog){ var p=catalog[k]; if(p.barcode===code||p.productId===code||(p.name||'').toLowerCase().indexOf(lc)!==-1){found=p;break;} } if(found) add(found.productId,found.price); else toast('Item not in offline catalog','#e53935'); }
-    function printReceipt(sale){ var h='<!DOCTYPE html><html><head><meta charset="utf-8"><style>@page{size:80mm auto;margin:0}body{margin:0;padding:0;font-family:Arial;font-size:12px}.rcpt{width:72mm;margin:0 auto;padding:2mm 3mm;box-sizing:border-box}.c{text-align:center}.r{text-align:right}.b{font-weight:bold}table{width:100%;border-collapse:collapse}td,th{font-size:11px;padding:2px 1px}.sep{border-bottom:1px dashed #000;margin:4px 0}</style></head><body><div class="rcpt">';
-        h+='<div class="c b" style="font-size:15px">Offline Receipt</div><div class="c" style="font-size:9px;color:#444">** SAVED OFFLINE &mdash; will sync **</div><div class="sep"></div>';
-        h+='<div style="font-size:10px">'+new Date().toLocaleString()+'</div><div class="sep"></div>';
-        h+='<table><thead><tr><th style="text-align:left">Item</th><th class="c">Qty</th><th class="r">Rate</th><th class="r">Total</th></tr></thead><tbody>';
-        sale.items.forEach(function(it){ h+='<tr><td>'+esc(it.name)+'</td><td class="c">'+it.qty+(it.uom?' '+it.uom:'')+'</td><td class="r">'+f2(it.price)+'</td><td class="r">'+f2(it.qty*it.price)+'</td></tr>'; });
-        h+='</tbody></table><div class="sep"></div><div>Tax '+f2(sale.taxAmount||0)+' &middot; Round off '+f2(sale.roundOff||0)+'</div>';
-        h+='<table><tr><td class="b" style="font-size:14px">TOTAL</td><td class="r b" style="font-size:14px">&#8377;'+f2(sale.total)+'</td></tr><tr><td>Paid</td><td class="r">'+esc(sale.paymentMethod)+'</td></tr></table>';
-        h+='<div class="c b" style="margin-top:6px">Thank You !!</div><div class="c" style="font-size:7px;color:#666;margin-top:4px">Powered by ZetaERP &middot; www.zetaclantech.com</div></div>';
-        h+='<script>window.onload=function(){window.print();}<\/script></body></html>';
-        var f=document.getElementById('pos-offline-frame'); if(!f){ f=document.createElement('iframe'); f.id='pos-offline-frame'; f.style.cssText='position:fixed;left:-9999px;top:-9999px;width:80mm;height:0;border:none'; document.body.appendChild(f); } var d=f.contentDocument||f.contentWindow.document; d.open(); d.write(h); d.close(); }
-    function pay(method){ if(payPending||serverDraftPaused||!cart.length) return; var _fia=document.getElementById('pos-free-item-approval'); if((!_fia||_fia.value!=='Y')&&cart.some(function(it){return !(Number(it.price)>0);})){toast('Set a price above ₹0 for every product before payment.','#c62828');return;} if(_fia&&_fia.value==='Y'&&cart.some(function(it){return Number(it.qty)*Number(it.price)+taxAmount(it)<=0;})){toast('Free items need online manager approval. Reconnect to complete this bill.','#c62828');return;} if(taxEnabled() && cart.some(function(it){return it.taxRate==null;})){toast('Tax cache unavailable. Reconnect before completing this sale.','#c62828');return;} var c=tCtx(); var total=payable();
-        var sale={ offlineId:'OFL-'+Date.now()+'-'+Math.floor(Math.random()*100000), organizationPartyId:orgId, taxOn:taxEnabled()?'Y':'N', terminalId:c.terminalId, sessionId:c.sessionId, items:cart.map(function(it){return {productId:it.productId,name:it.name,qty:it.qty,price:it.price,uom:it.uom};}), total:total, taxAmount:cart.reduce(function(a,it){return a+taxAmount(it);},0), roundOff:total-cart.reduce(function(a,it){return a+it.qty*it.price+taxAmount(it);},0), paymentMethod:method, ts:new Date().toISOString() };
-        payPending=true;
-        enqueue(sale).then(function(){
-            cart=[];
-            try{ render(); banner(true); }
-            catch(e){ toast('Sale saved offline. Reload to verify the empty cart.','#c62828'); return; }
-            toast('✔ Sale saved offline ('+method+') — will sync when online','#2e7d32');
-            try{ printReceipt(sale); }
-            catch(e){ toast('Sale saved offline, but receipt could not print. Reprint from history.','#c62828'); }
-        },function(){ toast('Sale NOT saved. Keep this cart and retry.','#c62828'); }).finally(function(){payPending=false;}); }
-    function removeSynced(ids){ return ensureDb().then(function(d){ if(!d) return; return new Promise(function(res,rej){ var tx=d.transaction(['queue'],'readwrite'); ids.forEach(function(id){tx.objectStore('queue').delete(id);}); tx.oncomplete=function(){res();};tx.onerror=function(){rej(new Error('Queue update failed'));}; }); }); }
-    function sync(){ if(syncing) return Promise.resolve(0); syncing=true; return recoverLegacy().then(function(){ return getQueue(); }).then(function(q){ if(!q.length) return 0; var c=tCtx(), af=document.getElementById('cartInlineAddForm'), tk=af&&af.querySelector('[name=moquiSessionToken]'); var body=JSON.stringify({moquiSessionToken:tk?tk.value:'', terminalId:c.terminalId, transactions:q.map(function(s){return JSON.stringify(s);})}); return fetch('Terminal/syncOfflineTransactions',{method:'POST',headers:{'Content-Type':'application/json'},body:body,credentials:'same-origin'}).then(function(r){if(!r.ok)throw new Error('Sync rejected');return r.json();}).then(function(d){ var ack=Array.isArray(d.syncedIds)?d.syncedIds.filter(function(id){return q.some(function(s){return s.offlineId===id;});}):[]; return removeSynced(ack).then(function(){ return acknowledgeLegacy(ack,q); }).then(function(){ if(q.length>ack.length)toast('Some offline sales remain pending. Review and retry.','#c62828'); return ack.length; }); }); }).catch(function(){return 0;}).then(function(n){syncing=false;return n;}); }
-    // Instant local-first reads against the cached master data (no server round-trip)
-    function search(term){ var lc=(term||'').toLowerCase().trim(); if(!lc) return []; var out=[]; for(var k in catalog){ var p=catalog[k]; if((p.name||'').toLowerCase().indexOf(lc)!==-1 || (p.barcode||'').toLowerCase().indexOf(lc)===0 || (p.productId||'').toLowerCase()===lc){ out.push(p); if(out.length>=30) break; } } return out; }
-    function lookup(pid){ return catalog[pid] || null; }
-    function catalogSize(){ var n=0; for(var k in catalog) n++; return n; }
-    function boot(){ if(booted || !orgId || location.pathname.indexOf('/pos/Terminal')<0) return; booted=true;
-        openDB().then(function(){ return recoverLegacy(); }).then(function(){ return loadCatalog(); }).then(function(){
-            if(navigator.onLine){ cacheCatalog(); banner(false); }
-            else if(!pauseServerDraft()){ banner(true); render(); }
-        }).catch(function(){toast('Offline storage unavailable. Use online checkout.','#c62828');});
-        window.addEventListener('offline', function(){ if(!pauseServerDraft()){ banner(true); render(); } });
-        window.addEventListener('online', function(){ if(serverDraftPaused){ var b=document.getElementById('pos-offline-banner'); if(b) b.textContent='Reconnecting — verifying the current bill before payment.'; } else banner(false); sync().then(function(nn){ if(nn>0) toast('✔ '+nn+' offline sale(s) synced','#2e7d32'); setTimeout(function(){ try{location.reload();}catch(e){} }, nn>0?1600:300); }); });
-        // A visible server draft may contain an in-flight edit. Keep it read-only until
-        // the server is reachable again; never turn it into a second offline sale.
-        ['click','submit','beforeinput','change'].forEach(function(type){ document.addEventListener(type,function(e){ if(!serverDraftPaused)return; var t=e.target; if(t.closest && t.closest('#pos-terminal-root,.pos-product-grid,.pos-cart,.pos-summary,#cartInlineAddForm')){e.preventDefault();e.stopImmediatePropagation();} },true); });
-        document.addEventListener('keydown',function(e){ if(serverDraftPaused && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key==='Enter'||e.key==='/'||/^F[2-9]$/.test(e.key))){e.preventDefault();e.stopImmediatePropagation();} },true);
-        // Stale-while-revalidate: refresh the local master-data cache in the background so local reads stay current
-        setInterval(function(){ if(navigator.onLine) cacheCatalog(); }, 180000);
-        document.addEventListener('click', function(e){ var t=e.target.closest ? (e.target.closest('.ofl-minus,.ofl-plus,.ofl-rm,.ofl-pay') || e.target) : e.target; if(!t.classList) return;
-            if(t.classList.contains('ofl-minus')){ var i=+t.dataset.i; cart[i].qty=Number(cart[i].qty)-1; if(cart[i].qty<=0)cart.splice(i,1); render(); }
-            else if(t.classList.contains('ofl-plus')){ var i2=+t.dataset.i; cart[i2].qty=Number(cart[i2].qty)+1; render(); }
-            else if(t.classList.contains('ofl-rm')){ cart.splice(+t.dataset.i,1); render(); }
-            else if(t.classList.contains('ofl-pay')){ pay(t.dataset.m); } });
-        document.addEventListener('change', function(e){ if(e.target.classList&&e.target.classList.contains('ofl-qi')){ var i=+e.target.dataset.i; var nq=Number(e.target.value); if(!Number.isFinite(nq)||nq<=0){toast('Quantity must be greater than zero. Use remove to delete a line.','#c62828');} else cart[i].qty=nq; render(); } });
+    function newDraft() {
+        var c = tCtx();
+        return {
+            draftId: crypto.randomUUID(),
+            items: [],
+            mode:
+                (document.querySelector('#cartInlineAddForm [name=salesModeId]') || {}).value ||
+                ((settings.modes || [])[0] || {}).id ||
+                '',
+            taxOn: typeof window._posCurrentTax === 'function' ? window._posCurrentTax() : 'N',
+            sessionId: c.sessionId,
+            terminalId: c.terminalId,
+            customer: null,
+        };
+    }
+    function remember(data) {
+        if (localEditing || !data || !data.success) return;
+        snapshot = copy(data);
+        if (db) stateWrite('snapshot:' + scope, snapshot).catch(function () {});
+    }
+    var leaseReady = false,
+        leasePending = false;
+    function begin() {
+        if (!leaseReady) {
+            if (!leasePending) {
+                leasePending = true;
+                if (!navigator.locks) {
+                    serverDraftPaused = true;
+                    banner(true);
+                    toast(
+                        'This browser cannot lock an offline workspace. Update the browser before offline checkout.',
+                        '#c62828',
+                    );
+                    return false;
+                }
+                navigator.locks
+                    .request(
+                        'zenith-pos-offline:' + orgId + ':' + scope,
+                        { ifAvailable: true },
+                        function (lock) {
+                            if (!lock) {
+                                serverDraftPaused = true;
+                                localEditing = true;
+                                banner(true);
+                                toast(
+                                    'This offline terminal is open in another tab. Close that tab first.',
+                                    '#c62828',
+                                );
+                                return;
+                            }
+                            leaseReady = true;
+                            begin();
+                            return new Promise(function () {});
+                        },
+                    )
+                    .catch(function () {
+                        serverDraftPaused = true;
+                        banner(true);
+                    });
+            }
+            return false;
+        }
+        if (localEditing) return !serverDraftPaused;
+        localEditing = true;
+        if (!settings.version) {
+            serverDraftPaused = true;
+            banner(true);
+            return false;
+        }
+        if (!draft) {
+            draft = newDraft();
+            var sourceId = (document.querySelector('#cartInlineAddForm [name=transactionId]') || {}).value;
+            if (sourceId && !snapshot) {
+                serverDraftPaused = true;
+                banner(true);
+                return false;
+            }
+            if (snapshot && snapshot.transactionId) {
+                if (!snapshot.sourceRevision || Number(snapshot.paid) > 0) {
+                    serverDraftPaused = true;
+                    banner(true);
+                    return false;
+                }
+                draft.sourceTransactionId = snapshot.transactionId;
+                draft.sourceRevision = snapshot.sourceRevision;
+                draft.originState = snapshot.originState;
+                draft.destinationState = snapshot.destinationState;
+                draft.items = snapshot.items.map(function (i) {
+                    return {
+                        productId: i.pid,
+                        name: i.name,
+                        qty: Number(i.qty),
+                        price: Number(i.price),
+                        mode: i.mode || draft.mode,
+                        uom: i.uom,
+                        discount: Number(i.disc || 0),
+                    };
+                });
+                draft.customer = snapshot.customer
+                    ? {
+                          partyId: snapshot.customerPartyId,
+                          name: snapshot.customer,
+                          phone: snapshot.customerPhone,
+                          creditDays: snapshot.customerCreditDays,
+                          state: snapshot.destinationState,
+                      }
+                    : null;
+            }
+        }
+        cart = draft.items;
+        saveDraft();
+        banner(true);
+        render();
+        return true;
+    }
+    function modeInfo(id) {
+        return (
+            (settings.modes || []).find(function (m) {
+                return m.id === id;
+            }) || {}
+        );
+    }
+    function money(n) {
+        return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+    }
+    function totals() {
+        var sub = 0,
+            tax = 0,
+            discount = 0,
+            qty = 0;
+        cart.forEach(function (i) {
+            var p = catalog[i.productId] || {},
+                m = modeInfo(i.mode),
+                gross = Number(i.price) * Number(i.qty),
+                disc = (gross * Number(i.discount || 0)) / 100,
+                net = gross - disc;
+            var destination = (draft.customer || {}).state || draft.destinationState || settings.state,
+                interstate = destination && String(destination) !== String(settings.state);
+            var rates = (interstate ? p.interstateRates : p.taxRates) || [],
+                sum = rates.reduce(function (s, r) {
+                    return s + Number(r);
+                }, 0),
+                base = net,
+                amount = 0;
+            if (draft.taxOn === 'Y') {
+                if (m.inclusive && sum > 0) base = money((net * 100) / (100 + sum));
+                amount = rates.reduce(function (s, r) {
+                    return s + money((base * Number(r)) / 100);
+                }, 0);
+            }
+            i.tax = money(amount);
+            i.taxable = base;
+            i.total = base + i.tax;
+            sub += base;
+            tax += i.tax;
+            discount += disc;
+            qty += Number(i.qty);
+        });
+        var grand = sub + tax;
+        return {
+            sub: sub,
+            tax: money(tax),
+            disc: discount,
+            grand: grand,
+            pay: Math.round(grand),
+            round: Math.round(grand) - grand,
+            qty: qty,
+        };
+    }
+    function taxEnabled() {
+        return draft && draft.taxOn === 'Y';
+    }
+    function payable() {
+        return totals().pay;
+    }
+    function render() {
+        if (serverDraftPaused || !draft) return;
+        cart = draft.items;
+        var t = totals(),
+            tb = document.querySelector('.pos-cart tbody'),
+            activeElement = document.activeElement,
+            focus = activeElement && activeElement.dataset.i,
+            field = activeElement && activeElement.dataset.field,
+            selection = activeElement && activeElement.selectionStart;
+        if (tb) {
+            tb.innerHTML = cart.length
+                ? cart
+                      .map(function (i, index) {
+                          var modes = (settings.modes || [])
+                              .map(function (m) {
+                                  return (
+                                      '<option value="' +
+                                      esc(m.id) +
+                                      '"' +
+                                      (m.id === i.mode ? ' selected' : '') +
+                                      '>' +
+                                      esc(m.name) +
+                                      '</option>'
+                                  );
+                              })
+                              .join('');
+                          return (
+                              '<tr data-pos-product="' +
+                              esc(i.productId) +
+                              '"><td>' +
+                              (index + 1) +
+                              '</td><td>' +
+                              esc(i.name) +
+                              '</td><td><select class="ofl-mode" data-i="' +
+                              index +
+                              '">' +
+                              modes +
+                              '</select></td><td><input class="ofl-price" data-field="price" data-i="' +
+                              index +
+                              '" inputmode="decimal" value="' +
+                              Number(i.price) +
+                              '"' +
+                              (settings.canOverride ? '' : ' readonly') +
+                              ' aria-label="Rate" style="width:70px"/></td><td><button class="ofl-minus" data-i="' +
+                              index +
+                              '">−</button><input class="ofl-qi" data-field="qty" data-i="' +
+                              index +
+                              '" inputmode="decimal" value="' +
+                              Number(i.qty) +
+                              '" aria-label="Quantity" style="width:55px"/><button class="ofl-plus" data-i="' +
+                              index +
+                              '">+</button> ' +
+                              esc(i.uom) +
+                              '</td><td>' +
+                              f2(i.tax) +
+                              '</td><td>' +
+                              f2(i.total) +
+                              '</td><td><button class="ofl-rm" data-i="' +
+                              index +
+                              '" aria-label="Remove item">×</button></td></tr>'
+                          );
+                      })
+                      .join('')
+                : '<tr><td colspan="8">Offline — tap products to add items</td></tr>';
+        }
+        var sm = document.querySelector('.pos-summary');
+        if (sm)
+            sm.innerHTML =
+                '<div class="pos-sum-strip">Qty: ' +
+                t.qty +
+                ' · Tax: ' +
+                f2(t.tax) +
+                ' · Discount: ' +
+                f2(t.disc) +
+                '</div><div class="pos-sum-total"><span>' +
+                esc(modeInfo(draft.mode).name || 'Offline') +
+                ' TOTAL</span><span id="posSumTotal">₹' +
+                f2(t.pay) +
+                '</span></div><div class="pos-paywrap pos-reference-payments pos-offline-payments">' +
+                [
+                    ['Cash', 'cash', 'F2'],
+                    ['Card', 'card', 'F3'],
+                    ['Credit', 'credit', 'F4'],
+                    ['UPI', 'upi', 'F5'],
+                    ['Split', 'split', 'F6'],
+                ]
+                    .map(function (p) {
+                        return (
+                            '<button type="button" class="ofl-pay" id="' +
+                            (p[1] === 'credit'
+                                ? 'pos-credit'
+                                : p[1] === 'split'
+                                  ? 'pos-split'
+                                  : 'pos-pay-' + p[1]) +
+                            '" data-m="' +
+                            p[0] +
+                            '"' +
+                            (!cart.length ? ' disabled' : '') +
+                            '>' +
+                            p[0] +
+                            ' <kbd>' +
+                            p[2] +
+                            '</kbd></button>'
+                        );
+                    })
+                    .join('') +
+                '<button type="button" id="pos-discount" class="pos-discount-btn">Discount F1</button><button type="button" id="pos-hold">Hold F7</button><button type="button" id="pos-offline-holds">Held bills</button><button type="button" id="pos-offline-customer">Customer</button><button type="button" id="pos-offline-print">Pending receipts</button></div>';
+        var countLabel = document.getElementById('pos-side-item-count');
+        if (countLabel) countLabel.textContent = 'Subtotal (' + cart.length + ' items)';
+        [['pos-side-subtotal',t.sub],['pos-side-discount',t.disc],['pos-side-tax',t.tax],['pos-side-round',t.round]].forEach(function (pair) {
+            var element = document.getElementById(pair[0]);
+            if (element) element.textContent = '₹' + f2(pair[1]);
+        });
+        banner(true);
+        var taxLabel = document.querySelector('.nb-tax__lbl');
+        if (taxLabel) taxLabel.textContent = 'Tax: ' + (draft.taxOn === 'Y' ? 'On' : 'Off');
+        var customerLabel = document.getElementById('pos-cust-name');
+        if (customerLabel)
+            customerLabel.textContent = draft.customer ? draft.customer.name : 'Walk-in Customer';
+        if (focus != null && field && tb) {
+            var input = tb.querySelector('[data-i="' + focus + '"][data-field="' + field + '"]');
+            if (input) {
+                input.focus();
+                try {
+                    input.setSelectionRange(selection, selection);
+                } catch (e) {}
+            }
+        }
+    }
+    function change() {
+        saveDraft();
+        render();
+    }
+    function add(pid) {
+        if (!begin()) return;
+        var p = catalog[pid];
+        if (!p) {
+            toast('Product unavailable in this terminal’s offline catalog.', '#c62828');
+            return;
+        }
+        var price = (p.prices || {})[draft.mode];
+        if (price && price.blocked) {
+            toast('No price is configured for this mode.', '#c62828');
+            return;
+        }
+        var rate = Number(price ? price.price : p.price),
+            existing = cart.find(function (i) {
+                return i.productId === pid && i.mode === draft.mode && i.price === rate;
+            });
+        if (existing) existing.qty++;
+        else
+            cart.push({
+                productId: pid,
+                name: p.name,
+                price: rate,
+                qty: 1,
+                uom: p.uom,
+                mode: draft.mode,
+                discount: Number((price && price.disc) || 0),
+            });
+        change();
+        var rateInput = document.querySelector(
+            '.ofl-price[data-i="' + (existing ? cart.indexOf(existing) : cart.length - 1) + '"]',
+        );
+        if (rateInput) {
+            rateInput.focus();
+            rateInput.select();
+        }
+    }
+    function search(term) {
+        var terms = String(term || '')
+            .toLowerCase()
+            .trim()
+            .split(/\s+/);
+        if (!terms[0]) return [];
+        return Object.values(catalog)
+            .filter(function (p) {
+                var text = [p.name, p.barcode, p.productId].join(' ').toLowerCase();
+                return terms.every(function (s) {
+                    return text.indexOf(s) >= 0;
+                });
+            })
+            .slice(0, 50);
+    }
+    function scan(code) {
+        var results = search(code);
+        if (results.length) add(results[0].productId);
+        else toast('No cached products match.', '#c62828');
+    }
+    function lookup(pid) {
+        return catalog[pid] || null;
+    }
+    function catalogSize() {
+        return Object.keys(catalog).length;
+    }
+    function modal(title, body) {
+        var old = document.getElementById('posOfflineDialog');
+        if (old) old.remove();
+        var overlay = document.createElement('div');
+        overlay.id = 'posOfflineDialog';
+        overlay.className = 'pos-pay-overlay';
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-label', title);
+        overlay.style.cssText =
+            'position:fixed;inset:0;z-index:999999;background:#0007;display:grid;place-items:center;padding:16px';
+        overlay.innerHTML =
+            '<form style="background:white;color:#111;border-radius:12px;padding:24px;max-width:600px;width:90%;max-height:85vh;overflow:auto"><h2>' +
+            esc(title) +
+            '</h2>' +
+            body +
+            '<p role="alert" class="ofl-error" style="color:#b91c1c"></p><button type="button" class="ofl-cancel">Cancel</button></form>';
+        document.body.appendChild(overlay);
+        overlay.querySelector('.ofl-cancel').onclick = function () {
+            overlay.remove();
+        };
+        return overlay;
+    }
+    function chooseCustomer() {
+        var options =
+            '<option value="">Walk-in / new customer</option>' +
+            (settings.customers || [])
+                .map(function (c, index) {
+                    return '<option value="' + index + '">' + esc(c.name) + ' ' + esc(c.phone) + '</option>';
+                })
+                .join('');
+        var ov = modal(
+            'Offline customer',
+            '<label>Saved customer<select id="oflCustomer">' +
+                options +
+                '</select></label><label>Name<input id="oflName" required/></label><label>Phone<input id="oflPhone" inputmode="tel"/></label><button type="submit">Use customer</button>',
+        );
+        var selected = null;
+        ov.querySelector('select').onchange = function () {
+            selected = this.value === '' ? null : settings.customers[Number(this.value)];
+            ov.querySelector('#oflName').value = selected ? selected.name : '';
+            ov.querySelector('#oflPhone').value = selected ? selected.phone : '';
+        };
+        if (draft.customer) {
+            ov.querySelector('#oflName').value = draft.customer.name;
+            ov.querySelector('#oflPhone').value = draft.customer.phone || '';
+        }
+        ov.querySelector('form').onsubmit = function (e) {
+            e.preventDefault();
+            draft.customer = selected
+                ? copy(selected)
+                : {
+                      name: ov.querySelector('#oflName').value.trim(),
+                      phone: ov.querySelector('#oflPhone').value.trim(),
+                  };
+            change();
+            ov.remove();
+        };
+    }
+    function discountDialog() {
+        var ov = modal(
+            'Bill discount',
+            '<label>Discount %<input id="oflDiscount" inputmode="decimal" value="0"/></label><p>Discounts above this shop’s manager limit require an online approval.</p><button type="submit">Apply discount</button>',
+        );
+        ov.querySelector('form').onsubmit = function (e) {
+            e.preventDefault();
+            var percent = Number(ov.querySelector('input').value);
+            if (
+                !settings.canOverride ||
+                !Number.isFinite(percent) ||
+                percent < 0 ||
+                percent >= 100 ||
+                (settings.discountLimit != null && percent > Number(settings.discountLimit))
+            ) {
+                ov.querySelector('.ofl-error').textContent =
+                    'Use an authorized discount below 100%, or reconnect for manager approval.';
+                return;
+            }
+            cart.forEach(function (i) {
+                i.discount = percent;
+            });
+            change();
+            ov.remove();
+        };
+    }
+    function storeWorkspace(nextDraft, nextHolds) {
+        return ensureDb().then(function (d) {
+            return new Promise(function (resolve, reject) {
+                var transaction = d.transaction('state', 'readwrite'),
+                    store = transaction.objectStore('state');
+                store.put({ key: 'draft:' + scope, value: copy(nextDraft) });
+                store.put({ key: 'holds:' + scope, value: copy(nextHolds) });
+                transaction.oncomplete = resolve;
+                transaction.onerror = transaction.onabort = function () {
+                    reject(transaction.error);
+                };
+            });
+        });
+    }
+    function holdDraft() {
+        if (!cart.length || payPending) return;
+        payPending = true;
+        var all = holds.concat([copy(draft)]),
+            next = newDraft();
+        writeTail
+            .then(function () {
+                return storeWorkspace(next, all);
+            })
+            .then(function () {
+                holds = all;
+                draft = next;
+                cart = draft.items;
+                render();
+                toast('Bill held on this device.');
+            })
+            .catch(function () {
+                toast('Could not hold the bill. Keep it open.', '#c62828');
+            })
+            .finally(function () {
+                payPending = false;
+            });
+    }
+    function heldDialog() {
+        var ov = modal(
+            'Offline held bills',
+            holds.length
+                ? holds
+                      .map(function (h, index) {
+                          return (
+                              '<button type="button" data-recall="' +
+                              index +
+                              '">' +
+                              esc(modeInfo(h.mode).name) +
+                              ' · ' +
+                              h.items.length +
+                              ' items</button>'
+                          );
+                      })
+                      .join('')
+                : '<p>No offline held bills.</p>',
+        );
+        ov.querySelectorAll('[data-recall]').forEach(function (b) {
+            b.onclick = function () {
+                if (cart.length || payPending) {
+                    toast('Hold or clear this bill before recalling another.', '#c62828');
+                    return;
+                }
+                payPending = true;
+                var index = Number(b.dataset.recall),
+                    next = copy(holds[index]),
+                    rest = holds.filter(function (h, i) {
+                        return i !== index;
+                    });
+                writeTail
+                    .then(function () {
+                        return storeWorkspace(next, rest);
+                    })
+                    .then(function () {
+                        draft = next;
+                        holds = rest;
+                        cart = draft.items;
+                        render();
+                        ov.remove();
+                    })
+                    .catch(function () {
+                        toast('Could not recall this bill. Keep this page open.', '#c62828');
+                    })
+                    .finally(function () {
+                        payPending = false;
+                    });
+            };
+        });
+    }
+    function validation(method) {
+        if (!cart.length) return 'Add products first.';
+        if (storageError) return 'Device storage failed. Keep this bill open.';
+        if (
+            Array.from(document.querySelectorAll('.ofl-price,.ofl-qi')).some(function (el) {
+                return !el.value.trim() || !Number.isFinite(Number(el.value)) || Number(el.value) <= 0;
+            })
+        )
+            return 'Correct the rate and quantity fields before payment.';
+        if (
+            cart.some(function (i) {
+                return !Number.isFinite(i.qty) || i.qty <= 0 || !Number.isFinite(i.price) || i.price <= 0;
+            })
+        )
+            return 'Enter positive quantities and prices. Free items need online manager approval.';
+        if (
+            draft.taxOn === 'Y' &&
+            cart.some(function (i) {
+                var destination = (draft.customer || {}).state || draft.destinationState || settings.state;
+                return !Array.isArray(
+                    (catalog[i.productId] || {})[
+                        destination && String(destination) !== String(settings.state)
+                            ? 'interstateRates'
+                            : 'taxRates'
+                    ],
+                );
+            })
+        )
+            return 'Tax cache is unavailable for an item. Reconnect before payment.';
+        var total = totals();
+        var modes = new Set(
+            cart.map(function (i) {
+                return i.mode;
+            }),
+        );
+        var rule = (settings.rules || []).find(function (r) {
+            return modes.has(r.mode) && ((r.customer && !draft.customer) || Number(r.minimum) > total.grand);
+        });
+        if (rule) return 'This shop’s customer or minimum-order rule is not met.';
+        if (
+            method === 'Credit' &&
+            (!draft.customer ||
+                !draft.customer.name ||
+                !/^\d{10,15}$/.test(String(draft.customer.phone || '').replace(/\D/g, '')))
+        )
+            return 'Select Customer and enter a valid name and phone for credit.';
+        return '';
+    }
+    function tender(method) {
+        if (!begin()) return;
+        var error = validation(method);
+        if (error) {
+            toast(error, '#c62828');
+            return;
+        }
+        var total = payable(),
+            body = '<p>Bill: ₹' + f2(total) + '</p>';
+        if (method === 'Cash')
+            body +=
+                '<label>Received<input id="oflReceived" type="text" inputmode="decimal" value="' +
+                f2(total) +
+                '" required/></label>';
+        if (method === 'Split')
+            body += ['Cash', 'Card', 'UPI']
+                .map(function (m) {
+                    return (
+                        '<label>' +
+                        m +
+                        '<input data-tender="' +
+                        m +
+                        '" inputmode="decimal" value="0"/></label>'
+                    );
+                })
+                .join('');
+        if (method === 'Card' || method === 'UPI')
+            body +=
+                '<p>Confirm only after the payment has been received. Offline mode does not verify a bank or payment provider.</p>';
+        if (method === 'Credit') body += '<p>' + esc(draft.customer.name) + ' · Payment due later.</p>';
+        body += '<button id="oflConfirmPayment" type="submit">Confirm ' + esc(method) + '</button>';
+        var ov = modal(method + ' payment', body);
+        var input = ov.querySelector('input');
+        if (input) {
+            input.focus();
+            input.select();
+        } else ov.querySelector('#oflConfirmPayment').focus();
+        ov.querySelector('form').onsubmit = function (e) {
+            e.preventDefault();
+            if (payPending) return;
+            var payments = [],
+                error = '';
+            if (method === 'Cash') {
+                var received = Number(ov.querySelector('#oflReceived').value);
+                if (!Number.isFinite(received) || received < total || money(received) !== received)
+                    error = 'Received cash must cover the bill.';
+                else payments = [{ method: 'Cash', amount: received }];
+            } else if (method === 'Split') {
+                ov.querySelectorAll('[data-tender]').forEach(function (i) {
+                    var amount = Number(i.value);
+                    if (!Number.isFinite(amount) || amount < 0 || money(amount) !== amount)
+                        error = 'Use valid payment amounts with at most two decimals.';
+                    else if (amount > 0) payments.push({ method: i.dataset.tender, amount: amount });
+                });
+                if (
+                    money(
+                        payments.reduce(function (sum, p) {
+                            return sum + p.amount;
+                        }, 0),
+                    ) !== total
+                )
+                    error = 'Split amounts must exactly equal the bill.';
+            } else if (method !== 'Credit') payments = [{ method: method, amount: total }];
+            if (error) {
+                ov.querySelector('.ofl-error').textContent = error;
+                return;
+            }
+            pay(method, payments, ov);
+        };
+    }
+    function pay(method, payments, ov) {
+        if (payPending) return;
+        payPending = true;
+        var t = totals(),
+            sale = Object.assign(copy(draft), {
+                version: 2,
+                offlineId: 'OFL-' + crypto.randomUUID(),
+                userId: settings.userId,
+                organizationPartyId: orgId,
+                store: settings.store,
+                items: copy(cart),
+                total: t.pay,
+                taxAmount: t.tax,
+                subtotal: t.sub,
+                roundOff: t.round,
+            paymentMethod: method,
+            change: method === 'Cash' ? money(payments[0].amount - t.pay) : 0,
+                payments: payments,
+                ts: new Date().toISOString(),
+            });
+        writeTail
+            .catch(function () {
+                throw Error('Draft storage failed');
+            })
+            .then(function () {
+                return enqueue(sale);
+            })
+            .then(
+                function () {
+                    draft = newDraft();
+                    cart = draft.items;
+                    snapshot = null;
+                    render();
+                    banner(true);
+                    if (ov) ov.remove();
+                    receiptDialog(sale);
+                    if (navigator.onLine) sync();
+                },
+                function (e) {
+                    toast('Sale NOT saved: ' + e.message, '#c62828');
+                },
+            )
+            .finally(function () {
+                payPending = false;
+            });
+    }
+    function printReceipt(sale) {
+        var store = sale.store || {},
+            html =
+                '<!doctype html><html><head><meta charset="utf-8"><style>@page{size:80mm auto;margin:0}body{font:12px Arial;color:#000;width:72mm;margin:3mm}table{width:100%}td:last-child,th:last-child{text-align:right}</style></head><body><h2>' +
+                esc(store.name || 'Receipt') +
+                '</h2><div>' +
+                esc(store.address) +
+                '</div><div>GSTIN: ' +
+                esc(store.taxReg) +
+                '</div><h3>OFFLINE RECEIPT — PENDING SYNC</h3><div>' +
+                esc(sale.offlineId) +
+                '</div><div>' +
+                esc(new Date(sale.ts).toLocaleString()) +
+                '</div><div>Customer: ' +
+                esc((sale.customer && sale.customer.name) || 'Walk-in Customer') +
+                '</div><table><tr><th>Item</th><th>Qty</th><th>Rate</th><th>Total</th></tr>';
+        sale.items.forEach(function (i) {
+            html +=
+                '<tr><td>' +
+                esc((catalog[i.productId] || {}).printName || i.name) +
+                '</td><td>' +
+                esc(i.qty) +
+                ' ' +
+                esc(i.uom) +
+                '</td><td>' +
+                f2(i.price) +
+                '</td><td>' +
+                f2(i.total) +
+                '</td></tr>';
+        });
+        html +=
+            '</table><hr><div>Subtotal ' +
+            f2(sale.subtotal) +
+            '</div><div>Tax ' +
+            f2(sale.taxAmount) +
+            '</div><div>Round off ' +
+            f2(sale.roundOff) +
+            '</div><h2>TOTAL ₹' +
+            f2(sale.total) +
+            '</h2><p>' +
+            (sale.paymentMethod === 'Credit'
+                ? 'Credit — outstanding ₹' + f2(sale.total)
+                : 'Payment recorded: ' + esc(sale.paymentMethod)) +
+            (sale.change ? '</p><p>Change ₹' + f2(sale.change) : '') +
+            '</p><p>Pending validation and official invoice number on reconnection.</p></body></html>';
+        var frame = document.getElementById('pos-offline-frame');
+        if (!frame) {
+            frame = document.createElement('iframe');
+            frame.id = 'pos-offline-frame';
+            frame.style.cssText = 'position:fixed;left:-10000px;width:80mm';
+            document.body.appendChild(frame);
+        }
+        var d = frame.contentDocument;
+        d.open();
+        d.write(html);
+        d.close();
+        frame.contentWindow.focus();
+        frame.contentWindow.print();
+    }
+    function receiptDialog(sale) {
+        var ov = modal(
+            'Sale saved on this device',
+            '<p>Reference: ' +
+                esc(sale.offlineId) +
+                '</p><p>₹' +
+                f2(sale.total) +
+                ' · ' +
+                esc(sale.paymentMethod) +
+                '</p><p>Print a pending receipt now. The final invoice number is assigned after server validation.</p><button type="button" id="oflPrintReceipt">Print receipt</button>',
+        );
+        ov.querySelector('#oflPrintReceipt').onclick = function () {
+            printReceipt(sale);
+        };
+    }
+    function removeSynced(ids) {
+        return ensureDb().then(function (d) {
+            return new Promise(function (resolve, reject) {
+                var t = d.transaction('queue', 'readwrite');
+                ids.forEach(function (id) {
+                    t.objectStore('queue').delete(id);
+                });
+                t.oncomplete = resolve;
+                t.onerror = t.onabort = reject;
+            });
+        });
+    }
+    function sync() {
+        if (syncing || !navigator.onLine) return Promise.resolve(0);
+        syncing = true;
+        return recoverLegacy()
+            .then(getQueue)
+            .then(function (q) {
+                if (!q.length) return 0;
+                var token = document.querySelector('[name=moquiSessionToken]');
+                return fetch('Terminal/syncOfflineTransactions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        moquiSessionToken: token && token.value,
+                        terminalId: tCtx().terminalId,
+                        transactions: q.map(function (s) {
+                            return JSON.stringify(s);
+                        }),
+                    }),
+                })
+                    .then(function (r) {
+                        if (!r.ok) throw Error('Sync failed');
+                        return r.json();
+                    })
+                    .then(function (d) {
+                        var ack = Array.isArray(d.syncedIds)
+                            ? d.syncedIds.filter(function (id) {
+                                  return q.some(function (s) {
+                                      return s.offlineId === id;
+                                  });
+                              })
+                            : [];
+                        return removeSynced(ack)
+                            .then(function () {
+                                return acknowledgeLegacy(ack, q);
+                            })
+                            .then(function () {
+                                if (q.length > ack.length)
+                                    toast(
+                                        'Offline sales retained for review. ' +
+                                            ((d.failures || [])[0] || {}).error,
+                                        '#c62828',
+                                    );
+                                banner(localEditing);
+                                return ack.length;
+                            });
+                    });
+            })
+            .catch(function () {
+                toast('Offline sales remain saved on this device. Retry when connected.', '#c62828');
+                return 0;
+            })
+            .finally(function () {
+                syncing = false;
+            });
+    }
+    function clearDraft() {
+        if (!begin()) return;
+        var sourceId = draft.sourceTransactionId, sourceRevision = draft.sourceRevision;
+        draft = newDraft();
+        // Clearing the local rows must also replace the unpaid source when the next sale syncs.
+        if (sourceId) { draft.sourceTransactionId = sourceId; draft.sourceRevision = sourceRevision; }
+        cart = draft.items;
+        change();
+    }
+    function sessionClosed() {
+        if (!db || holds.length || (draft && draft.items.length)) return Promise.resolve();
+        return getQueue().then(function (pending) {
+            if (pending.length) return;
+            return Promise.all([stateWrite('draft:' + scope, null), stateWrite('snapshot:' + scope, null)]);
+        });
+    }
+    function boot() {
+        if (booted || !orgId || location.pathname.indexOf('/pos/Terminal') < 0) return;
+        booted = true;
+        // A missing snapshot or another tab's lease must never leave the server-rendered cart editable.
+        ['beforeinput', 'submit', 'change'].forEach(function (eventName) {
+            document.addEventListener(eventName, function (event) {
+                if (serverDraftPaused && event.target.closest('.pos-cart,.pos-summary,#cartInlineAddForm')) {
+                    event.preventDefault(); event.stopImmediatePropagation();
+                }
+            }, true);
+        });
+        openDB()
+            .then(loadCatalog)
+            .then(function () {
+                return Promise.all([
+                    stateRead('draft:' + scope),
+                    stateRead('snapshot:' + scope),
+                    stateRead('holds:' + scope),
+                ]);
+            })
+            .then(function (saved) {
+                draft = saved[0] || null;
+                holds = saved[2] || [];
+                if (!snapshot) snapshot = saved[1] || null;
+                if (draft) {
+                    begin();
+                } else if (!navigator.onLine) begin();
+                else cacheCatalog();
+                if (navigator.onLine) sync();
+            })
+            .catch(function () {
+                toast('Offline storage unavailable. Keep online checkout.', '#c62828');
+            });
+        window.addEventListener('offline', begin);
+        window.addEventListener('online', function () {
+            sync();
+            if (!localEditing) cacheCatalog();
+        });
+        setInterval(function () {
+            if (navigator.onLine && !localEditing) cacheCatalog();
+        }, 180000);
+        document.addEventListener(
+            'submit',
+            function (e) {
+                if (!active()) return;
+                if (e.target.matches('.pos-header form[action*="toggleTax"]')) {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    if (begin()) {
+                        draft.taxOn = draft.taxOn === 'Y' ? 'N' : 'Y';
+                        change();
+                    }
+                } else if (e.target.matches('.pos-header form[action*="closeSession"]')) {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    var form = e.target;
+                    if (navigator.onLine && !cart.length && !holds.length && !payPending) {
+                        sync().then(getQueue).then(function (pending) {
+                            if (pending.length) { toast('Resolve the pending offline sales before closing.', '#c62828'); return; }
+                            localEditing = false;
+                            form.requestSubmit();
+                        });
+                        return;
+                    }
+                    toast(
+                        'Sync pending sales and finish this workspace before closing the session.',
+                        '#c62828',
+                    );
+                }
+            },
+            true,
+        );
+        document.addEventListener(
+            'click',
+            function (e) {
+                if (!active()) return;
+                var b = e.target.closest('button,a');
+                if (!b) return;
+                if (payPending) {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    return;
+                }
+                if (serverDraftPaused) {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    return;
+                }
+                var mode = b.matches('a[href*="salesModeId="]')
+                    ? new URL(b.href).searchParams.get('salesModeId')
+                    : null;
+                if (mode) {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    if (!begin()) return;
+                    draft.mode = mode;
+                    cart.forEach(function (i) {
+                        var price = ((catalog[i.productId] || {}).prices || {})[mode];
+                        if (price && !price.blocked) {
+                            i.mode = mode;
+                            i.price = Number(price.price);
+                            i.discount = Number(price.disc || 0);
+                        }
+                    });
+                    change();
+                    return;
+                }
+                if (b.closest('#posOfflineDialog')) return;
+                if (
+                    b.matches(
+                        '.ofl-pay,.ofl-plus,.ofl-minus,.ofl-rm,#pos-offline-customer,#pos-offline-print,#pos-customer-btn,#pos-pay-cash,#pos-pay-card,#pos-credit,#pos-pay-upi,#pos-split,#pos-discount,#pos-hold,#pos-offline-holds',
+                    )
+                ) {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    if (!begin()) return;
+                    var i = Number(b.dataset.i);
+                    if (b.matches('.ofl-pay')) tender(b.dataset.m);
+                    else if (b.id === 'pos-credit') tender('Credit');
+                    else if (b.id === 'pos-split') tender('Split');
+                    else if (b.id === 'pos-discount') discountDialog();
+                    else if (b.id === 'pos-hold') holdDraft();
+                    else if (b.id === 'pos-offline-holds') heldDialog();
+                    else if (b.id.indexOf('pos-pay-') === 0)
+                        tender(
+                            { cash: 'Cash', card: 'Card', upi: 'UPI', credit: 'Credit', split: 'Split' }[
+                                b.id.slice(8)
+                            ],
+                        );
+                    else if (b.id === 'pos-offline-customer' || b.id === 'pos-customer-btn') chooseCustomer();
+                    else if (b.id === 'pos-offline-print')
+                        getQueue().then(function (q) {
+                            if (q.length) receiptDialog(q[q.length - 1]);
+                            else toast('No pending receipts.');
+                        });
+                    else {
+                        if (b.matches('.ofl-rm')) cart.splice(i, 1);
+                        else
+                            cart[i].qty = Math.max(
+                                1,
+                                Number(cart[i].qty) + (b.matches('.ofl-plus') ? 1 : -1),
+                            );
+                        change();
+                    }
+                }
+            },
+            true,
+        );
+        document.addEventListener(
+            'input',
+            function (e) {
+                if (!active() || !e.target.matches('.ofl-price,.ofl-qi')) return;
+                e.stopImmediatePropagation();
+                if (payPending) {
+                    e.preventDefault();
+                    return;
+                }
+                var el = e.target,
+                    i = cart[Number(el.dataset.i)],
+                    n = Number(el.value);
+                if (i && el.value.trim() !== '' && Number.isFinite(n) && n > 0) {
+                    if (el.matches('.ofl-price') && !settings.canOverride) return;
+                    i[el.dataset.field] = n;
+                    change();
+                }
+            },
+            true,
+        );
+        document.addEventListener(
+            'change',
+            function (e) {
+                if (!active() || !e.target.matches('.ofl-mode,.ofl-price,.ofl-qi')) return;
+                e.stopImmediatePropagation();
+                if (e.target.matches('.ofl-mode')) {
+                    var i = cart[Number(e.target.dataset.i)],
+                        price = (catalog[i.productId].prices || {})[e.target.value];
+                    if (price && !price.blocked) {
+                        i.mode = e.target.value;
+                        i.price = Number(price.price);
+                        i.discount = Number(price.disc || 0);
+                    }
+                    change();
+                } else render();
+            },
+            true,
+        );
+        document.addEventListener(
+            'keydown',
+            function (e) {
+                if (e.isComposing || e.repeat || e.ctrlKey || e.altKey || e.metaKey) return;
+                var input = e.target,
+                    search = input.id === 'cartInlineSearch';
+                if (
+                    e.code === 'Space' &&
+                    search &&
+                    !input.value.trim() &&
+                    !document.getElementById('posOfflineDialog')
+                ) {
+                    var cash = document.getElementById('pos-pay-cash');
+                    if (cash && !cash.disabled) {
+                        e.preventDefault();
+                        e.stopImmediatePropagation();
+                        cash.focus();
+                    }
+                    return;
+                }
+                if (!active()) return;
+                if (e.key === 'F9' && !document.getElementById('posOfflineDialog')) {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    heldDialog();
+                    return;
+                }
+                if (input.matches('.ofl-price,.ofl-qi') && e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    var next = input.matches('.ofl-price')
+                        ? document.querySelector('.ofl-qi[data-i="' + input.dataset.i + '"]')
+                        : document.getElementById('cartInlineSearch');
+                    if (next) {
+                        next.focus();
+                        if (next.select) next.select();
+                    }
+                }
+            },
+            true,
+        );
     }
     setTimeout(boot, 1500);
-    return { boot:boot, active:active, paused:paused, add:add, scan:scan, sync:sync, clearDraft:function(){cart=[];render();}, render:render, cacheCatalog:cacheCatalog, search:search, lookup:lookup, catalogSize:catalogSize, getQueue:getQueue, recoverLegacy:recoverLegacy };
+    return {
+        boot: boot,
+        active: active,
+        paused: paused,
+        add: add,
+        scan: scan,
+        sync: sync,
+        clearDraft: clearDraft,
+        render: render,
+        remember: remember,
+        cacheCatalog: cacheCatalog,
+        search: search,
+        lookup: lookup,
+        catalogSize: catalogSize,
+        getQueue: getQueue,
+        recoverLegacy: recoverLegacy,
+        sessionClosed: sessionClosed,
+    };
 })();
 
 /* === Product Import screen: manual add + search auto-fill + CSV (external JS, so the
@@ -2475,6 +3838,7 @@ window.posToggleFullscreen = function() {
                     if (!d || !d.success || !d.items || !d.items.length) throw new Error('Bill unavailable');
                     lastPay = Number(d.pay || 0);
                     lastCartData = d;
+            if(window._posOffline)window._posOffline.remember(d);
                     if(!daysTouched && d.customerCreditDays!=null){customerDays=d.customerCreditDays;daysInp.value=String(customerDays);}
                     showDueDate();
                     if (!nameInp.value.trim() && d.customer) { nameInp.value = d.customer; phoneInp.value = d.customerPhone || ''; selectedPartyId = d.customerPartyId || ''; }
@@ -3150,6 +4514,7 @@ window.posToggleFullscreen = function() {
             lastTxnNum = d.txnNum || '';
             lastPay = d.pay || 0;
             lastCartData = d;
+            if(window._posOffline)window._posOffline.remember(d);
             // Keep the header customer chip in sync with the authoritative cart
             var _cn = document.getElementById('pos-cust-name');
             if (_cn) _cn.textContent = (d.customer && d.customer.length) ? d.customer : 'Walk-In';
@@ -3445,11 +4810,11 @@ window.posToggleFullscreen = function() {
         };
 
         window._posAjax = function(pid, price, name) {
-            if (!navigator.onLine && window._posOffline) { window._posOffline.add(pid, price); return; }
+            if (window._posOffline && window._posOffline.active()) { window._posOffline.add(pid, price); return; }
             OPT.add(pid, price, name);
         };
         window._posScan = function(code) {
-            if (!navigator.onLine && window._posOffline) { window._posOffline.scan(code); return; }
+            if (window._posOffline && window._posOffline.active()) { window._posOffline.scan(code); return; }
             OPT.scan(code);
         };
 
@@ -3666,7 +5031,7 @@ window.posToggleFullscreen = function() {
                     (function(){ var b = form.querySelector('button div'); return b ? b.textContent : ''; })());
                 return;
             }
-            if (!navigator.onLine && window._posOffline) {
+            if (window._posOffline && window._posOffline.active()) {
                 window._posOffline.add(fd.get('productId'), fd.get('unitPrice'));
                 return;
             }
@@ -3940,7 +5305,8 @@ window.posToggleFullscreen = function() {
                                 if (!result.success) throw new Error(result.error || 'Session close failed.');
                                 ov.remove();
                                 showToast('Session closed successfully');
-                                window.location.assign(result.redirectUrl || '/apps/zenith/pos/Terminal?sessionId=' + encodeURIComponent(SI));
+                                var cleared = window._posOffline ? window._posOffline.sessionClosed() : Promise.resolve();
+                                return cleared.then(function () { window.location.assign(result.redirectUrl || '/apps/zenith/pos/Terminal?sessionId=' + encodeURIComponent(SI)); });
                             }).catch(function(error) {
                                 confirmButton.disabled = false;
                                 confirmButton.textContent = 'CLOSE SESSION';
@@ -4313,11 +5679,11 @@ window.posToggleFullscreen = function() {
             dt = setTimeout(function() {
                 var tk = (document.querySelector('#cartInlineAddForm [name=moquiSessionToken]') || {}).value || '';
                 searchAbort = new AbortController();
-                fetch('Terminal/lookupProducts', {
+                (window._posOffline&&window._posOffline.active()?Promise.resolve(window._posOffline.search(t).map(function(p){return {productId:p.productId,productName:p.name,mrpAmount:p.price,pseudoId:p.barcode};})):fetch('Terminal/lookupProducts', {
                     signal: searchAbort.signal,
                     method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'},
                     body: 'term=' + encodeURIComponent(t) + '&moquiSessionToken=' + encodeURIComponent(tk), credentials: 'same-origin'
-                }).then(function(r) { if (!r.ok) throw new Error('Product search unavailable'); return r.json(); }).then(function(data) {
+                }).then(function(r) { if (!r.ok) throw new Error('Product search unavailable'); return r.json(); })).then(function(data) {
                     if (version !== searchVersion || si.value !== t || !si.isConnected) return;
                     if (!data || data.length === 0) {
                         dd.innerHTML = '<div style="padding:10px;color:#999;font-size:13px;text-align:center">No products found</div>';

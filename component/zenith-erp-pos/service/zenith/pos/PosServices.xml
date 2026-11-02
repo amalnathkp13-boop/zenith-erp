@@ -527,7 +527,7 @@
             <iterate list="sameProdItems" entry="spi">
                 <if condition="existingLine == null &amp;&amp; (
                         (_qbRelax &amp;&amp; spi.manualPrice != 'Y')
-                        || ((spi.unitPrice ?: 0) as BigDecimal).compareTo(unitPrice as BigDecimal) == 0)">
+                        || (spi.salesModeId == salesModeId &amp;&amp; ((spi.unitPrice ?: 0) as BigDecimal).compareTo(unitPrice as BigDecimal) == 0))">
                     <set field="existingLine" from="spi"/></if>
             </iterate>
             <if condition="existingLine != null">
@@ -1744,6 +1744,7 @@
                         barcode: prod.pseudoId ?: prod.productId,
                         taxCode: prod.productTaxCode ?: '',
                         taxRate: _catalogTax?.taxedItems ? (_catalogTax.taxedItems[0].taxBreakdowns?.sum { (it.taxRate ?: 0) as BigDecimal } ?: 0) : null,
+                        taxRates: _catalogTax?.taxedItems ? (_catalogTax.taxedItems[0].taxBreakdowns?.collect { it.taxRate ?: 0 } ?: []) : null,
                         uom: _uom
                     ])
                 </script>
@@ -1841,18 +1842,18 @@
     <!-- Each offline sale commits independently. Only successful ids may leave the device queue. -->
     <service verb="sync" noun="OfflineTransactions" transaction="ignore">
         <in-parameters><parameter name="terminalId" required="true"/><parameter name="transactions" type="List" required="true"/></in-parameters>
-        <out-parameters><parameter name="syncedCount" type="Integer"/><parameter name="syncedIds" type="List"/><parameter name="failedCount" type="Integer"/></out-parameters>
+        <out-parameters><parameter name="syncedCount" type="Integer"/><parameter name="syncedIds" type="List"/><parameter name="failedCount" type="Integer"/><parameter name="failures" type="List"/></out-parameters>
         <actions>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[terminalId:terminalId]"/>
             <if condition="!_posAccess.allowed"><return/></if>
             <script><![CDATA[
-                syncedIds=[]; failedCount=0
+                syncedIds=[]; failedCount=0; failures=[]
                 transactions.each { raw ->
                     try {
                         def r=ec.service.sync().name('zenith.pos.PosServices.import#OfflinePosSale').parameters([terminalId:terminalId,saleJson:raw as String]).call()
                         if (!ec.message.hasError() && r?.offlineId) syncedIds.add(r.offlineId)
-                        else failedCount++
-                    } catch (Exception e) { failedCount++ }
+                        else { failedCount++; failures.add([error:ec.message.errorsString ?: 'Sale needs review.']) }
+                    } catch (Exception e) { failedCount++; failures.add([error:e.message ?: 'Sale needs review.']) }
                     ec.message.clearErrors()
                 }
                 syncedCount=syncedIds.size()
@@ -1867,6 +1868,11 @@
             <if condition="!_posAccess.allowed"><return/></if>
             <script><![CDATA[
                 def sale=new groovy.json.JsonSlurper().parseText(saleJson)
+                if (sale instanceof Map && sale.version==2) {
+                    def imported=ec.service.sync().name('zenith.pos.PosOfflineServices.import#WorkspaceSale').parameters([terminalId:terminalId,sale:sale]).call()
+                    offlineId=imported?.offlineId
+                    return
+                }
                 def org=_posAccess.organizationPartyId
                 if (!(sale instanceof Map) || !sale.offlineId || sale.offlineId.toString().size()>120 || sale.terminalId!=terminalId || (sale.organizationPartyId && sale.organizationPartyId!=org) || !(sale.items instanceof List) || !sale.items || !['Cash','Card','UPI'].contains(sale.paymentMethod)) {
                     ec.message.addError('Invalid offline sale or terminal.'); return

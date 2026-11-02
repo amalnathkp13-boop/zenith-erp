@@ -296,7 +296,8 @@ html body.Terminal .z-pos-page:has(.pos-checkout-reference) { min-height:100dvh;
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .ofl-qi { width:44px!important; min-width:40px; padding:0; flex:1; }
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .ofl-minus,
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .ofl-plus { width:30px!important; flex:0 0 30px; height:38px!important; border:1px solid #dfe5f0!important; color:#10112d!important; background:#fafbfe!important; }
-html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .pos-offline-payments { display:grid!important; grid-template-columns:repeat(3,minmax(0,1fr))!important; }
+/* Offline checkout uses the same responsive payment row as online checkout. */
+html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .pos-offline-payments :is(#pos-offline-holds,#pos-offline-customer,#pos-offline-print) { color:var(--pos-purple)!important; background:#f1ebff!important; white-space:normal!important; }
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .ofl-rm { background:#fff0f2!important; color:#ff2738!important; border:1px solid #ffcbd2!important; }
 
 /* Native press feedback has no timer, scale animation or shadow repaint per product tap. */
