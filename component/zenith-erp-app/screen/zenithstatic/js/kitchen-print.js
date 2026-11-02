@@ -32,21 +32,23 @@
     let data;try{data=await response.json();}catch(_){throw Error('The session may have expired. Sign in and retry.');}
     if(!response.ok||!data.success)throw Error(data.error||'The request could not be completed. Check your access and retry.');return data;
   }
-  function selection(){
-    const selected=Array.from(document.querySelectorAll('[data-kitchen-select]:checked'));
+  function selection(kind){
+    const selected=Array.from(document.querySelectorAll('[data-kitchen-select]:checked')).filter(e=>e.getClientRects().length);
+    const eligible=selected.filter(e=>e.dataset.kitchenBillEligible==='true');
     document.querySelectorAll('[data-kitchen-selected-count]').forEach(e=>e.textContent=selected.length+' selected');
-    document.querySelectorAll('[data-kitchen-bulk]').forEach(e=>e.disabled=busy||!selected.length);
-    return selected.map(e=>e.dataset.kitchenSelect);
+    document.querySelectorAll('[data-kitchen-bulk]').forEach(e=>e.disabled=busy||!(e.dataset.kitchenBulk==='bill'?eligible.length:selected.length));
+    return (kind==='bill'?eligible:selected).map(e=>e.dataset.kitchenSelect);
   }
   function status(message){let el=document.getElementById('zk-print-status');if(!el){el=document.createElement('p');el.id='zk-print-status';el.setAttribute('role','status');(document.querySelector('#kb-wrap')||document.querySelector('#kitchen-page-frame')).prepend(el);}el.textContent=message;}
-  async function run(kind,ids,button){
+  async function run(kind,ids,button,skipped=0){
     if(busy||!ids.length)return;
     const origin=screen();let w,accepted=0,errors=[];
     try{
       busy=true;if(button)button.disabled=true;selection();
       if(kind!=='view')w=open();
-      for(const id of ids){
+      for(const [index,id] of ids.entries()){
         if(screen()!==origin)break;
+        if(ids.length>1)status('Preparing '+(index+1)+' of '+ids.length+' '+(kind==='bill'?'bills':'KOTs')+'…');
         try{
           const data=await request('printRecord',{kind:kind,kotId:id});
           if(screen()!==origin)break;
@@ -62,16 +64,19 @@
           }else{await customer(w,data.record);accepted++;}
         }catch(e){errors.push('KOT '+id+': '+e.message);}
       }
-      if(screen()===origin)status((accepted?accepted+' print request(s) opened. ':'')+errors.join(' '));
+      if(screen()===origin)status((accepted?accepted+' print request(s) opened. ':'')+(skipped?skipped+' selected KOT(s) have no finalized customer bill. ':'')+errors.join(' '));
     }catch(e){if(screen()===origin)status(e.message);}
     finally{busy=false;if(w&&!w.closed)w.close();if(button&&button.isConnected)button.disabled=false;selection();}
   }
   document.addEventListener('click',function(e){
     const button=e.target.closest('[data-kitchen-print],[data-kitchen-bulk]');if(!button||button.disabled)return;
-    e.preventDefault();run(button.dataset.kitchenPrint||button.dataset.kitchenBulk,button.dataset.kotId?[button.dataset.kotId]:selection(),button);
+    e.preventDefault();const kind=button.dataset.kitchenPrint||button.dataset.kitchenBulk;
+    const selected=button.dataset.kotId?[button.dataset.kotId]:selection();
+    const ids=button.dataset.kotId?selected:selection(kind);
+    run(kind,ids,button,selected.length-ids.length);
   });
   document.addEventListener('change',function(e){
-    if(e.target.matches('[data-kitchen-select-all]'))document.querySelectorAll('[data-kitchen-select]').forEach(x=>x.checked=e.target.checked);
+    if(e.target.matches('[data-kitchen-select-all]'))document.querySelectorAll('[data-kitchen-select]').forEach(x=>{if(x.getClientRects().length)x.checked=e.target.checked;});
     if(e.target.matches('[data-kitchen-select],[data-kitchen-select-all]'))selection();
   });
 })();

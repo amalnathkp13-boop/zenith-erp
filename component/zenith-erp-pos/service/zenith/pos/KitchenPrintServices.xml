@@ -3,7 +3,7 @@
     <!-- Read-only quote: uses canonical product prices and the installed tax dispatcher.
          An unsent order has no legal invoice number, payment or sale to reprint. -->
     <service verb="get" noun="CartReceipt">
-        <in-parameters><parameter name="itemsJson" required="true" allow-html="any"/><parameter name="tableId"/><parameter name="orderType"/><parameter name="notes" allow-html="any"/></in-parameters>
+        <in-parameters><parameter name="itemsJson" required="true" allow-html="any"/><parameter name="tableId"/><parameter name="orderType"/><parameter name="taxOn" default-value="Y"/><parameter name="notes" allow-html="any"/></in-parameters>
         <out-parameters><parameter name="receipt" type="Map"/></out-parameters>
         <actions>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="scope"/>
@@ -21,7 +21,10 @@
                     try { qty=new BigDecimal(String.valueOf(item instanceof Map ? item.quantity : null)) } catch(Exception ignored) { }
                     if (!p || p.ownerPartyId!=scope.organizationPartyId || p.productTypeEnumId!='PtAsset' || qty==null || qty<=0 || qty>1000000) { ec.message.addError('The order contains an invalid product or quantity.'); return }
                     def price=(p.mrpAmount ?: 0) as BigDecimal
-                    if(price<0) { ec.message.addError('Correct the product price before printing.'); return }
+                    if(item.manualPrice=='Y') {
+                        try { price=new BigDecimal(String.valueOf(item.unitPrice)) } catch(Exception ignored) { price=null }
+                    }
+                    if(price==null || price<0 || price>10000000 || price.scale()>2) { ec.message.addError('Enter a valid item price before printing.'); return }
                     products.add([product:p,qty:qty,price:price])
                     taxInputs.add([productId:p.productId,productTaxCode:p.productTaxCode,taxCategoryId:p.taxCategoryId,quantity:qty,unitAmount:price,discountAmount:BigDecimal.ZERO,isTaxInclusive:'N'])
                 }
@@ -36,15 +39,16 @@
                     def states=terminals.list().collect { it.stateCode ?: it.regionGeoId }.findAll { it }.unique()
                     if(states.size()==1)state=states[0]
                 }
-                def tax=ec.service.sync().name('zenith.tax.TaxServices.calculate#Tax').parameters([organizationPartyId:scope.organizationPartyId,
-                    items:taxInputs,originRegionGeoId:state,destinationRegionGeoId:state,transactionType:'SALE']).call()
+                if (!(taxOn in ['Y','N'])) { ec.message.addError('Choose a valid tax setting.'); return }
+                def tax=taxOn=='Y' ? ec.service.sync().name('zenith.tax.TaxServices.calculate#Tax').parameters([organizationPartyId:scope.organizationPartyId,
+                    items:taxInputs,originRegionGeoId:state,destinationRegionGeoId:state,transactionType:'SALE']).call() : null
                 if(ec.message.hasError()) return
                 def sumTax=[:], lines=[]
                 products.eachWithIndex { row,i ->
-                    def ti=tax.taxedItems[i]
-                    (ti.taxBreakdowns ?: []).each { b -> sumTax[b.taxName]=(sumTax[b.taxName] ?: 0)+(b.taxAmount ?: 0) }
-                    lines.add([name:row.product.productName ?: row.product.productId,qty:row.qty,rate:row.price,
-                        total:ti.taxableAmount,tax:ti.totalTaxAmount,discount:0,
+                    def ti=tax?.taxedItems?.getAt(i)
+                    (ti?.taxBreakdowns ?: []).each { b -> sumTax[b.taxName]=(sumTax[b.taxName] ?: 0)+(b.taxAmount ?: 0) }
+                    lines.add([productId:row.product.productId,name:row.product.productName ?: row.product.productId,qty:row.qty,rate:row.price,
+                        total:(ti?.taxableAmount ?: row.price * row.qty),tax:(ti?.totalTaxAmount ?: 0),discount:0,
                         uom:['OTH_ea':'Nos','WT_kg':'kg','WT_g':'g','VLIQ_L':'L','VLIQ_ml':'ml'][row.product.amountUomId] ?: ''])
                 }
                 def party=ec.entity.find('mantle.party.Organization').condition('partyId',scope.organizationPartyId).one()
@@ -52,7 +56,8 @@
                 def options=ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#ReceiptOptions')
                     .parameters([storedJson:tpl?.receiptOptionsJson,receiptDesign:'normal']).call().options
                 // Match recalculate#TransactionTotals: round the customer payable once, after GST.
-                def grand=(tax.totalAmount ?: 0) as BigDecimal
+                def subtotal=taxOn=='Y' ? (tax.totalTaxableAmount ?: 0) as BigDecimal : (products.sum { it.price * it.qty } ?: BigDecimal.ZERO) as BigDecimal
+                def grand=taxOn=='Y' ? (tax.totalAmount ?: 0) as BigDecimal : subtotal
                 def payable=grand.setScale(0,java.math.RoundingMode.HALF_UP)
                 receipt=[success:true,preview:true,store:[name:tpl?.companyName ?: party?.organizationName ?: 'Store',
                     address:tpl ? [tpl.addressLine1,tpl.addressLine2,tpl.city,tpl.state,tpl.pincode].findAll{it}.join(', ') : '',
@@ -62,8 +67,8 @@
                     showDiscount:tpl?.showDiscount ?: 'Y',showCustomerInfo:tpl?.showCustomerInfo ?: 'Y',showPaymentDetails:'N',showItemTax:tpl?.showItemTax ?: 'N'],
                     options:options,bill:[number:'UNPAID ORDER',date:ec.l10n.format(ec.user.nowTimestamp,'dd/MM/yyyy hh:mm a'),
                     cashier:person ? [person.firstName,person.lastName].findAll{it}.join(' ') : '',customer:'Walk-In Customer',
-                    table:selected.table?.tableNumber ?: '',orderType:orderType ?: 'Dine In'],items:lines,
-                    summary:[subtotal:tax.totalTaxableAmount,tax:tax.totalTaxAmount,discount:0,roundOff:payable-grand,total:payable,
+                    table:selected.table?.tableNumber ?: '',orderType:orderType ?: 'Dine In',taxOn:taxOn],items:lines,
+                    summary:[subtotal:subtotal,tax:(tax?.totalTaxAmount ?: 0),discount:0,roundOff:payable-grand,total:payable,
                         totalQty:products.sum { it.qty },itemCount:lines.size(),taxBreakdown:sumTax.collect { n,v -> [name:n,amount:v] }],
                     payments:[],saving:0,change:0,notes:notes ?: '']
             ]]></script>
