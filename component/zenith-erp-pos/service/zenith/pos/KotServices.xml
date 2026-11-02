@@ -44,10 +44,35 @@
         </actions>
     </service>
 
+    <!-- Resolve the selected table before any KOT/draft mutation. Legacy token-only orders remain valid. -->
+    <service verb="resolve" noun="KotTable">
+        <in-parameters><parameter name="tableId"/><parameter name="tableNumber" allow-html="any"/></in-parameters>
+        <out-parameters><parameter name="table" type="Map"/></out-parameters>
+        <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="scope"/>
+            <if condition="!scope.allowed"><return/></if>
+            <script><![CDATA[
+                table = null
+                if (tableId) {
+                    def row = tableId.toString().contains('*') ? null : ec.entity.find('zenith.erp.pos.RestaurantTable').condition('tableId',tableId).forUpdate(true).one()
+                    def facility = row ? ec.entity.find('mantle.facility.Facility').condition('facilityId',row.facilityId).one() : null
+                    if (!row || facility?.ownerPartyId != scope.organizationPartyId) { ec.message.addError('Select a table in this shop.'); return }
+                    table = row.getMap()
+                } else if (tableNumber) {
+                    def facilities=ec.entity.find('mantle.facility.Facility').condition('ownerPartyId',scope.organizationPartyId).list()*.facilityId
+                    def matches=facilities ? ec.entity.find('zenith.erp.pos.RestaurantTable').condition('facilityId','in',facilities).condition('tableNumber',tableNumber).forUpdate(true).list() : []
+                    if(matches.size()>1) { ec.message.addError('Select the table and its facility; this number exists in more than one facility.'); return }
+                    if(matches) table=matches[0].getMap()
+                }
+            ]]></script>
+        </actions>
+    </service>
+
     <!-- Create KOT (Kitchen Order Ticket) -->
     <service verb="create" noun="KitchenOrderTicket">
         <in-parameters>
             <parameter name="posTransactionId" required="true"/>
+            <parameter name="tableId"/>
             <parameter name="tableNumber"/>
             <parameter name="waiterName"/>
             <parameter name="items" type="List" required="true">
@@ -60,10 +85,18 @@
         </in-parameters>
         <out-parameters><parameter name="kotId"/></out-parameters>
         <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[transactionId:posTransactionId]" out-map="scope"/>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'pos']" out-map="access"/>
+            <if condition="!scope.allowed || access.canWrite != true"><return error="true" message="POS write access is required."/></if>
+            <service-call name="zenith.pos.KotServices.resolve#KotTable" in-map="[tableId:tableId,tableNumber:tableNumber]" out-map="selected"/>
+            <iterate list="items" entry="item">
+                <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[productId:item.productId]" out-map="itemScope"/>
+                <if condition="!itemScope.allowed || item.quantity == null || item.quantity &lt;= 0"><return error="true" message="Choose valid menu items and positive quantities."/></if>
+            </iterate>
             <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="kotTxn">
                 <field-map field-name="transactionId" from="posTransactionId"/></entity-find-one>
             <service-call name="create#zenith.erp.pos.KitchenOrderTicket"
-                          in-map="[transactionId:posTransactionId, tableNumber:tableNumber,
+                          in-map="[transactionId:posTransactionId, tableId:selected.table?.tableId, tableNumber:selected.table?.tableNumber ?: tableNumber,
                                    waiterName:waiterName, statusId:'KotNew',
                                    organizationPartyId:kotTxn?.organizationPartyId,
                                    printCount:0, kotDate:ec.user.nowTimestamp]"
@@ -71,11 +104,18 @@
             <set field="seqNum" from="0" type="Integer"/>
             <iterate list="items" entry="item">
                 <set field="seqNum" from="seqNum + 1"/>
+                <entity-find-one entity-name="mantle.product.Product" value-field="kotProduct"><field-map field-name="productId" from="item.productId"/></entity-find-one>
                 <service-call name="create#zenith.erp.pos.KotItem"
                               in-map="[kotId:kotId, kotItemSeqId:String.format('%05d', seqNum),
-                                       productId:item.productId, quantity:item.quantity,
+                                       productId:item.productId, productName:kotProduct.productName, quantity:item.quantity,
                                        specialInstructions:item.specialInstructions]"/>
             </iterate>
+            <if condition="selected.table">
+                <entity-find-one entity-name="zenith.erp.pos.RestaurantTable" value-field="occupied" for-update="true"><field-map field-name="tableId" from="selected.table.tableId"/></entity-find-one>
+                <set field="occupied.statusId" value="TblOccupied"/>
+                <set field="occupied.currentTransactionId" from="posTransactionId"/>
+                <entity-update value-field="occupied"/>
+            </if>
         </actions>
     </service>
 
@@ -108,6 +148,15 @@
                     return
                 }
                 kot.set('statusId', statusId).update()
+                // Serving food does not settle a table. Only cancelling its last active order
+                // releases it automatically; an unpaid POS transaction still owns the table.
+                if (statusId == 'KotCancelled' && kot.tableId) {
+                    def table=ec.entity.find('zenith.erp.pos.RestaurantTable').condition('tableId',kot.tableId).forUpdate(true).one()
+                    def facility=table ? ec.entity.find('mantle.facility.Facility').condition('facilityId',table.facilityId).one() : null
+                    def active=ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('organizationPartyId',org)
+                        .condition('tableId',kot.tableId).condition('statusId','in',['KotNew','KotPreparing','KotReady']).count()
+                    if (facility?.ownerPartyId==org && !active && !table.currentTransactionId && table.statusId=='TblOccupied') table.set('statusId','TblAvailable').update()
+                }
             ]]></script>
         </actions>
     </service>
@@ -115,6 +164,7 @@
     <!-- Reprint KOT -->
     <service verb="reprint" noun="KitchenOrderTicket">
         <in-parameters><parameter name="kotId" required="true"/></in-parameters>
+        <out-parameters><parameter name="printCount" type="Integer"/></out-parameters>
         <actions>
             <script><![CDATA[
                 def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess')
@@ -130,7 +180,8 @@
                     ec.message.addError('Kitchen order not found in this shop.')
                     return
                 }
-                kot.set('printCount', ((kot.printCount ?: 0) as int) + 1).update()
+                printCount=((kot.printCount ?: 0) as int)+1
+                kot.set('printCount',printCount).update()
             ]]></script>
         </actions>
     </service>

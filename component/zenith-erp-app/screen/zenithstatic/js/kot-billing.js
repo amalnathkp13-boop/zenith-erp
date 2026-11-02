@@ -3,8 +3,9 @@
  * External .js file => no Vue-template constraints (bare < is fine here).
  * Drafts are persisted SERVER-SIDE (KotDraft); Active/Completed tabs show server-loaded lists. */
 (function () {
-  if (window.__kbInit) return;
-  window.__kbInit = true;
+  if (window.__kbRoot === document.getElementById('kb-wrap')) return;
+  window.__kbRoot = document.getElementById('kb-wrap');
+  var root = window.__kbRoot, quoteVersion = 0, quoteTimer, printBusy = false, quoteTotal = 0;
 
   var cart = {};            // id -> {id, name, price, qty}
   var orderType = 'Dine In';
@@ -44,7 +45,7 @@
     return c ? (Number(c.getAttribute('data-price')) || 0) : 0;
   }
 
-  function render() {
+  function render(skipQuote) {
     var tbody = $('kb-cart'), rows = '', sub = 0, n = 0;
     for (var id in cart) {
       if (!cart.hasOwnProperty(id)) continue;
@@ -64,11 +65,16 @@
     if (tbody) tbody.innerHTML = rows;
     var empty = $('kb-cartempty'); if (empty) empty.style.display = n ? 'none' : 'block';
 
-    var cgst = sub * 0.025, sgst = sub * 0.025, grand = sub + cgst + sgst;
     if ($('kb-subtotal')) $('kb-subtotal').textContent = inr(sub);
-    if ($('kb-cgst')) $('kb-cgst').textContent = inr(cgst);
-    if ($('kb-sgst')) $('kb-sgst').textContent = inr(sgst);
-    if ($('kb-grand')) $('kb-grand').textContent = inr(grand);
+    if (!skipQuote) {
+      quoteTotal=0;
+      if ($('kb-grand')) $('kb-grand').textContent = n ? 'Calculating…' : inr(0);
+      if ($('kb-tax-rows')) $('kb-tax-rows').replaceChildren();
+      if ($('kb-print-bill')) $('kb-print-bill').disabled = true;
+      clearTimeout(quoteTimer);var version=++quoteVersion;
+      if(n)quoteTimer=setTimeout(function(){getQuote().then(function(data){if(version!==quoteVersion||!root.isConnected)return;showQuote(data);}).catch(function(e){if(version===quoteVersion&&root.isConnected)$('kb-quote-error').textContent=e.message;});},150);
+      else if($('kb-quote-error'))$('kb-quote-error').textContent='';
+    }
 
     var send = $('kb-send'); if (send) send.classList.toggle('is-disabled', n === 0);
     var clr = $('kb-clear'); if (clr) clr.disabled = (n === 0);
@@ -113,13 +119,16 @@
   }
   window.kbCat = function (cat, el) { window.__kbCat = cat; qsa('.kb-cat').forEach(function (x) { x.classList.toggle('is-active', x === el); }); applyFilter(); };
   window.kbSearch = function (v) { window.__kbTerm = v; applyFilter(); };
-  document.addEventListener('click', function (e) { if (e.target && e.target.id === 'kb-avail') setTimeout(applyFilter, 0); });
+  if(window.__kbAvailabilityHandler)document.removeEventListener('click',window.__kbAvailabilityHandler);
+  window.__kbAvailabilityHandler=function (e) { if (e.target && e.target.id === 'kb-avail') setTimeout(applyFilter, 0); };
+  document.addEventListener('click',window.__kbAvailabilityHandler);
 
   // ---- order type ----
   function setOrderType(ot) {
     orderType = ot;
     qsa('.kb-otbtn').forEach(function (b) { b.classList.toggle('is-active', b.getAttribute('data-ot') === ot); });
     var sel = $('kb-ordertype'); if (sel && sel.value !== ot) sel.value = ot;
+    if(ot==='Take Away'&&$('kb-table'))$('kb-table').value='';
   }
   window.kbOrderType = function (ot) { setOrderType(ot); };
   window.kbOrderTypeSel = function (v) { setOrderType(v); };
@@ -153,32 +162,51 @@
   window.kbSend = function () {
     var items = cartItems(); if (!items.length) return;
     var btn = $('kb-send'); if (btn) { btn.classList.add('is-disabled'); btn.textContent = 'Sending...'; }
-    post('createKot', { itemsJson: JSON.stringify(items), tableNumber: ($('kb-table') || {}).value || '',
+    post('createKot', { itemsJson: JSON.stringify(items), tableId: ($('kb-table') || {}).value || '',
       orderType: orderType, notes: ($('kb-instr') || {}).value || '', loadedDraftId: loadedDraftId });
   };
   window.kbSaveDraft = function () {
     var items = cartItems(); if (!items.length) { alert('Add items before saving a draft.'); return; }
     var btn = $('kb-draft'); if (btn) { btn.innerHTML = 'Saving...'; }
-    post('saveDraft', { itemsJson: JSON.stringify(items), tableNumber: ($('kb-table') || {}).value || '',
+    post('saveDraft', { itemsJson: JSON.stringify(items), tableId: ($('kb-table') || {}).value || '',
       orderType: orderType, notes: ($('kb-instr') || {}).value || '', existingDraftId: loadedDraftId });
   };
   window.kbLoadDraft = function (id) { location.href = base() + '/?loadDraft=' + encodeURIComponent(id); };
   window.kbDiscardDraft = function (id) { if (!confirm('Discard this draft?')) return; post('deleteDraft', { kotId: id }); };
 
   // ---- printing ----
+  async function getQuote(){
+    var body=new URLSearchParams({moquiSessionToken:tok(),itemsJson:JSON.stringify(cartItems()),tableId:($('kb-table')||{}).value||'',orderType:orderType,notes:($('kb-instr')||{}).value||''});
+    var response=await fetch(base()+'/cartReceipt',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body.toString()});
+    var data;try{data=await response.json();}catch(e){throw Error('Could not calculate this order. Refresh or retry.');}
+    if(!response.ok||!data.success||!data.receipt)throw Error(data.error||'Could not calculate this order.');return data.receipt;
+  }
+  function showQuote(data){
+    quoteTotal=Number(data.summary.total);
+    $('kb-subtotal').textContent=inr(data.summary.subtotal);$('kb-grand').textContent=inr(data.summary.total);
+    $('kb-tax-rows').innerHTML=(data.summary.taxBreakdown||[]).map(function(t){return '<div class="kb-sum__row"><span>'+esc(t.name)+'</span><span>'+inr(t.amount)+'</span></div>';}).join('');
+    $('kb-quote-error').textContent='';$('kb-print-bill').disabled=printBusy||Number(data.summary.total)<=0;
+  }
+  window.kbPrintBill=async function(){
+    if(printBusy)return;
+    if(!cartItems().length){alert('Add items before printing a customer bill.');return;}
+    var w,version=quoteVersion;
+    try{
+      printBusy=true;$('kb-print-bill').disabled=true;w=KitchenPrint.open();
+      var receipt=await getQuote();if(!root.isConnected){w.close();return;}
+      if(version!==quoteVersion)throw Error('The order changed while preparing its receipt. Retry Print Bill.');
+      if(Number(receipt.summary.total)<=0)throw Error('Add items with a positive total before printing a customer bill.');
+      showQuote(receipt);await KitchenPrint.customer(w,receipt);
+    }catch(e){if(w&&!w.closed)w.close();if(root.isConnected)$('kb-quote-error').textContent=e.message;}
+    finally{printBusy=false;if(root.isConnected)$('kb-print-bill').disabled=!cartItems().length||quoteTotal<=0;}
+  };
   function openPrint(html) {
     var w = window.open('', '_blank', 'width=340,height=560');
     if (!w) { alert('Allow pop-ups to print the KOT.'); return; }
     w.document.write(html); w.document.close(); w.focus(); setTimeout(function () { w.print(); }, 250);
   }
   function slip(title, meta, items, notes) {
-    var rows = '';
-    (items || []).forEach(function (it) { rows += '<tr><td>' + esc(it.name) + '</td><td style="text-align:center">' + esc(it.qty) + '</td></tr>'; });
-    return '<html><head><title>KOT</title><style>body{font-family:monospace;padding:12px;width:280px}h3{margin:0 0 6px;text-align:center}' +
-      'table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:4px 0;border-bottom:1px dashed #999;text-align:left}</style></head><body>' +
-      '<h3>' + esc(title) + '</h3><div style="font-size:12px;margin-bottom:8px">' + esc(meta) + '</div>' +
-      '<table><thead><tr><th>Item</th><th style="text-align:center">Qty</th></tr></thead><tbody>' + rows + '</tbody></table>' +
-      (notes ? '<div style="font-size:12px;margin-top:8px">Notes: ' + esc(notes) + '</div>' : '') + '</body></html>';
+    return KitchenPrint.kotHtml({number:title.replace(/^KOT #/,''),table:meta,date:'',items:items,notes:notes});
   }
   window.kbPrint = function () {
     var items = cartItems(); if (!items.length) { alert('Add items before printing.'); return; }
@@ -206,6 +234,7 @@
     if (el) {
       try { orders = JSON.parse(el.getAttribute('data-orders') || '{}'); } catch (e) { orders = {}; }
       loadedDraftId = el.getAttribute('data-draftid') || '';
+      var selected=el.getAttribute('data-selected-table');if(selected&&$('kb-table'))$('kb-table').value=selected;
       var dl = [];
       try { dl = JSON.parse(el.getAttribute('data-draftload') || '[]'); } catch (e) { dl = []; }
       if (dl.length) {

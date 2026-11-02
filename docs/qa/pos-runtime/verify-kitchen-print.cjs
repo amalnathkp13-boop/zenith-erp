@@ -1,0 +1,72 @@
+// Real server data/services; browser printing is intercepted, never sent to hardware.
+module.exports=async function({a,foreign,base,post,rows,count,check,out}){
+ const fs=require('node:fs'),path=require('node:path');
+ const moneyState=()=>JSON.stringify(['pos_transaction','pos_payment','kitchen_order_ticket','kot_item','tax_line_detail'].map(t=>[t,count(t,'1=1')]));
+ const items=[{productId:'POS_QA_A_P18',quantity:1},{productId:'POS_QA_A_P5',quantity:1}];
+ const before=moneyState();
+ let r=await post('Kitchen/KotBilling','cartReceipt',{itemsJson:JSON.stringify(items),notes:'Synthetic print note'}),data=await r.json();
+ check('KOT quote uses real mixed-rate GST rather than a fixed five percent',data.success&&Number(data.receipt.summary.subtotal)===300&&Number(data.receipt.summary.tax)===28&&Number(data.receipt.summary.total)===328,data);
+ check('customer quote creates no sale, payment, KOT, items or tax rows',moneyState()===before);
+ r=await post('Kitchen/KotBilling','cartReceipt',{itemsJson:JSON.stringify([{productId:'POS_QA_A_P18',quantity:1,unitPrice:1,productName:'Forged name'}])});data=await r.json();
+ check('quote ignores forged prices and labels',data.success&&Number(data.receipt.items[0].rate)===100&&data.receipt.items[0].name==='Disposable POS A P18');
+ for(const payload of [[],[{productId:'POS_QA_B_P18',quantity:1}],[{productId:'POS_QA_A_P18',quantity:0}]]){
+  r=await post('Kitchen/KotBilling','cartReceipt',{itemsJson:JSON.stringify(payload)});check('customer quote rejects invalid items '+JSON.stringify(payload),r.status()===403||!(await r.json()).success);
+ }
+ const page=await a.c.newPage();await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling');await page.waitForFunction(()=>typeof kbPrintBill==='function');
+ check('Print Bill is disabled on the empty cart',await page.locator('#kb-print-bill').isDisabled());
+ await page.evaluate(()=>{kbAdd('POS_QA_A_P18');kbAdd('POS_QA_A_P5');});await page.waitForFunction(()=>!document.getElementById('kb-print-bill').disabled);
+ check('visible order total agrees with the server quote',(await page.locator('#kb-grand').innerText()).includes('328.00'));
+ async function stubPrint(fail=false){await page.evaluate(fail=>{window.__printHtml=[];window.__printCalls=0;window.__printFail=fail;window.open=()=>({closed:false,document:{open(){},write(s){window.__printHtml.push(s);},close(){},images:[],fonts:{ready:Promise.resolve()}},focus(){},print(){if(window.__printFail)throw Error('Synthetic printer unavailable');window.__printCalls++;},close(){this.closed=true;}});},fail);}
+ await stubPrint();await page.locator('#kb-print-bill').click();await page.waitForFunction(()=>window.__printCalls===1);
+ const quoteHtml=await page.evaluate(()=>window.__printHtml.join(''));
+ check('Print Bill uses the shared customer template and unpaid identity',quoteHtml.includes('UNPAID ORDER')&&quoteHtml.includes('Disposable POS QA A')&&quoteHtml.includes('328.00')&&quoteHtml.includes('CGST'));
+ check('printing retains the cart without creating business records',moneyState()===before&&await page.locator('#kb-cart tr').count()===2);
+ await page.screenshot({path:path.join(out,'kot-billing-print-actions.png')});
+ fs.writeFileSync(path.join(out,'unpaid-order.html'),quoteHtml);
+ await stubPrint(true);await page.locator('#kb-print-bill').click();await page.locator('#kb-quote-error').filter({hasText:'Synthetic printer unavailable'}).waitFor();
+ check('print failure is visible and retry keeps the current cart',!await page.locator('#kb-print-bill').isDisabled()&&await page.locator('#kb-cart tr').count()===2&&moneyState()===before);
+ const existing=rows('kitchen_order_ticket',"organization_party_id='POS_QA_A' AND status_id='KotNew'");
+ await post('Kitchen/KotBilling','createKot',{itemsJson:JSON.stringify(items),notes:'Saved kitchen note'});
+ const kot=rows('kitchen_order_ticket',"organization_party_id='POS_QA_A' AND status_id='KotNew'").find(k=>!existing.some(x=>x.kot_id===k.kot_id));
+ check('sent order stores a receipt snapshot without creating a sale',!!kot?.order_receipt_json&&count('pos_transaction','1=1')===JSON.parse(before)[0][1]);
+ for(const kind of ['kot','orderBill','view']){r=await post('Kitchen/KotBilling','printRecord',{kotId:kot.kot_id,kind},foreign);check('foreign shop cannot read '+kind+' print data',r.status()===403||!(await r.json()).success);}
+ r=await post('Kitchen/KotHistory','printRecord',{kotId:kot.kot_id,kind:'bill'});
+ check('History Bill Print does not invent an invoice for an unpaid KOT',!(await r.json()).success);
+ await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling');await page.waitForFunction(()=>typeof kbTab==='function');await page.evaluate(()=>kbTab('active',null));
+ const card=page.locator('#kb-orders-active .kb-ocard').filter({has:page.locator(`[data-kot-id="${kot.kot_id}"]`)});
+ check('active order card has both independent print actions',await card.getByRole('button',{name:'KOT Print',exact:true}).count()===1&&await card.getByRole('button',{name:'Bill Print',exact:true}).count()===1);
+ const printCount=()=>Number(rows('kitchen_order_ticket',`kot_id='${kot.kot_id}'`)[0].print_count);
+ await stubPrint(true);const pc=printCount();await card.getByRole('button',{name:'KOT Print',exact:true}).click();await page.locator('#zk-print-status').filter({hasText:'Synthetic printer unavailable'}).waitFor();
+ check('failed KOT print does not increment its print count',printCount()===pc);
+ await stubPrint();await card.getByRole('button',{name:'KOT Print',exact:true}).click();await page.waitForFunction(()=>document.getElementById('zk-print-status')?.textContent.includes('1 print request'));
+ check('accepted KOT print increments only its own count once',printCount()===pc+1);
+ check('KOT template includes kitchen instructions and omits receipt prices',await page.evaluate(()=>window.__printHtml.join('').includes('Saved kitchen note')&&!window.__printHtml.join('').includes('GRAND TOTAL')));
+ await stubPrint();const state=moneyState();await card.getByRole('button',{name:'Bill Print',exact:true}).click();await page.waitForFunction(()=>window.__printCalls===1);
+ check('order-card Bill Print reuses saved pricing without writing a sale',moneyState()===state&&printCount()===pc+1&&await page.evaluate(()=>window.__printHtml.join('').includes('328.00')));
+ await post('Kitchen/KitchenDisplay','updateStatus',{kotId:kot.kot_id,statusId:'KotCancelled'});
+ await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling');await page.waitForFunction(()=>typeof kbTab==='function');await page.evaluate(()=>kbTab('completed',null));
+ check('completed order cards retain both print actions',await page.locator(`#kb-orders-completed [data-kot-id="${kot.kot_id}"]`).count()===2);
+ async function invoke(op,params){const response=await post('PosQaAcceptance','invoke',{op,...params});const body=await response.json();if(body.errors?.length)throw Error(JSON.stringify(body));return body.result;}
+ const terminalId='POS_QA_KITCHEN_PRINT_'+Date.now();
+ await post('PosTerminals','createTerminal',{terminalId,terminalName:'Synthetic kitchen print terminal',facilityId:'POS_QA_A_FAC',stateCode:'33',isActive:'Y'});
+ const session=await invoke('open',{terminalId,openingCash:'0'}),txn=await invoke('cart',{sessionId:session.sessionId,reuseOpenCart:'false'});
+ await invoke('add',{transactionId:txn.transactionId,productId:'POS_QA_A_P18',quantity:'1',taxOn:'Y'});
+ await invoke('kot',{posTransactionId:txn.transactionId,items:JSON.stringify([items[0]])});
+ const linked={kotId:rows('kitchen_order_ticket',`transaction_id='${txn.transactionId}'`)[0].kot_id};
+ await invoke('pay',{transactionId:txn.transactionId,paymentMethod:'UPI',amount:'118'});await invoke('complete',{transactionId:txn.transactionId});
+ r=await post('Kitchen/KotHistory','printRecord',{kotId:linked.kotId,kind:'bill'});data=await r.json();
+ check('linked History bill comes from the real saved receipt',data.success&&Number(data.record.summary.total)===118&&data.record.bill.number===rows('pos_transaction',`transaction_id='${txn.transactionId}'`)[0].transaction_number,{data,transaction:rows('pos_transaction',`transaction_id='${txn.transactionId}'`)[0],linked});
+ await page.goto(base+'/apps/zenith/pos/Kitchen/KotHistory');await page.locator('#zk-history-toolbar').waitFor();
+ check('History bulk actions start disabled with zero selected',await page.locator('[data-kitchen-bulk="kot"]').isDisabled()&&await page.locator('[data-kitchen-selected-count]').innerText()==='0 selected');
+ await page.locator(`[data-kitchen-select="${kot.kot_id}"]`).check();await page.locator(`[data-kitchen-select="${linked.kotId}"]`).check();
+ check('bulk toolbar shows exactly the selected count',await page.locator('[data-kitchen-selected-count]').innerText()==='2 selected');
+ await stubPrint();const counts=[printCount(),Number(rows('kitchen_order_ticket',`kot_id='${linked.kotId}'`)[0].print_count)];
+ await page.locator('[data-kitchen-bulk="kot"]').click();await page.waitForFunction(()=>document.getElementById('zk-print-status')?.textContent.includes('2 print request'));
+ check('bulk KOT printing prints only the two selected records',await page.evaluate(()=>window.__printCalls===2)&&printCount()===counts[0]+1&&Number(rows('kitchen_order_ticket',`kot_id='${linked.kotId}'`)[0].print_count)===counts[1]+1);
+ await stubPrint();await page.locator('[data-kitchen-bulk="bill"]').click();await page.waitForFunction(()=>!document.querySelector('[data-kitchen-bulk="bill"]').disabled);
+ const bulkStatus=await page.locator('#zk-print-status').innerText();
+ check('bulk Bill Print reports missing linkage and prints only the linked bill',bulkStatus.includes('No finalized customer bill')&&await page.evaluate(()=>window.__printCalls===1&&window.__printHtml.join('').includes('118.00')),{bulkStatus,prints:await page.evaluate(()=>window.__printCalls)});
+ check('History displays acknowledged print counts immediately',Number(await page.locator(`[data-kitchen-print-count="${kot.kot_id}"]`).innerText())===counts[0]+1);
+ await page.screenshot({path:path.join(out,'history-print-actions.png')});
+ await invoke('close',{sessionId:session.sessionId,closingCash:'0'});await page.close();
+};

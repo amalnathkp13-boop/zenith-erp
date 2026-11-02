@@ -28,11 +28,16 @@
 #   bash build-from-git.sh candidate [REF]   # build :gitbuild-<sha>, boot-verify in a THROWAWAY stack, STOP.
 #                                            #   Touches NOTHING on prod. Default REF=master.
 #   bash build-from-git.sh promote   [REF]   # candidate build+verify, then tag rollback, retag :latest,
-#                                            #   refresh the canonical context, `compose restart`, poll,
+#                                            #   refresh the canonical context, `compose up -d` (adopts the
+#                                            #   new image), poll,
 #                                            #   post-smoke; AUTO-ROLLBACK if health never returns.
 #
-# SAFETY: single-flight (flock), disk-guard + rollback-tag trim (same policy as moqui-deploy), restart
-# (never up -d), instant rollback. DB/entity-schema migrations and data/seed loads are OUT OF SCOPE and
+# SAFETY: single-flight (flock), disk-guard + rollback-tag trim (same policy as moqui-deploy), and
+# `up -d --no-deps moqui` to ADOPT the retagged image. (A bare `compose restart` reuses the running
+# container's OLD image and silently no-ops — the component tree is image-baked, not a bind-mount; `up -d`
+# is safe here precisely because the tree is git-sourced, so there are NO uncommitted in-container edits to
+# lose, which is the only reason the general "never up -d" rule exists.) Instant rollback also via up -d.
+# DB/entity-schema migrations and data/seed loads are OUT OF SCOPE and
 # stay manual (EntityDbMeta still auto-adds columns on restart; it never drops). Verify billing paths on a
 # throwaway tenant per CLAUDE.md before promoting a billing change.
 # =============================================================================
@@ -157,8 +162,8 @@ docker tag "$CAND" "$IMG:latest"
 rm -rf "$DEPLOY/zenith-erp"; mkdir -p "$DEPLOY/zenith-erp"
 git -C "$CACHE" archive "$REF" component | tar -x -C "$DEPLOY"
 for d in "$DEPLOY"/component/zenith-erp-*; do mv "$d" "$DEPLOY/zenith-erp/"; done; rm -rf "$DEPLOY/component"
-log "restarting prod (compose restart moqui — never up -d) ..."
-( cd "$COMPOSE_DIR" && docker compose restart moqui )
+log "applying prod (compose up -d moqui — adopts the retagged image; a bare restart would reuse the OLD image) ..."
+( cd "$COMPOSE_DIR" && docker compose up -d --no-deps moqui )
 up=0
 for i in $(seq 1 60); do
   code=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:8080/apps/zenith" || echo 000)
@@ -166,10 +171,10 @@ for i in $(seq 1 60); do
 done
 if [ "$up" != 1 ]; then
   log "!! prod did not return healthy — AUTO-ROLLBACK to $ROLL"
-  docker tag "$ROLL" "$IMG:latest"; ( cd "$COMPOSE_DIR" && docker compose restart moqui )
+  docker tag "$ROLL" "$IMG:latest"; ( cd "$COMPOSE_DIR" && docker compose up -d --no-deps moqui )
   die "promote failed; rolled back to $ROLL. Investigate /tmp/zcbuild-$SHA.log and moqui logs."
 fi
 docker image prune -f >/dev/null 2>&1 || true
 docker images "$IMG" --format '{{.Tag}}' | grep '^pre-' | tail -n +3 | sed "s#^#$IMG:#" | xargs -r docker rmi >/dev/null 2>&1 || true
-log "PROMOTED $REF@$SHA to prod (:latest). Rollback: docker tag $ROLL $IMG:latest && cd $COMPOSE_DIR && docker compose restart moqui"
+log "PROMOTED $REF@$SHA to prod (:latest). Rollback: docker tag $ROLL $IMG:latest && cd $COMPOSE_DIR && docker compose up -d --no-deps moqui"
 log "rollback tags kept: $(docker images "$IMG" --format '{{.Tag}}' | grep -c '^pre-')"

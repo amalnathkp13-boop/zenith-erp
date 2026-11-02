@@ -27,10 +27,16 @@
         <actions>
             <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'pos']" out-map="context"/>
             <if condition="canWrite != true"><return error="true" message="POS write access is required."/></if>
-            <entity-find-one entity-name="zenith.erp.pos.RestaurantTable" value-field="tbl"/>
+            <entity-find-one entity-name="zenith.erp.pos.RestaurantTable" value-field="tbl" for-update="true"/>
             <entity-find-one entity-name="mantle.facility.Facility" value-field="tableFacility"><field-map field-name="facilityId" from="tbl?.facilityId"/></entity-find-one>
             <if condition="!tbl || !tableFacility || tableFacility.ownerPartyId != ec.user.getPreference('ACTIVE_ORGANIZATION')"><return error="true" message="Table not found in this shop."/></if>
             <if condition="!(statusId in ['TblAvailable','TblOccupied','TblReserved','TblCleaning'])"><return error="true" message="Choose a valid table status."/></if>
+            <entity-find entity-name="zenith.erp.pos.KitchenOrderTicket" list="activeKots">
+                <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
+                <econdition field-name="tableId" from="tbl.tableId"/>
+                <econdition field-name="statusId" operator="in" from="['KotNew','KotPreparing','KotReady']"/>
+            </entity-find>
+            <if condition="activeKots &amp;&amp; statusId != 'TblOccupied'"><return error="true" message="Finish or cancel the active kitchen orders before closing this table."/></if>
             <if condition="tbl != null &amp;&amp; statusId">
                 <set field="tbl.statusId" from="statusId"/>
                 <entity-update value-field="tbl"/>
@@ -42,9 +48,15 @@
         <actions>
             <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'pos']" out-map="context"/>
             <if condition="canWrite != true"><return error="true" message="POS write access is required."/></if>
-            <entity-find-one entity-name="zenith.erp.pos.RestaurantTable" value-field="tbl"/>
+            <entity-find-one entity-name="zenith.erp.pos.RestaurantTable" value-field="tbl" for-update="true"/>
             <entity-find-one entity-name="mantle.facility.Facility" value-field="tableFacility"><field-map field-name="facilityId" from="tbl?.facilityId"/></entity-find-one>
             <if condition="!tbl || !tableFacility || tableFacility.ownerPartyId != ec.user.getPreference('ACTIVE_ORGANIZATION')"><return error="true" message="Table not found in this shop."/></if>
+            <entity-find entity-name="zenith.erp.pos.KitchenOrderTicket" list="activeKots">
+                <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
+                <econdition field-name="tableId" from="tbl.tableId"/>
+                <econdition field-name="statusId" operator="in" from="['KotNew','KotPreparing','KotReady']"/>
+            </entity-find>
+            <if condition="activeKots"><return error="true" message="Finish or cancel the active kitchen orders before closing this table."/></if>
             <if condition="tbl != null">
                 <set field="tbl.statusId" value="TblAvailable"/>
                 <set field="tbl.currentTransactionId" from="null"/>
@@ -53,14 +65,21 @@
         </actions>
         <default-response url="."/>
     </transition>
-    <transition name="deleteTable" method="post">
+    <transition name="deleteTable" method="post" begin-transaction="true">
         <actions>
             <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'pos']" out-map="context"/>
             <if condition="canWrite != true"><return error="true" message="POS write access is required."/></if>
-            <entity-find-one entity-name="zenith.erp.pos.RestaurantTable" value-field="tbl"/>
+            <entity-find-one entity-name="zenith.erp.pos.RestaurantTable" value-field="tbl" for-update="true"/>
             <entity-find-one entity-name="mantle.facility.Facility" value-field="tableFacility"><field-map field-name="facilityId" from="tbl?.facilityId"/></entity-find-one>
             <if condition="!tbl || !tableFacility || tableFacility.ownerPartyId != ec.user.getPreference('ACTIVE_ORGANIZATION')"><return error="true" message="Table not found in this shop."/></if>
-            <service-call name="delete#zenith.erp.pos.RestaurantTable"/>
+            <if condition="tbl.currentTransactionId || !(tbl.statusId in [null,'TblAvailable'])"><return error="true" message="Close the table before deleting it."/></if>
+            <entity-find entity-name="zenith.erp.pos.KitchenOrderTicket" list="activeTableKots">
+                <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
+                <econdition field-name="tableId" from="tbl.tableId"/>
+                <econdition field-name="statusId" operator="in" from="['KotNew','KotPreparing','KotReady']"/>
+            </entity-find>
+            <if condition="activeTableKots"><return error="true" message="Finish or cancel this table's active kitchen orders before deleting it."/></if>
+            <service-call name="delete#zenith.erp.pos.RestaurantTable" in-map="[tableId:tbl.tableId]"/>
         </actions>
         <default-response url="."/>
     </transition>
@@ -112,6 +131,9 @@
             tmCard = [:]     // tableId -> [key, label, circle, meta]
             tmOrder = [:]    // tableId -> [orderNum, time, items, subtotal, tax, total, step]
 
+            def activeKots=tables ? ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('organizationPartyId',ec.user.getPreference('ACTIVE_ORGANIZATION'))
+                .condition('tableId','in',tables*.tableId).condition('statusId','in',['KotNew','KotPreparing','KotReady']).orderBy('-kotDate').list() : []
+            def activeItems=activeKots ? ec.entity.find('zenith.erp.pos.KotItem').condition('kotId','in',activeKots*.kotId).orderBy('kotItemSeqId').list().groupBy { it.kotId } : [:]
             tables.each { t ->
                 def sid = t.statusId ?: 'TblAvailable'
                 def skey = 'available', slabel = 'Available'
@@ -127,7 +149,7 @@
                 if (t.currentTransactionId) {
                     def txn = ec.entity.find('zenith.erp.pos.PosTransaction')
                                 .condition('transactionId', t.currentTransactionId).one()
-                    if (txn) {
+                    if (txn && txn.organizationPartyId==ec.user.getPreference('ACTIVE_ORGANIZATION')) {
                         def items = ec.entity.find('zenith.erp.pos.PosTransactionItem')
                                       .condition('transactionId', t.currentTransactionId)
                                       .orderBy('itemSeqId').list()
@@ -157,6 +179,15 @@
                         if (mins != null) parts.add(mins + ' min')
                         if (txn.grandTotal) parts.add(inr(txn.grandTotal))
                         metaStr = parts.join(' · ')
+                    }
+                }
+                if(!ord) {
+                    def kot=activeKots.find { it.tableId==t.tableId }
+                    if(kot) {
+                        ord=[orderNum:'KOT '+(kot.kotNumber ?: kot.kotId),time:ec.l10n.format(kot.kotDate,'hh:mm a'),kitchenOnly:true,
+                            items:(activeItems[kot.kotId] ?: []).collect { [q:it.quantity,name:it.productName ?: it.productId,amt:''] },
+                            step:kot.statusId=='KotReady' ? 3 : 2]
+                        metaStr='KOT '+(kot.kotNumber ?: kot.kotId)
                     }
                 }
                 if (!metaStr) { metaStr = (t.tableName ?: (t.sectionName ?: '')) }
@@ -298,9 +329,11 @@
               </#list>
             </ul>
             </#if>
+            <#if !(ord.kitchenOnly!false)>
             <div class="tm-osum__row"><span>Subtotal</span><span>${ord.subtotal}</span></div>
             <div class="tm-osum__row"><span>Tax</span><span>${ord.tax}</span></div>
             <div class="tm-osum__row is-total"><span class="tm-osum__lbl">TOTAL</span><span class="tm-osum__val">${ord.total}</span></div>
+            </#if>
           </div>
 
           <div class="tm-ostatus">
@@ -320,7 +353,7 @@
           </#if>
 
           <div class="tm-actions">
-            <button type="button" class="tm-abtn is-primary" onclick="tmGo('goTerminal')"><@ic 'plus' 14/> Open Billing</button>
+            <button type="button" class="tm-abtn is-primary" data-billing-table="${tbl.tableId?html}" onclick="tmOpenBilling(this.dataset.billingTable)"><@ic 'plus' 14/> Open Billing</button>
             <#if ord?has_content>
             <button type="button" class="tm-abtn" onclick="tmGo('goTransactions')"><@ic 'receipt' 14/> View Transactions</button>
             </#if>
@@ -381,15 +414,16 @@
       <div class="tm-fld"><label>Table Name</label><input type="text" id="tm-f-name" placeholder="Optional"/></div>
       <div class="tm-fld"><label>Seats</label><input type="number" id="tm-f-seat" value="4" min="1"/></div>
       <div class="tm-fld"><label>Section</label><input type="text" id="tm-f-sec" value="Main"/></div>
-      <div class="tm-fld"><label>Facility</label>
-        <select id="tm-f-fac">
-          <option value="">(none)</option>
-          <#list facilities as f><option value="${f.facilityId}">${(f.facilityName)!f.facilityId}</option></#list>
+      <div class="tm-fld"><label for="tm-f-fac">Facility *</label>
+        <select id="tm-f-fac" required="required" aria-describedby="tm-f-error">
+          <option value="">Select a facility</option>
+          <#list facilities as f><option value="${f.facilityId?html}">${((f.facilityName)!f.facilityId)?html}</option></#list>
         </select>
+        <p id="tm-f-error" role="alert" style="color:#b91c1c"><#if !facilities?has_content>Create a shop or warehouse before adding a table.</#if></p>
       </div>
       <div class="tm-modal__actions">
         <button type="button" class="tm-btn" onclick="tmModal(false)">Cancel</button>
-        <button type="button" class="tm-btn is-primary" id="tm-addsave" onclick="tmAddSave()">Add Table</button>
+        <button type="button" class="tm-btn is-primary" id="tm-addsave" onclick="tmAddSave()" <#if !facilities?has_content>disabled="disabled"</#if>>Add Table</button>
       </div>
     </div>
   </div>
@@ -398,7 +432,7 @@
   <!-- JS runs from an external file injected via img-onload: reliable on BOTH /apps and /qapps
        (/qapps' Vue template compiler strips inline <script> and chokes on a second root). -->
   <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" style="display:none"
-       onload="(function(){if(window.__tmJs)return;window.__tmJs=1;var s=document.createElement('script');s.src='/zenithstatic/js/tm-tables.js?v=4';document.head.appendChild(s);})()"/>
+       onload="(function(){var s=document.createElement('script');s.src='/zenithstatic/js/tm-tables.js?v=5';document.head.appendChild(s);})()"/>
 
 </div>
         ]]></text></render-mode>

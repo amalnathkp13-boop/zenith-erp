@@ -48,6 +48,34 @@
                 }
         ]]></script></actions>
     </service>
+    <!-- Preserve a typed word separator and rank name prefixes before infix matches, before paging. -->
+    <service verb="search" noun="PosProducts" authenticate="true">
+        <in-parameters><parameter name="term"/><parameter name="offset" type="Integer" default="0"/><parameter name="pageSize" type="Integer" default="60"/></in-parameters>
+        <out-parameters><parameter name="products" type="List"/></out-parameters>
+        <actions><script><![CDATA[
+            products=[]
+            def org=ec.service.sync().name('zenith.barcode.BarcodeServices.get#AuthorizedActiveOrganization').call().activeOrgId
+            def query=(term ?: '').toString().replaceAll(/\s+/, ' ').replaceAll(/^ +/, '')
+            if (!org || !query.trim()) return
+            def start=Math.max(0, Math.min(offset ?: 0, 3000))
+            def size=Math.max(1, Math.min(pageSize ?: 60, 61))
+            def cf=ec.entity.conditionFactory; def EC=org.moqui.entity.EntityCondition
+            def escaped=query.replace('\\','\\\\').replace('%','\\%').replace('_','\\_')
+            def like='%'+escaped+'%'
+            def codes=ec.service.sync().name('zenith.barcode.BarcodeServices.get#ScanAliases').parameters([code:query.trim()]).call().aliases
+            def aliases=ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('organizationPartyId',org).condition('isActive','Y')
+                .condition(cf.makeCondition([cf.makeCondition('barcodeValue',EC.LIKE,like).ignoreCase(),cf.makeCondition('barcodeValue',EC.IN,codes)],EC.OR)).list()*.productId
+            def matches=['productName','pseudoId','productId'].collect { cf.makeCondition(it,EC.LIKE,like).ignoreCase() }
+            if (aliases) matches.add(cf.makeCondition('productId',EC.IN,aliases))
+            def prefix=cf.makeCondition('productName',EC.LIKE,escaped+'%').ignoreCase()
+            def others=cf.makeCondition([cf.makeCondition('productName',EC.NOT_LIKE,escaped+'%').ignoreCase(),cf.makeCondition('productName',EC.EQUALS,null)],EC.OR)
+            def find={ ec.entity.find('mantle.product.Product').condition('ownerPartyId',org).condition('productTypeEnumId','PtAsset')
+                .condition(cf.makeCondition(matches,EC.OR)).orderBy('productName,productId') }
+            def firstCount=find().condition(prefix).count()
+            if (start < firstCount) products.addAll(find().condition(prefix).offset(start).limit(size).list())
+            if (products.size() < size) products.addAll(find().condition(others).offset(Math.max(0,start-firstCount) as int).limit(size-products.size()).list())
+        ]]></script></actions>
+    </service>
     <service verb="get" noun="PosCatalogPage" authenticate="true">
         <in-parameters><parameter name="sessionId" required="true"/><parameter name="searchTerm"/><parameter name="catId"/><parameter name="productOffset"/></in-parameters>
         <out-parameters><parameter name="gridProducts" type="List"/><parameter name="gridCardStock" type="Map"/><parameter name="gridHasMore" type="Boolean"/><parameter name="gridOffset" type="Integer"/><parameter name="gridNextOffset" type="Integer"/></out-parameters>
@@ -63,16 +91,8 @@
             gridOffset = rawOffset ==~ /[0-9]{1,4}/ ? Math.min(rawOffset.toInteger(), 3000) : 0
             gridHasMore = false
             if (searchTerm) {
-                def stLower = searchTerm.toLowerCase()
-                def allProds = ec.entity.find("mantle.product.Product")
-                    .condition([productTypeEnumId:'PtAsset', ownerPartyId: posOrg])
-                    .orderBy("productName,productId").limit(3000).list()
-                def matches = allProds.findAll { pr ->
-                    (pr.productName ?: '').toLowerCase().contains(stLower) ||
-                    (pr.pseudoId ?: '').toLowerCase().contains(stLower) ||
-                    (pr.productId ?: '').toLowerCase().contains(stLower)
-                }
-                gridProducts = gridOffset < matches.size() ? matches.subList(gridOffset, Math.min(matches.size(), gridOffset + gridPageSize + 1)) : []
+                gridProducts = ec.service.sync().name('zenith.pos.PosCheckoutServices.search#PosProducts')
+                    .parameters([term:searchTerm,offset:gridOffset,pageSize:gridPageSize+1]).call().products ?: []
             } else if (catId) {
                 def category = ec.entity.find('mantle.product.category.ProductCategory')
                     .condition('productCategoryId',catId).condition('ownerPartyId',posOrg).one()
