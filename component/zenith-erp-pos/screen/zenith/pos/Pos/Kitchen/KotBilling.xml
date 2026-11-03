@@ -506,11 +506,12 @@
     </div>
     <div class="kb-instr"><label for="kb-instr">Add Note</label><textarea id="kb-instr" rows="1" maxlength="500" placeholder="e.g. No onion, less spicy"></textarea></div>
     <div class="kb-sum"><div class="kb-sum__row"><span>Items</span><span id="kb-item-count">0</span></div><div class="kb-sum__row"><span>Subtotal</span><span id="kb-subtotal">&#8377;0.00</span></div><div id="kb-tax-rows"></div>
-      <div class="kb-sum__row is-total"><span class="l">Total Amount</span><span id="kb-grand" class="v">&#8377;0.00</span></div></div>
+    </div>
     <p id="kb-quote-error" role="alert"></p><p id="kb-order-status" role="status"></p>
   </aside>
 
   <div class="kb-bottom">
+    <div class="kb-total-row"><span>Total Amount</span><strong id="kb-grand">&#8377;0.00</strong></div>
     <#if modCanWrite><div class="kb-checkout-actions">
       <button type="button" id="kb-draft" class="kb-action-hold" disabled><span aria-hidden="true">Ⅱ</span> Hold <kbd>F7</kbd></button>
       <button type="button" id="kb-send" class="kb-action-send" title="Press Shift by itself" disabled><@ic 'printer'/> Send to KOT <kbd>Shift</kbd></button>

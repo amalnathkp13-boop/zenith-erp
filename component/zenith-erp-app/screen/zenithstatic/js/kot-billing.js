@@ -158,12 +158,13 @@
     }
     $('cash').value=method==='Cash'?total.toFixed(2):'';
   }
-  async function printBill(kotId,isTakeAway,w) {
+  async function printBill(kotId,isTakeAway,w,kitchenWindow) {
     let error;
     if(isTakeAway){
       try{
+        if(!kitchenWindow)throw Error('Allow a second print window for the kitchen ticket.');
         const {record}=await request('printRecord',{kotId,kind:'kot'});
-        await KitchenPrint.browserPrint(w,KitchenPrint.kotHtml(record));
+        await KitchenPrint.browserPrint(kitchenWindow,KitchenPrint.kotHtml(record));
         await request('ackKotPrint',{kotId});
       }catch(e){error=e;}
     }
@@ -173,13 +174,14 @@
   }
   async function pay(e) {
     e.preventDefault();if(busy||total===null)return;
-    let w, finalized=false;
+    let w,kitchenWindow,finalized=false;
     const form=e.currentTarget, submit=form.querySelector('[type=submit]');
     const payment=Object.fromEntries(new FormData(form)), data=orderData(), fingerprint=JSON.stringify(data);
     const isTakeAway=orderType==='Take Away';
     try{
       // A blocked popup never prevents a sale from saving; history remains the print fallback.
       try{w=KitchenPrint.open();}catch(_){}
+      if(w&&isTakeAway){try{kitchenWindow=KitchenPrint.open();}catch(_){}}
       busy=true;controls();submit.disabled=true;$('payment-close').disabled=true;$('payment-error').textContent='';
       if(!draftId||fingerprint!==savedFingerprint){
         const saved=await request('saveDraft',{...data,existingDraftId:draftId,wantJson:'Y'});
@@ -191,13 +193,14 @@
       $('payment').close();cart.clear();draftId='';savedFingerprint='';$('badge').textContent='New KOT';$('instr').value='';quote();
       $('order-status').textContent='Saved bill '+bill.billNumber+'.';
       const status=$('order-status');
-      if(w)await printBill(bill.kotId,isTakeAway,w);
+      if(w)await printBill(bill.kotId,isTakeAway,w,kitchenWindow);
       else status.textContent+=' Allow pop-ups and reprint from History.';
     }catch(error){
       if(finalized)$('order-status').textContent+=' Printing needs attention. Reprint from History. '+error.message;
       else $('payment-error').textContent=error.message;
     }finally{
-      if(w&&!w.closed)w.close();busy=false;controls();submit.disabled=false;$('payment-close').disabled=false;
+      if(w&&!w.closed)w.close();if(kitchenWindow&&!kitchenWindow.closed)kitchenWindow.close();
+      busy=false;controls();submit.disabled=false;$('payment-close').disabled=false;
     }
   }
   function filterHistory(){

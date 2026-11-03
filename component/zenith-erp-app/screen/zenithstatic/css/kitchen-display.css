@@ -112,8 +112,6 @@
 
 #kb-wrap .kb-checkout-actions button,#kb-wrap .kb-control{display:inline-flex;align-items:center;justify-content:center;gap:6px}
 #kb-wrap .kb-checkout-actions button{min-height:46px}
-#kb-wrap .kb-sum .is-total{border:0;border-radius:8px;background:#f2eafa;color:#5b21b6;padding:10px 12px}
-#kb-wrap .kb-sum .is-total .v{font-size:20px;color:#5b21b6}
 #kb-wrap #kb-order-status:empty,#kb-wrap #kb-quote-error:empty{display:none}
 #kb-wrap .kb-bottom{background:var(--z-bg,#fff);padding:8px 0}
 #kb-wrap .kb-order-scroll th:nth-child(2),#kb-wrap .kb-order-scroll td:nth-child(2){width:42%}
@@ -123,5 +121,8 @@
 #kb-wrap .kb-instr textarea{height:36px;padding:6px 10px}
 #kb-wrap .kb-sum{display:grid;grid-template-columns:1fr 1fr;gap:4px 20px;margin:4px 0 0;padding-top:6px}
 #kb-wrap .kb-sum>#kb-tax-rows{grid-column:2}
-#kb-wrap .kb-sum>.is-total{grid-column:1/-1;margin:0}
 #kb-wrap .kb-checkout-actions,#kb-wrap .kb-search{border-radius:8px}
+#kb-wrap .kb-total-row{display:flex;justify-content:space-between;align-items:center;gap:10px;border-radius:8px;background:#f2eafa;color:#5b21b6;padding:8px 12px;font-weight:700}
+#kb-wrap .kb-total-row strong{font-size:20px}
+#kb-wrap .kb-tax-toggle::after{content:'';width:30px;height:17px;border-radius:10px;background:radial-gradient(circle at 8px 50%,#fff 5px,transparent 6px),#918ba2}
+#kb-wrap .kb-tax-toggle.is-on::after{background:radial-gradient(circle at 22px 50%,#fff 5px,transparent 6px),#6d28d9}

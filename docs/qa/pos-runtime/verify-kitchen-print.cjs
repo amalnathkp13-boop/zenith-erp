@@ -10,7 +10,7 @@ module.exports=async function({a,foreign,base,post,rows,count,check,out}){
  r=await post('Kitchen/KotBilling','cartReceipt',{itemsJson:JSON.stringify([{productId:'POS_QA_A_P18',quantity:1,unitPrice:1,productName:'Forged name'}])});data=await r.json();
  check('quote ignores forged prices and labels',data.success&&Number(data.receipt.items[0].rate)===100&&data.receipt.items[0].name==='Disposable POS A P18');
  r=await post('Kitchen/KotBilling','cartReceipt',{itemsJson:JSON.stringify([{productId:'POS_QA_A_P18',quantity:2,unitPrice:80,manualPrice:'Y'}]),taxOn:'N'});data=await r.json();
- check('explicit KOT price edit and tax OFF use the same persisted quote without GST',data.success&&Number(data.receipt.items[0].rate)===100&&Number(data.receipt.summary.subtotal)===160&&Number(data.receipt.summary.tax)===0&&data.receipt.bill.taxOn==='N',data);
+ check('explicit KOT price edit and tax OFF use the same persisted quote without GST',data.success&&Number(data.receipt.items[0].rate)===80&&Number(data.receipt.summary.subtotal)===160&&Number(data.receipt.summary.tax)===0&&data.receipt.bill.taxOn==='N',data);
  for(const payload of [[],[{productId:'POS_QA_B_P18',quantity:1}],[{productId:'POS_QA_A_P18',quantity:0}]]){
   r=await post('Kitchen/KotBilling','cartReceipt',{itemsJson:JSON.stringify(payload)});check('customer quote rejects invalid items '+JSON.stringify(payload),r.status()===403||!(await r.json()).success);
  }
