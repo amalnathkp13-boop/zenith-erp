@@ -64,9 +64,11 @@
     }
     function refresh() {
         var view = findBar();
-        if (!view) { current = null; return; }
-        if (current && current.strip === view.strip && current.module === view.module) return;
+        if (view && current && current.strip === view.strip && current.module === view.module && current.trigger.isConnected) return;
         if (drawer) close(true);
+        if (current) current.trigger.remove();
+        current = null;
+        if (!view) return;
         var links = [].slice.call(view.strip.querySelectorAll(view.selector)).filter(function (node) {
             return node.style.display !== 'none' && !!node.getAttribute('data-match');
         }).map(function (node, index) {

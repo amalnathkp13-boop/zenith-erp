@@ -199,7 +199,7 @@
     }
 
     // ---- top bar: Owner View pill / shop switcher / global search, injected into the q-header ----
-    function buildTopbar(header) {
+    function buildOwnerView() {
         var cfg = document.getElementById('zenith-saas-cfg');
         var shopData = document.getElementById('z-shopdata');
         var orgName = (cfg && cfg.getAttribute('data-org-name')) || '';
@@ -211,8 +211,6 @@
             shopTok = shopData.getAttribute('data-token') || '';
             [].slice.call(shopData.querySelectorAll('i')).forEach(function (n) { shops.push({ id: n.getAttribute('data-id'), name: n.getAttribute('data-name') }); });
         }
-        var wrap = el('div'); wrap.id = 'zq-topextra';
-        // Owner View pill / switcher
         var ov = el('div'); ov.id = 'zq-ownerview';
         ov.appendChild(mi('grid_view'));   // ZE-QAPPS-TOPBAR-PARITY: match the /apps Owner-View icon (was verified_user)
         ov.appendChild(el('span', null, 'Owner View'));
@@ -239,13 +237,44 @@
             mmg.addEventListener('click', function (e) { onNavClick(e); e.stopPropagation(); });
             menu.appendChild(mmg);
             ov.appendChild(menu);
-            ov.addEventListener('click', function (e) { e.stopPropagation(); menu.classList.toggle('show'); });
-            document.addEventListener('click', function () { menu.classList.remove('show'); });
+            var toggle = el('button', 'zqov-trigger');
+            toggle.type = 'button';
+            toggle.setAttribute('aria-controls', menu.id);
+            toggle.setAttribute('aria-expanded', 'false');
+            while (ov.firstChild !== menu) toggle.appendChild(ov.firstChild);
+            ov.prepend(toggle);
+            toggle.addEventListener('click', function () {
+                toggle.setAttribute('aria-expanded', String(menu.classList.toggle('show')));
+            });
+            ov.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && menu.classList.contains('show')) {
+                    menu.classList.remove('show'); toggle.setAttribute('aria-expanded', 'false'); toggle.focus();
+                }
+            });
         } else if (orgName) {
             ov.appendChild(el('span', 'zqov-sep', '·'));
             ov.appendChild(el('span', 'zqov-org', orgName));
         }
-        wrap.appendChild(ov);
+        return ov;
+    }
+
+    var shopConfig, ownerConfig;
+    function syncOwnerView() {
+        var wrap = document.getElementById('zq-topextra');
+        if (!wrap) return;
+        var shops = document.getElementById('z-shopdata');
+        var config = document.getElementById('zenith-saas-cfg');
+        if (shops === shopConfig && config === ownerConfig && wrap.querySelector('#zq-ownerview')) return;
+        shopConfig = shops;
+        ownerConfig = config;
+        var previous = wrap.querySelector('#zq-ownerview');
+        var next = buildOwnerView();
+        if (previous) previous.replaceWith(next);
+        else wrap.prepend(next);
+    }
+
+    function buildTopbar(header) {
+        var wrap = el('div'); wrap.id = 'zq-topextra';
         // search
         var sc = el('div'); sc.id = 'zq-search';
         var box = el('div', 'zqsr-box'); box.appendChild(mi('search'));
@@ -304,6 +333,7 @@
         var toolbar = header.querySelector('.q-toolbar') || header;
         var burger = toolbar.querySelector('button');
         if (burger) toolbar.insertBefore(wrap, burger.nextSibling); else toolbar.insertBefore(wrap, toolbar.firstChild);
+        syncOwnerView();
         buildToolButtons(toolbar);
     }
 
@@ -461,11 +491,19 @@
         var fwBurger = header.querySelector('.q-toolbar button');
         if (fwBurger) fwBurger.addEventListener('click', function () { if (window.innerWidth <= 900) body.classList.toggle('zq-side-open'); }, true);
         document.addEventListener('click', function (e) { if (body.classList.contains('zq-side-open') && !side.contains(e.target) && (!fwBurger || !fwBurger.contains(e.target))) body.classList.remove('zq-side-open'); });
+        document.addEventListener('click', function (e) {
+            var owner = document.getElementById('zq-ownerview');
+            var menu = owner && owner.querySelector('#zq-shopmenu.show');
+            if (menu && !owner.contains(e.target)) {
+                menu.classList.remove('show');
+                owner.querySelector('.zqov-trigger').setAttribute('aria-expanded', 'false');
+            }
+        });
         document.addEventListener('click', onNavClick);
         side.addEventListener('click', function (e) { if (e.target.closest('.zqs-link')) body.classList.remove('zq-side-open'); });
         // re-apply active highlight on SPA route changes (URL is swapped without a full reload)
         var last = location.pathname;
-        setInterval(function () { syncToolButtons(); if (location.pathname !== last) { last = location.pathname; applyActive(); updateSubnav(); try { if (sessionStorage.getItem('zqGotoModules')) { sessionStorage.removeItem('zqGotoModules'); scrollToModules(); } } catch (_e) {} } }, 400);
+        setInterval(function () { syncOwnerView(); syncToolButtons(); if (location.pathname !== last) { last = location.pathname; applyActive(); updateSubnav(); try { if (sessionStorage.getItem('zqGotoModules')) { sessionStorage.removeItem('zqGotoModules'); scrollToModules(); } } catch (_e) {} } }, 400);
         document.documentElement.classList.add('zq-nav-ready');
         document.documentElement.classList.remove('zq-shell-boot');
         return true;
@@ -479,5 +517,5 @@
         if (!document.getElementById('z-shopdata') && tries <= 16) return;
         if (init() || tries > 60) clearInterval(iv);
     }, 250);
-    window.addEventListener('zenith:nav-config', function() { if (init()) clearInterval(iv); });
+    window.addEventListener('zenith:nav-config', function() { if (document.getElementById('z-shopdata') && init()) clearInterval(iv); });
 })();

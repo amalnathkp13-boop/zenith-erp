@@ -161,7 +161,9 @@
                 def _tids = completedTxns.collect { it.transactionId }
                 if (_tids) {
                     def _pm = [:]
-                    ec.entity.find("zenith.erp.pos.PosTransactionItem").condition("transactionId","in",_tids).list().each { def k = it.productName ?: it.productId; if (!_pm[k]) _pm[k]=[name:k,qty:BigDecimal.ZERO,total:BigDecimal.ZERO]; _pm[k].qty += _bd(it.quantity); _pm[k].total += _bd(it.lineTotal) }
+                    def items = ec.entity.find("zenith.erp.pos.PosTransactionItem").condition("transactionId","in",_tids).list()
+                    def names = (items ? ec.service.sync().name('zenith.pos.PosServices.get#PosDisplayNames').parameter('productIds',items*.productId).call().names : [:]) ?: [:]
+                    items.each { def k = it.productId ?: 'Unknown item'; if (!_pm[k]) _pm[k]=[name:names[k] ?: k,qty:BigDecimal.ZERO,total:BigDecimal.ZERO]; _pm[k].qty += _bd(it.quantity); _pm[k].total += _bd(it.lineTotal) }
                     _pm.values().sort { -(it.total as BigDecimal) }.take(5).eachWithIndex { p, i -> topProducts.add([rank:(i+1), name:p.name.toString(), qty:zinr.inr(ec.l10n.format(p.qty,'#,##0')), total:zinr.inr(ec.l10n.format(p.total,'#,##0'))]) }
                 }
             } catch (Exception e) {}

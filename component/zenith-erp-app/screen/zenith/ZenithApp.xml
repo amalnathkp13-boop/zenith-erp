@@ -276,14 +276,9 @@
                 if (!fid) {
                     ec.user.setPreference("ACTIVE_SHOP", "")   // All Shops (combined)
                 } else if (org && org != '_NA_') {
-                    boolean _d = ec.artifactExecution.disableAuthz()
-                    try {
-                        def f = ec.entity.find("mantle.facility.Facility").condition("facilityId", fid).one()
-                        if (f && f.facilityTypeEnumId == 'FcTpRetailStore' && f.ownerPartyId == org) {
-                            ec.user.setPreference("ACTIVE_SHOP", fid)
-                        }
-                        // else: cross-tenant / non-store id => ignore, preference unchanged
-                    } finally { if (!_d) ec.artifactExecution.enableAuthz() }
+                    def scope = ec.service.sync().name("zenith.base.ShopServices.get#ActiveShopScope")
+                        .parameter("facilityId", fid).call()
+                    if (scope?.activeShopId == fid) ec.user.setPreference("ACTIVE_SHOP", fid)
                 }
                 def ru = ec.web.getRequest().getParameter("returnUrl")
                 // Preserve the current shell and date filters, but never carry a stale counter
@@ -336,7 +331,7 @@
         ]]></script>
         <script><![CDATA[
             if (html_stylesheets == null) html_stylesheets = []
-            html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=304')
+            html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=305')
             html_stylesheets.add('/zenithstatic/css/users-access.css?v=1')
             html_stylesheets.add('/zenithstatic/css/sidebar-manager.css?v=3')
             html_stylesheets.add('/zenithstatic/css/subnav-manager.css?v=3')
@@ -382,10 +377,10 @@
             html_stylesheets.add('https://fonts.googleapis.com/icon?family=Material+Icons')
             if (footer_scripts == null) footer_scripts = []
             footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=14')
-            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=47')
+            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=48')
             footer_scripts.add('/zenithstatic/js/profile-menu.js?v=1')
-            footer_scripts.add('/zenithstatic/js/sidebar-manager.js?v=1')
-            footer_scripts.add('/zenithstatic/js/subnav-manager.js?v=2')
+            footer_scripts.add('/zenithstatic/js/sidebar-manager.js?v=2')
+            footer_scripts.add('/zenithstatic/js/subnav-manager.js?v=3')
             footer_scripts.add('/zenithstatic/js/pricing-price-lists.js?v=1')
             footer_scripts.add('/zenithstatic/js/purchase-rfq.js?v=1')
             footer_scripts.add('/zenithstatic/js/purchase-job-work.js?v=1')
@@ -707,6 +702,16 @@
     </subscreens>
 
     <widgets>
+        <!-- ZE-AUTH-002: the RBAC/plan menu-filter config MUST reach the /qapps (Quasar) shell too, so the
+             client filter can hide privileged menu items on first paint instead of after a slow XHR (which
+             caused admin/cashier menus to flash Super-Admin items). A plain type="html" block renders only
+             on /apps; type="html,qvt" renders on BOTH, so the hidden config div is available in either shell. -->
+        <render-mode><text type="html,qvt"><![CDATA[
+            <div id="zenith-saas-cfg" data-role-scope="${(roleNavJson!'{}')?html}" style="display:none" data-nav-restricted="${(navRestricted!false)?c}" data-tenant="${(isSaasTenant!false)?c}" data-all="${(saasHasAllAccess!false)?c}" data-pos-only="${(posOnlyUser!false)?c}" data-is-admin="${(canManageSettings!false)?c}" data-super="${(isSuperAdmin!false)?c}" data-org-name="${(zTopOrgName!'')?html}" data-user-name="${((ec.user.userAccount.userFullName)!(ec.user.username)!'')?html}" data-modules='${saasVisibleModulesJson!saasAllowedModulesJson!"[]"}'></div>
+            <!-- ZE-SHOP: shop switcher data (rendered server-side to avoid attribute-escaping pitfalls in shop names). -->
+            <div id="z-shopdata" style="display:none" data-multishop="${(hasMultiShop!false)?c}" data-active="${(activeShopId!'')?html}" data-token="${(ec.web.sessionToken)!''}"><#if shopList??><#list shopList as s><i data-id="${(s.id!'')?html}" data-name="${(s.name!'')?html}"></i></#list></#if></div>
+        ]]></text></render-mode>
+
         <section name="SaasBillingAccess">
             <actions><set field="isOwnSubscriptionPage" from="(ec.web?.request?.requestURI ?: '').tokenize('/').contains('my-subscription')"/></actions>
             <widgets/>
@@ -764,16 +769,6 @@
                 </section>
             </widgets>
         </section>
-
-        <!-- ZE-AUTH-002: the RBAC/plan menu-filter config MUST reach the /qapps (Quasar) shell too, so the
-             client filter can hide privileged menu items on first paint instead of after a slow XHR (which
-             caused admin/cashier menus to flash Super-Admin items). A plain type="html" block renders only
-             on /apps; type="html,qvt" renders on BOTH, so the hidden config div is available in either shell. -->
-        <render-mode><text type="html,qvt"><![CDATA[
-            <div id="zenith-saas-cfg" data-role-scope="${(roleNavJson!'{}')?html}" style="display:none" data-nav-restricted="${(navRestricted!false)?c}" data-tenant="${(isSaasTenant!false)?c}" data-all="${(saasHasAllAccess!false)?c}" data-pos-only="${(posOnlyUser!false)?c}" data-is-admin="${(canManageSettings!false)?c}" data-super="${(isSuperAdmin!false)?c}" data-org-name="${(zTopOrgName!'')?html}" data-user-name="${((ec.user.userAccount.userFullName)!(ec.user.username)!'')?html}" data-modules='${saasVisibleModulesJson!saasAllowedModulesJson!"[]"}'></div>
-            <!-- ZE-SHOP: shop switcher data (rendered server-side to avoid attribute-escaping pitfalls in shop names). -->
-            <div id="z-shopdata" style="display:none" data-multishop="${(hasMultiShop!false)?c}" data-active="${(activeShopId!'')?html}" data-token="${(ec.web.sessionToken)!''}"><#if shopList??><#list shopList as s><i data-id="${(s.id!'')?html}" data-name="${(s.name!'')?html}"></i></#list></#if></div>
-        ]]></text></render-mode>
 
         <!-- ZE-NAV: global categorised LEFT SIDEBAR (report Fig 3.8). Injected on every /apps page; the
              framework chrome (#top/#content/#footer) is pushed right by CSS so it works even if the JS
@@ -1289,7 +1284,7 @@
             <link rel="preconnect" href="https://fonts.googleapis.com"/>
             <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"/>
             <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
-            <link rel="stylesheet" href="/zenithstatic/css/zenith-theme-v4.css?v=304"/>
+            <link rel="stylesheet" href="/zenithstatic/css/zenith-theme-v4.css?v=305"/>
             <link rel="stylesheet" href="/zenithstatic/css/users-access.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/my-subscription-reference.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/saas-admin.css?v=4"/>

@@ -38,6 +38,7 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  if(process.env.POS_QA_FOCUS==='offline-workspace'){await require('./verify-offline-workspace.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='receipt-designs'){await require('./verify-receipt-designs.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='hold-print'){await require('./verify-hold-print.cjs')({a,base,check,q,invoke,post});await browser.close();browser=null;return;}
+ if(process.env.POS_QA_FOCUS==='billing-display'){await require('./verify-billing-display.cjs')({a,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='normal-layout'){await require('./verify-normal-layout.cjs')({a,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='credit-terms'){await require('./verify-credit-terms.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='confirmation'){await require('./verify-checkout-confirmation.cjs')({a,base,check,q,invoke,out});await browser.close();browser=null;return;}

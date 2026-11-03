@@ -309,6 +309,7 @@
         </member-entity>
         <alias entity-alias="ITM" name="productId" group-by="true"/>
         <alias entity-alias="INV" name="fromPartyId" group-by="true"/>
+        <alias entity-alias="INV" name="facilityId" group-by="true"/>
         <alias entity-alias="INV" name="invoiceTypeEnumId" group-by="true"/>
         <alias entity-alias="INV" name="statusId" group-by="true"/>
         <alias entity-alias="INV" name="invoiceDate" group-by="true"/>
