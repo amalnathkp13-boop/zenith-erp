@@ -49,6 +49,35 @@
             def zenithIndex = uri.indexOf('/zenith/')
             cancelAction = (zenithIndex > 0 ? uri.substring(0, zenithIndex) : '') +
                 '/zenith/pos/Kitchen/KotHistory/cancelKot'
+            def kotIds=kotList.collect { it.kotId }
+            def itemRows=kotIds ? ec.entity.find('zenith.erp.pos.KotItem').condition('kotId','in',kotIds).list() : []
+            def itemsByKot=itemRows.groupBy { it.kotId }
+            historyItemSummary=[:]
+            historyItemCount=[:]
+            historyOrderType=[:]
+            kotList.each { k ->
+                def items=(itemsByKot[k.kotId] ?: []).sort { it.kotItemSeqId }
+                historyItemCount[k.kotId]=items.size()
+                historyItemSummary[k.kotId]=items.take(2).collect { it.productName ?: it.productId }.join(', ') +
+                    (items.size()>2 ? ' +'+(items.size()-2)+' more' : '')
+                def savedType=null
+                if(k.orderReceiptJson) {
+                    try { savedType=new groovy.json.JsonSlurper().parseText(k.orderReceiptJson)?.bill?.orderType }
+                    catch(Exception ignored) { }
+                }
+                historyOrderType[k.kotId]=k.notes?.startsWith('[Take Away]') ? 'Take Away' :
+                    (k.notes?.startsWith('[Dine In]') ? 'Dine In' :
+                    (savedType in ['Dine In','Take Away'] ? savedType : (k.tableNumber ? 'Dine In' : 'Unspecified')))
+            }
+            def query=filterQuery?.toString()?.trim()?.toLowerCase()
+            if(filterOrderType) kotList=kotList.findAll { historyOrderType[it.kotId]==filterOrderType }
+            if(query) kotList=kotList.findAll { k ->
+                (k.kotNumber ?: k.kotId ?: '').toString().toLowerCase().contains(query) ||
+                    (itemsByKot[k.kotId] ?: []).any { (it.productName ?: it.productId ?: '').toLowerCase().contains(query) }
+            }
+            tableOptions=ec.entity.find('zenith.erp.pos.KitchenOrderTicket')
+                .condition('organizationPartyId',ec.user.getPreference('ACTIVE_ORGANIZATION') ?: '__NO_ORGANIZATION__')
+                .selectField('tableNumber').list().collect { it.tableNumber }.findAll { it }.unique().sort()
             def txIds=kotList.collect { it.transactionId }.findAll { it }
             linkedBillIds=txIds ? ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId','in',txIds)
                 .condition('organizationPartyId',ec.user.getPreference('ACTIVE_ORGANIZATION')).condition('statusId','PtCompleted')
@@ -62,82 +91,58 @@
     </actions>
 
     <widgets>
-        <container style="q-pa-md">
-            <container style="row items-center justify-end q-mb-sm q-gutter-sm">
-                <link url="goTerminal" text="Billing" icon="fa fa-calculator" btn-type="success" style="q-btn--dense"/>
-                <link url="goTransactions" text="Transactions" icon="fa fa-list" btn-type="primary" style="q-btn--dense"/>
-                <link url="goDashboard" text="Dashboard" icon="fa fa-dashboard" style="q-btn--dense"/>
-            </container>
-            <container-row>
-                <row-col lg="8" md="8" sm="12">
-                    <label text="KOT History" type="h6" style="text-weight-bold q-mb-md"/>
-                </row-col>
-                <row-col lg="4" md="4" sm="12">
-                    <container style="text-right q-mb-md">
-                        <section name="CreateKot_write"><condition><expression>modCanWrite</expression></condition><widgets>
-                        <link url="../KotBilling" text="Create KOT" icon="fa fa-plus" btn-type="success"/>
-                        </widgets></section>
-                    </container>
-                </row-col>
-            </container-row>
-
-            <container style="q-mb-md">
-                <form-single name="KotFilter" transition=".">
-                    <field name="filterDate"><default-field title="From">
-                        <date-time type="date" default-value="${filterDate}"/>
-                    </default-field></field>
-                    <field name="filterThruDate"><default-field title="To">
-                        <date-time type="date" default-value="${filterThruDate}"/>
-                    </default-field></field>
-                    <field name="filterStatus"><default-field title="Status">
-                        <drop-down allow-empty="true">
-                            <option key="KotNew" text="New"/>
-                            <option key="KotPreparing" text="Preparing"/>
-                            <option key="KotReady" text="Ready"/>
-                            <option key="KotServed" text="Served"/>
-                            <option key="KotCancelled" text="Cancelled"/>
-                        </drop-down>
-                    </default-field></field>
-                    <field name="filterTable"><default-field title="Table">
-                        <text-line size="6"/>
-                    </default-field></field>
-                    <field name="searchBtn"><default-field title="">
-                        <submit text="Search" icon="fa fa-search"/>
-                    </default-field></field>
-                </form-single>
-            </container>
+        <container style="q-pa-md zk-history">
+            <render-mode><text type="html,qvt" template="true"><![CDATA[
+            <header class="zk-history-heading">
+              <div><h1>KOT History</h1><p>Review kitchen orders, then print the kitchen ticket or its finalized customer bill.</p></div>
+              <div class="zk-history-heading-actions"><#if modCanWrite><a class="zk-history-primary" href="${cancelAction?keep_before('/cancelKot')?replace('/KotHistory','/KotBilling')?html}">+ New Order</a></#if></div>
+            </header>
+            ]]></text></render-mode>
 
             <container-row>
                 <row-col lg="3" md="3" sm="6">
                     <container style="zenith-card bg-white shadow-1 q-pa-md q-mb-md text-center border-radius-lg">
                         <label text="Total KOTs" style="text-grey-7 text-caption"/>
-                        <label text="${totalKots}" type="h5" style="text-weight-bold text-primary q-my-xs"/>
+                        <render-mode><text type="html,qvt" template="true"><![CDATA[<strong data-kitchen-history-count="total">${totalKots}</strong>]]></text></render-mode>
                     </container>
                 </row-col>
                 <row-col lg="3" md="3" sm="6">
                     <container style="zenith-card bg-white shadow-1 q-pa-md q-mb-md text-center border-radius-lg">
                         <label text="Served" style="text-grey-7 text-caption"/>
-                        <label text="${servedCount}" type="h5" style="text-weight-bold text-green-8 q-my-xs"/>
+                        <render-mode><text type="html,qvt" template="true"><![CDATA[<strong data-kitchen-history-count="served">${servedCount}</strong>]]></text></render-mode>
                     </container>
                 </row-col>
                 <row-col lg="3" md="3" sm="6">
                     <container style="zenith-card bg-white shadow-1 q-pa-md q-mb-md text-center border-radius-lg">
                         <label text="Pending" style="text-grey-7 text-caption"/>
-                        <label text="${pendingCount}" type="h5" style="text-weight-bold text-orange-8 q-my-xs"/>
+                        <render-mode><text type="html,qvt" template="true"><![CDATA[<strong data-kitchen-history-count="pending">${pendingCount}</strong>]]></text></render-mode>
                     </container>
                 </row-col>
                 <row-col lg="3" md="3" sm="6">
                     <container style="zenith-card bg-white shadow-1 q-pa-md q-mb-md text-center border-radius-lg">
                         <label text="Cancelled" style="text-grey-7 text-caption"/>
-                        <label text="${cancelledCount}" type="h5" style="text-weight-bold text-red-8 q-my-xs"/>
+                        <render-mode><text type="html,qvt" template="true"><![CDATA[<strong data-kitchen-history-count="cancelled">${cancelledCount}</strong>]]></text></render-mode>
                     </container>
                 </row-col>
             </container-row>
 
             <render-mode><text type="html,qvt" template="true"><![CDATA[
+            <form class="zk-history-filters" method="get" action="${cancelAction?keep_before('/cancelKot')?html}">
+              <label>From<input type="date" name="filterDate" value="${filterDate?html}" required></label>
+              <label>To<input type="date" name="filterThruDate" value="${filterThruDate?html}" required></label>
+              <label>Status<select name="filterStatus"><option value="">All statuses</option>
+                <#list {'KotNew':'New','KotPreparing':'Preparing','KotReady':'Ready','KotServed':'Served','KotCancelled':'Cancelled'} as id,title><option value="${id}" <#if (filterStatus!'') == id>selected</#if>>${title}</option></#list>
+              </select></label>
+              <label>Table<select name="filterTable"><option value="">All tables</option><#list tableOptions as t><option value="${t?html}" <#if (filterTable!'') == t>selected</#if>>${t?html}</option></#list></select></label>
+              <label>Order type<select name="filterOrderType"><option value="">All types</option><option value="Dine In" <#if (filterOrderType!'') == 'Dine In'>selected</#if>>Dine In</option><option value="Take Away" <#if (filterOrderType!'') == 'Take Away'>selected</#if>>Take Away</option></select></label>
+              <label class="zk-history-search">KOT number or item<input name="filterQuery" type="search" value="${(filterQuery!'')?html}" placeholder="Search KOT or item"></label>
+              <button type="submit">Search</button><a href="${cancelAction?keep_before('/cancelKot')?html}">Reset</a>
+            </form>
+            ]]></text></render-mode>
+
+            <render-mode><text type="html,qvt" template="true"><![CDATA[
             <div class="zk-history-actions" id="zk-history-toolbar">
-              <a href="${cancelAction?keep_before('/cancelKot')?html}">Reset filters</a>
-              <label><input type="checkbox" data-kitchen-select-all="true"/> Select all visible</label>
+              <label><input type="checkbox" data-kitchen-select-all="true" aria-label="Select KOTs on this page"/> Select this page</label>
               <span data-kitchen-selected-count="true" aria-live="polite">0 selected</span>
               <#if modCanWrite>
               <button type="button" data-kitchen-bulk="kot" disabled="disabled">Print KOT (Selected)</button>
@@ -151,38 +156,38 @@
                        show-csv-button="true" show-xlsx-button="true">
                 <field name="selected"><default-field title="Select">
                     <render-mode><text type="html,qvt" template="true"><![CDATA[
-                    <input type="checkbox" data-kitchen-select="${k.kotId?html}" aria-label="Select KOT ${k.kotNumber?html}"/>
+                    <input type="checkbox" data-kitchen-select="${k.kotId?html}" data-kitchen-bill-eligible="${(linkedBillIds?seq_contains(k.transactionId!''))?string('true','false')}" aria-label="Select KOT ${(k.kotNumber!k.kotId)?html}"/>
                     ]]></text></render-mode>
                 </default-field></field>
                 <field name="kotNumber"><default-field title="KOT #">
-                    <display default-text="${k.kotId}"/>
-                </default-field></field>
-                <field name="kotDate"><default-field title="Date/Time">
-                    <display format="dd-MM-yyyy HH:mm"/>
+                    <render-mode><text type="html,qvt" template="true"><![CDATA[<#if k.kotNumber?has_content>${k.kotNumber?html}<#else>${k.kotId?html}</#if>]]></text></render-mode>
                 </default-field></field>
                 <field name="tableNumber"><default-field title="Table">
                     <display default-text="-"/>
                 </default-field></field>
-                <field name="waiterName"><default-field title="Waiter">
-                    <display default-text="-"/>
+                <field name="orderType"><default-field title="Order Type">
+                    <render-mode><text type="html,qvt" template="true"><![CDATA[<span data-kitchen-history-type="${k.kotId?html}">${(historyOrderType[k.kotId]!'')?html}</span>]]></text></render-mode>
                 </default-field></field>
-                <field name="terminalName"><default-field title="Terminal">
-                    <display default-text="-"/>
+                <field name="items"><default-field title="Items">
+                    <render-mode><text type="html,qvt" template="true"><![CDATA[<span data-kitchen-history-items="${k.kotId?html}">${(historyItemSummary[k.kotId]!'')?html}</span><small>${historyItemCount[k.kotId]!0} items</small>]]></text></render-mode>
                 </default-field></field>
                 <field name="statusId"><default-field title="Status">
-                    <display-entity entity-name="moqui.basic.StatusItem" key-field-name="statusId" text="${description}"/>
+                    <render-mode><text type="html,qvt" template="true"><![CDATA[<span class="zk-history-status zk-history-status-${k.statusId?html}">${({'KotNew':'New','KotPreparing':'Preparing','KotReady':'Ready','KotServed':'Served','KotCancelled':'Cancelled'}[k.statusId]!k.statusId)?html}</span>]]></text></render-mode>
+                </default-field></field>
+                <field name="kotDate"><default-field title="Created">
+                    <display format="dd-MM-yyyy HH:mm"/>
                 </default-field></field>
                 <field name="printCount"><default-field title="Prints">
                     <render-mode><text type="html,qvt" template="true"><![CDATA[<span data-kitchen-print-count="${k.kotId?html}">${k.printCount!0}</span>]]></text></render-mode>
                 </default-field></field>
-                <field name="printOptions"><default-field title="Print Options">
+                <field name="printOptions"><default-field title="Actions">
                     <render-mode><text type="html,qvt" template="true"><![CDATA[
                     <div class="zk-history-actions">
+                    <button type="button" data-kitchen-print="view" data-kot-id="${k.kotId?html}">View</button>
                     <#if modCanWrite>
                     <button type="button" data-kitchen-print="kot" data-kot-id="${k.kotId?html}">KOT Print</button>
                     <button type="button" data-kitchen-print="bill" data-kot-id="${k.kotId?html}" <#if !(linkedBillIds?seq_contains(k.transactionId!''))>disabled="disabled" title="No finalized customer bill is linked to this KOT."</#if>>Bill Print</button>
                     </#if>
-                    <button type="button" data-kitchen-print="view" data-kot-id="${k.kotId?html}">View</button>
                     </div>
                     ]]></text></render-mode>
                 </default-field></field>
