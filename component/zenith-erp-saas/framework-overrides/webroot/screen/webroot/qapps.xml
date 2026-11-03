@@ -28,8 +28,8 @@ along with this software (see the LICENSE.md file). If not, see
         html_scripts.add('/libs/jquery/jquery.min.js')
         html_scripts.add('/zenithstatic/js/kitchen-display.js?v=1')
         html_scripts.add('/zenithstatic/js/pos-receipt-layout.js?v=2')
-        html_scripts.add('/zenithstatic/js/kitchen-print.js?v=1')
-        html_stylesheets.add('/zenithstatic/css/kitchen-display.css?v=1')
+        html_scripts.add('/zenithstatic/js/kitchen-print.js?v=3')
+        html_stylesheets.add('/zenithstatic/css/kitchen-display.css?v=3')
 
         footer_scripts.add('/zenithstatic/js/qapps-history-bootstrap.js?v=1')
         String instancePurpose = System.getProperty("instance_purpose")

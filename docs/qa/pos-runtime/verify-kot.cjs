@@ -42,16 +42,15 @@ module.exports = async function verifyKot({a,foreign,base,post,rows,count,check}
     printDenied&&Number(rows('kitchen_order_ticket',`kot_id='${ticket.kot_id}'`)[0].print_count)===0,{status:foreignPrint.status()});
   const printPage=await a.c.newPage();
   await printPage.goto(base+'/apps/zenith/pos/Kitchen/KotBilling',{waitUntil:'networkidle'});
-  await printPage.waitForFunction(()=>typeof window.kbPrintKot==='function');
-  await Promise.all([
-    printPage.waitForResponse(r=>r.url().includes('/reprintKot')),
-    printPage.evaluate(id=>{
-      window.__printedHtml=''; window.__printCalls=0;
-      window.open=()=>({document:{write:s=>{window.__printedHtml+=s},close:()=>{}},
-        focus:()=>{},print:()=>{window.__printCalls++},close:()=>{}});
-      window.kbPrintKot(id);
-    },ticket.kot_id)
-  ]);
+  await printPage.locator('#kb-wrap[data-ready=true]').waitFor();
+  await printPage.evaluate(()=>{
+    window.__printedHtml='';window.__printCalls=0;
+    window.open=()=>({document:{open:()=>{},write:s=>{window.__printedHtml+=s},close:()=>{},images:[]},
+      focus:()=>{},print:()=>{window.__printCalls++},close:()=>{}});
+  });
+  await printPage.locator('#kb-history-open').click();
+  await printPage.locator('[data-kitchen-print="kot"][data-kot-id="'+ticket.kot_id+'"]').click();
+  await printPage.waitForFunction(()=>document.getElementById('zk-print-status')?.textContent.includes('1 print request'));
   await printPage.waitForFunction(()=>window.__printedHtml.includes('Disposable POS A P18'));
   check('Print on an existing KOT records one shop-owned reprint and opens the slip',
     Number(rows('kitchen_order_ticket',`kot_id='${ticket.kot_id}'`)[0].print_count)===1&&
@@ -78,9 +77,10 @@ module.exports = async function verifyKot({a,foreign,base,post,rows,count,check}
   await post('Kitchen/Tables','createTable',{facilityId:'POS_QA_B_FAC',tableNumber:foreignTable,seatingCapacity:'2'},foreign);
   const menu=await a.c.newPage();
   await menu.goto(base+'/apps/zenith/pos/Kitchen/KotBilling',{waitUntil:'networkidle'});
-  await menu.waitForFunction(()=>typeof window.kbAdd==='function');
+  await menu.locator('#kb-wrap[data-ready=true]').waitFor();
   check('KOT table picker contains only active-shop tables',await menu.locator('#kb-table').locator('option').allTextContents().then(labels=>labels.some(x=>x.includes(ownTable))&&!labels.some(x=>x.includes(foreignTable))));
-  await menu.evaluate(()=>window.kbAdd('POS_QA_A_P18'));
+  await menu.locator('#kb-mode').selectOption('RETAIL');
+  await menu.locator('#kb-search').fill('POS_QA_A_P18');await menu.locator('#kb-search').press('Enter');
   await menu.locator('#kb-instr').fill('No onion');
   await Promise.all([menu.waitForNavigation({waitUntil:'networkidle'}),menu.locator('#kb-draft').click()]);
   const draft=kotRows().find(row=>!before.has(row.kot_id)&&row.status_id==='KotDraft');
@@ -90,8 +90,8 @@ module.exports = async function verifyKot({a,foreign,base,post,rows,count,check}
   check('another shop cannot load the draft cart',await foreignDraft.locator('#kb-data').getAttribute('data-draftid')==='');
   await foreignDraft.close();
   await menu.goto(base+`/apps/zenith/pos/Kitchen/KotBilling?loadDraft=${draft.kot_id}`,{waitUntil:'networkidle'});
-  await menu.waitForFunction(()=>typeof window.kbSend==='function');
-  check('Load Draft restores the browser cart',await menu.locator('#kb-badge').innerText()==='Editing Draft'&&await menu.locator('#kb-cart').innerText().then(x=>x.includes('Disposable POS A P18')));
+  await menu.locator('#kb-wrap[data-ready=true]').waitFor();
+  check('Load Draft restores the browser cart',await menu.locator('#kb-badge').innerText()==='Editing Held Order'&&await menu.locator('#kb-cart').innerText().then(x=>x.includes('Disposable POS A P18')));
   await Promise.all([menu.waitForNavigation({waitUntil:'networkidle'}),menu.locator('#kb-send').click()]);
   const sent=kotRows().find(row=>!before.has(row.kot_id)&&row.status_id==='KotNew'&&row.kot_id!==ticket.kot_id);
   check('Send to Kitchen replaces the draft and keeps ticket numbers unique',!!sent&&count('kitchen_order_ticket',`kot_id='${draft.kot_id}'`)===0&&sent.kot_number!==ticket.kot_number&&count('kot_item',`kot_id='${sent.kot_id}'`)===1,{sent});
