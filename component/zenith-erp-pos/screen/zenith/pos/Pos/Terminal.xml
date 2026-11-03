@@ -289,13 +289,14 @@
 
     <transition name="exportPosCatalog" require-session-token="false">
         <actions><script><![CDATA[
-            def res = ec.service.sync().name("zenith.pos.PosServices.export#PosCatalog").parameters([organizationPartyId: (ec.user.getPreference('ACTIVE_ORGANIZATION')),terminalId:ec.web.parameters.terminalId]).call()
-            ec.web.sendJsonResponse([products: res.products ?: [], customers: res.customers ?: []])
+            if (!ec.web.parameters.terminalId) {ec.web.sendJsonResponse([products:[],customers:[]]);return}
+            def res = ec.service.sync().name('zenith.pos.PosOfflineServices.export#Workspace').parameters([terminalId:ec.web.parameters.terminalId]).call()
+            ec.web.sendJsonResponse(res?.workspace ?: [products:[],customers:[]])
         ]]></script></actions>
         <default-response type="none"/>
     </transition>
 
-    <transition name="syncOfflineTransactions" require-session-token="false">
+    <transition name="syncOfflineTransactions" method="post" begin-transaction="false">
         <actions><script><![CDATA[
             def tid = ec.web.parameters.terminalId
             def txns = ec.web.parameters.transactions
@@ -303,7 +304,7 @@
             if (!(txns instanceof List)) txns = [txns]
             def res = ec.service.sync().name("zenith.pos.PosServices.sync#OfflineTransactions")
                 .parameters([terminalId: tid, transactions: txns]).call()
-            ec.web.sendJsonResponse([syncedCount: res.syncedCount ?: 0, syncedIds:res.syncedIds ?: [], failedCount:res.failedCount ?: 0])
+            ec.web.sendJsonResponse([syncedCount: res.syncedCount ?: 0, syncedIds:res.syncedIds ?: [], failedCount:res.failedCount ?: 0,failures:res.failures ?: []])
         ]]></script></actions>
         <default-response type="none"/>
     </transition>
@@ -2944,6 +2945,8 @@
 
 
                         grand:txn?.grandTotal ?: 0, pay:txn?.payableAmount ?: 0, paid:txn?.paidAmount ?: 0, round:txn?.roundOff ?: 0,
+                        sourceRevision:txn ? ec.service.sync().name('zenith.pos.PosOfflineServices.get#DraftRevision').parameter('transactionId',txn.transactionId).call().revision : '',
+                        originState:txn?.originRegionGeoId ?: '',destinationState:txn?.destinationRegionGeoId ?: '',
                         customer:txn?.customerName ?: '', customerPhone:txn?.customerPhone ?: '', customerPartyId:txn?.customerPartyId ?: '',
                         customerCreditDays:txn?.customerPartyId ? ec.entity.find('mantle.party.Party').condition('partyId',txn.customerPartyId).one()?.creditDays : null,
                         creditDateToday:ec.l10n.format(ec.user.nowTimestamp,'yyyy-MM-dd'), creditTimeZone:ec.user.timeZone.ID,
@@ -5857,6 +5860,7 @@ window.sendWhatsAppWithPdf=function() {
         <form id="cartInlineAddForm" method="post" action="Terminal/addItem" style="display:none">
             <input type="hidden" name="posTerminalId" value="${(session.terminalId)!''}"/>
             <input type="hidden" name="posOrganizationPartyId" value="${(session.organizationPartyId)!''}"/>
+            <input type="hidden" id="pos-offline-user" value="${ec.user.userId!''}"/>
 
 
 
