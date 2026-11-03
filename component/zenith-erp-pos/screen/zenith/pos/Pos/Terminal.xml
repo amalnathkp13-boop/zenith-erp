@@ -1427,7 +1427,7 @@
 
 
 
-    <transition name="lookupProducts" begin-transaction="true">
+    <transition name="lookupProducts" begin-transaction="false">
 
 
 
@@ -1444,7 +1444,6 @@
 
 
                 if (term) {
-                    def posOrg = ec.service.sync().name('zenith.barcode.BarcodeServices.get#AuthorizedActiveOrganization').call().activeOrgId
                     def products = ec.service.sync().name('zenith.pos.PosCheckoutServices.search#PosProducts')
                         .parameters([term:term,pageSize:60]).call().products ?: []
                     products.each { p ->
@@ -2347,9 +2346,28 @@
                         }
                         return
                     } else if (action == 'billHistory') {
-                        def search = p.search ?: ''
-                        def offset = p.offset ? (p.offset as int) : 0
-                        def limit = p.histLimit ? (p.histLimit as int) : 20
+                        def search = (p.search ?: '').toString().trim().take(150)
+                        def offset = Math.max(0, p.offset ? (p.offset as int) : 0)
+                        def limit = Math.max(1, Math.min(100, p.histLimit ? (p.histLimit as int) : 20))
+                        java.sql.Timestamp historyStart = null, historyEnd = null
+                        boolean historyEndExclusive = !p.historyToTime
+                        if (p.historyFromDate || p.historyToDate || p.historyFromTime || p.historyToTime) {
+                            try {
+                                if (!p.historyFromDate || !p.historyToDate) throw new IllegalArgumentException()
+                                def from = java.time.LocalDate.parse(p.historyFromDate.toString())
+                                def to = java.time.LocalDate.parse(p.historyToDate.toString())
+                                def zone = ec.user.timeZone.toZoneId()
+                                def start = from.atTime(p.historyFromTime ? java.time.LocalTime.parse(p.historyFromTime.toString()) : java.time.LocalTime.MIDNIGHT)
+                                def end = to.atTime(p.historyToTime ? java.time.LocalTime.parse(p.historyToTime.toString()) : java.time.LocalTime.MAX)
+                                if (end.isBefore(start)) throw new IllegalArgumentException()
+                                historyStart = java.sql.Timestamp.from(start.atZone(zone).toInstant())
+                                historyEnd = java.sql.Timestamp.from((historyEndExclusive ? to.plusDays(1).atStartOfDay(zone) : end.atZone(zone)).toInstant())
+                                if (historyEnd.before(historyStart)) throw new IllegalArgumentException()
+                            } catch (Exception ignored) {
+                                ec.web.sendJsonResponse([success:false, error:'Enter both dates and a valid start and end time. The end must be on or after the start.'])
+                                return
+                            }
+                        }
                         // History belongs to the chosen terminal; owner dashboards aggregate shops separately.
                         def histTermId = null
                         if (sessionId) {
@@ -2369,6 +2387,10 @@
                         if (posTerminalRestricted) {
                             txnBase.condition('operatorPartyId',ec.user.userAccount?.partyId)
                         }
+                        if (historyStart) {
+                            txnBase.condition('entryDate','greater-equals',historyStart)
+                                .condition('entryDate',historyEndExclusive ? 'less' : 'less-equals',historyEnd)
+                        }
                         BigDecimal searchAmt = null
                         if (search) {
                             try { searchAmt = new BigDecimal(search) } catch (Exception ignored) {}
@@ -2380,7 +2402,7 @@
                             txnBase.condition(_ecf.makeCondition(_or, org.moqui.entity.EntityCondition.OR))
                         }
                         def totalCount = txnBase.count()
-                        def txns = txnBase.orderBy("-entryDate").offset(offset).limit(limit).list()
+                        def txns = txnBase.orderBy("-entryDate,-transactionId").offset(offset).limit(limit).list()
                         def bills = []
                         txns.each { tx ->
                             def items = ec.entity.find("zenith.erp.pos.PosTransactionItem")

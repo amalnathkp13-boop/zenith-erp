@@ -543,71 +543,60 @@ window._posOffline = (function () {
         );
         return writeTail;
     }
+    var catalogIndex = [], catalogRefresh;
+    function catalogIdentity(config) {
+        var user = (document.getElementById('pos-offline-user') || {}).value || '';
+        return config && config.version === 2 && config.organizationPartyId === orgId &&
+            config.terminalId === tCtx().terminalId && config.userId === user;
+    }
+    function installCatalog(config) {
+        settings = config || {};
+        catalog = {};
+        catalogIndex = (settings.products || []).map(function (p) {
+            catalog[p.productId] = p;
+            return { product:p, text:[p.name, p.barcode, p.productId].join(' ').toLowerCase() };
+        });
+    }
     function loadCatalog() {
         return stateRead('config:' + scope).then(function (config) {
-            settings = config || {};
-            catalog = {};
-            (settings.products || []).forEach(function (p) {
-                catalog[p.productId] = p;
-            });
+            installCatalog(catalogIdentity(config) ? config : null);
         });
     }
     function cacheCatalog() {
         if (localEditing) return Promise.resolve(0);
-        return fetch('Terminal/exportPosCatalog', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ terminalId: tCtx().terminalId }),
-            credentials: 'same-origin',
-        })
-            .then(function (r) {
-                if (!r.ok) throw Error('Catalog unavailable');
-                return r.json();
-            })
-            .then(function (d) {
-                var user = (document.getElementById('pos-offline-user') || {}).value || '';
-                if (
-                    d.version !== 2 ||
-                    d.organizationPartyId !== orgId ||
-                    d.terminalId !== tCtx().terminalId ||
-                    d.userId !== user
-                )
-                    throw Error('Offline catalog identity differs');
-                d.products = (d.products || []).map(function (p) {
-                    return Object.assign({}, p, {
-                        name: p.productName || p.productId,
-                        price: Number(p.listPrice || 0),
-                        uom: p.uom || '',
-                    });
+        if (catalogRefresh) return catalogRefresh;
+        catalogRefresh = fetch('Terminal/exportPosCatalog', {
+            method:'POST', headers:{ 'Content-Type':'application/json' },
+            body:JSON.stringify({ terminalId:tCtx().terminalId }), credentials:'same-origin',
+        }).then(function (response) {
+            if (!response.ok) throw Error('Catalog unavailable');
+            return response.json();
+        }).then(function (config) {
+            if (!catalogIdentity(config)) throw Error('Offline catalog identity differs');
+            config.products = (config.products || []).map(function (p) {
+                return Object.assign({}, p, {
+                    name:p.productName || p.productId, price:Number(p.listPrice || 0), uom:p.uom || '',
                 });
-                return stateWrite('config:' + scope, d).then(function () {
-                    var form = document.getElementById('cartInlineAddForm'),
-                        data = new URLSearchParams(new FormData(form));
-                    data.set('action', 'refresh');
-                    return fetch('Terminal/ajaxCart', {
-                        method: 'POST',
-                        body: data,
-                        credentials: 'same-origin',
-                    })
-                        .then(function (r) {
-                            if (!r.ok) throw Error('Draft snapshot unavailable');
-                            return r.json();
-                        })
-                        .then(function (snapshotData) {
-                            if (!snapshotData.success) throw Error('Draft snapshot unavailable');
-                            remember(snapshotData);
-                            settings = d;
-                            catalog = {};
-                            d.products.forEach(function (p) {
-                                catalog[p.productId] = p;
-                            });
-                            return d.products.length;
-                        });
-                });
-            })
-            .catch(function () {
-                return 0;
             });
+            return stateWrite('config:' + scope, config).then(function () {
+                installCatalog(config);
+                var form = document.getElementById('cartInlineAddForm');
+                var source = form && form.querySelector('[name=transactionId]');
+                var id = source && source.value;
+                if (!id || localEditing || (snapshot && snapshot.transactionId === id)) return config.products.length;
+                var data = new URLSearchParams(new FormData(form));
+                data.set('action', 'refresh');
+                return fetch('Terminal/ajaxCart', {
+                    method:'POST', body:data, credentials:'same-origin',
+                }).then(function (response) {
+                    if (!response.ok) return null;
+                    return response.json();
+                }).then(function (result) {
+                    if (!localEditing && source.value === id && result && result.success && result.transactionId === id) remember(result);
+                }).catch(function () {}).then(function () { return config.products.length; });
+            });
+        }).catch(function () { return 0; }).finally(function () { catalogRefresh = null; });
+        return catalogRefresh;
     }
     function ensureDb() {
         return db
@@ -1046,14 +1035,12 @@ window._posOffline = (function () {
             .trim()
             .split(/\s+/);
         if (!terms[0]) return [];
-        return Object.values(catalog)
-            .filter(function (p) {
-                var text = [p.name, p.barcode, p.productId].join(' ').toLowerCase();
-                return terms.every(function (s) {
-                    return text.indexOf(s) >= 0;
-                });
-            })
-            .slice(0, 50);
+        var found = [];
+        for (var i = 0; i < catalogIndex.length && found.length < 50; i++) {
+            var entry = catalogIndex[i];
+            if (terms.every(function (token) { return entry.text.indexOf(token) >= 0; })) found.push(entry.product);
+        }
+        return found;
     }
     function scan(code) {
         var results = search(code);
@@ -1910,9 +1897,9 @@ window._posOffline = (function () {
         setTimeout(function() { t.style.opacity = '0'; setTimeout(function() { t.remove(); }, 400); }, 3500);
     }
         /* === Bill History Panel === */
-        var historyOverlay = null;
+        var historyOverlay = null, historyCriteria = {}, historyRequest, historyVersion = 0;
         function openBillHistory(search) {
-            if (historyOverlay) { historyOverlay.remove(); historyOverlay = null; }
+            closeHistory(); historyCriteria = {};
             var ov = document.createElement('div');
             ov.id = 'pos-history-overlay'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-label','Bill history');
             historyOverlay = ov;
@@ -1922,24 +1909,56 @@ window._posOffline = (function () {
             panel.innerHTML = '<div style="padding:16px 20px;background:#7C3AED;color:#fff;display:flex;justify-content:space-between;align-items:center">'
                 + '<span style="font-size:18px;font-weight:700">&#128196; Bill History</span>'
                 + '<button id="hist-close" style="background:none;border:none;color:#fff;font-size:24px;cursor:pointer;padding:0 4px">&times;</button></div>'
-                + '<div style="padding:12px 20px;border-bottom:1px solid #e0e0e0">'
-                + '<input id="hist-search" type="text" placeholder="Search by bill number, amount, or customer..." value="'+(search||'')+'" style="width:100%;padding:10px 14px;border:1px solid #ccc;border-radius:8px;font-size:14px;box-sizing:border-box;outline:none"/></div>'
+                + '<div style="padding:12px 20px;border-bottom:1px solid #e0e0e0;max-height:48vh;overflow:auto">'
+                + '<div style="display:flex;gap:8px"><input id="hist-search" type="search" aria-label="Search bills" placeholder="Search by bill number, amount, or customer..." style="flex:1;min-width:0;padding:10px 14px;border:1px solid #ccc;border-radius:8px;font-size:14px"/>'
+                + '<button id="hist-filter" type="button" aria-expanded="false" aria-controls="hist-filter-form" style="border:1px solid #7C3AED;border-radius:8px;background:white;color:#6D28D9;padding:0 12px">Filter</button></div>'
+                + '<form id="hist-filter-form" hidden style="padding-top:12px"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(124px,1fr));gap:8px">'
+                + '<label>From Date<input type="date" name="historyFromDate" required style="display:block;width:100%"/></label>'
+                + '<label>To Date<input type="date" name="historyToDate" required style="display:block;width:100%"/></label>'
+                + '<label>From Time<input type="time" name="historyFromTime" style="display:block;width:100%"/></label>'
+                + '<label>To Time<input type="time" name="historyToTime" style="display:block;width:100%"/></label></div>'
+                + '<p id="hist-filter-error" role="alert" style="margin:6px 0;color:#b91c1c" hidden></p>'
+                + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px"><button id="hist-filter-reset" type="button">Reset</button><button type="submit">Apply Filter</button></div></form></div>'
                 + '<div id="hist-list" style="flex:1;overflow-y:auto;padding:8px 12px"><div style="text-align:center;padding:40px;color:#999">Loading...</div></div>';
             ov.appendChild(panel);
             document.body.appendChild(ov);
-            try { var _cs=getComputedStyle(ov); console.log('[posterm] overlay appended inDOM=', document.body.contains(ov), 'w=', ov.offsetWidth, 'h=', ov.offsetHeight, 'z=', _cs.zIndex, 'display=', _cs.display, 'pos=', _cs.position, 'parent=', ov.parentNode && ov.parentNode.tagName); } catch(e){ console.log('[posterm] overlay diag err', e); }
             ov.addEventListener('click', function(ev) { if (ev.target === ov) closeHistory(); });
             panel.querySelector('#hist-close').addEventListener('click', closeHistory);
             var searchInput = panel.querySelector('#hist-search');
-            var searchTimer = null;
+            searchInput.value = search || '';
+            var filter = panel.querySelector('#hist-filter');
+            var form = panel.querySelector('#hist-filter-form');
+            var error = panel.querySelector('#hist-filter-error');
+            var searchTimer;
+            function reload() { clearTimeout(searchTimer); loadHistoryList(searchInput.value); }
+            filter.addEventListener('click', function () {
+                form.hidden = !form.hidden;
+                filter.setAttribute('aria-expanded', String(!form.hidden));
+            });
+            form.addEventListener('submit', function (event) {
+                event.preventDefault();
+                var values = Object.fromEntries(new FormData(form));
+                var from = values.historyFromDate + 'T' + (values.historyFromTime || '00:00');
+                var to = values.historyToDate + 'T' + (values.historyToTime || '23:59');
+                error.hidden = from <= to;
+                if (!error.hidden) { error.textContent = 'The end must be on or after the start.'; return; }
+                historyCriteria = values; filter.textContent = 'Filter •'; reload();
+            });
+            panel.querySelector('#hist-filter-reset').addEventListener('click', function () {
+                form.reset(); error.hidden = true; historyCriteria = {}; filter.textContent = 'Filter'; reload();
+            });
             searchInput.addEventListener('input', function() {
                 clearTimeout(searchTimer);
-                searchTimer = setTimeout(function() { loadHistoryList(searchInput.value); }, 400);
+                if (historyRequest) historyRequest.abort();
+                ++historyVersion;
+                searchTimer = setTimeout(function() { if (searchInput.isConnected) reload(); }, 200);
             });
             searchInput.focus();
             loadHistoryList(search || '');
         }
         function closeHistory() {
+            ++historyVersion;
+            if (historyRequest) historyRequest.abort();
             if (historyOverlay) { historyOverlay.remove(); historyOverlay = null; }
         }
         // Absolute URL to the Terminal/ajaxCart endpoint, tolerant of a TRAILING SLASH on the current page
@@ -1956,7 +1975,7 @@ window._posOffline = (function () {
             if (i >= 0) return path.slice(0, i) + '/zenith/pos/Terminal/ajaxCart';
             return path.slice(0, path.lastIndexOf('/')) + '/Terminal/ajaxCart';  // fallback: sibling of current screen
         }
-        function historyPost(params) {
+        function historyPost(params, signal) {
             if (CTX.sessionId) params.sessionId = CTX.sessionId;
             if (CTX.terminalId) params.terminalId = CTX.terminalId;
             // Start-session screen: no active session, so scope bill history by the terminal chosen
@@ -1970,7 +1989,7 @@ window._posOffline = (function () {
             var send = params.action === 'amendBill' ? function(url, options) { return window.PosFreeItems.amendmentFetch(url, options, params, histToken()); } : fetch;
             return send(ajaxCartUrl(), {   // ZE-POS-0211: absolute (was relative 'Terminal/ajaxCart' -> broke on a trailing-slash page URL)
                 method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                body: new URLSearchParams(params), credentials: 'same-origin'
+                body: new URLSearchParams(params), credentials: 'same-origin', signal: signal
             }).then(function(r) { return r.json(); });
         }
         /* === Auto-print a REVISED receipt (with EDITED note) after a bill is amended === */
@@ -2013,16 +2032,27 @@ window._posOffline = (function () {
             iDoc.open(); iDoc.write(html); iDoc.close();
         }
         function histEsc(value) { return String(value == null ? '' : value).replace(/[&<>"']/g, function(c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
-        function loadHistoryList(search) {
+        function loadHistoryList(search, offset) {
             var listEl = document.getElementById('hist-list');
             if (!listEl) return;
-            listEl.innerHTML = '<div style="text-align:center;padding:40px;color:#999">Loading...</div>';
-            historyPost({action:'billHistory', search:search||''}).then(function(d) {
-                if (!d || !d.success || !d.bills || d.bills.length === 0) {
-                    listEl.innerHTML = '<div style="text-align:center;padding:40px;color:#999">'+(search ? 'No bills match "'+histEsc(search)+'"' : 'No completed bills in this session')+'</div>';
+            offset = offset || 0;
+            if (historyRequest) historyRequest.abort();
+            historyRequest = new AbortController();
+            var version = ++historyVersion;
+            var filtered = !!historyCriteria.historyFromDate;
+            function current() { return version === historyVersion && listEl.isConnected; }
+            listEl.innerHTML = '<div role="status" style="text-align:center;padding:40px;color:#999">Loading...</div>';
+            historyPost(Object.assign({action:'billHistory', search:search||'', offset:offset}, historyCriteria), historyRequest.signal).then(function(d) {
+                if (!current()) return;
+                if (!d || !d.success) {
+                    if (!d || !d.error) throw new Error('History unavailable');
+                    listEl.textContent = d.error; return;
+                }
+                if (!d.bills || d.bills.length === 0) {
+                    listEl.textContent = filtered ? 'No bills found for the selected date and time.' : (search ? 'No bills match your search.' : 'No completed bills found.');
                     return;
                 }
-                var h = '<div style="font-size:12px;color:#999;padding:4px 8px;margin-bottom:4px">'+d.total+' bill'+(d.total>1?'s':'')+' found</div>';
+                var h = '<div role="status" style="font-size:12px;color:#666;padding:4px 8px;margin-bottom:4px">'+d.total+' bill'+(d.total>1?'s':'')+' found</div>';
                 d.bills.forEach(function(bill) {
                     var payStr = (bill.payments||[]).map(function(p) { return p.method; }).join(', ');
                     var edited = bill.amendCount > 0 ? '<span style="background:#ff9800;color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:6px">EDITED ('+bill.amendCount+')</span>' : '';
@@ -2035,7 +2065,16 @@ window._posOffline = (function () {
                         + '<span>'+histEsc(bill.customer)+' &middot; '+bill.itemCount+' item'+(bill.itemCount>1?'s':'')+' &middot; '+histEsc(payStr)+'</span>'
                         + '</div><button type="button" class="hist-reprint" style="grid-column:2;grid-row:1 / span 2;align-self:center;padding:9px 14px;border:1px solid #7C3AED;border-radius:8px;color:#7C3AED;background:#fff;font-weight:700;cursor:pointer">&#128424; Reprint</button></div>';
                 });
+                if (offset || offset + d.bills.length < d.total) {
+                    h += '<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0">'
+                        + (offset ? '<button type="button" id="hist-prev">Previous</button>' : '<span></span>')
+                        + (offset + d.bills.length < d.total ? '<button type="button" id="hist-next">Next</button>' : '') + '</div>';
+                }
                 listEl.innerHTML = h;
+                listEl.scrollTop = 0;
+                var prev = listEl.querySelector('#hist-prev'), next = listEl.querySelector('#hist-next');
+                if (prev) prev.onclick = function() { loadHistoryList(search, Math.max(0, offset - 20)); };
+                if (next) next.onclick = function() { loadHistoryList(search, offset + d.bills.length); };
                 listEl.querySelectorAll('.hist-bill-row').forEach(function(row) {
                     row.querySelector('.hist-reprint').addEventListener('click', function(event) {
                         event.stopPropagation();
@@ -2048,11 +2087,13 @@ window._posOffline = (function () {
                         if (bill) openCartEditor(bill);
                     });
                 });
-            }).catch(function() {
+            }).catch(function(failure) {
+                if (!current() || failure.name === 'AbortError') return;
+                if (filtered) { listEl.textContent = 'Reconnect to search saved bills by date and time.'; return; }
                 // ZE-POS-017: while offline, show the bills saved on THIS device (pending sync) instead of
                 // a bare connection error. Falls back to the error only when there is nothing queued.
                 var showErr = function() {
-                    if (listEl) listEl.innerHTML = '<div style="text-align:center;padding:40px;color:#c62828">Couldn&#39;t load bill history &mdash; check your connection and try again.</div>';
+                    if (current()) listEl.innerHTML = '<div style="text-align:center;padding:40px;color:#c62828">Couldn&#39;t load bill history &mdash; check your connection and try again.</div>';
                 };
                 if (window._posOffline && window._posOffline.getQueue) {
                     window._posOffline.getQueue().then(function(q) {
@@ -2065,7 +2106,7 @@ window._posOffline = (function () {
                             return (x.items || []).some(function(it) { return (it.name || '').toLowerCase().indexOf(s) !== -1; });
                         });
                         var h = '<div style="background:#c62828;color:#fff;padding:8px 12px;border-radius:8px;font-size:12px;font-weight:700;margin-bottom:8px">&#9888; OFFLINE &mdash; ' + q.length + ' bill' + (q.length > 1 ? 's' : '') + ' saved on this device; they sync and get bill numbers when back online</div>';
-                        if (!rows.length) h += '<div style="text-align:center;padding:30px;color:#999">No offline bills match "' + search + '"</div>';
+                        if (!rows.length) h += '<div style="text-align:center;padding:30px;color:#999">No offline bills match "' + histEsc(search) + '"</div>';
                         rows.forEach(function(x) {
                             var when = ''; try { when = new Date(x.ts).toLocaleString(); } catch (e) { when = x.ts || ''; }
                             var n = (x.items || []).reduce(function(a, it) { return a + (Number(it.qty) || 0); }, 0);
@@ -2074,11 +2115,11 @@ window._posOffline = (function () {
                                 + '<span style="background:#c62828;color:#fff;padding:1px 8px;border-radius:4px;font-size:10px;font-weight:700">OFFLINE &mdash; PENDING SYNC</span>'
                                 + '<span style="font-weight:800;font-size:16px;color:#2e7d32">&#8377;' + Number(x.total || 0).toFixed(2) + '</span></div>'
                                 + '<div style="grid-column:1;display:flex;flex-wrap:wrap;gap:4px 12px;justify-content:space-between;font-size:12px;color:#777">'
-                                + '<span>' + when + '</span>'
-                                + '<span>' + (x.items || []).length + ' item' + ((x.items || []).length !== 1 ? 's' : '') + ' &middot; qty ' + n + ' &middot; ' + (x.paymentMethod || '') + '</span>'
+                                + '<span>' + histEsc(when) + '</span>'
+                                + '<span>' + (x.items || []).length + ' item' + ((x.items || []).length !== 1 ? 's' : '') + ' &middot; qty ' + n + ' &middot; ' + histEsc(x.paymentMethod) + '</span>'
                                 + '</div></div>';
                         });
-                        if (listEl) listEl.innerHTML = h;
+                        if (current()) listEl.innerHTML = h;
                     }).catch(showErr);
                 } else showErr();
             });
@@ -5655,7 +5696,7 @@ window.posToggleFullscreen = function() {
         var si = document.getElementById('cartInlineSearch');
         var dd = document.getElementById('cartSearchDropdown');
         if (!si || !dd) { setTimeout(initCartSearch, 300); return; }
-        var dt, aidx = -1, keyTimes = [], searchVersion = 0, searchAbort;
+        var dt, aidx = -1, keyTimes = [], searchVersion = 0, searchAbort, gridSearchActive = false;
         if (si.dataset.posSearchBound) return;
         si.dataset.posSearchBound = 'true';
         function resetSearch() {
@@ -5664,42 +5705,61 @@ window.posToggleFullscreen = function() {
             if (searchAbort) searchAbort.abort();
             dd.replaceChildren(); dd.style.display = 'none'; aidx = -1;
         }
-        function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+        function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+        }); }
+        function resetGridSearch() {
+            if (gridSearchActive && window._gridSearch) window._gridSearch('');
+            gridSearchActive = false;
+        }
         // A physical barcode scanner emits keys far faster (<50ms apart) than a human types.
         function isScan() { if (keyTimes.length < 3) return false; var avg = (keyTimes[keyTimes.length - 1] - keyTimes[0]) / (keyTimes.length - 1); return avg < 160; }  /* ZE-BC-090: was 50ms — too tight for Safari/Edge Bluetooth-HID delivery (scans misread as typing). Chrome is ~20ms so unaffected; server scanAdd also resolves by name, so a misclassified fast-type still finds the product. */
         si.addEventListener('keydown', function(e) { if (e.key && e.key.length === 1) { keyTimes.push(Date.now()); if (keyTimes.length > 30) keyTimes.shift(); } });  /* ZE-BC-090: was 'keypress' (deprecated + fires unreliably for HID input in Safari/Edge); keydown fires consistently — track printable keys only. */
-        si.addEventListener('input', function() {
-            var t = this.value; resetSearch(); var version = searchVersion;
-            if (window._gridSearch) {
-                clearTimeout(window._gridSyncTimer);
-                if (!t.trim()) window._gridSearch('');
-                else window._gridSyncTimer = setTimeout(function() { if (version === searchVersion) window._gridSearch(t); }, 600);
+        function renderResults(data, text, version) {
+            if (version !== searchVersion || si.value !== text || !si.isConnected) return;
+            if (!data.length) {
+                dd.innerHTML = '<div style="padding:10px;color:#999;font-size:13px;text-align:center">No products found</div>';
+            } else {
+                dd.innerHTML = data.map(function (p) {
+                    return '<div class="cart-dd-item" data-pid="' + esc(p.productId) + '" data-price="' + Number(p.mrpAmount || 0) + '" data-name="' + esc(p.productName) + '" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #eee;font-size:14px;background:#fff">'
+                        + '<span class="dd-price" style="float:right;color:#e53935;font-weight:bold;font-size:14px">' + esc(p.mrpAmount) + '</span>'
+                        + '<span class="dd-name" style="font-weight:600;color:#000">' + esc(p.productName) + '</span>'
+                        + '<div class="dd-code" style="font-size:12px;color:#555;margin-top:2px">' + esc(p.pseudoId) + '</div></div>';
+                }).join('');
             }
-            if (!t.trim()) { keyTimes = []; return; }
+            dd.style.display = 'block'; aidx = -1;
+        }
+        si.addEventListener('input', function(event) {
+            var text = this.value; resetSearch(); var version = searchVersion;
+            if (event.isComposing) return;
+            if (!text.trim()) { keyTimes = []; resetGridSearch(); return; }
+            var offline = window._posOffline;
+            if (offline && offline.active()) {
+                renderResults(offline.search(text).map(function (p) {
+                    return {productId:p.productId,productName:p.name,mrpAmount:p.price,pseudoId:p.barcode};
+                }), text, version);
+                return;
+            }
+            var grid = document.querySelector('.pos-product-grid');
+            if (window._gridSearch && grid && grid.getClientRects().length) {
+                window._gridSyncTimer = setTimeout(function() {
+                    if (version === searchVersion) { gridSearchActive = true; window._gridSearch(text); }
+                }, 450);
+            }
             dt = setTimeout(function() {
                 var tk = (document.querySelector('#cartInlineAddForm [name=moquiSessionToken]') || {}).value || '';
                 searchAbort = new AbortController();
-                (window._posOffline&&window._posOffline.active()?Promise.resolve(window._posOffline.search(t).map(function(p){return {productId:p.productId,productName:p.name,mrpAmount:p.price,pseudoId:p.barcode};})):fetch('Terminal/lookupProducts', {
-                    signal: searchAbort.signal,
-                    method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                    body: 'term=' + encodeURIComponent(t) + '&moquiSessionToken=' + encodeURIComponent(tk), credentials: 'same-origin'
-                }).then(function(r) { if (!r.ok) throw new Error('Product search unavailable'); return r.json(); })).then(function(data) {
-                    if (version !== searchVersion || si.value !== t || !si.isConnected) return;
-                    if (!data || data.length === 0) {
-                        dd.innerHTML = '<div style="padding:10px;color:#999;font-size:13px;text-align:center">No products found</div>';
-                        dd.style.display = 'block'; return;
-                    }
-                    var h = '';
-                    for (var i = 0; i < data.length; i++) {
-                        var p = data[i];
-                        h += '<div class="cart-dd-item" data-pid="' + esc(p.productId) + '" data-price="' + p.mrpAmount + '" data-name="' + esc(p.productName || '').replace(/"/g, '&quot;') + '" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #eee;font-size:14px;background:#fff">';
-                        h += '<span class="dd-price" style="float:right;color:#e53935;font-weight:bold;font-size:14px">' + esc('' + p.mrpAmount) + '</span>';
-                        h += '<span class="dd-name" style="font-weight:600;color:#000;font-size:14px">' + esc(p.productName || '') + '</span>';
-                        h += '<div class="dd-code" style="font-size:12px;color:#555;margin-top:2px">' + esc(p.pseudoId || '') + '</div></div>';
-                    }
-                    dd.innerHTML = h; dd.style.display = 'block'; aidx = -1;
-                }).catch(function() { if (version === searchVersion) { dd.replaceChildren(); dd.style.display = 'none'; } });
-            }, 250);
+                fetch('Terminal/lookupProducts', {
+                    signal:searchAbort.signal, method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+                    body:'term=' + encodeURIComponent(text) + '&moquiSessionToken=' + encodeURIComponent(tk), credentials:'same-origin'
+                }).then(function(r) {
+                    if (!r.ok) throw new Error('Product search unavailable');
+                    return r.json();
+                }).then(function(rows) {
+                    if (!Array.isArray(rows) || version !== searchVersion) return;
+                    renderResults(rows, text, version);
+                }).catch(function() {});
+            }, 100);
         });
         si.addEventListener('keydown', function(e) {
             var items = dd.querySelectorAll('.cart-dd-item');
@@ -5718,7 +5778,7 @@ window.posToggleFullscreen = function() {
                     if (window._posAjax) window._posAjax(items[0].dataset.pid, items[0].dataset.price, items[0].dataset.name);
                 }
                 resetSearch(); si.value = ''; si.focus();
-                if (window._gridSearch) window._gridSearch('');
+                resetGridSearch();
                 keyTimes = [];
             }
             else if (e.key === 'Escape') { resetSearch(); }
@@ -5730,7 +5790,7 @@ window.posToggleFullscreen = function() {
             if (window._posAjax) {
                 window._posAjax(item.dataset.pid, item.dataset.price, item.dataset.name);
                 resetSearch(); si.value = ''; si.focus();
-                if (window._gridSearch) window._gridSearch('');
+                resetGridSearch();
                 return;
             }
         });
