@@ -1,0 +1,282 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
+    <service verb="mark" noun="CatalogChanged" authenticate="true">
+        <in-parameters><parameter name="organizationPartyId" required="true"/></in-parameters>
+        <actions><script><![CDATA[
+            // Callers hold the organization lock. This token is visible to other requests only after commit.
+            def activeOrg = ec.service.sync().name('zenith.barcode.BarcodeServices.get#AuthorizedActiveOrganization')
+                .disableAuthz().call().activeOrgId
+            if (activeOrg != organizationPartyId && !ec.user.isInGroup('ADMIN')) {
+                ec.message.addError('Select the active organization before changing its catalog.')
+                return
+            }
+            ec.service.sync().name('store#zenith.erp.base.CompanySettings').disableAuthz().parameters([
+                organizationPartyId:organizationPartyId,settingKey:'POS_CATALOG_REVISION',
+                settingValue:java.util.UUID.randomUUID().toString()]).call()
+        ]]></script></actions>
+    </service>
+
+    <service verb="get" noun="CatalogRevision" authenticate="true" authz-action="view">
+        <in-parameters>
+            <parameter name="sessionId" required="true"/>
+            <parameter name="lock" type="Boolean" default="false"/>
+        </in-parameters>
+        <out-parameters><parameter name="revision"/><parameter name="modes" type="List"/><parameter name="hasCatalogChanges" type="Boolean"/></out-parameters>
+        <actions><script><![CDATA[
+            def access = ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess')
+                .parameter('sessionId',sessionId).call()
+            if (!access.allowed) return
+            def session = ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',sessionId).one()
+            if (session?.statusId != 'PsOpen') {
+                ec.message.addError('This POS session is closed.')
+                return
+            }
+            def marker = ec.entity.find('zenith.erp.base.CompanySettings')
+                .condition([organizationPartyId:access.organizationPartyId,settingKey:'POS_CATALOG_REVISION'])
+                .disableAuthz()
+            def value = marker.forUpdate(lock).one()
+            if (lock && !value) {
+                // The first product save creates the marker under the organization lock.
+                ec.entity.find('mantle.party.Party').condition('partyId',access.organizationPartyId)
+                    .disableAuthz().forUpdate(true).one()
+                value = marker.one()
+            }
+            def token = value?.settingValue ?: '0'
+            hasCatalogChanges = token != '0'
+            def offered = ec.service.sync().name('zenith.pos.PosModeServices.get#TerminalModes')
+                .parameter('terminalId',session.terminalId).call().modes ?: []
+            def state = [token,offered.collect { [it.salesModeId,it.lastUpdatedStamp?.time] }]
+            def digest = java.security.MessageDigest.getInstance('SHA-256').digest(state.toString().getBytes('UTF-8'))
+            revision = digest.encodeHex().toString()
+            modes = offered.collect { [id:it.salesModeId,name:it.modeName,disc:it.discountPercent ?: 0,isDefault:it.isDefault=='Y'] }
+        ]]></script></actions>
+    </service>
+
+    <service verb="check" noun="CatalogTender" authenticate="true">
+        <in-parameters>
+            <parameter name="transactionId" required="true"/>
+            <parameter name="seenRevision"/>
+            <parameter name="taxOn"/>
+        </in-parameters>
+        <out-parameters><parameter name="notice"/><parameter name="revision"/></out-parameters>
+        <actions><script><![CDATA[
+            def access = ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess')
+                .parameter('transactionId',transactionId).call()
+            if (!access.allowed) return
+            def txn = ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',transactionId).one()
+            if (txn.statusId != 'PtCreated') return
+            def current = ec.service.sync().name('zenith.pos.ProductModePricingServices.get#CatalogRevision')
+                .parameters([sessionId:txn.sessionId,lock:true]).call()
+            revision = current.revision
+            if (ec.message.hasError() || (seenRevision && seenRevision == revision) || (!seenRevision && !current.hasCatalogChanges)) return
+            def refreshed = ec.service.sync().name('zenith.pos.ProductModePricingServices.refresh#DraftCatalogPrices')
+                .parameters([sessionId:txn.sessionId,transactionId:transactionId,taxOn:taxOn]).call()
+            if (refreshed.cartChanged || (seenRevision && seenRevision != revision)) {
+                notice = 'The product catalog changed. Review the current bill total before taking payment.'
+            }
+        ]]></script></actions>
+    </service>
+
+    <service verb="refresh" noun="DraftCatalogPrices" authenticate="true">
+        <in-parameters>
+            <parameter name="sessionId" required="true"/>
+            <parameter name="transactionId" required="true"/>
+            <parameter name="taxOn"/>
+        </in-parameters>
+        <out-parameters><parameter name="cartChanged" type="Boolean"/></out-parameters>
+        <actions><script><![CDATA[
+            cartChanged = false
+            def access = ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess')
+                .parameters([sessionId:sessionId,transactionId:transactionId]).call()
+            if (!access.allowed) return
+            def txn = ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',transactionId).forUpdate(true).one()
+            if (txn.sessionId != sessionId || txn.statusId != 'PtCreated' || txn.transactionNumber ||
+                (txn.paidAmount ?: 0) > 0 || ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId',transactionId).count()) return
+            // A recalled cart resumes the original held price snapshot.
+            def source = '"sourceTransactionId":'+groovy.json.JsonOutput.toJson(transactionId)
+            if (ec.entity.find('zenith.erp.pos.PosHeldTransaction')
+                .condition([sessionId:sessionId,statusId:'PhRecalled']).condition('itemsJson','like','%'+source+'%').count()) return
+
+            def session = ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',sessionId).one()
+            if (session?.statusId != 'PsOpen') return
+            def terminal = ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',session.terminalId).one()
+            def lines = ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId',transactionId).list()
+            def updates = []
+            for (def line in lines) {
+                if (line.manualPrice == 'Y') continue
+                def product = ec.entity.find('mantle.product.Product')
+                    .condition([productId:line.productId,ownerPartyId:access.organizationPartyId]).one()
+                if (!product) continue
+                def resolved = ec.service.sync().name('zenith.pos.PosServices.resolve#PosModePrice')
+                    .parameters([productId:line.productId,salesModeId:line.salesModeId,product:product]).call()
+                def price = resolved.unitPrice
+                if (!resolved.isFixed) {
+                    def pricing = ec.service.sync().name('zenith.pricing.PricingServices.calculate#Price')
+                        .parameters([productId:line.productId,quantity:line.quantity,organizationPartyId:access.organizationPartyId,
+                                     regionGeoId:terminal?.regionGeoId,salesChannelEnumId:'ScPos']).call()
+                    if (ec.message.hasError()) return
+                    if (pricing?.unitPrice != null && (pricing.unitPrice as BigDecimal).signum() > 0) price = pricing.unitPrice
+                }
+                if (price == null || (resolved.isFixed && resolved.blocked)) {
+                    ec.message.addError((product.productName ?: product.productId)+': Price not configured for this sales mode.')
+                    return
+                }
+                def savedDiscount = (line.discountPercent ?: 0) as BigDecimal
+                def discount = savedDiscount
+                if (line.manualDiscount == 'N') {
+                    discount = ((resolved.discountPercent ?: 0) as BigDecimal).max(BigDecimal.ZERO).min(100.0G)
+                }
+                if (line.unitPrice == null || (price as BigDecimal).compareTo(line.unitPrice as BigDecimal) != 0 ||
+                    discount.compareTo(savedDiscount) != 0) updates.add([line,price,product.mrpAmount,discount])
+            }
+            if (!updates) return
+            for (def update in updates) {
+                def line = update[0]
+                line.setAll([unitPrice:update[1],mrp:update[2] != null ? update[2] : update[1],discountPercent:update[3],
+                    discountAmount:(line.quantity as BigDecimal)*(update[1] as BigDecimal)*(update[3] as BigDecimal)/100]).update()
+            }
+            ec.service.sync().name('zenith.pos.PosServices.refresh#PosTransactionTax')
+                .parameters([transactionId:transactionId,taxOn:taxOn]).call()
+            cartChanged = !ec.message.hasError()
+        ]]></script></actions>
+    </service>
+
+    <service verb="get" noun="ModePriceOverrides" authenticate="true" authz-action="view">
+        <in-parameters><parameter name="salesModeId"/><parameter name="productIds" type="List"/></in-parameters>
+        <out-parameters><parameter name="overrides" type="Map"/></out-parameters>
+        <actions><script><![CDATA[
+            overrides = [:]
+            if (!salesModeId || !productIds) return
+            def orgId = ec.service.sync().name('zenith.barcode.BarcodeServices.get#AuthorizedActiveOrganization')
+                .disableAuthz().call().activeOrgId
+            if (!orgId) return
+            def mode = ec.entity.find('zenith.erp.pos.PosSalesMode').condition([salesModeId:salesModeId,isActive:'Y'])
+                .disableAuthz().one()
+            if (!mode || (mode.organizationPartyId && mode.organizationPartyId != orgId)) return
+            def owned = ec.entity.find('mantle.product.Product').condition('ownerPartyId',orgId)
+                .condition('productId','in',productIds.unique(false).take(120)).selectField('productId')
+                .disableAuthz().list()*.productId
+            if (!owned) return
+            overrides = ec.entity.find('zenith.erp.pos.PosProductModePrice').condition('salesModeId',salesModeId)
+                .condition('productId','in',owned).disableAuthz().list()
+                .findAll { it.price != null && (!it.organizationPartyId || it.organizationPartyId == orgId) }
+                .collectEntries { [(it.productId):it.price] }
+        ]]></script></actions>
+    </service>
+
+    <service verb="get" noun="ProductModePrices" authenticate="true" authz-action="view">
+        <in-parameters><parameter name="productId"/></in-parameters>
+        <out-parameters>
+            <parameter name="modes" type="List"/>
+            <parameter name="generatedBarcode"/>
+        </out-parameters>
+        <actions><script><![CDATA[
+            modes = []
+            def orgId = ec.service.sync().name('zenith.barcode.BarcodeServices.get#AuthorizedActiveOrganization')
+                .disableAuthz().call().activeOrgId
+            if (!orgId) return
+            def product = productId ? ec.entity.find('mantle.product.Product')
+                .condition([productId:productId, ownerPartyId:orgId]).disableAuthz().one() : null
+            if (productId && !product) return
+
+            def removed = ec.entity.find('zenith.erp.pos.PosSalesModeOrgRemoval').condition('organizationPartyId',orgId)
+                .disableAuthz().list()*.salesModeId as Set
+            def overrides = product ? ec.entity.find('zenith.erp.pos.PosProductModePrice')
+                .condition('productId',productId).disableAuthz().list()
+                .findAll { !it.organizationPartyId || it.organizationPartyId == orgId }
+                .collectEntries { [(it.salesModeId):it.price] } : [:]
+            modes = ec.entity.find('zenith.erp.pos.PosSalesMode').condition('isActive','Y')
+                .orderBy('-isDefault,modeName,salesModeId').disableAuthz().list().findAll {
+                    (!it.organizationPartyId || it.organizationPartyId == orgId) && !removed.contains(it.salesModeId)
+                }.collect { mode ->
+                    def override = overrides[mode.salesModeId]
+                    [salesModeId:mode.salesModeId, modeName:mode.modeName, priceOverride:override,
+                     effectivePrice:override != null ? override : product?.mrpAmount]
+                }
+            if (product) generatedBarcode = ec.entity.find('zenith.erp.barcode.ProductBarcode')
+                .condition([productId:productId, organizationPartyId:orgId, isPrimary:'Y', isActive:'Y'])
+                .orderBy('barcodeId').disableAuthz().limit(1).one()?.barcodeValue
+        ]]></script></actions>
+    </service>
+
+    <service verb="save" noun="ProductModePrices" authenticate="true">
+        <in-parameters>
+            <parameter name="productId" required="true"/>
+            <parameter name="modePricesJson" required="true"/>
+        </in-parameters>
+        <out-parameters><parameter name="modes" type="List"/></out-parameters>
+        <actions><script><![CDATA[
+            def permission = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess')
+                .parameter('moduleId','inventory').disableAuthz().call()
+            def orgId = ec.service.sync().name('zenith.barcode.BarcodeServices.get#AuthorizedActiveOrganization')
+                .disableAuthz().call().activeOrgId
+            if (!permission.canWrite || !orgId) {
+                ec.message.addError('Inventory write access in the active organization is required.')
+                return
+            }
+            // Same order as inventory and barcode writers. Concurrent edits cannot insert duplicate rows.
+            ec.entity.find('mantle.party.Party').condition('partyId',orgId).disableAuthz().forUpdate(true).one()
+            def product = ec.entity.find('mantle.product.Product').condition([productId:productId, ownerPartyId:orgId])
+                .disableAuthz().forUpdate(true).one()
+            if (!product) {
+                ec.message.addError('Product not found in your organization.')
+                return
+            }
+
+            Map submitted
+            try {
+                if (modePricesJson.length() > 16000) throw new IllegalArgumentException()
+                def mapper = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
+                    .enable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                    .enable(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+                submitted = mapper.readValue(modePricesJson, Map)
+                if (submitted == null) throw new IllegalArgumentException()
+            } catch (Exception ignored) {
+                ec.message.addError('Enter one price per sales mode.')
+                return
+            }
+            def getPrices = {
+                ec.service.sync().name('zenith.pos.ProductModePricingServices.get#ProductModePrices')
+                    .parameter('productId',productId).disableAuthz().call().modes ?: []
+            }
+            def allowed = getPrices().collectEntries { [(it.salesModeId):it.modeName] }
+            def prices = [:]
+            for (def entry in submitted) {
+                if (!allowed.containsKey(entry.key)) {
+                    ec.message.addError('Choose an active sales mode in your organization.')
+                    return
+                }
+                try {
+                    def input = entry.value == null ? '' : entry.value.toString().trim()
+                    if (input && !(input ==~ /[0-9]{1,12}(?:\.[0-9]{1,2})?/)) throw new IllegalArgumentException()
+                    prices[entry.key] = input ? new BigDecimal(input) : null
+                } catch (Exception ignored) {
+                    ec.message.addError('Enter a non-negative price with up to two decimal places for ' + allowed[entry.key] + '.')
+                    return
+                }
+            }
+            def current = ec.entity.find('zenith.erp.pos.PosProductModePrice').condition('productId',productId)
+                .disableAuthz().list().collectEntries { [(it.salesModeId):it] }
+            for (def entry in prices) {
+                def row = current[entry.key]
+                if (row?.organizationPartyId && row.organizationPartyId != orgId) {
+                    ec.message.addError('The existing price has inconsistent organization ownership.')
+                    return
+                }
+                if (row && (entry.value != null || row.thresholdQty)) {
+                    row.setAll([price:entry.value, organizationPartyId:orgId]).update()
+                } else if (entry.value != null) {
+                    ec.service.sync().name('create#zenith.erp.pos.PosProductModePrice').disableAuthz()
+                        .parameters([productId:productId, salesModeId:entry.key, price:entry.value, organizationPartyId:orgId]).call()
+                } else if (row) {
+                    ec.service.sync().name('delete#zenith.erp.pos.PosProductModePrice').disableAuthz()
+                        .parameters([productId:productId,salesModeId:entry.key]).call()
+                }
+                if (ec.message.hasError()) return
+            }
+            modes = getPrices()
+        ]]></script></actions>
+    </service>
+</services>

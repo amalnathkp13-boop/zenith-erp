@@ -32,7 +32,10 @@
                 def rules=ec.entity.find('zenith.erp.pos.PosSalesModeOrgConfig').condition('organizationPartyId',org).list()
                 def productIds=catalog.products*.productId
                 def productRows=productIds ? ec.entity.find('mantle.product.Product').condition('productId','in',productIds).list().collectEntries { [(it.productId):it] } : [:]
-                def fixedPrices=productIds ? ec.entity.find('zenith.erp.pos.PosProductModePrice').condition('productId','in',productIds).list().collectEntries { [(it.productId+'\u0000'+it.salesModeId):it.price] } : [:]
+                def overridePrices=productIds ? ec.entity.find('zenith.erp.pos.PosProductModePrice')
+                    .condition('productId','in',productIds).list()
+                    .findAll { !it.organizationPartyId || it.organizationPartyId == org }
+                    .collectEntries { [(it.productId+'\u0000'+it.salesModeId):it.price] } : [:]
                 def region=terminal.stateCode ?: terminal.regionGeoId ?: ec.entity.find('zenith.erp.india.IndiaGstConfig').condition('organizationPartyId',org).limit(1).one()?.stateCode
                 def other=region ? ec.entity.find('zenith.erp.india.IndiaState').condition('stateCode','not-equals',region).limit(1).one()?.stateCode : null
                 def interstate=other && productIds ? ec.service.sync().name('zenith.tax.TaxServices.calculate#Tax').parameters([organizationPartyId:org,
@@ -42,9 +45,9 @@
                     def p=productRows[product.productId]
                     def prices=[:]
                     modes.each { mode ->
-                        def fixed=mode.source=='PpsFixedProduct'
-                        def price=fixed ? fixedPrices[p.productId+'\u0000'+mode.id] : (p.mrpAmount ?: 0)
-                        prices[mode.id]=[price:price ?: 0,disc:mode.source in ['PpsDiscountMrp','PpsDiscountList'] ? mode.disc : 0,blocked:fixed && (price==null || price<=0)]
+                        def override=overridePrices[p.productId+'\u0000'+mode.id]
+                        def price=override != null ? override : p.mrpAmount
+                        prices[mode.id]=[price:price,disc:override == null && mode.source in ['PpsDiscountMrp','PpsDiscountList'] ? mode.disc : 0,blocked:price==null]
                     }
                     product+[printName:p.printName ?: p.productName,prices:prices,
                         interstateRates:interstate?.taxedItems ? (interstate.taxedItems[index].taxBreakdowns?.collect { it.taxRate ?: 0 } ?: []) : null]

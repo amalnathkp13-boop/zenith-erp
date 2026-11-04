@@ -253,6 +253,7 @@
             // ===== ZE-DASH date-range filter + Stock Movements time series =====
             // The range drives ONLY the Stock Movements widget; the snapshot KPIs above stay "current" (MARUTHI-safe).
             def _sdf = new java.text.SimpleDateFormat("yyyy-MM-dd")
+            _sdf.setTimeZone(ec.user.timeZone)
             def _now = ec.user.nowTimestamp
             def _todayStr = _sdf.format(_now)
             if (!dashDate) dashDate = ''
@@ -261,6 +262,7 @@
                 if (dashDate) java.time.LocalDate.parse(dashDate)
                 if (dashDateTo) java.time.LocalDate.parse(dashDateTo)
                 if (!dashDate && dashDateTo) dashDate = dashDateTo
+                if (!dashDate && !dashDateTo && dateMode != 'all') { dashDate = _todayStr; dashDateTo = _todayStr }
             } catch (java.time.format.DateTimeParseException ignored) {
                 ec.message.addError('Enter valid dates in YYYY-MM-DD format.')
                 dashDate = ''; dashDateTo = ''
@@ -269,13 +271,12 @@
             if (dashDate) {
                 if (!dashDateTo) dashDateTo = dashDate
                 if (dashDateTo < dashDate) { def _s = dashDate; dashDate = dashDateTo; dashDateTo = _s }
-                dayStart = java.sql.Timestamp.valueOf(dashDate + " 00:00:00")
-                def _ce = java.util.Calendar.getInstance(); _ce.setTime(java.sql.Timestamp.valueOf(dashDateTo + " 00:00:00")); _ce.add(java.util.Calendar.DAY_OF_MONTH, 1)
-                dayEndExcl = new java.sql.Timestamp(_ce.getTimeInMillis())
+                dayStart = ec.l10n.parseTimestamp(dashDate + " 00:00:00", "yyyy-MM-dd HH:mm:ss")
+                dayEndExcl = ec.l10n.parseTimestamp(java.time.LocalDate.parse(dashDateTo).plusDays(1).toString() + " 00:00:00", "yyyy-MM-dd HH:mm:ss")
             }
-            def _cw = java.util.Calendar.getInstance(); _cw.setTime(_now); _cw.set(java.util.Calendar.DAY_OF_WEEK, _cw.getFirstDayOfWeek()); def _weekStartStr = _sdf.format(_cw.getTime())
-            def _cm = java.util.Calendar.getInstance(); _cm.setTime(_now); _cm.set(java.util.Calendar.DAY_OF_MONTH,1); def _monthStartStr = _sdf.format(_cm.getTime())
-            def _c30 = java.util.Calendar.getInstance(); _c30.setTime(_now); _c30.add(java.util.Calendar.DAY_OF_MONTH,-29); def _last30Str = _sdf.format(_c30.getTime())
+            def _cw = java.util.Calendar.getInstance(ec.user.timeZone); _cw.setTime(_now); _cw.set(java.util.Calendar.DAY_OF_WEEK, _cw.getFirstDayOfWeek()); def _weekStartStr = _sdf.format(_cw.getTime())
+            def _cm = java.util.Calendar.getInstance(ec.user.timeZone); _cm.setTime(_now); _cm.set(java.util.Calendar.DAY_OF_MONTH,1); def _monthStartStr = _sdf.format(_cm.getTime())
+            def _c30 = java.util.Calendar.getInstance(ec.user.timeZone); _c30.setTime(_now); _c30.add(java.util.Calendar.DAY_OF_MONTH,-29); def _last30Str = _sdf.format(_c30.getTime())
             urlAll = "?dateMode=all"; urlToday = "?dashDate="+_todayStr+"&dashDateTo="+_todayStr
             urlWeek = "?dashDate="+_weekStartStr+"&dashDateTo="+_todayStr
             urlMonth = "?dashDate="+_monthStartStr+"&dashDateTo="+_todayStr
@@ -291,10 +292,10 @@
                 }
             }
             // ZE-DATEWISE: This Year preset + "Date-wise" custom-range tab (self-contained; var-name-agnostic)
-            def _dwSdf = new java.text.SimpleDateFormat("yyyy-MM-dd"); def _dwNow = ec.user.nowTimestamp; def _dwToday = _dwSdf.format(_dwNow)
-            def _dwYc = java.util.Calendar.getInstance(); _dwYc.setTime(_dwNow); _dwYc.set(java.util.Calendar.MONTH,0); _dwYc.set(java.util.Calendar.DAY_OF_MONTH,1); def _dwYearStart = _dwSdf.format(_dwYc.getTime())
-            urlYear = "?dashDate="+_dwYearStart+"&dashDateTo="+_dwToday
-            if (dashDate && dashDateTo == _dwToday && dashDate == _dwYearStart) presetActive = 'year'
+            def _dwSdf = _sdf; def _dwNow = _now; def _dwToday = _todayStr
+            def _dwYc = java.util.Calendar.getInstance(ec.user.timeZone); _dwYc.setTime(_dwNow); _dwYc.set(java.util.Calendar.MONTH,0); _dwYc.set(java.util.Calendar.DAY_OF_MONTH,1); def _dwYearStart = _dwSdf.format(_dwYc.getTime())
+            urlYear = "?dateMode=year&dashDate="+_dwYearStart+"&dashDateTo="+_dwToday
+            if (dashDate && dashDateTo == _dwToday && dashDate == _dwYearStart && (dateMode == 'year' || presetActive != 'today')) presetActive = 'year'
             showCustom = (((dateMode ?: '') == 'custom') || (presetActive == 'custom'))
             urlCustom = dashDate ? ("?dateMode=custom&dashDate="+dashDate+"&dashDateTo="+dashDateTo) : "?dateMode=custom"
             def _ioAssetQuery = ef.find("mantle.product.asset.Asset").condition("ownerPartyId", orgId)
@@ -304,8 +305,8 @@
             def _mvStart; def _mvEnd
             if (dayStart) { _mvStart = dayStart; _mvEnd = dayEndExcl }
             else {
-                def _c6 = java.util.Calendar.getInstance(); _c6.setTime(_now); _c6.set(java.util.Calendar.DAY_OF_MONTH,1); _c6.add(java.util.Calendar.MONTH,-5); _mvStart = new java.sql.Timestamp(_c6.getTimeInMillis())
-                def _ce2 = java.util.Calendar.getInstance(); _ce2.setTime(_now); _ce2.add(java.util.Calendar.DAY_OF_MONTH,1); _mvEnd = new java.sql.Timestamp(_ce2.getTimeInMillis())
+                def _c6 = java.util.Calendar.getInstance(ec.user.timeZone); _c6.setTime(_now); _c6.set(java.util.Calendar.DAY_OF_MONTH,1); _c6.add(java.util.Calendar.MONTH,-5); _mvStart = new java.sql.Timestamp(_c6.getTimeInMillis())
+                def _ce2 = java.util.Calendar.getInstance(ec.user.timeZone); _ce2.setTime(_now); _ce2.add(java.util.Calendar.DAY_OF_MONTH,1); _mvEnd = new java.sql.Timestamp(_ce2.getTimeInMillis())
                 if (_allTime) {
                     def _starts = []
                     def _first = ef.find("mantle.product.asset.AssetDetail").condition("assetId", EntityCondition.IN, _ioAssetIds ? (_ioAssetIds as List) : ['__none__']).condition("quantityOnHandDiff", EntityCondition.NOT_EQUAL, 0G).condition("effectiveDate", EntityCondition.LESS_THAN, _mvEnd).orderBy("effectiveDate").limit(1).list()
@@ -316,7 +317,7 @@
                         if (_firstAdj) _starts.add(_firstAdj[0].adjustmentDate)
                         if (_firstTrf) _starts.add(_firstTrf[0].transferDate)
                     }
-                    if (_starts) _mvStart = java.sql.Timestamp.valueOf(_sdf.format(_starts.min()) + ' 00:00:00')
+                    if (_starts) _mvStart = ec.l10n.parseTimestamp(_sdf.format(_starts.min()) + ' 00:00:00', 'yyyy-MM-dd HH:mm:ss')
                 }
             }
             def _rangeDays = (_mvEnd.getTime() - _mvStart.getTime()) / (1000L*60*60*24)
@@ -324,13 +325,15 @@
             def _yearly = _rangeDays > 365 * 30
             def _bfmt = new java.text.SimpleDateFormat(_daily ? "yyyy-MM-dd" : (_yearly ? "yyyy" : "yyyy-MM"))
             def _lfmt = new java.text.SimpleDateFormat(_daily ? "dd MMM" : (_yearly ? "yyyy" : "MMM yy"))
+            _bfmt.setTimeZone(ec.user.timeZone)
+            _lfmt.setTimeZone(ec.user.timeZone)
             def _adjs = ef.find("zenith.erp.inventory.StockAdjustment").condition("organizationPartyId", orgId).condition("adjustmentDate", EntityCondition.GREATER_THAN_EQUAL_TO, _mvStart).condition("adjustmentDate", EntityCondition.LESS_THAN, _mvEnd).selectField("adjustmentDate").list()
             def _trfs = ef.find("zenith.erp.inventory.StockTransfer").condition("organizationPartyId", orgId).condition("transferDate", EntityCondition.GREATER_THAN_EQUAL_TO, _mvStart).condition("transferDate", EntityCondition.LESS_THAN, _mvEnd).selectField("transferDate").list()
             // ZE-INV §7: Stock In/Out FLOW from the AssetDetail ledger (org-scoped; AssetDetail is small). Positive
             // quantityOnHandDiff = stock in, negative = stock out. Real data — no fabrication.
             def _ioLedger = ef.find("mantle.product.asset.AssetDetail").condition("effectiveDate", EntityCondition.GREATER_THAN_EQUAL_TO, _mvStart).condition("effectiveDate", EntityCondition.LESS_THAN, _mvEnd).selectField("assetId").selectField("effectiveDate").selectField("quantityOnHandDiff").list().findAll { _ioAssetIds.contains(it.assetId) }
             def _keys = []; def _labelByKey = [:]; def _adjBy = [:]; def _trfBy = [:]; def _ioInBy = [:]; def _ioOutBy = [:]
-            def _bc = java.util.Calendar.getInstance(); _bc.setTime(_mvStart); def _bendMs = _mvEnd.getTime(); int _guard = 0
+            def _bc = java.util.Calendar.getInstance(ec.user.timeZone); _bc.setTime(_mvStart); def _bendMs = _mvEnd.getTime(); int _guard = 0
             if (!_daily) _bc.set(java.util.Calendar.DAY_OF_MONTH, 1)
             if (_yearly) _bc.set(java.util.Calendar.MONTH, 0)
             while (_bc.getTimeInMillis() < _bendMs && _guard < 10000) {

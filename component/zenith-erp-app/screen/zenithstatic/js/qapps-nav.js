@@ -489,11 +489,27 @@
         try { if (localStorage.getItem('zqSideCollapsed') === '1') body.classList.add('zq-side-collapsed'); } catch (_e) {}
         var tgl = document.getElementById('zq-side-toggle');
         if (tgl) tgl.addEventListener('click', function () { body.classList.toggle('zq-side-collapsed'); try { localStorage.setItem('zqSideCollapsed', body.classList.contains('zq-side-collapsed') ? '1' : '0'); } catch (_e) {} });
-        // the framework's menu burger used to toggle the (now hidden) tree drawer — repurpose it to open our
-        // sidebar off-canvas on mobile; tapping the page content closes it.
+        // Close the replaced framework drawer, including a previously saved open state.
+        if (window.moqui && moqui.webrootVue) moqui.webrootVue.leftOpen = false;
         var fwBurger = header.querySelector('.q-toolbar button');
-        if (fwBurger) fwBurger.addEventListener('click', function () { if (window.innerWidth <= 900) body.classList.toggle('zq-side-open'); }, true);
-        document.addEventListener('click', function (e) { if (body.classList.contains('zq-side-open') && !side.contains(e.target) && (!fwBurger || !fwBurger.contains(e.target))) body.classList.remove('zq-side-open'); });
+        if (fwBurger) {
+            var backdrop = el('div'); backdrop.id = 'zq-side-backdrop';
+            body.appendChild(backdrop);
+            fwBurger.setAttribute('aria-controls', side.id);
+            fwBurger.setAttribute('aria-label', 'Open menu');
+            function setSideOpen(open) {
+                body.classList.toggle('zq-side-open', open);
+                fwBurger.setAttribute('aria-expanded', String(open));
+            }
+            setSideOpen(false);
+            fwBurger.addEventListener('click', function (e) {
+                if (window.innerWidth > 900) return;
+                e.stopImmediatePropagation();
+                setSideOpen(!body.classList.contains('zq-side-open'));
+            }, true);
+            backdrop.addEventListener('click', function () { setSideOpen(false); fwBurger.focus(); });
+            side.addEventListener('click', function (e) { if (e.target.closest('.zqs-link')) setSideOpen(false); });
+        }
         document.addEventListener('click', function (e) {
             var owner = document.getElementById('zq-ownerview');
             var menu = owner && owner.querySelector('#zq-shopmenu.show');
@@ -503,7 +519,6 @@
             }
         });
         document.addEventListener('click', onNavClick);
-        side.addEventListener('click', function (e) { if (e.target.closest('.zqs-link')) body.classList.remove('zq-side-open'); });
         // re-apply active highlight on SPA route changes (URL is swapped without a full reload)
         var last = location.pathname;
         setInterval(function () { syncOwnerView(); syncToolButtons(); if (location.pathname !== last) { last = location.pathname; applyActive(); updateSubnav(); try { if (sessionStorage.getItem('zqGotoModules')) { sessionStorage.removeItem('zqGotoModules'); scrollToModules(); } } catch (_e) {} } }, 400);

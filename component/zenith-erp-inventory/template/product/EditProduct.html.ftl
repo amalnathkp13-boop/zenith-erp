@@ -5,9 +5,9 @@
 <label>${title}<select name="${key}"><#if product[key]?has_content && !values?seq_contains(product[key])><option value="${product[key]?html}" selected>Current: ${product[key]?html}</option></#if><#list values as v><option value="${v}" <#if (product[key]!'N')==v>selected</#if>>${labels[v_index]}</option></#list></select></label>
 </#macro>
 <div id="productEditor">
-<img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" hidden onload="if(!document.getElementById('productEditorCss')){var l=document.createElement('link');l.id='productEditorCss';l.rel='stylesheet';l.href='/zenithstatic/css/product-editor.css?v=1';document.head.appendChild(l)}if(!window.initProductEditor){var j=document.createElement('script');j.src='/zenithstatic/js/product-editor.js?v=1';document.head.appendChild(j)}else{window.initProductEditor()}"/>
+<img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" hidden onload="if(!document.getElementById('productEditorCss')){var l=document.createElement('link');l.id='productEditorCss';l.rel='stylesheet';l.href='/zenithstatic/css/product-editor.css?v=2';document.head.appendChild(l)}if(!window.initProductEditor){var j=document.createElement('script');j.src='/zenithstatic/js/product-editor.js?v=2';document.head.appendChild(j)}else{window.initProductEditor()}"/>
 <div class="pe-header"><div><p>Inventory / Products / Edit Product</p><h1>Edit Product</h1><p>Update product details, pricing, tax and inventory settings.</p></div><div class="pe-actions"><a class="pe-button" data-pe-leave href="${sri.buildUrl('../FindProduct').url?html}">← Back to Products</a><#if invCanWrite><button type="button" class="pe-danger" data-pe-delete>Delete Product</button><button class="pe-primary" form="productEditorForm" type="submit">▣ Save Changes</button></#if></div></div>
-<form id="productEditorForm" method="post" action="${sri.buildUrl('updateProduct').url?html}">
+<form id="productEditorForm" method="post" action="${sri.buildUrl('updateProduct').url?html}" data-pe-save="edit">
 <input type="hidden" name="moquiSessionToken" value="${(ec.web.sessionToken!'')?html}"/><input type="hidden" name="productId" value="${productId?html}"/>
 <input type="hidden" name="imageData"/><input type="hidden" name="removeImage" value="N"/>
 <div class="pe-workspace"><main>
@@ -16,7 +16,8 @@
 <section class="pe-card" id="pe-identity"><header><i class="material-icons">layers</i><div><h2>Product Identity</h2><p>Basic details about this product.</p></div></header><div class="pe-fields">
 <@field key="productName" title="Product Name" required=true/>
 <label>Print Name (on bills)<input name="printName" value="${(product.printName!product.productName!'')?html}" maxlength="255" data-custom="${product.printName?has_content?then('true','false')}"/><small>Defaults to Product Name. Used on printed POS bills and reprints.</small><button type="button" class="pe-text" data-pe-reset-name>Use Product Name</button></label>
-<div id="pe-barcode"><@field key="pseudoId" title="Item Code / Barcode"/></div>
+<div id="pe-barcode"><@field key="pseudoId" title="Item Code"/></div>
+<label>Barcode<input value="${(productModePricing.generatedBarcode!'Not set')?html}" readonly/></label>
 <@choice key="productTypeEnumId" title="Product Type" values=['PtAsset','PtService','PtDigitalAsset'] labels=['Physical product (stock & count)','Service (no stock)','Digital product']/>
 <label class="pe-wide">Description<textarea name="description" maxlength="500" rows="3" placeholder="Enter product description (optional)...">${(product.description!'')?html}</textarea><small class="pe-count" data-pe-count></small></label>
 </div></section>
@@ -28,6 +29,9 @@
 <div class="pe-info pe-wide"><strong>ⓘ Tax Information</strong><p>Choose the applicable GST rate. HSN / SAC classification is entered separately; a tax rate does not determine the classification code.</p></div>
 <@field key="hsnCode" title="Tax Code — HSN (for products)"/><@field key="sacCode" title="Tax Code — SAC (for services)"/>
 </div></section>
+<section class="pe-card"><header><i class="material-icons pe-orange">sell</i><div><h2>Sales Mode Pricing</h2><p>Change a single mode without changing the other modes.</p></div></header>
+<#include "ProductModePrices.html.ftl">
+</section>
 <section class="pe-card" id="pe-inventory"><header><i class="material-icons pe-green">inventory_2</i><div><h2>Inventory Tracking</h2><p>Choose how this product's inventory will be tracked.</p></div></header><div class="pe-fields pe-three">
 <@choice key="enableBatchTracking" title="Track by batch / lot?" values=['N','Y'] labels=['No','Yes']/><@choice key="enableSerialTracking" title="Track by serial number?" values=['N','Y'] labels=['No','Yes']/>
 <label>Reorder Point (low-stock alert)<input name="reorderPoint" type="number" min="0" step="any" value="<#if product.reorderPoint?has_content>${product.reorderPoint?c}</#if>"/><small>Leave blank for no low-stock alert.</small></label>

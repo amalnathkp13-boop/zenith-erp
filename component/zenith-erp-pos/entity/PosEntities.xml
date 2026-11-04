@@ -219,6 +219,7 @@
         <field name="mrp" type="currency-amount"/>
         <field name="discountPercent" type="number-decimal"/>
         <field name="discountAmount" type="currency-amount"/>
+        <field name="manualDiscount" type="text-indicator"><description>Y for a cashier discount, N for automatic, blank when the source is unknown.</description></field>
         <field name="taxableAmount" type="currency-amount"/>
         <field name="totalTaxAmount" type="currency-amount"/>
         <field name="lineTotal" type="currency-amount"/>

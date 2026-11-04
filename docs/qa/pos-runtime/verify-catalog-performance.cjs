@@ -35,7 +35,7 @@ module.exports = async function ({a, foreign, base, check, q, invoke}) {
         const expected=q("SELECT price FROM pos_product_mode_price WHERE product_id='POS_QA_A_P18' AND sales_mode_id='WHOLESALE' AND organization_party_id='POS_QA_A'")[0];
         check(shell+' fixed-mode card price agrees with persisted mode pricing',body.success&&body.products.length===1&&!body.products[0].blocked&&Number(body.products[0].price)===Number(expected.price));
         ({r,body}=await request({salesModeId:'WHOLESALE',searchTerm:'POS_QA_A_NOWS'},a,shell));
-        check(shell+' missing fixed price remains blocked',body.success&&body.products.length===1&&body.products[0].blocked);
+        check(shell+' missing fixed price falls back to MRP',body.success&&body.products.length===1&&!body.products[0].blocked&&Number(body.products[0].price)===50);
         ({r,body}=await request({organizationPartyId:'POS_QA_B',catId:'POS_QA_B_CAT'},a,shell));
         check(shell+' forged organization/category cannot leak another catalog',body.success&&body.products.every(x=>!x.productId.startsWith('POS_QA_B')));
         ({r,body}=await request({},foreign,shell));

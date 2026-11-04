@@ -13,8 +13,9 @@
             def dashDateTo = ec.web.parameters.dashDateTo
             def orgId = ec.service.sync().name('zenith.tax.TaxAccessServices.get#AuthorizedActiveOrganization').call().activeOrgId
             def tLines=ec.service.sync().name('zenith.tax.TaxServices.get#DashboardTaxLines').call().taxLines ?: []
-            if (!dashDate) dashDate=java.time.LocalDate.now().withDayOfMonth(1).toString()
-            if (!dashDateTo) dashDateTo=java.time.LocalDate.now().toString()
+            def zone = ec.user.timeZone.toZoneId()
+            if (!dashDate) dashDate = dashDateTo ?: ec.user.nowTimestamp.toInstant().atZone(zone).toLocalDate().toString()
+            if (!dashDateTo) dashDateTo = dashDate
             try {
                 def from=java.time.LocalDate.parse(dashDate), to=java.time.LocalDate.parse(dashDateTo)
                 if(from.year < 1900 || to.year > 9998 || to.isBefore(from) || java.time.temporal.ChronoUnit.DAYS.between(from,to) > 366) throw new IllegalArgumentException()
@@ -22,11 +23,10 @@
                 ec.web.response.setStatus(400)
                 ec.web.sendTextResponse('Select valid ordered dates spanning at most one year.','text/plain',null); return
             }
-            def ps = dashDate ? java.sql.Timestamp.valueOf(dashDate + " 00:00:00") : null
-            def pe = null
-            if (dashDateTo) { def _c = java.util.Calendar.getInstance(); _c.setTime(java.sql.Timestamp.valueOf(dashDateTo + " 00:00:00")); _c.add(java.util.Calendar.DAY_OF_MONTH,1); pe = new java.sql.Timestamp(_c.getTimeInMillis()) }
+            def ps = java.sql.Timestamp.from(java.time.LocalDate.parse(dashDate).atStartOfDay(zone).toInstant())
+            def pe = java.sql.Timestamp.from(java.time.LocalDate.parse(dashDateTo).plusDays(1).atStartOfDay(zone).toInstant())
             def lines = (ps && pe) ? tLines.findAll { it.documentDate != null && !it.documentDate.before(ps) && it.documentDate.before(pe) } : tLines
-            def df = new java.text.SimpleDateFormat("yyyy-MM-dd")
+            def df = new java.text.SimpleDateFormat("yyyy-MM-dd"); df.setTimeZone(ec.user.timeZone)
             def esc = { v -> def s = (v == null) ? '' : v.toString(); if (v instanceof CharSequence && s ==~ /(?s)^[=+@\-\t\r].*/) s = "'" + s; (s.contains(',') || s.contains('"') || s.contains("\n")) ? ('"' + s.replace('"','""') + '"') : s }
             def sb = new StringBuilder("ID,Ref Type,Ref ID,Tax,Rate,Taxable Amount,Tax Amount,Currency,Date\n")
             lines.each { sb.append([esc(it.taxLineDetailId), esc(it.referenceType), esc(it.referenceId), esc(it.taxName), esc(it.taxRate), esc(it.taxableAmount), esc(it.taxAmount), esc(it.currencyUomId ?: 'INR'), esc(it.documentDate != null ? df.format(it.documentDate) : '')].join(',')).append("\n") }
@@ -54,29 +54,22 @@
             <econdition field-name="isActive" value="Y"/>
         </entity-find-count>
 
-        <!-- ===== date range (default current month) + tenant-scoped tax-line aggregation (ONE script: Moqui
+        <!-- ===== date range (defaults to today) + tenant-scoped tax-line aggregation (ONE script: Moqui
              shares the binding across <script> blocks, so splitting would redeclare now/periodStart/etc.) ===== -->
         <script><![CDATA[
             import java.math.BigDecimal
             import java.math.RoundingMode
             def _uri = (ec.web?.request?.requestURI ?: ''); def _zi = _uri.indexOf('/zenith/'); appBase = _zi > 0 ? _uri.substring(0, _zi) : ''
-            def sdf = new java.text.SimpleDateFormat("yyyy-MM-dd")
-            def pretty = new java.text.SimpleDateFormat("dd MMM yyyy")
+            def zone = ec.user.timeZone.toZoneId()
+            def pretty = java.time.format.DateTimeFormatter.ofPattern("dd MMM yyyy", ec.user.locale)
             def now = ec.user.nowTimestamp
-            def todayStr = sdf.format(now)
+            def todayStr = now.toInstant().atZone(zone).toLocalDate().toString()
 
             def orgId = ec.service.sync().name('zenith.tax.TaxAccessServices.get#AuthorizedActiveOrganization').call().activeOrgId
             def tLines=ec.service.sync().name('zenith.tax.TaxServices.get#DashboardTaxLines').call().taxLines ?: []
 
-            // default the range to the month containing the most recent tax line (so the dashboard opens populated);
-            // fall back to the current month when there is no tax data at all.
-            def _anchor = now
-            def _am = java.util.Calendar.getInstance(); _am.setTime(_anchor); _am.set(java.util.Calendar.DAY_OF_MONTH,1)
-            def _monStart = sdf.format(_am.getTime())
-            def _ae = (java.util.Calendar) _am.clone(); _ae.add(java.util.Calendar.MONTH,1); _ae.add(java.util.Calendar.DAY_OF_MONTH,-1)
-            def _monEnd = sdf.format(_ae.getTime()); if (_monEnd > todayStr) _monEnd = todayStr
-            if (!dashDate) dashDate = _monStart
-            if (!dashDateTo) dashDateTo = _monEnd
+            if (!dashDate) dashDate = dashDateTo ?: todayStr
+            if (!dashDateTo) dashDateTo = dashDate
             try {
                 def from=java.time.LocalDate.parse(dashDate), to=java.time.LocalDate.parse(dashDateTo)
                 if(from.year < 1900 || to.year > 9998 || to.isBefore(from) || java.time.temporal.ChronoUnit.DAYS.between(from,to) > 366) throw new IllegalArgumentException()
@@ -85,12 +78,11 @@
                 ec.web.sendTextResponse('Select valid ordered dates spanning at most one year.','text/plain',null); return
             }
 
-            def periodStart = java.sql.Timestamp.valueOf(dashDate + " 00:00:00")
-            def _ce = java.util.Calendar.getInstance(); _ce.setTime(java.sql.Timestamp.valueOf(dashDateTo + " 00:00:00")); _ce.add(java.util.Calendar.DAY_OF_MONTH,1)
-            def periodEndExcl = new java.sql.Timestamp(_ce.getTimeInMillis())
-            long _lenMs = periodEndExcl.getTime() - periodStart.getTime()
-            def priorStart = new java.sql.Timestamp(periodStart.getTime() - _lenMs)
-            rangeLabel = pretty.format(periodStart) + " - " + pretty.format(new java.sql.Timestamp(periodEndExcl.getTime() - 86400000L))
+            def first = java.time.LocalDate.parse(dashDate), last = java.time.LocalDate.parse(dashDateTo)
+            def periodStart = java.sql.Timestamp.from(first.atStartOfDay(zone).toInstant())
+            def periodEndExcl = java.sql.Timestamp.from(last.plusDays(1).atStartOfDay(zone).toInstant())
+            def priorStart = java.sql.Timestamp.from(first.minusDays(java.time.temporal.ChronoUnit.DAYS.between(first,last) + 1).atStartOfDay(zone).toInstant())
+            rangeLabel = first == last ? first.format(pretty) : first.format(pretty) + " - " + last.format(pretty)
 
             def inRange = { ts, a, b -> ts != null && !ts.before(a) && ts.before(b) }
             def periodLines = tLines.findAll { inRange(it.documentDate, periodStart, periodEndExcl) }
@@ -120,20 +112,15 @@
             byTypeHasData = (byTot > 0G)
 
             // daily series across the selected range
-            def dsdf = new java.text.SimpleDateFormat("yyyy-MM-dd")
             def dayMap = [:]
-            periodLines.each { def d = dsdf.format(it.documentDate); dayMap[d] = ((dayMap[d] ?: 0G)) + (it.taxAmount ?: 0G) }
+            periodLines.each { def day = java.time.Instant.ofEpochMilli(it.documentDate.time).atZone(zone).toLocalDate(); dayMap[day] = ((dayMap[day] ?: 0G)) + (it.taxAmount ?: 0G) }
             def labels = []; def vals = []
-            def dc = java.util.Calendar.getInstance(); dc.setTime(periodStart)
-            def labSdf = new java.text.SimpleDateFormat("dd MMM")
-            int _guard = 0
-            while (dc.getTime().before(periodEndExcl)) {
-                def ds = dsdf.format(dc.getTime())
-                labels.add("'" + labSdf.format(dc.getTime()) + "'")
-                vals.add(((dayMap[ds] ?: 0G) as BigDecimal).setScale(2, RoundingMode.HALF_UP).toPlainString())
-                dc.add(java.util.Calendar.DAY_OF_MONTH, 1); _guard++
+            def dayLabel = java.time.format.DateTimeFormatter.ofPattern("dd MMM", ec.user.locale)
+            for (def day = first; !day.isAfter(last); day = day.plusDays(1)) {
+                labels.add(day.format(dayLabel))
+                vals.add(((dayMap[day] ?: 0G) as BigDecimal).setScale(2, RoundingMode.HALF_UP).toPlainString())
             }
-            liabLabelsJson = "[" + labels.join(",") + "]"
+            liabLabelsJson = groovy.json.JsonOutput.toJson(labels)
             liabValsJson = "[" + vals.join(",") + "]"
             liabHasData = (periodLines.size() > 0)
 

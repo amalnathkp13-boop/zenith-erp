@@ -29,7 +29,7 @@ hardware, external providers and Safari require the owner's environment.
 | PS-018 / 1 | Scanner Enter | Pending: not yet fully exercised |
 | PS-020 / 1 | Store-wide mode switch | Pending: not yet fully exercised |
 | PS-021 / 1 | Per-line mode | Pending: not yet fully exercised |
-| PS-022 / 1 | **Unpriced product in a fixed mode** | Missing wholesale product price refused at add (mode-switch step still needs separate coverage) |
+| PS-022 / 1 | **Missing per-mode product price** | Wholesale inherits a configured MRP. Adding a product with neither price is refused. |
 | PS-023 / 1 | **Quantity-break** | Configured threshold 5 selects wholesale 90; manual price 80 is exempt (threshold reversion still pending) |
 | PS-024 / 1 | **TAX toggle OFF/ON** | Pending: not yet fully exercised |
 | PS-025 / 1 | Attach a customer | Customer attachment changes destination without repricing |

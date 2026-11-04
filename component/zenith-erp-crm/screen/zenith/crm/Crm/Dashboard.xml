@@ -8,13 +8,14 @@
             import org.moqui.entity.EntityCondition
 
             def choices = [today:'Today', week:'This week', month:'This month', all:'All time']
-            period = choices.containsKey(period?.toString()) ? period.toString() : 'month'
+            period = choices.containsKey(period?.toString()) ? period.toString() : 'today'
             periodLabel = choices[period]
-            def today = java.time.LocalDate.parse(new java.text.SimpleDateFormat('yyyy-MM-dd').format(ec.user.nowTimestamp))
+            def zone = ec.user.timeZone.toZoneId()
+            def today = ec.user.nowTimestamp.toInstant().atZone(zone).toLocalDate()
             def startDay = period == 'today' ? today : (period == 'week' ? today.minusDays(today.dayOfWeek.value - 1) :
                     (period == 'month' ? today.withDayOfMonth(1) : null))
-            def fromTime = startDay ? java.sql.Timestamp.valueOf(startDay.atStartOfDay()) : null
-            def endTime = java.sql.Timestamp.valueOf(today.plusDays(1).atStartOfDay())
+            def fromTime = startDay ? java.sql.Timestamp.from(startDay.atStartOfDay(zone).toInstant()) : null
+            def endTime = java.sql.Timestamp.from(today.plusDays(1).atStartOfDay(zone).toInstant())
             def fromDate = startDay ? java.sql.Date.valueOf(startDay) : null
             def endDate = java.sql.Date.valueOf(today.plusDays(1))
             def todayDate = java.sql.Date.valueOf(today)

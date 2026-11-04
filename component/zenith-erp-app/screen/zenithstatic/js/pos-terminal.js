@@ -3555,6 +3555,7 @@ window.posToggleFullscreen = function() {
         var lastCartData = null;
         var heldId = '';
         var heldCount = 0;
+        var catalogRevision = '', catalogCheck = null, catalogDirtyTx = '';
 
         // A real cashier gesture or a completed bill resets the 60-minute idle clock.
         // Polling and background rendering do not. The server sweep also handles closed tabs.
@@ -3623,9 +3624,10 @@ window.posToggleFullscreen = function() {
             document.addEventListener(type,onCashierGesture,{capture:true,passive:true,signal:idleAbort.signal});
         });
         document.addEventListener('visibilitychange',function(){
-            if (!document.hidden) checkSessionIdle();
+            if (!document.hidden) { checkSessionIdle(); pollCatalog(); }
         },{signal:idleAbort.signal});
-        var idleInterval = setInterval(checkSessionIdle,10000);
+        window.addEventListener('focus', pollCatalog, {signal:idleAbort.signal});
+        var idleInterval = setInterval(function(){ checkSessionIdle(); pollCatalog(); },10000);
         window.__posIdleCleanup = function(){ idleAbort.abort(); clearInterval(idleInterval); };
         sendSessionTouch();
 
@@ -3905,7 +3907,7 @@ window.posToggleFullscreen = function() {
                     else duePreview.textContent = 'Bill is still updating. Close and reopen Credit.';
                     return;
                 }
-                post({action:'refresh', transactionId:TX}).then(function(d) {
+                refreshCatalog(true).then(function() { return post({action:'refresh', transactionId:TX}); }).then(function(d) {
                     if (!d || !d.success || !d.items || !d.items.length) throw new Error('Bill unavailable');
                     lastPay = Number(d.pay || 0);
                     lastCartData = d;
@@ -3979,15 +3981,19 @@ window.posToggleFullscreen = function() {
                 var f = document.createElement('form');
                 f.method = 'post'; f.action = 'Terminal/completeCredit'; f.style.display = 'none';
                 function hid(n, v) { var i = document.createElement('input'); i.type = 'hidden'; i.name = n; i.value = v; f.appendChild(i); }
-                hid('transactionId', TX); hid('sessionId', SI); hid('salesModeId', SM);
+                hid('transactionId', TX); hid('sessionId', SI); hid('salesModeId', SM); hid('taxOn', TO);
                 hid('customerName', nm); hid('customerPhone', ph); hid('moquiSessionToken', TK);
                 if (selectedPartyId) hid('customerPartyId', selectedPartyId);
                 hid('upfrontAmount', paidNow.toFixed(2));
                 hid('creditDays',daysInp.value);hid('termsReason',document.getElementById('credit-terms-reason').value);
                 if (paidNow > 0) hid('upfrontMethod', document.getElementById('credit-upfront-method').value);
-                OPT.whenIdle().then(function(){f.querySelector('[name="transactionId"]').value=TX;return window.PosFreeItems.ensure(TX,TK);}).then(function(){
+                confirmCatalogTender().then(function(){
+                    hid('catalogRevision', catalogRevision);
+                    f.querySelector('[name="transactionId"]').value = TX;
+                    return window.PosFreeItems.ensure(TX, TK);
+                }).then(function(){
                     document.body.appendChild(f);f.submit();
-                }).catch(function(error){btn.disabled=false;btn.textContent='Complete Credit Sale';alert(error.message);});
+                }).catch(function(error){updateDuePreview();btn.disabled=false;btn.textContent='Complete Credit Sale';alert(error.message);});
             });
         };
 
@@ -4233,8 +4239,20 @@ window.posToggleFullscreen = function() {
         window._posPrintReceipt = printReceipt;
 
         function approvedPaymentFetch(url, options) {
-            return OPT.whenIdle().then(function() { options.body.set('transactionId', TX);return window.PosFreeItems.ensure(TX, TK); })
-                .then(function() { return fetch(url, options); });
+            return confirmCatalogTender().then(function() {
+                options.body.set('transactionId', TX);
+                options.body.set('catalogRevision', catalogRevision);
+                options.body.set('taxOn', TO);
+                return window.PosFreeItems.ensure(TX, TK);
+            }).then(function() { return fetch(url, options); })
+                .then(function(r) { return r.json().catch(function() { return null; }); })
+                .then(function(d) {
+                    if (!d || !d.priceReview) return d;
+                    catalogDirtyTx = TX;
+                    return refreshCatalog(true).catch(function() {}).then(function() {
+                        throw new Error(d.error || 'Product prices changed. Review the current total before taking payment.');
+                    });
+                });
         }
 
         /* --- Cart AJAX --- */
@@ -4501,13 +4519,12 @@ window.posToggleFullscreen = function() {
                 var modeCell = '-';
                 if (d.modes && d.modes.length) {
                     var _cm = null; for (var _mi = 0; _mi < d.modes.length; _mi++) { if (d.modes[_mi].id === it.mode) { _cm = d.modes[_mi]; break; } }
-                    if (!_cm) _cm = d.modes.find(function(m){return m.id===SM;}) || d.modes[0];
-                    var _mn = _cm ? _cm.name : '';
+                    var _mn = _cm ? _cm.name : it.mode || '';
                     var _cbg = '#DBEAFE', _cfg = '#2563EB';
                     if (/whole/i.test(_mn)) { _cbg = '#FFEDD5'; _cfg = '#EA580C'; }
                     else if (/custom/i.test(_mn)) { _cbg = '#D5F0EC'; _cfg = '#0F766E'; }
                     if (d.modes.length > 1) {
-                        var mo = '';
+                        var mo = !_cm && it.mode ? '<option selected disabled value="'+cartText(it.mode)+'">'+cartText(it.mode)+'</option>' : '';
                         d.modes.forEach(function(m){ mo += '<option value="'+cartText(m.id)+'"'+((it.mode||SM)===m.id?' selected':'')+'>'+cartText(m.name)+(Number(m.disc)>0?(' −'+Number(m.disc)+'%'):'')+'</option>'; });
                         modeCell = '<select class="aj-mode" data-seq="'+cartText(it.seq)+'" title="Sale mode for this item" style="font-size:12px;font-weight:600;padding:3px 6px;border:1px solid '+_cbg+';border-radius:6px;background:'+_cbg+';color:'+_cfg+';cursor:pointer;max-width:120px">'+mo+'</select>';
                     } else {
@@ -5184,6 +5201,74 @@ window.posToggleFullscreen = function() {
             var current = new URL(location.href);
             if (CATID || (search && search.value) || current.searchParams.has('searchTerm')) selectProductCategory('');
         }
+        function refreshCatalog(revalidate) {
+            if (catalogCheck) {
+                if (!revalidate) return catalogCheck;
+                return catalogCheck.catch(function() {}).then(function() { return refreshCatalog(true); });
+            }
+            var checkedTx = TX, previous = catalogRevision;
+            catalogCheck = fetch('Terminal/catalogRevision', {
+                method:'POST', credentials:'same-origin', signal:AbortSignal.timeout(10000),
+                body:new URLSearchParams({sessionId:SI, transactionId:checkedTx, taxOn:TO,
+                    since:previous, revalidate:revalidate ? 'Y' : 'N', moquiSessionToken:TK})
+            }).then(function(response) {
+                return response.json().catch(function() { return null; });
+            }).then(function(data) {
+                if (!data || !data.success || !data.revision)
+                    throw new Error(data && data.error || 'Could not verify product prices. Try again.');
+                if (!af.isConnected) return data;
+                catalogRevision = data.revision;
+                if (data.changed) {
+                    syncCatalogModes(data.modes || []);
+                    __allGridCache = null;
+                    var search = document.getElementById('cartInlineSearch');
+                    if (search && search.value.trim()) {
+                        window._gridSearch(search.value);
+                        search.dispatchEvent(new CustomEvent('input', {detail:{catalogRefresh:true}}));
+                    } else window._gridSearch('');
+                    if (previous && window._posOffline) window._posOffline.cacheCatalog();
+                }
+                if (checkedTx && (data.cartChanged || (previous && data.changed))) catalogDirtyTx = checkedTx;
+                if (!TX || catalogDirtyTx !== TX || busy || OPT._drainPending() ||
+                    document.querySelector('.pos-cart [aria-invalid="true"]')) return data;
+                var cartBefore = lastCartData;
+                return post({action:'refresh', transactionId:TX}).then(function(current) {
+                    if (!af.isConnected || checkedTx !== TX || OPT._drainPending() || lastCartData !== cartBefore) return data;
+                    if (!current || !current.success) throw new Error('Could not refresh the bill. Try again.');
+                    var focused = document.activeElement;
+                    var edited = focused && focused.matches('.aj-p,.aj-qi') && focused.getAttribute('aria-invalid') !== 'true';
+                    var oldValue = edited && focused.value;
+                    if (Number(current.pay) !== Number(lastPay) && smRoot &&
+                        smRoot.querySelector('.pos-cash-panel,.pos-split-panel')) {
+                        smRoot.removeAttribute('data-sig');
+                    }
+                    renderCart(current);
+                    if (edited && focused.isConnected && focused.value === oldValue) {
+                        var line = current.items.find(function(item) { return String(item.seq) === focused.dataset.seq; });
+                        if (line) focused.value = focused.classList.contains('aj-p') ? line.price : line.qty;
+                    }
+                    catalogDirtyTx = '';
+                    return data;
+                });
+            }).finally(function() { catalogCheck = null; });
+            return catalogCheck;
+        }
+        function pollCatalog() {
+            if (!af.isConnected || document.hidden || !navigator.onLine || cartClearing || modeSwitching || busy ||
+                OPT._drainPending() || (window._posOffline && window._posOffline.active()) ||
+                document.querySelector('#posCreditOverlay,#posPayConfirmOverlay,#posCashTenderOverlay,.pos-cash-panel,.pos-split-panel')) return;
+            refreshCatalog(false).then(function(data) {
+                if (data.cartChanged) showToast('Product prices changed. Review the updated bill total.', '#b45309');
+            }).catch(function() {});
+        }
+        function confirmCatalogTender() {
+            var total = Number(lastPay);
+            return OPT.whenIdle().then(function() { return refreshCatalog(true); }).then(function(data) {
+                if (!af.isConnected || !TX || catalogDirtyTx === TX) throw new Error('Could not verify the current bill. Try again.');
+                if (data.cartChanged || Number(lastPay) !== total)
+                    throw new Error('Product prices changed. Review the updated bill total before taking payment.');
+            });
+        }
         document.querySelectorAll('.pos-cat-strip a').forEach(function(link) {
             link.addEventListener('click', function(e) {
                 e.preventDefault();
@@ -5192,6 +5277,33 @@ window.posToggleFullscreen = function() {
         });
 
         /* --- Sales mode switching: AJAX --- */
+        function syncCatalogModes(modes) {
+            var menu = document.querySelector('.pos-header .nb-modes__menu');
+            var heading = menu && menu.querySelector('.nb-modes__section');
+            if (!heading) return;
+            menu.querySelectorAll('a[href*="changeSalesMode"],.nb-modes__item[aria-current],.pos-mode-unavailable').forEach(function(link) { link.remove(); });
+            if (!modes.length) {
+                var hint = document.createElement('span');
+                hint.className = 'nb-modes__item pos-mode-unavailable';
+                hint.textContent = 'No active sales modes';
+                heading.after(hint);
+                return;
+            }
+            if (!modes.some(function(mode) { return mode.id === SM; })) {
+                SM = (modes.find(function(mode) { return mode.isDefault; }) || modes[0]).id;
+                af.querySelector('[name=salesModeId]').value = SM;
+            }
+            var links = document.createDocumentFragment();
+            modes.forEach(function(mode) {
+                var link = document.createElement('a');
+                var query = new URLSearchParams({sessionId:SI, transactionId:TX, catId:CATID, taxOn:TO, salesModeId:mode.id});
+                link.href = 'Terminal/changeSalesMode?' + query;
+                link.className = 'nb-modes__item' + (mode.id === SM ? ' is-active' : '');
+                link.textContent = mode.name;
+                links.appendChild(link);
+            });
+            heading.after(links);
+        }
         function syncModeLinks() {
             document.querySelectorAll('.pos-header a[href*="changeSalesMode"]').forEach(function(link) {
                 var url = new URL(link.href);
@@ -5206,12 +5318,14 @@ window.posToggleFullscreen = function() {
             var isActive = link.style.borderColor === '#fff' || link.style.borderColor === 'rgb(255, 255, 255)';
             if (isActive) link.dataset.color = link.style.background || '#2e7d32';
         });
-        document.querySelectorAll('.pos-header a[href*="changeSalesMode"]').forEach(function(link) {
-            link.addEventListener('click', function(e) {
+        var modeHeader = document.querySelector('.pos-header');
+        if (modeHeader) modeHeader.addEventListener('click', function(e) {
+                var link = e.target.closest('a[href*="changeSalesMode"]');
+                if (!link) return;
                 e.preventDefault();
                 e.stopPropagation();
                 if (modeSwitching) return;
-                var linkUrl = new URL(this.href);
+                var linkUrl = new URL(link.href);
                 var newSM = linkUrl.searchParams.get('salesModeId') || '';
                 if (!newSM || newSM === SM) return;
                 modeSwitching = true;
@@ -5225,7 +5339,10 @@ window.posToggleFullscreen = function() {
                     if (!renderedMode) throw new Error('Could not load the selected sales mode.');
                     SM = renderedMode.value;
                     af.querySelector('[name=salesModeId]').value = SM;
+                    __allGridCache = null;
                     swapGrid(doc);
+                    var search = document.getElementById('cartInlineSearch');
+                    if (search && search.value.trim()) search.dispatchEvent(new Event('input'));
                     var newLinks = doc.querySelectorAll('.pos-header a[href*="changeSalesMode"]');
                     document.querySelectorAll('.pos-header a[href*="changeSalesMode"]').forEach(function(a) {
                         var mid = new URL(a.href).searchParams.get('salesModeId');
@@ -5251,7 +5368,6 @@ window.posToggleFullscreen = function() {
                 }).finally(function() {
                     modeSwitching = false;
                 });
-            });
         });
 
         /* --- Tax toggle: AJAX --- */
@@ -5420,6 +5536,8 @@ window.posToggleFullscreen = function() {
             paymentPanelPending = true;
             smRoot.setAttribute('aria-busy','true');
             OPT.whenIdle().then(function() {
+                return refreshCatalog(true);
+            }).then(function() {
                 if (lastCartData && lastCartData.success) return;
                 return post({action:'refresh',transactionId:TX}).then(function(data) {
                     if (!data || !data.success) throw new Error('Could not verify the bill. Please retry payment.');
@@ -5530,11 +5648,21 @@ window.posToggleFullscreen = function() {
                 // handler. Gate first, then re-enter once through requestSubmit().
                 e.stopPropagation();
                 if (/posPayCash|posPayDigital/.test(form.getAttribute('onsubmit') || '') && form.dataset.posPaymentConfirmed !== '1') {
-                    var gate = form.querySelector('[name="paymentMethod"]').value === 'Cash' ? window.posPayCash : window.posPayDigital;
-                    if (gate(form) !== false) {
-                        form.dataset.posPaymentConfirmed = '1';
-                        if (form.requestSubmit) form.requestSubmit(); else form.submit();
-                    }
+                    if (paymentPanelPending) return;
+                    var method = form.querySelector('[name="paymentMethod"]').value;
+                    paymentPanelPending = true;
+                    OPT.whenIdle().then(function() { return refreshCatalog(true); }).then(function() {
+                        if (!form.isConnected) form = Array.from(document.querySelectorAll('form.pos-pay-form')).find(function(candidate) {
+                            return candidate.querySelector('[name="paymentMethod"]').value === method;
+                        });
+                        if (!form || !TX) return;
+                        var gate = method === 'Cash' ? window.posPayCash : window.posPayDigital;
+                        if (gate(form) !== false) {
+                            form.dataset.posPaymentConfirmed = '1';
+                            form.requestSubmit();
+                        }
+                    }).catch(function(error) { showToast(error.message, '#c62828'); })
+                      .finally(function() { paymentPanelPending = false; });
                     return;
                 }
                 delete form.dataset.posPaymentConfirmed;
@@ -5548,7 +5676,6 @@ window.posToggleFullscreen = function() {
                 var btn = form.querySelector('button');
                 if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
                 approvedPaymentFetch(form.action, {method: 'POST', body: new URLSearchParams(fd), credentials: 'same-origin'})
-                    .then(function(r) { return r.json().catch(function() { return {success:false, error:'Payment failed'}; }); })
                     .then(function(d) {
                         if (!d || !d.success) throw new Error((d && d.error) || 'Payment failed');
                         var billNum = d.bill && d.bill.number || '';
@@ -5597,7 +5724,6 @@ window.posToggleFullscreen = function() {
                 var btn = form.querySelector('button[type="submit"]');
                 if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.textContent = 'Processing...'; }
                 approvedPaymentFetch(form.action, {method: 'POST', body: new URLSearchParams(fd), credentials: 'same-origin'})
-                    .then(function(r) { return r.json().catch(function() { return {success:false, error:'Split payment failed'}; }); })
                     .then(function(d) {
                         if (!d || !d.success) throw new Error((d && d.error) || 'Split payment failed');
                         var billNum = d.bill && d.bill.number || '';
@@ -5697,7 +5823,6 @@ window.posToggleFullscreen = function() {
                 params.set('moquiSessionToken', TK);
                 params.set('wantJson', '1'); // get the print-receipt data back in the same response
                 approvedPaymentFetch('Terminal/payAndComplete', {method: 'POST', body: params, credentials: 'same-origin'})
-                    .then(function(r) { return r.json().catch(function() { return {success:false, error:'Payment failed'}; }); })
                     .then(function(d) {
                         if (!d || !d.success) throw new Error((d && d.error) || 'Payment failed');
                         var toastMsg = '✔ Sale Complete — BILL-' + billNum + ' — ' + CS + fmt(lastPay) + ' CASH';
@@ -5749,6 +5874,7 @@ window.posToggleFullscreen = function() {
                 confirmBtn.disabled = false; confirmBtn.style.opacity = '1';
             }
         });
+        pollCatalog();
     }
     init();
 })();
@@ -5784,8 +5910,9 @@ window.posToggleFullscreen = function() {
                 dd.innerHTML = '<div style="padding:10px;color:#999;font-size:13px;text-align:center">No products found</div>';
             } else {
                 dd.innerHTML = data.map(function (p) {
-                    return '<div class="cart-dd-item" data-pid="' + esc(p.productId) + '" data-price="' + Number(p.mrpAmount || 0) + '" data-name="' + esc(p.productName) + '" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #eee;font-size:14px;background:#fff">'
-                        + '<span class="dd-price" style="float:right;color:#e53935;font-weight:bold;font-size:14px">' + esc(p.mrpAmount) + '</span>'
+                    var blocked = p.priceBlocked === true;
+                    return '<div class="' + (blocked ? 'cart-dd-blocked' : 'cart-dd-item') + '" data-pid="' + esc(p.productId) + '" data-price="' + Number(p.mrpAmount || 0) + '" data-name="' + esc(p.productName) + '" style="padding:8px 12px;cursor:' + (blocked ? 'not-allowed' : 'pointer') + ';border-bottom:1px solid #eee;font-size:14px;background:#fff">'
+                        + '<span class="dd-price" style="float:right;color:#e53935;font-weight:bold;font-size:14px">' + (blocked ? 'Price not configured' : esc(p.mrpAmount)) + '</span>'
                         + '<span class="dd-name" style="font-weight:600;color:#000">' + esc(p.productName) + '</span>'
                         + '<div class="dd-code" style="font-size:12px;color:#555;margin-top:2px">' + esc(p.pseudoId) + '</div></div>';
                 }).join('');
@@ -5804,17 +5931,20 @@ window.posToggleFullscreen = function() {
                 return;
             }
             var grid = document.querySelector('.pos-product-grid');
-            if (window._gridSearch && grid && grid.getClientRects().length) {
+            if (event.detail?.catalogRefresh) gridSearchActive = true;
+            else if (window._gridSearch && grid && grid.getClientRects().length) {
                 window._gridSyncTimer = setTimeout(function() {
                     if (version === searchVersion) { gridSearchActive = true; window._gridSearch(text); }
                 }, 450);
             }
             dt = setTimeout(function() {
-                var tk = (document.querySelector('#cartInlineAddForm [name=moquiSessionToken]') || {}).value || '';
+                var form = document.getElementById('cartInlineAddForm');
+                var lookup = new URLSearchParams({term:text,
+                    salesModeId:form.elements.salesModeId.value, moquiSessionToken:form.elements.moquiSessionToken.value});
                 searchAbort = new AbortController();
                 fetch('Terminal/lookupProducts', {
                     signal:searchAbort.signal, method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
-                    body:'term=' + encodeURIComponent(text) + '&moquiSessionToken=' + encodeURIComponent(tk), credentials:'same-origin'
+                    body:lookup, credentials:'same-origin'
                 }).then(function(r) {
                     if (!r.ok) throw new Error('Product search unavailable');
                     return r.json();

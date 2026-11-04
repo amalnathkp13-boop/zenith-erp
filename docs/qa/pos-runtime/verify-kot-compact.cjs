@@ -13,7 +13,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
  check('Browsing the grid only returns products from the active organization',catalogue.data?.success&&
   catalogue.data.products.some(p=>p.id==='POS_QA_B_P18')&&!catalogue.data.products.some(p=>p.id.startsWith('POS_QA_A_')),catalogue);
  const mode=await json('searchMenu',{term:'POS_QA_A_NOWS',salesModeId:'WHOLESALE'});
- check('KOT blocks a missing fixed-mode price',mode.data?.products?.[0]?.price===null,mode);
+ check('KOT inherits MRP when a fixed mode has no override',Number(mode.data?.products?.[0]?.price)===50,mode);
  const terminalId='POS_QA_A_KB_'+Date.now().toString(36);
  await post('PosTerminals','createTerminal',{terminalId,terminalName:'Disposable KOT checkout',facilityId:'POS_QA_A_FAC',organizationPartyId:'POS_QA_A',stateCode:'33',isActive:'Y'});
  const session=await invoke('open',{terminalId,openingCash:'0'});

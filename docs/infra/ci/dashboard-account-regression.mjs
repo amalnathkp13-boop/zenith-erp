@@ -121,6 +121,44 @@ try {
   assert(!(await staff.$('#homeUtilities')), 'Home dashboard still renders duplicate account utilities');
   console.log('PASS shared home dashboard shell and account utilities');
 
+  for (const width of [390, 768]) {
+    await staff.setViewport({ width, height: 750, hasTouch: true, isMobile: width === 390 });
+    for (const surface of ['qapps', 'apps']) {
+      const quasar = surface === 'qapps';
+      const menu = quasar ? '.q-header .q-toolbar > button:first-child' : '#z-side-burger';
+      const sidebar = quasar ? '#zq-sidebar' : '#z-sidebar';
+      const owner = quasar ? '#zq-ownerview' : '#z-ownerview';
+      const search = quasar ? '#zq-search-input' : '#z-search-input';
+      const toolbar = quasar ? '#zq-toolbtns' : '#z-app-toolbtns';
+      const customize = (quasar ? '#zq-subnav' : '#z-subnav') + ' .zsn-trigger';
+      await staff.goto(`${base}/${surface}/zenith/Inventory/FindProduct`, { waitUntil: 'domcontentloaded' });
+      await staff.waitForSelector(toolbar);
+      await staff.tap(menu);
+      await staff.waitForFunction(id => document.querySelector(id)?.getBoundingClientRect().left === 0, {}, sidebar);
+      await staff.tap(sidebar + ' [data-match="/pos"]');
+      await staff.waitForSelector('.pos-dash-v2');
+      await staff.waitForSelector(customize, { visible: true });
+      const state = await staff.evaluate((menu, owner, search, toolbar, customize) => {
+        const bounds = selector => document.querySelector(selector).getBoundingClientRect();
+        const canTap = selector => {
+          const node = document.querySelector(selector), rect = bounds(selector);
+          return rect.width > 0 && rect.height > 0 && rect.right <= innerWidth &&
+            node.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+        };
+        return {
+          noDrawerLock: !document.body.classList.contains('q-body--prevent-scroll'),
+          fitsViewport: document.documentElement.scrollWidth <= innerWidth,
+          menuDoesNotOverlap: bounds(menu).right <= bounds(owner).left,
+          searchReachable: canTap(search),
+          accountReachable: canTap(toolbar + ' > a:last-child'),
+          customizeReachable: canTap(customize),
+        };
+      }, menu, owner, search, toolbar, customize);
+      assert(Object.values(state).every(Boolean), `/${surface} at ${width}px: ${JSON.stringify(state)}`);
+    }
+  }
+  console.log('PASS mobile menu and toolbar in both shells at 390px and 768px');
+
   const postLogin = async remember => {
     const body = new URLSearchParams({ organizationId: 'CITEST_A', username: 'citest.a', password: 'moqui', rememberMeSubmitted: 'Y' });
     if (remember) body.set('rememberMe', 'true');

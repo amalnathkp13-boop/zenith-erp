@@ -93,6 +93,7 @@
             // The range drives ONLY the Customer Activity chart, Top Customers, and the "active in range" stat.
             // The Customers/Suppliers directory totals above stay "current" (MARUTHI-safe).
             def _sdf = new java.text.SimpleDateFormat("yyyy-MM-dd")
+            _sdf.setTimeZone(ec.user.timeZone)
             def _now = ec.user.nowTimestamp
             def _todayStr = _sdf.format(_now)
             def _today = java.time.LocalDate.parse(_todayStr)
@@ -105,8 +106,9 @@
             dashDate = (dashDate ?: '').toString().trim()
             dashDateTo = (dashDateTo ?: '').toString().trim()
             dateError = ''
+            if (!dashDate && dashDateTo) dashDate = dashDateTo
             if (!dashDate && dateMode != 'all' && dateMode != 'custom') {
-                dashDate = _weekStart.toString(); dashDateTo = _todayStr; dateMode = 'week'
+                dashDate = _todayStr; dashDateTo = _todayStr; dateMode = 'today'
             }
             dayStart = null; dayEndExcl = null
             if (dashDate) {
@@ -116,8 +118,9 @@
                     if (_last.isBefore(_first)) { def _swap = _first; _first = _last; _last = _swap }
                     if (_first.year < 1900 || _last.year > 9998) throw new IllegalArgumentException('Date outside supported range')
                     dashDate = _first.toString(); dashDateTo = _last.toString()
-                    dayStart = java.sql.Timestamp.valueOf(_first.atStartOfDay())
-                    dayEndExcl = java.sql.Timestamp.valueOf(_last.plusDays(1).atStartOfDay())
+                    def zone = ec.user.timeZone.toZoneId()
+                    dayStart = java.sql.Timestamp.from(_first.atStartOfDay(zone).toInstant())
+                    dayEndExcl = java.sql.Timestamp.from(_last.plusDays(1).atStartOfDay(zone).toInstant())
                 } catch (IllegalArgumentException | java.time.DateTimeException e) {
                     dashDate = ''; dashDateTo = ''; dateMode = 'custom'
                     dateError = 'Enter a valid date range. Showing the last 6 months until a valid range is applied.'
@@ -154,12 +157,15 @@
             def _acStart; def _acEnd
             if (dayStart) { _acStart = dayStart; _acEnd = dayEndExcl }
             else {
-                def _c6 = java.util.Calendar.getInstance(); _c6.setTime(_now); _c6.set(java.util.Calendar.DAY_OF_MONTH,1); _c6.add(java.util.Calendar.MONTH,-5); _acStart = new java.sql.Timestamp(_c6.getTimeInMillis())
-                def _ce2 = java.util.Calendar.getInstance(); _ce2.setTime(_now); _ce2.add(java.util.Calendar.DAY_OF_MONTH,1); _acEnd = new java.sql.Timestamp(_ce2.getTimeInMillis())
+                def _c6 = java.util.Calendar.getInstance(ec.user.timeZone); _c6.setTime(_now); _c6.set(java.util.Calendar.DAY_OF_MONTH,1); _c6.add(java.util.Calendar.MONTH,-5); _acStart = new java.sql.Timestamp(_c6.getTimeInMillis())
+                def _ce2 = java.util.Calendar.getInstance(ec.user.timeZone); _ce2.setTime(_now); _ce2.add(java.util.Calendar.DAY_OF_MONTH,1); _acEnd = new java.sql.Timestamp(_ce2.getTimeInMillis())
             }
             def _daily = ((_acEnd.getTime() - _acStart.getTime()) / (1000L*60*60*24)) <= 62
             def _bfmt = _daily ? new java.text.SimpleDateFormat("yyyy-MM-dd") : new java.text.SimpleDateFormat("yyyy-MM")
             def _lfmt = _daily ? new java.text.SimpleDateFormat("dd MMM") : new java.text.SimpleDateFormat("MMM yy")
+
+            _bfmt.setTimeZone(ec.user.timeZone)
+            _lfmt.setTimeZone(ec.user.timeZone)
 
             // one finalised-sales-invoice pass drives all range widgets
             def _invs = orgId ? ef.find("mantle.account.invoice.Invoice")
@@ -174,7 +180,7 @@
 
             // build empty daily/monthly buckets across the window
             def _keys = []; def _labelByKey = [:]; def _setBy = [:]
-            def _bc = java.util.Calendar.getInstance(); _bc.setTime(_acStart); def _bendMs = _acEnd.getTime(); int _guard = 0
+            def _bc = java.util.Calendar.getInstance(ec.user.timeZone); _bc.setTime(_acStart); def _bendMs = _acEnd.getTime(); int _guard = 0
             while (_bc.getTimeInMillis() < _bendMs && _guard < 400) {
                 def _k = _bfmt.format(_bc.getTime())
                 if (!_labelByKey.containsKey(_k)) { _keys.add(_k); _labelByKey[_k] = _lfmt.format(_bc.getTime()); _setBy[_k] = new HashSet() }

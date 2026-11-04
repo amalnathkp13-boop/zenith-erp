@@ -476,9 +476,8 @@
             <service-call name="zenith.pos.PosModeServices.assert#TerminalMode" in-map="[terminalId:terminal.terminalId,salesModeId:salesModeId]"/>
             <if condition="ec.message.hasError()"><return/></if>
             <set field="isDefaultPrice" from="unitPrice == null || (product?.mrpAmount != null &amp;&amp; (unitPrice as BigDecimal).compareTo(product.mrpAmount as BigDecimal) == 0)"/>
-            <!-- Per-mode explicit pricing: if the active sales mode charges a fixed per-product
-                 price (Wholesale/Employee), use it and BLOCK the add when none is set. A manual
-                 price typed by the cashier wins (isDefaultPrice false) and skips this. -->
+            <!-- An explicit mode price wins over MRP and price lists. The fixed-mode MRP
+                 fallback is also exact. An intentional cashier override remains separate. -->
             <set field="modeIsFixed" from="false"/>
             <if condition="salesModeId">
                 <service-call name="zenith.pos.PosServices.resolve#PosModePrice" out-map="mp"
@@ -501,8 +500,10 @@
                                        regionGeoId:terminal?.regionGeoId,
                                        salesChannelEnumId:'ScPos']"
                               out-map="priceResult"/>
-                <set field="unitPrice" from="(priceResult?.unitPrice != null &amp;&amp; (priceResult.unitPrice as BigDecimal).compareTo(BigDecimal.ZERO) &gt; 0) ? priceResult.unitPrice : (product?.mrpAmount ?: BigDecimal.ZERO)" type="BigDecimal"/>
+                <set field="unitPrice" from="(priceResult?.unitPrice != null &amp;&amp; (priceResult.unitPrice as BigDecimal).compareTo(BigDecimal.ZERO) &gt; 0) ? priceResult.unitPrice : product?.mrpAmount" type="BigDecimal"/>
             </if>
+            <if condition="unitPrice == null">
+                <return error="true" message="Price not configured for this sales mode."/></if>
             <set field="mrp" from="product?.mrpAmount ?: unitPrice"/>
             <set field="productTaxCode" from="product?.productTaxCode ?: ''"/>
 
@@ -585,6 +586,7 @@
 
             <!-- A cashier-typed price (isDefaultPrice false) locks the line against quantity-break auto-pricing. -->
             <set field="_manualPrice" from="isDefaultPrice ? 'N' : 'Y'"/>
+            <set field="_manualDiscount" from="!salesModeId &amp;&amp; (discountPercent ?: 0) &gt; 0 ? 'Y' : 'N'"/>
             <!-- Merge into the existing line if found, otherwise create a new line -->
             <if condition="existingLine != null">
                 <set field="itemSeqId" from="existingLine.itemSeqId"/>
@@ -593,7 +595,7 @@
                              unitPrice:unitPrice, mrp:mrp, discountPercent:discountPercent,
                              discountAmount:discAmt, taxableAmount:taxableAmount,
                              totalTaxAmount:totalTaxAmount, lineTotal:lineTotal, uomId:(product?.amountUomId ?: 'OTH_ea'), salesModeId:salesModeId,
-                             manualPrice:(existingLine.manualPrice ?: _manualPrice)]"/>
+                             manualPrice:(existingLine.manualPrice ?: _manualPrice), manualDiscount:_manualDiscount]"/>
             <else>
                 <entity-find entity-name="zenith.erp.pos.PosTransactionItem" list="existingItems">
                     <econdition field-name="transactionId"/></entity-find>
@@ -606,7 +608,7 @@
                              unitPrice:unitPrice, mrp:mrp, discountPercent:discountPercent,
                              discountAmount:discAmt, taxableAmount:taxableAmount,
                              totalTaxAmount:totalTaxAmount, lineTotal:lineTotal, uomId:(product?.amountUomId ?: 'OTH_ea'), salesModeId:salesModeId,
-                             manualPrice:_manualPrice]"/>
+                             manualPrice:_manualPrice, manualDiscount:_manualDiscount]"/>
             </else></if>
 
             <!-- Store per-line tax breakdown. ZE-TAX-PHANTOM: only when tax is ON. Storing the breakdown while the
@@ -1955,7 +1957,7 @@
             <iterate list="rpItems" entry="it">
                 <service-call name="zenith.pos.PosServices.resolve#PosModePrice" out-map="rmp"
                               in-map="[productId:it.productId, salesModeId:salesModeId]"/>
-                <if condition="rmp?.isFixed &amp;&amp; (rmp?.blocked == true)">
+                <if condition="rmp?.blocked == true">
                     <script>blockedNames.add(it.productName ?: it.productId)</script>
                 <else>
                     <!-- ZE-POS-MODEPRICE fix: store a fresh COPY of the resolved values per line, NOT the
@@ -2009,7 +2011,7 @@
                 <service-call name="update#zenith.erp.pos.PosTransactionItem"
                     in-map="[transactionId:transactionId, itemSeqId:it.itemSeqId, unitPrice:newUnit,
                              mrp:(prodRp?.mrpAmount ?: newUnit),
-                             discountPercent:lineDisc, discountAmount:discAmt, salesModeId:salesModeId,
+                             discountPercent:lineDisc, discountAmount:discAmt, manualDiscount:'N', salesModeId:salesModeId,
                              taxableAmount:taxableAmount, totalTaxAmount:totalTaxAmount, lineTotal:lineTotal]"/>
                 <if condition="taxOn != 'N' &amp;&amp; taxedItem?.taxBreakdowns">
                     <service-call name="zenith.tax.TaxServices.store#TaxLineDetails"
@@ -2067,7 +2069,7 @@
                  has no price for the product (change nothing). -->
             <service-call name="zenith.pos.PosServices.resolve#PosModePrice" out-map="lmp"
                           in-map="[productId:it.productId, salesModeId:salesModeId, product:prod]"/>
-            <if condition="lmp?.isFixed &amp;&amp; (lmp?.blocked == true)">
+            <if condition="lmp?.blocked == true">
                 <return error="true" message="${lmp.blockReason}"/></if>
             <set field="newUnit" from="(lmp?.isFixed) ? (lmp.unitPrice as BigDecimal) : ((prod?.mrpAmount ?: it.unitPrice ?: 0) as BigDecimal)" type="BigDecimal"/>
             <set field="md" from="(lmp?.isFixed) ? BigDecimal.ZERO : ((lmp?.discountPercent ?: 0) as BigDecimal)" type="BigDecimal"/>
@@ -2095,7 +2097,7 @@
             <service-call name="update#zenith.erp.pos.PosTransactionItem"
                 in-map="[transactionId:transactionId, itemSeqId:itemSeqId, unitPrice:newUnit,
                          mrp:(prod?.mrpAmount ?: newUnit),
-                         discountPercent:md, discountAmount:dAmt, salesModeId:salesModeId,
+                         discountPercent:md, discountAmount:dAmt, manualDiscount:'N', salesModeId:salesModeId,
                          taxableAmount:taxable, totalTaxAmount:ttax, lineTotal:(taxable + ttax)]"/>
             <if condition="taxOn != 'N' &amp;&amp; taxedI?.taxBreakdowns">
                 <service-call name="zenith.tax.TaxServices.store#TaxLineDetails"
@@ -2117,7 +2119,7 @@
 
     <service verb="resolve" noun="PosModePrice">
         <description>Resolve the unit price to charge for a product in a sales mode.
-            isFixed=true => the mode uses explicit per-product prices; blocked=true => no price set.</description>
+            isFixed=true prevents pricing rules from replacing an explicit price or the fixed-mode MRP fallback.</description>
         <in-parameters>
             <parameter name="productId" required="true"/>
             <parameter name="salesModeId"/>
@@ -2135,9 +2137,10 @@
                 <entity-find-one entity-name="mantle.product.Product" value-field="product">
                     <field-map field-name="productId"/></entity-find-one>
             </if>
-            <set field="mrp" from="(product?.mrpAmount ?: 0) as BigDecimal" type="BigDecimal"/>
+            <set field="mrp" from="product?.mrpAmount" type="BigDecimal"/>
             <set field="isFixed" from="false"/>
-            <set field="blocked" from="false"/>
+            <set field="blocked" from="mrp == null"/>
+            <set field="blockReason" from="blocked ? 'Price not configured for this sales mode.' : null"/>
             <set field="discountPercent" from="BigDecimal.ZERO" type="BigDecimal"/>
             <set field="unitPrice" from="mrp"/>
             <if condition="!salesModeId"><return/></if>
@@ -2150,29 +2153,26 @@
                 <return/>
             </if>
             <set field="ps" from="mode?.priceSource ?: 'PpsMrp'"/>
-            <if condition="ps == 'PpsFixedProduct'">
+            <entity-find-one entity-name="zenith.erp.pos.PosProductModePrice" value-field="pmp">
+                <field-map field-name="productId"/><field-map field-name="salesModeId"/></entity-find-one>
+            <if condition="pmp?.price != null &amp;&amp; product?.ownerPartyId &amp;&amp; (!pmp.organizationPartyId || pmp.organizationPartyId == product.ownerPartyId)">
                 <set field="isFixed" from="true"/>
-                <entity-find-one entity-name="zenith.erp.pos.PosProductModePrice" value-field="pmp">
-                    <field-map field-name="productId"/><field-map field-name="salesModeId"/></entity-find-one>
-                <if condition="pmp?.price != null &amp;&amp; (pmp.price as BigDecimal).compareTo(BigDecimal.ZERO) &gt; 0">
-                    <set field="unitPrice" from="pmp.price as BigDecimal" type="BigDecimal"/>
-                <else>
-                    <set field="blocked" from="true"/>
-                    <set field="blockReason" from="'No ' + (mode?.modeName ?: salesModeId) + ' price set for ' + (product?.productName ?: productId)"/>
-                </else></if>
-            <else>
-                <if condition="ps == 'PpsDiscountMrp' || ps == 'PpsDiscountList'">
-                    <set field="discountPercent" from="(mode?.discountPercent ?: 0) as BigDecimal" type="BigDecimal"/>
-                </if>
-            </else></if>
+                <set field="unitPrice" from="pmp.price as BigDecimal" type="BigDecimal"/>
+                <set field="blocked" from="false"/>
+                <set field="blockReason" from="null"/>
+                <return/>
+            </if>
+            <set field="isFixed" from="ps == 'PpsFixedProduct'"/>
+            <if condition="ps == 'PpsDiscountMrp' || ps == 'PpsDiscountList'">
+                <set field="discountPercent" from="(mode?.discountPercent ?: 0) as BigDecimal"/>
+            </if>
         </actions>
     </service>
 
     <service verb="set" noun="PosModePrice">
-        <description>Set (or clear) the explicit price of a product for a sales mode.
-            For a Retail/MRP mode the per-product price IS the product MRP. For a fixed mode
-            a positive price upserts PosProductModePrice; a null/zero price clears it (the
-            product then cannot be sold in that mode).</description>
+        <description>Update pricing from the POS Product Prices screen.
+            Retail edits MRP unless an explicit Retail override exists.
+            Clearing a fixed-mode override uses the product MRP.</description>
         <in-parameters>
             <parameter name="productId" required="true"/>
             <parameter name="salesModeId" required="true"/>
@@ -2192,7 +2192,11 @@
             <set field="ps" from="mode?.priceSource ?: 'PpsMrp'"/>
             <set field="hasPrice" from="price != null &amp;&amp; (price as BigDecimal).compareTo(BigDecimal.ZERO) &gt; 0"/>
             <set field="_thr" from="(thresholdQty != null &amp;&amp; (thresholdQty as BigDecimal).compareTo(BigDecimal.ZERO) &gt; 0) ? (thresholdQty as BigDecimal) : null"/>
-            <if condition="ps != 'PpsFixedProduct'">
+            <entity-find-one entity-name="zenith.erp.pos.PosProductModePrice" value-field="exPmp">
+                <field-map field-name="productId"/><field-map field-name="salesModeId"/></entity-find-one>
+            <if condition="exPmp?.organizationPartyId &amp;&amp; exPmp.organizationPartyId != product.ownerPartyId">
+                <return error="true" message="The existing price has inconsistent organization ownership."/></if>
+            <if condition="ps != 'PpsFixedProduct' &amp;&amp; !exPmp">
                 <if condition="hasPrice">
                     <service-call name="update#mantle.product.Product"
                                   in-map="[productId:productId, mrpAmount:(price as BigDecimal)]"/>
@@ -2203,8 +2207,6 @@
                                   in-map="[productId:productId, salesModeId:salesModeId,
                                            price:(price as BigDecimal), thresholdQty:_thr, organizationPartyId:product.ownerPartyId]"/>
                 <else>
-                    <entity-find-one entity-name="zenith.erp.pos.PosProductModePrice" value-field="exPmp">
-                        <field-map field-name="productId"/><field-map field-name="salesModeId"/></entity-find-one>
                     <if condition="exPmp"><entity-delete value-field="exPmp"/></if>
                 </else></if>
             </else></if>

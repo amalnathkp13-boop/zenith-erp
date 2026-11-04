@@ -7,3 +7,28 @@
 @media(max-width:1100px){#productEditor .pe-workspace{grid-template-columns:minmax(0,1.4fr) minmax(280px,1fr)}#productEditor .pe-four{grid-template-columns:repeat(2,minmax(0,1fr))}#productEditor .pe-four>label:nth-last-child(-n+2){grid-column:span 1}#productEditor .pe-three{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:760px){#productEditor{padding:12px}#productEditor .pe-workspace{grid-template-columns:1fr}#productEditor .pe-savebar{padding:10px;bottom:68px}#productEditor .pe-savebar span{display:none}#productEditor .pe-header{gap:12px}#productEditor .pe-actions{gap:6px}#productEditor .pe-actions>*{font-size:11px;padding:8px}#productEditor .pe-card{scroll-margin-top:140px}}
 @media(max-width:420px){#productEditor .pe-fields{grid-template-columns:1fr}#productEditor .pe-four>label:nth-last-child(-n+2){grid-column:auto}#productEditor .pe-image-layout{grid-template-columns:1fr 1fr}#productEditor h1{font-size:23px}}
+
+.pe-create{color:#171b3b;font:14px/1.45 system-ui,sans-serif;min-width:0;width:100%}
+.pe-create section,.pe-create details{padding:14px;border:1px solid #e4e8f2;border-radius:8px;margin:0 0 12px}
+.pe-create h3,.pe-create summary{font-size:16px;font-weight:700;margin:0 0 10px}
+.pe-create summary{cursor:pointer}
+.pe-create-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px}
+.pe-create-wide{grid-column:1/-1}
+.pe-create label{display:block;margin:0;min-width:0;font-size:13px;font-weight:600}
+.pe-create label b{color:#b42318}
+.pe-create :is(input:not([type=hidden]),select,textarea){box-sizing:border-box;display:block;width:100%;max-width:100%;min-height:40px;margin-top:4px;padding:7px 9px;border:1px solid #d7ddea;border-radius:6px;background:#fff;color:#20243d;font:inherit}
+.pe-create .select2-container{width:100%!important;max-width:100%}
+body:has(.modal.in #CreateProductForm,.q-dialog #CreateProductForm) #ai-copilot-container{visibility:hidden}
+.pe-create input[readonly],#productEditor input[readonly]{background:#f5f6fb;color:#52607c}
+.pe-create small,.pe-mode-prices small{display:block;color:#52607c;font-size:12px;font-weight:400;margin-top:4px}
+.pe-create footer{position:static;background:transparent;color:inherit;display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:12px;padding:0;text-align:start}
+.pe-create footer p{flex:1;min-width:10rem;margin:0}
+.pe-create footer button{padding:10px 14px;border:0;border-radius:7px;background:#6c2fe3;color:#fff;font:inherit;font-weight:700}
+.pe-create[aria-busy=true] button{opacity:.6}
+.pe-mode-prices>p{font-size:12px;margin:0 0 8px;color:#52607c}
+.pe-mode-prices .pe-mode-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(76px,.6fr);gap:9px;align-items:center;min-height:48px;padding:4px 0;border-bottom:1px solid #e4e8f2}
+.pe-mode-prices .pe-mode-row>span{overflow-wrap:anywhere}
+.pe-mode-prices .pe-mode-row input{margin-top:0}
+[data-pe-status][data-error=true],#productEditor [data-pe-status][data-error=true]{color:#b42318}
+@media(max-width:540px){.pe-create-fields{grid-template-columns:1fr}.pe-create :is(input,select,textarea){font-size:16px}}
+@media(max-width:760px){#productEditor .pe-savebar [data-pe-status][data-error=true]{display:block;flex-basis:100%}#productEditor .pe-savebar:has([data-error=true]){flex-wrap:wrap}}

@@ -58,13 +58,13 @@ const balance = (product, facility) => Number(query(`SELECT coalesce(sum(quantit
         const receiver = query(`SELECT facility_id FROM facility WHERE facility_name=${quoted(name)} AND owner_party_id='POS_QA_A'`)[0]?.facility_id;
         assert(receiver, 'Receiver belongs to active organization');
 
-        const serviceCode = 'POS_QA_TRANSFER_SERVICE_' + Date.now();
+        const serviceName = 'Disposable transfer service '+Date.now();
         const productResponse = await writer.post(base + '/apps/zenith/Inventory/FindProduct/createProduct', {
-            form: {moquiSessionToken: token, pseudoId: serviceCode, productName: 'Disposable transfer service',
-                productTypeEnumId: 'PtService', mrpAmount: '10', openingStock: '0'}, maxRedirects: 0
+            form: {moquiSessionToken: token, productName: serviceName,
+                productTypeEnumId: 'PtService', uqcEnumId:'NOS', mrpAmount: '10', openingStock: '0'}, maxRedirects: 0
         });
         assert(productResponse.status() < 400, 'Service fixture created');
-        const service = query(`SELECT product_id FROM product WHERE pseudo_id=${quoted(serviceCode)} AND owner_party_id='POS_QA_A'`)[0]?.product_id;
+        const service = query(`SELECT product_id FROM product WHERE product_name=${quoted(serviceName)} AND owner_party_id='POS_QA_A'`)[0]?.product_id;
         assert(service, 'Service fixture persisted');
 
         const remark = 'Disposable transfer check ' + Date.now();
@@ -80,7 +80,7 @@ const balance = (product, facility) => Number(query(`SELECT coalesce(sum(quantit
         const editHtml = await edit.text();
         assert.equal(edit.status(), 200);
         assert(editHtml.includes('POS_QA_A_STOCK'), 'Physical product appears in the picker');
-        assert(!editHtml.includes(serviceCode), 'Service does not appear in the picker');
+        assert(!editHtml.includes(serviceName), 'Service does not appear in the picker');
 
         const add = (productId, quantity) => writer.post(base + '/apps/zenith/Inventory/EditStockTransfer/addItem', {
             form: {moquiSessionToken: token, stockTransferId: id, productId, quantity}, maxRedirects: 0

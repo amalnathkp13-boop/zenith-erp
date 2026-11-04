@@ -90,7 +90,7 @@
       root.querySelectorAll('.ba-seg-btn').forEach(function (button) { var active = button.dataset.t === view; button.classList.toggle('on', active); button.setAttribute('aria-pressed', String(active)); });
     }
     root.querySelectorAll('.ba-seg-btn').forEach(function (button) { button.addEventListener('click', function () { draw(button.dataset.t); }); });
-    if (chart) draw('weekly');
+    if (chart) draw(config.initialChart === 'hourly' ? 'hourly' : 'weekly');
     // Keep raw HTML links on the current mount; the POS terminal intentionally uses /apps.
     if (location.pathname.startsWith('/qapps/')) root.querySelectorAll('a[href^="/apps/"]').forEach(function (link) {
       if (!link.pathname.endsWith('/pos/Terminal')) link.setAttribute('href', link.getAttribute('href').replace('/apps/', '/qapps/'));

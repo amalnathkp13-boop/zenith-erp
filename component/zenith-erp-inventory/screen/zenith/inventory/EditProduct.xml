@@ -20,6 +20,7 @@
     </transition>
     
     <transition name="updateProduct" method="post" begin-transaction="true">
+        <parameter name="modePricesJson"/>
         <actions>
             <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'inventory']" out-map="writeAccess"/>
             <if condition="!writeAccess.canWrite"><return error="true" message="You have view-only access."/></if>
@@ -164,8 +165,20 @@
                     <service-call name="zenith.barcode.BarcodeServices.clear#ProductCode" in-map="[productId:productId]"/>
                 </else-if>
             </if>
+            <if condition="modePricesJson">
+                <service-call name="zenith.pos.ProductModePricingServices.save#ProductModePrices"
+                              in-map="[productId:productId,modePricesJson:modePricesJson]"/>
+                <if condition="ec.message.hasError()"><return/></if>
+            </if>
+            <if condition="!ec.message.hasError()">
+                <service-call name="zenith.pos.ProductModePricingServices.mark#CatalogChanged"
+                              in-map="[organizationPartyId:curProd.ownerPartyId]"/>
+            </if>
         </actions>
-        <default-response url="."/>
+        <conditional-response url=".">
+            <condition><expression>ec.message.hasError()</expression></condition>
+        </conditional-response>
+        <default-response url="." parameter-map="[productSaved:'Y']"/>
     </transition>
 
     <actions>
@@ -192,6 +205,8 @@
         </entity-find>
 
         <entity-find entity-name="zenith.erp.india.IndiaGstSlab" list="gstSlabs"><order-by field-name="gstRate"/></entity-find>
+        <service-call name="zenith.pos.ProductModePricingServices.get#ProductModePrices"
+                      in-map="[productId:productId]" out-map="productModePricing" disable-authz="true"/>
         <entity-find-one entity-name="zenith.erp.inventory.ProductEditorImage" value-field="productImage"><field-map field-name="productId"/></entity-find-one>
         <set field="currSymbol" value="₹"/>
         <set field="totalQoh" from="0"/>

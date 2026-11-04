@@ -57,8 +57,7 @@
         <service-call name="zenith.sales.SalesAccessServices.get#MixedVendorOrderIds" out-map="_mixedOrders"/>
         <set field="orgId" from="_salesOrgId"/>
         <set field="currSymbol" value="₹"/>
-        <!-- ZE-DASH date-range filter. DEFAULT = all-time (empty) so displayed figures don't change on load;
-             a selected range narrows the KPI tiles. dayStart/dayEndExcl are null in all-time mode. -->
+        <!-- Date range for KPI tiles. An explicit All time selection leaves the bounds empty. -->
         <script><![CDATA[
             def sdf = new java.text.SimpleDateFormat("yyyy-MM-dd")
             sdf.setTimeZone(ec.user.timeZone)
@@ -68,10 +67,12 @@
             if (!dashDateTo) dashDateTo = ''
             try {
                 [dashDate,dashDateTo].findAll { it }.each { java.time.LocalDate.parse(it.toString()) }
+                if (!dashDate && dashDateTo) dashDate = dashDateTo
             } catch (java.time.format.DateTimeParseException ignored) {
-                ec.message.addMessage('Enter a valid date range (YYYY-MM-DD). Showing all time.')
-                dashDate = ''; dashDateTo = ''
+                ec.message.addMessage('Enter a valid date range (YYYY-MM-DD). Showing today.')
+                dashDate = ''; dashDateTo = ''; dateMode = 'today'
             }
+            if (!dashDate && !dashDateTo && dateMode != 'all') { dashDate = todayStr; dashDateTo = todayStr }
             dayStart = null; dayEndExcl = null
             if (dashDate) {
                 if (!dashDateTo) dashDateTo = dashDate
@@ -82,7 +83,7 @@
             def _cw = java.util.Calendar.getInstance(ec.user.timeZone); _cw.setTime(now); _cw.set(java.util.Calendar.DAY_OF_WEEK, _cw.getFirstDayOfWeek()); def weekStartStr = sdf.format(_cw.getTime())
             def _cm = java.util.Calendar.getInstance(ec.user.timeZone); _cm.setTime(now); _cm.set(java.util.Calendar.DAY_OF_MONTH,1); def monthStartStr = sdf.format(_cm.getTime())
             def _c30 = java.util.Calendar.getInstance(ec.user.timeZone); _c30.setTime(now); _c30.add(java.util.Calendar.DAY_OF_MONTH,-29); def last30Str = sdf.format(_c30.getTime())
-            urlAll = "?"; urlToday = "?dashDate="+todayStr+"&dashDateTo="+todayStr
+            urlAll = "?dateMode=all"; urlToday = "?dashDate="+todayStr+"&dashDateTo="+todayStr
             urlWeek = "?dashDate="+weekStartStr+"&dashDateTo="+todayStr
             urlMonth = "?dashDate="+monthStartStr+"&dashDateTo="+todayStr
             url30 = "?dashDate="+last30Str+"&dashDateTo="+todayStr
@@ -97,10 +98,10 @@
                 }
             }
             // ZE-DATEWISE: This Year preset + "Date-wise" custom-range tab (self-contained; var-name-agnostic)
-            def _dwSdf = new java.text.SimpleDateFormat("yyyy-MM-dd"); def _dwNow = ec.user.nowTimestamp; def _dwToday = _dwSdf.format(_dwNow)
-            def _dwYc = java.util.Calendar.getInstance(); _dwYc.setTime(_dwNow); _dwYc.set(java.util.Calendar.MONTH,0); _dwYc.set(java.util.Calendar.DAY_OF_MONTH,1); def _dwYearStart = _dwSdf.format(_dwYc.getTime())
-            urlYear = "?dashDate="+_dwYearStart+"&dashDateTo="+_dwToday
-            if (dashDate && dashDateTo == _dwToday && dashDate == _dwYearStart) presetActive = 'year'
+            def _dwSdf = sdf; def _dwNow = now; def _dwToday = todayStr
+            def _dwYc = java.util.Calendar.getInstance(ec.user.timeZone); _dwYc.setTime(_dwNow); _dwYc.set(java.util.Calendar.MONTH,0); _dwYc.set(java.util.Calendar.DAY_OF_MONTH,1); def _dwYearStart = _dwSdf.format(_dwYc.getTime())
+            urlYear = "?dateMode=year&dashDate="+_dwYearStart+"&dashDateTo="+_dwToday
+            if (dashDate && dashDateTo == _dwToday && dashDate == _dwYearStart && (dateMode == 'year' || presetActive != 'today')) presetActive = 'year'
             showCustom = (((dateMode ?: '') == 'custom') || (presetActive == 'custom'))
             urlCustom = dashDate ? ("?dateMode=custom&dashDate="+dashDate+"&dashDateTo="+dashDateTo) : "?dateMode=custom"
             rangeLabel = dashDate ? (dashDate == dashDateTo ? dashDate : (dashDate + " – " + dashDateTo)) : "All time"

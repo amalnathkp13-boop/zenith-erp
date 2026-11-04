@@ -7,87 +7,103 @@
 
     <transition name="editProduct"><default-response url="../EditProduct"/></transition>
 
-    <transition name="createProduct" method="post">
+    <transition name="createProduct" method="post" begin-transaction="true">
         <parameter name="openingStock"/>
         <parameter name="expiryDate"/>
+        <parameter name="modePricesJson"/>
         <actions>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'inventory']" out-map="_createAccess"/>
+            <if condition="!_createAccess.canWrite"><return error="true" message="You have view-only access."/></if>
+            <service-call name="zenith.barcode.BarcodeServices.get#AuthorizedActiveOrganization" out-map="_createScope"/>
             <script><![CDATA[
-                _createOrg = ec.user.getPreference('ACTIVE_ORGANIZATION')
+                _createOrg = _createScope.activeOrgId
                 productName = (productName ?: '').toString().trim()
+                printName = (printName ?: '').toString().trim()
                 pseudoId = (pseudoId ?: '').toString().trim()
+                productTypeEnumId = productTypeEnumId ?: 'PtAsset'
                 _createError = null
-                if (!_createOrg || _createOrg == '_NA_') _createError = 'Select an organization before creating a product.'
+                if (!_createOrg) _createError = 'Select an organization before creating a product.'
                 else if (!productName) _createError = 'Product Name is required.'
+                else if (!uqcEnumId) _createError = 'Unit is required.'
+                else if (!(uqcEnumId in ['NOS','KGS','MTR','PCS','LTR'])) _createError = 'Choose a valid unit.'
+                else if (productName.length()>255 || printName.length()>255) _createError = 'Product and print names can contain at most 255 characters.'
+                else if (pseudoId.length()>100) _createError = 'Item Code can contain at most 100 characters.'
+                else if (description?.size()>500 || hsnSacCode?.size()>20) _createError = 'Description or tax code is too long.'
                 else if (!(productTypeEnumId in ['PtAsset','PtService','PtDigitalAsset'])) _createError = 'Choose a valid product type.'
                 else if (enableBatchTracking && !(enableBatchTracking in ['Y','N'])) _createError = 'Choose Yes or No for batch tracking.'
                 else if (isGstExempt && !(isGstExempt in ['Y','N'])) _createError = 'Choose a valid tax-free option.'
+                else if (gstSlabId && !ec.entity.find('zenith.erp.india.IndiaGstSlab').condition('gstSlabId',gstSlabId).one()) _createError = 'Choose an existing GST rate.'
                 if (!_createError && productCategoryId) {
                     def category = ec.entity.find('mantle.product.category.ProductCategory')
                         .condition('productCategoryId', productCategoryId).disableAuthz().one()
                     if (!category || category.ownerPartyId != _createOrg)
                         _createError = 'Choose a category from your active organization.'
                 }
-                if (!_createError && pseudoId) {
-                    def _clash = ec.entity.find('mantle.product.Product').condition('ownerPartyId',_createOrg).condition('pseudoId',pseudoId).disableAuthz().count()
-                    def _barcode = ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('organizationPartyId',_createOrg).condition('barcodeValue',pseudoId).disableAuthz().count()
-                    if (_clash || _barcode) _createError = 'This item code or barcode is already used by another product.'
-                }
-                ['mrpAmount','reorderPoint'].each { key ->
+                [mrpAmount:'MRP',reorderPoint:'Stock Alert',openingStock:'Opening Stock'].each { key, label ->
+                    if (_createError) return
                     def raw = context.get(key)
-                    if (raw != null && raw.toString().trim()) {
-                        try { def number = new BigDecimal(raw.toString().trim()); if (number.signum()<0) throw new IllegalArgumentException(); context.put(key,number) }
-                        catch (Exception ignored) { _createError = (key=='mrpAmount'?'Selling Price / MRP':'Reorder Point')+' must be 0 or a positive number.' }
+                    try {
+                        def input = raw == null ? '' : raw.toString().trim()
+                        def pattern = key=='mrpAmount' ? /[0-9]{1,12}(?:\.[0-9]{1,2})?/ : /[0-9]{1,12}(?:\.[0-9]{1,6})?/
+                        if (input && !(input ==~ pattern)) throw new IllegalArgumentException()
+                        context.put(key,input ? new BigDecimal(input) : null)
+                    } catch (Exception ignored) {
+                        _createError = label+' must be zero or a positive number.'
                     }
                 }
             ]]></script>
             <if condition="_createError"><return error="true" message="${_createError}"/></if>
-            <!-- ZE-INV-001 f/u: reject a negative selling price at entry (a -10 typo would make stock value
-                 negative everywhere). Blank stays allowed; non-numeric falls through to framework coercion. -->
-            <script><![CDATA[
-                mrpNegative = false
-                if (mrpAmount != null && mrpAmount.toString().trim() != '') {
-                    try { if ((mrpAmount.toString().trim() as BigDecimal) < 0G) mrpNegative = true } catch (ignored) {}
-                }
-                // IV-012: parse opening stock once. Only a POSITIVE quantity creates stock; 0/blank => the
-                // product is created but NOT inventory-tracked and gets no asset (so it's not listed in Stock
-                // Levels — matching the "zero opening stock => not tracked" expectation). A negative is a typo.
-                _openQty = null; _openBad = false
-                if (openingStock != null && openingStock.toString().trim() != '') {
-                    try { _openQty = new BigDecimal(openingStock.toString().trim()) } catch (ignored) { _openBad = true }
-                }
-            ]]></script>
-            <if condition="mrpNegative">
-                <return error="true" message="Selling Price / MRP can't be negative — please enter 0 or a positive amount."/>
-            </if>
-            <!-- IV-019: MRP is mandatory when creating a product from the catalog (a priceless product bills
-                 wrong at POS and skews valuation). Blank is rejected; 0 is allowed (free/complimentary items —
-                 MARUTHI uses ₹0 products, and IV-018 keeps 0 valid). Create-only, so the existing null-MRP
-                 products on test/demo orgs are grandfathered (they can still be edited). -->
-            <if condition="mrpAmount == null || mrpAmount.toString().trim() == ''">
-                <return error="true" message="Selling Price / MRP is required — please enter an amount (enter 0 for a free item)."/>
-            </if>
-            <if condition="_openBad || (_openQty != null &amp;&amp; _openQty.signum() &lt; 0)">
-                <return error="true" message="Opening Stock must be 0 or a positive number."/>
-            </if>
-            <if condition="_openQty != null &amp;&amp; _openQty.signum() &gt; 0 &amp;&amp; productTypeEnumId != 'PtAsset'">
+            <if condition="openingStock != null &amp;&amp; openingStock.signum() &gt; 0 &amp;&amp; productTypeEnumId != 'PtAsset'">
                 <return error="true" message="Opening Stock is only available for physical products."/>
             </if>
+            <script>ec.entity.find('mantle.party.Party').condition('partyId',_createOrg).disableAuthz().forUpdate(true).one()</script>
             <service-call name="create#mantle.product.Product" out-map="createOut"
-                          in-map="[productName:productName, pseudoId:pseudoId, productTypeEnumId:productTypeEnumId, description:description, hsnCode:(productTypeEnumId=='PtService'?null:hsnSacCode), sacCode:(productTypeEnumId=='PtService'?hsnSacCode:null), gstSlabId:gstSlabId, uqcEnumId:uqcEnumId, isGstExempt:isGstExempt, enableBatchTracking:enableBatchTracking, mrpAmount:mrpAmount, reorderPoint:reorderPoint, ownerPartyId:_createOrg]"/>
+                          in-map="[productName:productName, printName:printName &amp;&amp; printName!=productName ? printName : null,
+                                   productTypeEnumId:productTypeEnumId, description:description, hsnCode:(productTypeEnumId=='PtService'?null:hsnSacCode),
+                                   sacCode:(productTypeEnumId=='PtService'?hsnSacCode:null), gstSlabId:gstSlabId, uqcEnumId:uqcEnumId,
+                                   isGstExempt:isGstExempt ?: 'N', enableBatchTracking:enableBatchTracking ?: 'N',
+                                   mrpAmount:mrpAmount, reorderPoint:reorderPoint, ownerPartyId:_createOrg]"/>
+            <script><![CDATA[
+                if (!createOut?.productId) return
+                if (!pseudoId) {
+                    pseudoId = 'ZC-'+createOut.productId
+                    // Account for imported codes that may already have used our preferred generated value.
+                    while (ec.entity.find('mantle.product.Product').condition('ownerPartyId',_createOrg)
+                            .condition('pseudoId',pseudoId).disableAuthz().count() ||
+                           ec.entity.find('mantle.product.Product').condition('ownerPartyId',_createOrg)
+                            .condition('productId',pseudoId).disableAuthz().count() ||
+                           ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('organizationPartyId',_createOrg)
+                            .condition('barcodeValue',pseudoId).disableAuthz().count()) {
+                        pseudoId = 'ZC-'+java.util.UUID.randomUUID().toString().replace('-','').take(12).toUpperCase(java.util.Locale.ROOT)
+                    }
+                }
+            ]]></script>
+            <if condition="ec.message.hasError() || !createOut?.productId"><return/></if>
+            <service-call name="update#mantle.product.Product" in-map="[productId:createOut.productId,pseudoId:pseudoId]"/>
+            <service-call name="zenith.barcode.BarcodeServices.sync#BarcodeFromPseudoId" in-map="[productId:createOut.productId,code:pseudoId]"/>
+            <if condition="ec.message.hasError()"><return/></if>
+            <if condition="modePricesJson">
+                <service-call name="zenith.pos.ProductModePricingServices.save#ProductModePrices"
+                              in-map="[productId:createOut.productId,modePricesJson:modePricesJson]"/>
+                <if condition="ec.message.hasError()"><return/></if>
+            </if>
             <if condition="productCategoryId">
                 <service-call name="zenith.inventory.CatalogueServices.add#CatalogueProduct"
                     in-map="[orgPartyId:_createOrg, productCategoryId:productCategoryId, productId:createOut.productId]"/>
             </if>
             <!-- IV-012: only POSITIVE opening stock creates the asset + marks the product inventory-tracked.
                  0/blank => the product exists but is untracked and absent from Stock Levels (the reported fix). -->
-            <if condition="_openQty != null &amp;&amp; _openQty.signum() &gt; 0">
-                <set field="_org" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
+            <if condition="openingStock != null &amp;&amp; openingStock.signum() &gt; 0">
                 <!-- ZE-INV-004: pass the optional expiry date so opening stock is expiry-tracked (appears in
                      Expiry Risk); pass mrpAmount so the lot has a valuation basis (Expiry Risk values by
                      asset valuationRate -> acquireCost -> mrpAmount) instead of showing "(not valued)". -->
                 <service-call name="zenith.inventory.InventoryStockServices.adjust#AssetOnHand"
-                    in-map="[organizationPartyId:_org, productId:createOut.productId, quantityDiff:_openQty, reason:'Opening stock (new item)', expiryDate:expiryDate, mrpAmount:mrpAmount]"/>
+                    in-map="[organizationPartyId:_createOrg, productId:createOut.productId, quantityDiff:openingStock, reason:'Opening stock (new item)', expiryDate:expiryDate, mrpAmount:mrpAmount]"/>
                 <service-call name="update#mantle.product.Product" in-map="[productId:createOut.productId, inventoryTracked:'Y']"/>
+            </if>
+            <if condition="!ec.message.hasError()">
+                <service-call name="zenith.pos.ProductModePricingServices.mark#CatalogChanged"
+                              in-map="[organizationPartyId:_createOrg]"/>
             </if>
         </actions>
         <!-- On a validation error (e.g. negative MRP) createOut is null, so re-render THIS screen with the
@@ -150,6 +166,10 @@
             }
             if (ec.web?.parameters?.renderMode=='csv') { catalogInputs.pageIndex=null; catalogInputs.pageSize=null; catalogInputs.pageNoLimit=true }
         ]]></script>
+        <if condition="invCanWrite &amp;&amp; ec.web?.parameters?.renderMode != 'csv'">
+            <service-call name="zenith.pos.ProductModePricingServices.get#ProductModePrices" out-map="productModePricing" disable-authz="true"/>
+            <entity-find entity-name="zenith.erp.india.IndiaGstSlab" list="gstSlabs"><order-by field-name="gstRate"/></entity-find>
+        </if>
         <entity-find entity-name="mantle.product.category.ProductCategory" list="productCategoryList">
             <econdition field-name="ownerPartyId" from="catalogOrgId"/>
             <order-by field-name="categoryName"/>
@@ -170,76 +190,7 @@
 
             <section name="FindProductNewBtn"><condition><expression>invCanWrite</expression></condition><widgets>
             <container-dialog id="CreateProductDialog" button-text="New Product">
-                <form-single name="CreateProductForm" transition="createProduct">
-                    <field name="pseudoId"><default-field title="Item Code / Barcode"><text-line size="20"/>
-                        <label text="Your own code or the barcode for this item. Used to find it fast." style="text-grey-6 text-caption" type="p"/></default-field></field>
-                    <field name="productName"><default-field title="Product Name"><text-line size="60"/></default-field></field>
-                    <field name="productCategoryId"><default-field title="POS Category (optional)">
-                        <drop-down allow-empty="true">
-                            <list-options list="productCategoryList" key="${productCategoryId}" text="${categoryName}"/>
-                        </drop-down>
-                        <label text="Physical products appear under this category's POS tab. Manage categories in Inventory → Catalogues." style="text-grey-6 text-caption" type="p"/>
-                    </default-field></field>
-                    <!-- ZE-INV-IV-013: allow entering the description at create time (was edit-only). -->
-                    <field name="description"><default-field title="Description (optional)"><text-area rows="2" cols="58"/>
-                        <label text="A short note about this item — shown in the Product Catalog." style="text-grey-6 text-caption" type="p"/></default-field></field>
-                    <field name="productTypeEnumId">
-                        <default-field title="Type">
-                            <drop-down>
-                                <option key="PtAsset" text="Physical product (something you stock &amp; count)"/>
-                                <option key="PtService" text="Service (no stock, e.g. repair, delivery)"/>
-                                <option key="PtDigitalAsset" text="Digital product (download / online)"/>
-                            </drop-down>
-                        </default-field>
-                    </field>
-
-                    <!-- Indian GST Compliance Fields -->
-                    <field name="hsnSacCode"><default-field title="Tax Code (HSN / SAC)"><text-line size="10"/>
-                        <label text="The government tax code for this item. Ask your accountant if unsure — you can leave it blank for now." style="text-grey-6 text-caption" type="p"/></default-field></field>
-                    <field name="uqcEnumId">
-                        <default-field title="Unit (how you sell it)">
-                            <drop-down allow-empty="true">
-                                <option key="NOS" text="NOS - Numbers"/>
-                                <option key="KGS" text="KGS - Kilograms"/>
-                                <option key="MTR" text="MTR - Meters"/>
-                                <option key="PCS" text="PCS - Pieces"/>
-                                <option key="LTR" text="LTR - Liters"/>
-                            </drop-down>
-                        </default-field>
-                    </field>
-                    <field name="gstSlabId">
-                        <default-field title="GST Tax Rate">
-                            <drop-down allow-empty="true">
-                                <entity-options key="${gstSlabId}" text="${slabName} (${gstRate}%)">
-                                    <entity-find entity-name="zenith.erp.india.IndiaGstSlab"/>
-                                </entity-options>
-                            </drop-down>
-                        </default-field>
-                    </field>
-                    <field name="isGstExempt">
-                        <default-field title="Tax-free item?">
-                            <drop-down no-current-selected-key="N">
-                                <option key="N" text="No (Taxable)"/>
-                                <option key="Y" text="Yes (Nil-Rated/Exempt)"/>
-                            </drop-down>
-                        </default-field>
-                    </field>
-
-                    <field name="enableBatchTracking"><default-field title="Enable Batch Tracking">
-                        <drop-down no-current-selected-key="N"><option key="N" text="No"/><option key="Y" text="Yes"/></drop-down>
-                    </default-field></field>
-                    <field name="mrpAmount"><default-field title="Selling Price / MRP (₹) *"><text-line size="10"/>
-                        <label text="Required. The price shown and charged at the POS — enter 0 for a free item. You can change it anytime on the product page." style="text-grey-6 text-caption" type="p"/></default-field></field>
-                    <field name="openingStock"><default-field title="Opening Stock (qty)"><text-line size="10"/>
-                        <label text="Enter current quantity in hand to start tracking stock for this item. Leave blank to not track." style="text-grey-6 text-caption" type="p"/></default-field></field>
-                    <!-- ZE-INV-004: reorder point drives the Dashboard "low on stock" count (flags the item when qty falls to/below it). -->
-                    <field name="reorderPoint"><default-field title="Reorder Point (low-stock alert)"><text-line size="10"/>
-                        <label text="Flag this item as low on stock when its quantity falls to this level or below. Leave blank for no alert." style="text-grey-6 text-caption" type="p"/></default-field></field>
-                    <!-- ZE-INV-004: optional expiry so the opening stock shows in the Expiry Risk dashboard. -->
-                    <field name="expiryDate"><default-field title="Expiry Date (optional)"><date-time type="date"/>
-                        <label text="If this batch expires, set the date and it will appear in Expiry Risk. Leave blank if it doesn't expire." style="text-grey-6 text-caption" type="p"/></default-field></field>
-                    <field name="submitButton"><default-field title="Create Product"><submit/></default-field></field>
-                </form-single>
+                <render-mode><text type="html,qvt" location="component://zenith-erp-inventory/template/product/CreateProduct.html.ftl"/></render-mode>
             </container-dialog>
             </widgets></section>
             </container>

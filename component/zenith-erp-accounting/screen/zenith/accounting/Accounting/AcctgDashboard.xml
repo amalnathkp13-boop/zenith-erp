@@ -41,17 +41,17 @@
         <!-- Outstanding balances are current snapshots. The date range controls the activity chart. -->
         <script><![CDATA[
             def sdf = new java.text.SimpleDateFormat("yyyy-MM-dd")
+            sdf.setTimeZone(ec.user.timeZone)
             def now = ec.user.nowTimestamp
             def todayStr = sdf.format(now)
-            def _cw = java.util.Calendar.getInstance(); _cw.setTime(now); _cw.set(java.util.Calendar.DAY_OF_WEEK, _cw.getFirstDayOfWeek()); def weekStartStr = sdf.format(_cw.getTime())
-            def _cm = java.util.Calendar.getInstance(); _cm.setTime(now); _cm.set(java.util.Calendar.DAY_OF_MONTH,1); def monthStartStr = sdf.format(_cm.getTime())
-            def _yc = java.util.Calendar.getInstance(); _yc.setTime(now); _yc.set(java.util.Calendar.MONTH,0); _yc.set(java.util.Calendar.DAY_OF_MONTH,1); def yearStartStr = sdf.format(_yc.getTime())
-            if (!dashDate) dashDate = weekStartStr
-            if (!dashDateTo) dashDateTo = todayStr
+            def _cw = java.util.Calendar.getInstance(ec.user.timeZone); _cw.setTime(now); _cw.set(java.util.Calendar.DAY_OF_WEEK, _cw.getFirstDayOfWeek()); def weekStartStr = sdf.format(_cw.getTime())
+            def _cm = java.util.Calendar.getInstance(ec.user.timeZone); _cm.setTime(now); _cm.set(java.util.Calendar.DAY_OF_MONTH,1); def monthStartStr = sdf.format(_cm.getTime())
+            def _yc = java.util.Calendar.getInstance(ec.user.timeZone); _yc.setTime(now); _yc.set(java.util.Calendar.MONTH,0); _yc.set(java.util.Calendar.DAY_OF_MONTH,1); def yearStartStr = sdf.format(_yc.getTime())
+            if (!dashDate) dashDate = dashDateTo ?: todayStr
+            if (!dashDateTo) dashDateTo = dashDate
             if (dashDateTo < dashDate) { def _s = dashDate; dashDate = dashDateTo; dashDateTo = _s }
-            dayStart = java.sql.Timestamp.valueOf(dashDate + " 00:00:00")
-            def _ce = java.util.Calendar.getInstance(); _ce.setTime(java.sql.Timestamp.valueOf(dashDateTo + " 00:00:00")); _ce.add(java.util.Calendar.DAY_OF_MONTH, 1)
-            dayEndExcl = new java.sql.Timestamp(_ce.getTimeInMillis())
+            dayStart = ec.l10n.parseTimestamp(dashDate + " 00:00:00", "yyyy-MM-dd HH:mm:ss")
+            dayEndExcl = ec.l10n.parseTimestamp(java.time.LocalDate.parse(dashDateTo).plusDays(1).toString() + " 00:00:00", "yyyy-MM-dd HH:mm:ss")
             def rangeShort = new java.text.SimpleDateFormat("dd MMM")
             def rangeLong = new java.text.SimpleDateFormat("dd MMM yyyy")
             rangeDisplay = (dashDate.substring(0,4) == dashDateTo.substring(0,4) ? rangeShort : rangeLong).format(java.sql.Date.valueOf(dashDate)) + ' – ' + rangeLong.format(java.sql.Date.valueOf(dashDateTo))
@@ -106,19 +106,20 @@
             arDisplay = zinr.inr(ec.l10n.format(totalAr, '#,##,##0.00'))
             apDisplay = zinr.inr(ec.l10n.format(totalAp, '#,##,##0.00'))
 
-            long dayMs = 86400000L
-            int spanDays = Math.max(1, ((dayEndExcl.time - dayStart.time) / dayMs) as int)
+            def firstDay = java.time.LocalDate.parse(dashDate)
+            def zone = ec.user.timeZone.toZoneId()
+            int spanDays = (java.time.temporal.ChronoUnit.DAYS.between(firstDay, java.time.LocalDate.parse(dashDateTo)) + 1) as int
             int barCount = Math.min(8, spanDays)
-            def chartDateFmt = new java.text.SimpleDateFormat('dd MMM')
+            def chartDateFmt = java.time.format.DateTimeFormatter.ofPattern('dd MMM', ec.user.locale)
             chartBars = (0..<barCount).collect { idx ->
                 long startOffset = Math.floor(idx * spanDays / (double) barCount) as long
-                [label:chartDateFmt.format(new java.util.Date(dayStart.time + startOffset * dayMs)), ar:BigDecimal.ZERO, ap:BigDecimal.ZERO]
+                [label:firstDay.plusDays(startOffset).format(chartDateFmt), ar:BigDecimal.ZERO, ap:BigDecimal.ZERO]
             }
             def fillChart = { invoices, key ->
                 invoices.each { inv ->
                     def d = inv.invoiceDate ?: inv.entryDate
                     if (d && d.time >= dayStart.time && d.time < dayEndExcl.time) {
-                        int offset = ((d.time - dayStart.time) / dayMs) as int
+                        int offset = java.time.temporal.ChronoUnit.DAYS.between(firstDay, java.time.Instant.ofEpochMilli(d.time).atZone(zone).toLocalDate()) as int
                         int idx = Math.min(barCount - 1, (offset * barCount / spanDays) as int)
                         chartBars[idx][key] += unpaid(inv)
                     }
@@ -143,7 +144,7 @@
                 def points = values.withIndex().collect { pair ->
                     def v = pair[0]
                     def i = pair[1]
-                    def x = values.size() == 1 ? 140 : (i * 280.0 / (values.size() - 1))
+                    double x = values.size() == 1 ? 140.0d : (i * 280.0 / (values.size() - 1))
                     def y = 55.0 - (v.doubleValue() / maxValue.doubleValue()) * 45.0
                     String.format(java.util.Locale.US, '%.1f,%.1f', x, y)
                 }.join(' ')
@@ -152,6 +153,7 @@
             arSparkSvg = spark('ar', '#16b647')
             apSparkSvg = spark('ap', '#ff7a00')
 
+            long dayMs = 86400000L
             def age = { invoices ->
                 def rows = [
                     [label:'0 – 30 Days', color:'#21bb62', count:0, amount:BigDecimal.ZERO],

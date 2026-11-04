@@ -64,6 +64,23 @@
 
     <!-- ==================== TRANSITIONS ==================== -->
 
+    <transition name="catalogRevision" method="post" begin-transaction="true">
+        <actions><script><![CDATA[
+            def p = ec.web.parameters
+            def current = ec.service.sync().name('zenith.pos.ProductModePricingServices.get#CatalogRevision')
+                .parameter('sessionId',p.sessionId).call()
+            def changed = current?.revision && p.since != current.revision
+            def refreshed
+            if (!ec.message.hasError() && p.transactionId && (changed || p.revalidate == 'Y')) {
+                refreshed = ec.service.sync().name('zenith.pos.ProductModePricingServices.refresh#DraftCatalogPrices')
+                    .parameters([sessionId:p.sessionId,transactionId:p.transactionId,taxOn:p.taxOn]).call()
+            }
+            ec.web.sendJsonResponse([success:!ec.message.hasError(), revision:current?.revision,
+                changed:!!changed, cartChanged:refreshed?.cartChanged == true, modes:current?.modes ?: [],
+                error:ec.message.hasError() ? ec.message.errorsString : null])
+        ]]></script></actions><default-response type="none"/>
+    </transition>
+
     <!-- Read-only, bounded product response; avoids rendering the entire till for a category/search. -->
     <transition name="productGrid">
         <actions><script><![CDATA[
@@ -86,18 +103,14 @@
             def page=ec.service.sync().name('zenith.pos.PosCheckoutServices.get#PosCatalogPage')
                 .parameters([sessionId:p.sessionId,searchTerm:p.searchTerm,catId:p.catId,productOffset:p.productOffset]).call()
             if (ec.message.hasError()) { ec.web.sendJsonResponse([success:false,error:ec.message.errorsString]);return }
-            def prices=[:]
-            if (mode.priceSource=='PpsFixedProduct' && page.gridProducts) {
-                ec.entity.find('zenith.erp.pos.PosProductModePrice').condition('organizationPartyId',access.organizationPartyId)
-                    .condition('salesModeId',mode.salesModeId).condition('productId','in',page.gridProducts*.productId).list()
-                    .each { prices[it.productId]=it.price }
-            }
+            def prices=ec.service.sync().name('zenith.pos.ProductModePricingServices.get#ModePriceOverrides')
+                .parameters([salesModeId:mode.salesModeId, productIds:page.gridProducts*.productId]).disableAuthz().call().overrides ?: [:]
             def cards=page.gridProducts.collect { product ->
-                def price=mode.priceSource=='PpsFixedProduct' ? prices[product.productId] : product.mrpAmount
-                def blocked=mode.priceSource=='PpsFixedProduct' && price==null
+                def price=prices.containsKey(product.productId) ? prices[product.productId] : product.mrpAmount
+                def blocked=price==null
                 def stock=page.gridCardStock[product.productId] ?: [:]
                 [productId:product.productId,name:product.productName ?: product.pseudoId ?: '',price:price ?: 0,blocked:blocked,
-                    priceText:blocked ? 'No '+mode.modeName+' price' : '₹'+ec.l10n.format(price ?: 0,'#,##0.##'),
+                    priceText:blocked ? 'Price not configured' : '₹'+ec.l10n.format(price,'#,##0.##'),
                     stockText:!stock.tracked ? 'Stock: not tracked' : stock.quantity!=null ? 'Stock: '+ec.l10n.format(stock.quantity,'#,##0.###') : 'Stock: unavailable']
             }
             ec.web.sendJsonResponse([success:true,products:cards,hasMore:page.gridHasMore,nextOffset:page.gridNextOffset])
@@ -176,7 +189,7 @@
 
 
 
-                                   quantity:addQty ?: 1, unitPrice:unitPrice,
+                                   quantity:addQty ?: 1,
 
 
 
@@ -312,6 +325,17 @@
 
     <transition name="completeCredit" begin-transaction="true">
         <actions>
+            <service-call name="zenith.pos.ProductModePricingServices.check#CatalogTender" out-map="_catalogReview"
+                          in-map="[transactionId:transactionId,seenRevision:catalogRevision,taxOn:taxOn]"/>
+            <if condition="ec.message.hasError()"><return/></if>
+            <if condition="_catalogReview.notice">
+                <script><![CDATA[
+                    if (ec.web.requestParameters.wantJson)
+                        ec.web.sendJsonResponse([success:false,priceReview:true,revision:_catalogReview.revision,error:_catalogReview.notice])
+                    else ec.message.addMessage(_catalogReview.notice)
+                ]]></script>
+                <return/>
+            </if>
             <!-- ZE-POS-MODERULES: min-order rule pre-check for credit sales (customer is always attached on
                  credit, so only the minimum can bite). Pure check -> shows the specific reason on block. -->
             <service-call name="zenith.pos.PosServices.check#PosSalesModeOrgRules" out-map="_mr"
@@ -324,6 +348,9 @@
                           in-map="[transactionId:transactionId, customerName:customerName, customerPhone:customerPhone,
                                    customerPartyId:customerPartyId, upfrontAmount:upfrontAmount, upfrontMethod:upfrontMethod, creditDays:creditDays, termsReason:termsReason]"/>
         </actions>
+        <conditional-response url="." parameter-map="[sessionId:sessionId, transactionId:transactionId, taxOn:taxOn, salesModeId:salesModeId]">
+            <condition><expression>_catalogReview.notice || ec.message.hasError()</expression></condition>
+        </conditional-response>
         <default-response url="." parameter-map="[sessionId:sessionId, lastCompletedId:transactionId]"/>
     </transition>
 
@@ -332,6 +359,17 @@
 
 
         <actions>
+            <service-call name="zenith.pos.ProductModePricingServices.check#CatalogTender" out-map="_catalogReview"
+                          in-map="[transactionId:transactionId,seenRevision:catalogRevision,taxOn:taxOn]"/>
+            <if condition="ec.message.hasError()"><return/></if>
+            <if condition="_catalogReview.notice">
+                <script><![CDATA[
+                    if (ec.web.requestParameters.wantJson)
+                        ec.web.sendJsonResponse([success:false,priceReview:true,revision:_catalogReview.revision,error:_catalogReview.notice])
+                    else ec.message.addMessage(_catalogReview.notice)
+                ]]></script>
+                <return/>
+            </if>
             <!-- ZE-POS-MODERULES: opt-in per-mode order rules, evaluated up-front as a pure check (never
                  errors) so a block returns the SPECIFIC reason to the cashier — an erroring service call
                  mid-transition aborts before the JSON/receipt response is built (=> generic "Payment
@@ -411,6 +449,9 @@
 
         <conditional-response type="none">
             <condition><expression>ec.web.requestParameters.wantJson</expression></condition>
+        </conditional-response>
+        <conditional-response url="." parameter-map="[sessionId:sessionId, transactionId:transactionId, taxOn:taxOn, salesModeId:salesModeId]">
+            <condition><expression>_catalogReview.notice || ec.message.hasError()</expression></condition>
         </conditional-response>
         <default-response url="." parameter-map="[sessionId:sessionId, lastCompletedId:transactionId]"/>
 
@@ -1234,6 +1275,17 @@
 
 
         <actions>
+            <service-call name="zenith.pos.ProductModePricingServices.check#CatalogTender" out-map="_catalogReview"
+                          in-map="[transactionId:transactionId,seenRevision:catalogRevision,taxOn:taxOn]"/>
+            <if condition="ec.message.hasError()"><return/></if>
+            <if condition="_catalogReview.notice">
+                <script><![CDATA[
+                    if (ec.web.requestParameters.wantJson)
+                        ec.web.sendJsonResponse([success:false,priceReview:true,revision:_catalogReview.revision,error:_catalogReview.notice])
+                    else ec.message.addMessage(_catalogReview.notice)
+                ]]></script>
+                <return/>
+            </if>
             <!-- ZE-POS-MODERULES: opt-in per-mode order rules pre-check (same as payAndComplete) so a split
                  payment blocked by the rules shows the specific reason instead of a generic failure. -->
             <service-call name="zenith.pos.PosServices.check#PosSalesModeOrgRules" out-map="_mr"
@@ -1380,6 +1432,9 @@
         <conditional-response type="none">
             <condition><expression>ec.web.requestParameters.wantJson</expression></condition>
         </conditional-response>
+        <conditional-response url="." parameter-map="[sessionId:sessionId, transactionId:transactionId, taxOn:taxOn, salesModeId:salesModeId]">
+            <condition><expression>_catalogReview.notice || ec.message.hasError()</expression></condition>
+        </conditional-response>
         <default-response url="." parameter-map="[sessionId:sessionId, lastCompletedId:transactionId]"/>
 
 
@@ -1447,30 +1502,16 @@
                 if (term) {
                     def products = ec.service.sync().name('zenith.pos.PosCheckoutServices.search#PosProducts')
                         .parameters([term:term,pageSize:60]).call().products ?: []
+                    def prices=ec.service.sync().name('zenith.pos.ProductModePricingServices.get#ModePriceOverrides')
+                        .parameters([salesModeId:ec.web.parameters.salesModeId, productIds:products*.productId])
+                        .disableAuthz().call().overrides ?: [:]
                     products.each { p ->
-
-
-
-                        results.add([productId: p.productId, pseudoId: p.pseudoId ?: '',
-
-
-
-                                     productName: p.productName ?: p.pseudoId ?: p.productId,
-
-
-
-                                     mrpAmount: p.mrpAmount ?: 0])
-
-
-
+                        def price=prices.containsKey(p.productId) ? prices[p.productId] : p.mrpAmount
+                        results.add([productId:p.productId, pseudoId:p.pseudoId ?: '',
+                                     productName:p.productName ?: p.pseudoId ?: p.productId,
+                                     mrpAmount:price, priceBlocked:price==null])
                     }
-
-
-
                 }
-
-
-
                 ec.web.sendJsonResponse(results)
 
 
@@ -1790,37 +1831,8 @@
 
 
 
-                        def unitPrice = p.unitPrice && (p.unitPrice as BigDecimal) != BigDecimal.ZERO ? (p.unitPrice as BigDecimal) : BigDecimal.ZERO
-
-
-                        if (unitPrice == BigDecimal.ZERO && productId) {
-
-
-                            def prod = ec.entity.find("mantle.product.Product").condition("productId", productId).one()
-
-
-                            if (prod?.mrpAmount) unitPrice = prod.mrpAmount as BigDecimal
-
-
-                            if (unitPrice == BigDecimal.ZERO) {
-
-
-                                def pp = ec.entity.find("mantle.product.ProductPrice").condition("productId", productId).condition("priceTypeEnumId", "PptList").orderBy("-lastUpdatedStamp").limit(1).one()
-
-
-                                if (!pp) pp = ec.entity.find("mantle.product.ProductPrice").condition("productId", productId).condition("priceTypeEnumId", "PptCurrent").orderBy("-lastUpdatedStamp").limit(1).one()
-
-
-                                if (pp?.price) unitPrice = pp.price as BigDecimal
-
-
-                            }
-
-
-                        }
-
-
-
+                        // Catalogue numbers are display estimates. The server resolves the live
+                        // mode price; the explicit updatePrice action handles cashier overrides.
                         def addQty = p.addQty ? (p.addQty as BigDecimal) : BigDecimal.ONE
 
 
@@ -1853,7 +1865,7 @@
 
 
 
-                                quantity:addQty, unitPrice:unitPrice, discountPercent:(p.salesModeId ? (ec.entity.find("zenith.erp.pos.PosSalesMode").condition("salesModeId", p.salesModeId).one()?.discountPercent ?: 0) : 0), salesModeId:p.salesModeId, taxOn:taxOn]).call()
+                                quantity:addQty, discountPercent:(p.salesModeId ? (ec.entity.find("zenith.erp.pos.PosSalesMode").condition("salesModeId", p.salesModeId).one()?.discountPercent ?: 0) : 0), salesModeId:p.salesModeId, taxOn:taxOn]).call()
 
                         addedItemSeqId = added.itemSeqId
                         // Explicit per-mode pricing may block the add (no price set) -> surface it so the client rolls back.
@@ -2092,7 +2104,7 @@
                             def dPct = sub > 0 ? (dAmt * 100 / sub) : BigDecimal.ZERO
                             ec.service.sync().name("update#zenith.erp.pos.PosTransactionItem")
                                 .parameters([transactionId:dTxId, itemSeqId:itm.itemSeqId,
-                                    discountPercent:dPct, discountAmount:dAmt]).call()
+                                    discountPercent:dPct, discountAmount:dAmt, manualDiscount:'Y']).call()
                         }
                         ec.service.sync().name('zenith.pos.PosServices.refresh#PosTransactionTax')
                             .parameters([transactionId:dTxId,taxOn:taxOn]).call()
@@ -3964,18 +3976,15 @@
 
 
 
-                // Per-mode grid pricing: the active mode's price per card + a blocked flag
-                // for products with no price in a fixed-price mode (so the card can be disabled).
                 gridModePrice = [:]; gridModeBlocked = [:]
-                def _fx = currentMode != null && currentMode.priceSource == 'PpsFixedProduct'
                 if (gridProducts) {
-                    if (_fx) {
-                        def _gids = gridProducts.collect { it.productId }
-                        def _pmap = [:]
-                        if (_gids) ec.entity.find("zenith.erp.pos.PosProductModePrice").condition("salesModeId", currentMode.salesModeId).condition("productId", "in", _gids).list().each { _pmap[it.productId] = it.price }
-                        gridProducts.each { gp -> def _pp = _pmap[gp.productId]; gridModePrice[gp.productId] = _pp; gridModeBlocked[gp.productId] = (_pp == null) }
-                    } else {
-                        gridProducts.each { gp -> gridModePrice[gp.productId] = gp.mrpAmount; gridModeBlocked[gp.productId] = false }
+                    def prices=ec.service.sync().name('zenith.pos.ProductModePricingServices.get#ModePriceOverrides')
+                        .parameters([salesModeId:currentMode?.salesModeId, productIds:gridProducts*.productId])
+                        .disableAuthz().call().overrides ?: [:]
+                    gridProducts.each { product ->
+                        def price=prices.containsKey(product.productId) ? prices[product.productId] : product.mrpAmount
+                        gridModePrice[product.productId]=price
+                        gridModeBlocked[product.productId]=price==null
                     }
                 }
             } catch (Exception e) { /* PosSalesMode may not exist yet */ }

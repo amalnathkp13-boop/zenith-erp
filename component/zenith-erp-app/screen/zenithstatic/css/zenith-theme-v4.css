@@ -1435,6 +1435,7 @@ body:not(.Terminal) #content { padding-bottom: 96px; }
 html.zq-shell-boot:not(.zq-nav-ready) body .q-layout{visibility:hidden!important}
 html.zq-shell-boot:not(.zq-nav-ready) body::after{content:"Loading workspace…";position:fixed;inset:0;z-index:4000;display:grid;place-items:center;background:#f8f9fc;color:#463d7a;font:600 15px/1.4 Inter,"Segoe UI",sans-serif;pointer-events:none}
 body.zq-nav .q-drawer { display:none !important; }
+#zq-side-backdrop { display:none; }
 body.zq-nav .q-page-container { padding-left:224px !important; transition:padding-left .15s ease; }
 body.zq-nav.zq-side-collapsed .q-page-container { padding-left:62px !important; }
 /* light-restyle the Quasar header + push it right of the sidebar */
@@ -1644,6 +1645,26 @@ body.zq-nav .zenith-card > .row.items-center.justify-between > .q-pa-sm { displa
 #z-app-toolbtns #history-menu-link,#z-app-toolbtns > a:not(#z-avatar){display:flex;align-items:center;justify-content:center;width:34px;height:34px;margin:0!important;padding:0;border:0;border-radius:8px;background:transparent;color:#6B6483}
 #z-app-toolbtns #history-menu-link:hover,#z-app-toolbtns > a:not(#z-avatar):hover{background:var(--z-primary-soft,#ECE8FB);color:var(--z-primary,#7C3AED)}
 #z-app-toolbtns #z-avatar{margin:0;width:32px;height:32px}
+@media (max-width:900px) {
+  #top .navbar:has(#z-app-toolbtns){padding-left:34px}
+  #z-sidebar .zs-collapse{visibility:hidden}
+  body.z-side-open #z-sidebar .zs-collapse{visibility:visible}
+}
+@media (max-width:767px) {
+  #top:has(#z-app-toolbtns){height:auto}
+  #top .navbar:has(#z-app-toolbtns){height:auto;padding:0;overflow:visible}
+  #top .navbar:has(#z-app-toolbtns) > .container-fluid{padding:0}
+  #top .navbar:has(#z-app-toolbtns) :is(.navbar-header,#header-menus,#navbar-menu-crumbs){display:none}
+  #top #navbar-buttons:has(#z-app-toolbtns){
+    display:grid!important;grid-template-columns:40px minmax(0,1fr) auto;
+    align-items:center;gap:4px 6px;height:auto!important;margin:0;padding:5px 8px 7px;overflow:visible!important;
+  }
+  #top #navbar-buttons:has(#z-app-toolbtns)::before,#top #navbar-buttons:has(#z-app-toolbtns)::after{display:none}
+  #top #z-ownerview{grid-area:1/2;justify-self:start;max-width:100%;margin:0}
+  #top #z-app-toolbtns{grid-area:1/3;height:40px}
+  #top #z-search{grid-area:2/1/3/-1;margin:0}
+  #top #z-search .zsr-box{width:100%;max-width:none}
+}
 /* ZE-SUP-LIST: Suppliers list redesign — avatar + merged name/ID, contact-info column, colour-coded badges */
 .sup-namecell{display:flex;align-items:center;gap:10px;min-width:0}
 .sup-avatar{flex:none;width:34px;height:34px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;letter-spacing:.02em}
@@ -1759,6 +1780,9 @@ body.zq-nav .q-footer a, body.zq-nav .q-footer .text-white { color:var(--z-prima
   #zq-subnav { left:0 !important; }
   #zq-sidebar { transform:translateX(-100%); transition:transform .2s ease; box-shadow:4px 0 24px rgba(0,0,0,.14); }
   body.zq-side-open #zq-sidebar { transform:translateX(0); }
+  #zq-side-toggle { visibility:hidden; }
+  body.zq-side-open #zq-side-toggle { visibility:visible; }
+  body.zq-side-open #zq-side-backdrop { display:block;position:fixed;inset:0;z-index:2900;background:rgba(0,0,0,.35); }
   body.zq-nav .q-header .q-toolbar{display:grid!important;grid-template-columns:44px minmax(0,1fr) auto;gap:5px;padding:6px}
   body.zq-nav #zq-topextra{display:contents}
   body.zq-nav .q-header .q-toolbar>button:first-child{grid-column:1;grid-row:1}

@@ -27,7 +27,7 @@ function query(sql) {
     }));
 }
 const quoted = value => "'" + value.replaceAll("'", "''") + "'";
-const products = code => query(`SELECT product_id, owner_party_id, product_type_enum_id FROM product WHERE pseudo_id=${quoted(code)}`);
+const products = name => query(`SELECT product_id, owner_party_id, product_type_enum_id FROM product WHERE product_name=${quoted(name)}`);
 const members = id => query(`SELECT product_category_id FROM product_category_member WHERE product_id=${quoted(id)}`);
 
 (async () => {
@@ -38,39 +38,41 @@ const members = id => query(`SELECT product_category_id FROM product_category_me
         const response = await context.get(base + '/apps/zenith/Inventory/FindProduct');
         assert.equal(response.status(), 200);
         const catalogHtml = await response.text();
-        const categorySelect = catalogHtml.match(/<select name="productCategoryId"[^>]*>([\s\S]*?)<\/select>/)?.[1];
+        const categorySelect = catalogHtml.match(/<select\b[^>]*\bname="productCategoryId"[^>]*>([\s\S]*?)<\/select>/)?.[1];
         assert(categorySelect, 'New Product exposes category selection');
         assert(categorySelect.includes('value="POS_QA_A_CAT"'), 'Own category is selectable');
         assert(!categorySelect.includes('value="POS_QA_B_CAT"'), 'Foreign category is hidden');
         const token = catalogHtml.match(/name="moquiSessionToken" value="([^"]+)"/)?.[1];
         assert(token, 'Session token available');
-        const code = 'POS_QA_CAT_' + Date.now().toString(36).toUpperCase();
-        const form = (pseudoId, productName, productCategoryId, productTypeEnumId = 'PtAsset') => ({
-            moquiSessionToken: token, pseudoId, productName, productCategoryId,
-            productTypeEnumId, mrpAmount: '25', openingStock: '0',
+        const run = Date.now().toString(36).toUpperCase();
+        const physicalName = 'Disposable physical category item '+run;
+        const serviceName = 'Disposable service category item '+run;
+        const foreignName = 'Disposable foreign category '+run;
+        const form = (productName, productCategoryId, productTypeEnumId = 'PtAsset') => ({
+            moquiSessionToken: token, productName, productCategoryId,
+            productTypeEnumId, uqcEnumId:'PCS', mrpAmount: '25', openingStock: '0',
             enableBatchTracking: 'N', isGstExempt: 'N'
         });
         await context.post(base + '/apps/zenith/Inventory/FindProduct/createProduct', {
-            form: form(code + '_BAD', 'Disposable foreign category', 'POS_QA_B_CAT'), maxRedirects: 0
+            form: form(foreignName, 'POS_QA_B_CAT'), maxRedirects: 0
         });
-        assert.equal(products(code + '_BAD').length, 0, 'Forged foreign category cannot create a product');
+        assert.equal(products(foreignName).length, 0, 'Forged foreign category cannot create a product');
 
         const created = await context.post(base + '/apps/zenith/Inventory/FindProduct/createProduct', {
-            form: form(code, 'Disposable physical category item', 'POS_QA_A_CAT'), maxRedirects: 0
+            form: form(physicalName, 'POS_QA_A_CAT'), maxRedirects: 0
         });
         assert(created.status() < 400, `Create product returned ${created.status()}`);
-        const physical = products(code);
+        const physical = products(physicalName);
         assert.equal(physical.length, 1, 'New product is persisted once');
         assert.equal(physical[0].owner_party_id, 'POS_QA_A');
         assert.deepEqual(members(physical[0].product_id).map(m => m.product_category_id), ['POS_QA_A_CAT']);
 
-        const serviceCode = code + '_SERVICE';
         const service = await context.post(base + '/apps/zenith/Inventory/FindProduct/createProduct', {
-            form: form(serviceCode, 'Disposable service category item', 'POS_QA_A_CAT', 'PtService'),
+            form: form(serviceName, 'POS_QA_A_CAT', 'PtService'),
             maxRedirects: 0
         });
         assert(service.status() < 400, `Create service returned ${service.status()}`);
-        assert.equal(products(serviceCode).length, 1);
+        assert.equal(products(serviceName).length, 1);
 
         let session = query("SELECT session_id FROM pos_session WHERE organization_party_id='POS_QA_A' AND status_id='PsOpen' ORDER BY session_id DESC")[0]?.session_id;
         if (!session) {

@@ -12,14 +12,14 @@
          itself rejects a negative up front (ProductPricing.savePrices) for a clear message. -->
     <seca id="ZenithPosModePriceNonNegCreate" service="create#zenith.erp.pos.PosProductModePrice" when="pre-service" run-on-error="false" priority="1">
         <condition><expression>price != null &amp;&amp; (price as java.math.BigDecimal) &lt; 0G</expression></condition>
-        <actions><return error="true" message="A product's Wholesale / Custom price can't be negative — enter a positive amount (or clear it to block that mode)."/></actions>
+        <actions><return error="true" message="A product's Wholesale / Custom price can't be negative — enter a positive amount (or clear it to use MRP)."/></actions>
     </seca>
     <seca id="ZenithPosModePriceNonNegUpdate" service="update#zenith.erp.pos.PosProductModePrice" when="pre-service" run-on-error="false" priority="1">
         <condition><expression>price != null &amp;&amp; (price as java.math.BigDecimal) &lt; 0G</expression></condition>
-        <actions><return error="true" message="A product's Wholesale / Custom price can't be negative — enter a positive amount (or clear it to block that mode)."/></actions>
+        <actions><return error="true" message="A product's Wholesale / Custom price can't be negative — enter a positive amount (or clear it to use MRP)."/></actions>
     </seca>
     <seca id="ZenithPosModePriceNonNegStore" service="store#zenith.erp.pos.PosProductModePrice" when="pre-service" run-on-error="false" priority="1">
         <condition><expression>price != null &amp;&amp; (price as java.math.BigDecimal) &lt; 0G</expression></condition>
-        <actions><return error="true" message="A product's Wholesale / Custom price can't be negative — enter a positive amount (or clear it to block that mode)."/></actions>
+        <actions><return error="true" message="A product's Wholesale / Custom price can't be negative — enter a positive amount (or clear it to use MRP)."/></actions>
     </seca>
 </secas>

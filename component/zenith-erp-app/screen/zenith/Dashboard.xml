@@ -58,23 +58,18 @@
                 if (!dashDate && dashDateTo) dashDate = dashDateTo
             } catch (Exception e) {
                 dashDate = ''; dashDateTo = ''
-                dateError = 'Choose valid dates in YYYY-MM-DD format. Showing this week.'
+                dateError = 'Choose valid dates in YYYY-MM-DD format. Showing today.'
             }
             if (!dashDate && !dashDateTo) {
-                def _fallbackNow = ec.user.nowTimestamp
-                def _fallbackCalendar = java.util.Calendar.getInstance(); _fallbackCalendar.setTime(_fallbackNow)
-                _fallbackCalendar.set(java.util.Calendar.DAY_OF_WEEK, _fallbackCalendar.getFirstDayOfWeek())
-                def _fallbackFormat = new java.text.SimpleDateFormat('yyyy-MM-dd')
-                dashDate = _fallbackFormat.format(_fallbackCalendar.time)
-                dashDateTo = _fallbackFormat.format(_fallbackNow)
-                dateMode = 'week'
+                dashDate = ec.user.nowTimestamp.toInstant().atZone(ec.user.timeZone.toZoneId()).toLocalDate().toString()
+                dashDateTo = dashDate
+                dateMode = 'today'
             }
             if (dashDate) {
                 if (!dashDateTo) dashDateTo = dashDate
                 if (dashDateTo < dashDate) { def _s = dashDate; dashDate = dashDateTo; dashDateTo = _s }
-                dayStart = java.sql.Timestamp.valueOf(dashDate + " 00:00:00")
-                def _ce = java.util.Calendar.getInstance(); _ce.setTime(java.sql.Timestamp.valueOf(dashDateTo + " 00:00:00")); _ce.add(java.util.Calendar.DAY_OF_MONTH, 1)
-                dayEndExcl = new java.sql.Timestamp(_ce.getTimeInMillis())
+                dayStart = ec.l10n.parseTimestamp(dashDate + " 00:00:00", "yyyy-MM-dd HH:mm:ss")
+                dayEndExcl = ec.l10n.parseTimestamp(java.time.LocalDate.parse(dashDateTo).plusDays(1).toString() + " 00:00:00", "yyyy-MM-dd HH:mm:ss")
             }
         ]]></script>
 
@@ -259,11 +254,12 @@
             import org.moqui.entity.EntityCondition
             def ef = ec.entity
             def _sdf = new java.text.SimpleDateFormat("yyyy-MM-dd")
+            _sdf.setTimeZone(ec.user.timeZone)
             def _now = ec.user.nowTimestamp
             def _todayStr = _sdf.format(_now)
-            def _cw = java.util.Calendar.getInstance(); _cw.setTime(_now); _cw.set(java.util.Calendar.DAY_OF_WEEK, _cw.getFirstDayOfWeek()); def _weekStartStr = _sdf.format(_cw.getTime())
-            def _cm = java.util.Calendar.getInstance(); _cm.setTime(_now); _cm.set(java.util.Calendar.DAY_OF_MONTH,1); def _monthStartStr = _sdf.format(_cm.getTime())
-            def _c30 = java.util.Calendar.getInstance(); _c30.setTime(_now); _c30.add(java.util.Calendar.DAY_OF_MONTH,-29); def _last30Str = _sdf.format(_c30.getTime())
+            def _cw = java.util.Calendar.getInstance(ec.user.timeZone); _cw.setTime(_now); _cw.set(java.util.Calendar.DAY_OF_WEEK, _cw.getFirstDayOfWeek()); def _weekStartStr = _sdf.format(_cw.getTime())
+            def _cm = java.util.Calendar.getInstance(ec.user.timeZone); _cm.setTime(_now); _cm.set(java.util.Calendar.DAY_OF_MONTH,1); def _monthStartStr = _sdf.format(_cm.getTime())
+            def _c30 = java.util.Calendar.getInstance(ec.user.timeZone); _c30.setTime(_now); _c30.add(java.util.Calendar.DAY_OF_MONTH,-29); def _last30Str = _sdf.format(_c30.getTime())
             urlToday = "?dateMode=today&dashDate="+_todayStr+"&dashDateTo="+_todayStr
             urlWeek = "?dateMode=week&dashDate="+_weekStartStr+"&dashDateTo="+_todayStr
             urlMonth = "?dateMode=month&dashDate="+_monthStartStr+"&dashDateTo="+_todayStr
@@ -279,19 +275,17 @@
                 }
             }
             // ZE-DATEWISE: This Year preset + "Date-wise" custom-range tab (self-contained; var-name-agnostic)
-            def _dwSdf = new java.text.SimpleDateFormat("yyyy-MM-dd"); def _dwNow = ec.user.nowTimestamp; def _dwToday = _dwSdf.format(_dwNow)
-            def _dwYc = java.util.Calendar.getInstance(); _dwYc.setTime(_dwNow); _dwYc.set(java.util.Calendar.MONTH,0); _dwYc.set(java.util.Calendar.DAY_OF_MONTH,1); def _dwYearStart = _dwSdf.format(_dwYc.getTime())
+            def _dwNow = _now; def _dwToday = _todayStr
+            def _dwYc = java.util.Calendar.getInstance(ec.user.timeZone); _dwYc.setTime(_dwNow); _dwYc.set(java.util.Calendar.MONTH,0); _dwYc.set(java.util.Calendar.DAY_OF_MONTH,1); def _dwYearStart = _sdf.format(_dwYc.getTime())
             urlYear = "?dateMode=year&dashDate="+_dwYearStart+"&dashDateTo="+_dwToday
             if (dashDate && dashDateTo == _dwToday && dashDate == _dwYearStart) presetActive = 'year'
             // Keep the chosen tab when Today, This Week or This Month share the same bounds.
             def _presetStarts = [today:_todayStr, week:_weekStartStr, month:_monthStartStr, year:_dwYearStart]
             if (_presetStarts.containsKey(dateMode) && dashDate == _presetStarts[dateMode] && dashDateTo == _todayStr) presetActive = dateMode
-            // A one-day range for today is the Today preset, including when the current week starts today.
-            if (dashDate == _todayStr && dashDateTo == _todayStr) presetActive = 'today'
             // Custom ranges that exactly match a calendar period also select its preset.
             if (dashDate && dateMode == 'custom' && presetActive == 'custom') {
                 def _rangeFrom = java.time.LocalDate.parse(dashDate), _rangeTo = java.time.LocalDate.parse(dashDateTo)
-                def _rangeWeekCal = java.util.Calendar.getInstance(); _rangeWeekCal.setTime(java.sql.Timestamp.valueOf(_rangeFrom.toString()+' 00:00:00'))
+                def _rangeWeekCal = java.util.Calendar.getInstance(ec.user.timeZone); _rangeWeekCal.setTime(ec.l10n.parseTimestamp(_rangeFrom.toString()+' 00:00:00', 'yyyy-MM-dd HH:mm:ss'))
                 _rangeWeekCal.set(java.util.Calendar.DAY_OF_WEEK, _rangeWeekCal.getFirstDayOfWeek())
                 def _rangeWeekStart = java.time.LocalDate.parse(_sdf.format(_rangeWeekCal.getTime()))
                 def _monthFirst = _rangeFrom.withDayOfMonth(1)
@@ -322,7 +316,7 @@
             // and Today Hourly (sales ₹ per hour today). Metric = finalised InvoiceSales invoiceTotal (SAME basis as
             // the Total Sales KPI above), org-scoped. Empty -> flat zero line + a "No sales" subtitle (never blank).
             def _saSum = { a, b -> homeSales.findAll { it.invoiceDate != null && !it.invoiceDate.before(a) && it.invoiceDate.before(b) }.sum { homeInvoiceTotal(it) } ?: BigDecimal.ZERO }
-            def _wkCal = java.util.Calendar.getInstance(); _wkCal.setTime(_now)
+            def _wkCal = java.util.Calendar.getInstance(ec.user.timeZone); _wkCal.setTime(_now)
             _wkCal.set(java.util.Calendar.DAY_OF_WEEK, _wkCal.firstDayOfWeek)
             _wkCal.set(java.util.Calendar.HOUR_OF_DAY,0); _wkCal.set(java.util.Calendar.MINUTE,0); _wkCal.set(java.util.Calendar.SECOND,0); _wkCal.set(java.util.Calendar.MILLISECOND,0)
             def _chartStart = dayStart ?: new java.sql.Timestamp(_wkCal.timeInMillis)
@@ -332,10 +326,11 @@
             boolean _yearly = (_chartEnd.time-_chartStart.time)>400L*31*86400000L
             def _bucketField = _yearly ? java.util.Calendar.YEAR : (_monthly ? java.util.Calendar.MONTH : java.util.Calendar.DAY_OF_MONTH)
             def _bucketStep = _yearly ? Math.max(1,(int)Math.ceil((_chartEnd.toLocalDateTime().year-_chartStart.toLocalDateTime().year+1)/399.0)) : 1
-            def _bucket = java.util.Calendar.getInstance(); _bucket.setTime(_chartStart)
+            def _bucket = java.util.Calendar.getInstance(ec.user.timeZone); _bucket.setTime(_chartStart)
             if (_monthly) _bucket.set(java.util.Calendar.DAY_OF_MONTH,1)
             if (_yearly) _bucket.set(java.util.Calendar.MONTH,0)
             def _labelFmt = new java.text.SimpleDateFormat(_yearly ? 'yyyy' : (_monthly ? 'MMM yy' : (dayStart ? 'dd MMM' : 'EEE')))
+            _labelFmt.setTimeZone(ec.user.timeZone)
             def _labels=[]; def _values=[]; def _total=BigDecimal.ZERO
             while (_bucket.timeInMillis < _chartEnd.time && _labels.size()<400) {
                 def next=(java.util.Calendar)_bucket.clone(); next.add(_bucketField,_bucketStep)
@@ -346,12 +341,12 @@
             baWeekLabelsJson = groovy.json.JsonOutput.toJson(_labels); baWeekDataJson = groovy.json.JsonOutput.toJson(_values)
             baWeekTotal = _total; baWeekTotalFmt = homeMoney(_total)
             baWeekLabel = dayStart ? acRangeLabel : 'This week'
-            def _today = java.sql.Timestamp.valueOf(_todayStr+' 00:00:00')
-            def _tomorrowCal=java.util.Calendar.getInstance(); _tomorrowCal.setTime(_today); _tomorrowCal.add(java.util.Calendar.DAY_OF_MONTH,1)
+            def _today = ec.l10n.parseTimestamp(_todayStr+' 00:00:00', 'yyyy-MM-dd HH:mm:ss')
+            def _tomorrowCal=java.util.Calendar.getInstance(ec.user.timeZone); _tomorrowCal.setTime(_today); _tomorrowCal.add(java.util.Calendar.DAY_OF_MONTH,1)
             def _tomorrow=new java.sql.Timestamp(_tomorrowCal.timeInMillis)
             def _hours=(0..<24).collect { BigDecimal.ZERO }
             homeSales.findAll { it.invoiceDate != null && !it.invoiceDate.before(_today) && it.invoiceDate.before(_tomorrow) }.each {
-                def c=java.util.Calendar.getInstance(); c.setTime(it.invoiceDate); _hours[c.get(java.util.Calendar.HOUR_OF_DAY)]+=homeInvoiceTotal(it)
+                def c=java.util.Calendar.getInstance(ec.user.timeZone); c.setTime(it.invoiceDate); _hours[c.get(java.util.Calendar.HOUR_OF_DAY)]+=homeInvoiceTotal(it)
             }
             baHourLabelsJson=groovy.json.JsonOutput.toJson((0..<24).collect { h -> (h%12==0?12:h%12).toString()+(h<12?'AM':'PM') })
             baHourDataJson=groovy.json.JsonOutput.toJson(_hours); baHourTotal=_hours.sum(); baHourTotalFmt=homeMoney(baHourTotal)
@@ -578,6 +573,7 @@
             homeDashConfig=groovy.json.JsonOutput.toJson([
                 saveUrl:_uri+'/saveDashOrder', token:ec.web.sessionToken, order:dashOrderCsv, sizes:dashSizeCsv,
                 nav:homeNav, redirect:landingRedirect, customize:showSettings=='1',
+                initialChart:presetActive == 'today' ? 'hourly' : 'weekly',
                 weekly:[cats:new groovy.json.JsonSlurper().parseText(baWeekLabelsJson), series:new groovy.json.JsonSlurper().parseText(baWeekDataJson), total:baWeekTotal, sub:baWeekLabel],
                 hourly:[cats:new groovy.json.JsonSlurper().parseText(baHourLabelsJson), series:new groovy.json.JsonSlurper().parseText(baHourDataJson), total:baHourTotal, sub:'Today']
             ])
@@ -753,11 +749,11 @@
         <span id="baHead">&#8377;0</span>
       </div>
       <div class="ba-seg" role="group" aria-label="Business activity view">
-        <button type="button" class="ba-seg-btn on" aria-pressed="true" data-t="weekly">Weekly</button>
-        <button type="button" class="ba-seg-btn" aria-pressed="false" data-t="hourly">Today Hourly</button>
+        <button type="button" class="ba-seg-btn${(presetActive!='today')?string(' on','')}" aria-pressed="${(presetActive!='today')?c}" data-t="weekly">Weekly</button>
+        <button type="button" class="ba-seg-btn${(presetActive=='today')?string(' on','')}" aria-pressed="${(presetActive=='today')?c}" data-t="hourly">Today Hourly</button>
       </div>
     </div>
-    <div id="baSub">This week</div>
+    <div id="baSub">${(presetActive=='today')?string('Today', baWeekLabel)?html}</div>
     <div id="homeActivityChart" role="img" aria-label="Sales chart"><p class="zdh-empty">Loading sales chart…</p></div>
   </div>
   <div class="zdh-ocard">

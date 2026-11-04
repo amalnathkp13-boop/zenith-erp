@@ -28,7 +28,7 @@
                     BigDecimal qty=null
                     try { qty=new BigDecimal(String.valueOf(item instanceof Map ? item.quantity : null)) } catch(Exception ignored) { }
                     if (!p || p.ownerPartyId!=scope.organizationPartyId || p.productTypeEnumId!='PtAsset' || qty==null || qty<=0 || qty>1000000) { ec.message.addError('The order contains an invalid product or quantity.'); return }
-                    def price=(p.mrpAmount ?: 0) as BigDecimal
+                    def price=p.mrpAmount as BigDecimal
                     def mp=mode ? ec.service.sync().name('zenith.pos.PosServices.resolve#PosModePrice')
                         .parameters([productId:p.productId,salesModeId:salesModeId,product:p]).call() : [:]
                     if(mp.blocked) { ec.message.addError(mp.blockReason); return }

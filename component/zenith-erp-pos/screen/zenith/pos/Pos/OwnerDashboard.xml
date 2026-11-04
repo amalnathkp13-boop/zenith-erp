@@ -36,9 +36,8 @@
             def _cal = java.util.Calendar.getInstance(ec.user.timeZone); _cal.setTime(now)
             def _cm0 = java.util.Calendar.getInstance(ec.user.timeZone); _cm0.setTime(now); _cm0.set(java.util.Calendar.DAY_OF_MONTH,1)
             def monthStartStr = sdf.format(_cm0.getTime())
-            // default view = This Month
-            if (!dashDate) dashDate = monthStartStr
-            if (!dashDateTo) dashDateTo = todayStr
+            if (!dashDate) dashDate = dashDateTo ?: todayStr
+            if (!dashDateTo) dashDateTo = dashDate
             if (dashDateTo < dashDate) { def _s = dashDate; dashDate = dashDateTo; dashDateTo = _s }
             def dayStart = ec.l10n.parseTimestamp(dashDate + " 00:00:00", 'yyyy-MM-dd HH:mm:ss')
             def dayEnd = ec.l10n.parseTimestamp(dashDateTo + " 23:59:59.999", 'yyyy-MM-dd HH:mm:ss.SSS')
@@ -259,7 +258,7 @@
       <div class="biz-panel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <div class="biz-ph" style="margin:0">Sales Analyst &nbsp;<span style="color:var(--bz)">&#8377;${fmtSales!'0'}</span></div>
-          <div class="biz-tabs"><button class="biz-tab on" data-t="week" onclick="bizTab('week',this)">Weekly</button><button class="biz-tab" data-t="today" onclick="bizTab('today',this)">Today</button><button class="biz-tab" data-t="hour" onclick="bizTab('hour',this)">Hourly</button></div>
+          <div class="biz-tabs"><button class="biz-tab${(presetActive!='today')?string(' on','')}" data-t="week" onclick="bizTab('week',this)">Weekly</button><button class="biz-tab${(presetActive=='today')?string(' on','')}" data-t="today" onclick="bizTab('today',this)">Today</button><button class="biz-tab" data-t="hour" onclick="bizTab('hour',this)">Hourly</button></div>
         </div>
         <div id="bizChart" style="min-height:300px"></div>
       </div>
@@ -316,7 +315,7 @@
     markers:{size:d.type=='area'?4:0,colors:['#fff'],strokeColors:'#7C3AED',strokeWidth:3},
     yaxis:{labels:{formatter:function(v){return v>=1000?(v/1000).toFixed(0)+'K':v;}}}};}
   var el=document.querySelector('#bizChart'); if(!el||typeof ApexCharts==='undefined')return;
-  var ch=new ApexCharts(el,opt(data.week)); ch.render();
+  var ch=new ApexCharts(el,opt(data.${(presetActive=='today')?string('today','week')})); ch.render();
   window.bizTab=function(k,btn){[].forEach.call(document.querySelectorAll('.biz-tab[data-t]'),function(b){b.classList.remove('on');}); if(btn)btn.classList.add('on');
     var d=data[k]; ch.updateOptions(opt(d),true);};
 })();})"/>

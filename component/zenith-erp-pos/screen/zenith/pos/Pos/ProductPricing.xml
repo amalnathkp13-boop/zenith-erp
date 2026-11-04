@@ -47,6 +47,7 @@
                     if (qtyText && !(qtyText ==~ /\d+/)) { ec.web.sendJsonResponse([success:false, error:'Auto-wholesale quantity must be a non-negative whole number.']); return }
                     def threshold = qtyText ? (qtyText as BigDecimal) : null
                     if (threshold != null && threshold > 0 && (!parsed.WHOLESALE || parsed.WHOLESALE <= 0)) { ec.web.sendJsonResponse([success:false, error:'Set a Wholesale price before enabling auto-wholesale.']); return }
+                    ec.entity.find('mantle.party.Party').condition('partyId',_ppOwn).disableAuthz().forUpdate(true).one()
                     // Hidden columns are absent from the request and cannot be changed by this row save.
                     parsed.each { id, price ->
                         if (id == 'RETAIL' && (price == null || price <= 0)) return
@@ -54,6 +55,8 @@
                         if (id == 'WHOLESALE') args.thresholdQty = threshold
                         ec.service.sync().name('zenith.pos.PosServices.set#PosModePrice').parameters(args).call()
                     }
+                    if (!ec.message.hasError()) ec.service.sync().name('zenith.pos.ProductModePricingServices.mark#CatalogChanged')
+                        .parameter('organizationPartyId',_ppOwn).disableAuthz().call()
                     if (ec.message.hasError()) {
                         def em = ec.message.errorsString
                         ec.transaction.setRollbackOnly('POS price save failed', new IllegalStateException(em))
@@ -141,8 +144,9 @@
                     i++; def rt = rateSlab(pr)
                     def cells = [i, pr.productName ?: pr.productId, pr.pseudoId ?: '', rt != null ? rt.stripTrailingZeros().toPlainString()+'%' : '']
                     selectedModes.each { m ->
-                        def price = m.priceSource == 'PpsFixedProduct' ? modePrices[pr.productId + ':' + m.salesModeId] : pr.mrpAmount
-                        if (m.priceSource == 'PpsDiscountMrp' && price != null) price = (price as BigDecimal) * (1G - ((m.discountPercent ?: 0) as BigDecimal) / 100G)
+                        def override = modePrices[pr.productId + ':' + m.salesModeId]
+                        def price = override != null ? override : pr.mrpAmount
+                        if (override == null && m.priceSource == 'PpsDiscountMrp' && price != null) price = (price as BigDecimal) * (1G - ((m.discountPercent ?: 0) as BigDecimal) / 100G)
                         cells.add(bd(price))
                         if (m.salesModeId == 'WHOLESALE') cells.add(bd(wT[pr.productId]))
                     }
@@ -238,8 +242,9 @@
             rows = pageProds.collect { pr ->
                 def _r = rateOf(pr); def prices = [:]
                 priceModeChoices.each { mode ->
-                    def value = mode.priceSource == 'PpsFixedProduct' ? modePriceMap[pr.productId + ':' + mode.salesModeId] : pr.mrpAmount
-                    if (mode.priceSource == 'PpsDiscountMrp' && value != null) value = (value as BigDecimal) * (1G - ((mode.discountPercent ?: 0) as BigDecimal) / 100G)
+                    def override = modePriceMap[pr.productId + ':' + mode.salesModeId]
+                    def value = mode.priceSource == 'PpsFixedProduct' ? override : (override != null ? override : pr.mrpAmount)
+                    if (override == null && mode.priceSource == 'PpsDiscountMrp' && value != null) value = (value as BigDecimal) * (1G - ((mode.discountPercent ?: 0) as BigDecimal) / 100G)
                     prices[mode.salesModeId] = value == null ? '' : (value as BigDecimal).setScale(2, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
                 }
                 [productId:pr.productId, pseudoId:(pr.pseudoId ?: ''), productName:(pr.productName ?: pr.productId),
@@ -296,7 +301,7 @@
                         &#129534; <b>All prices here are GST-exclusive (before tax).</b> GST is added on top at billing &mdash; the <b>GST</b> column shows each product's rate, and the grey <b>&asymp; &#8377;&hellip; incl.</b> line under each box previews what the customer actually pays. Example: a Mug priced &#8377;100 with 18% GST &rarr; the customer pays <b>&#8377;118</b>.
                     </div>
                     <div style="background:#fff3cd;border:1px solid #ffe082;border-radius:7px;padding:8px 11px;margin-bottom:9px;color:#6d4c00">
-                        &#9888;&#65039; <b>Leave a fixed-mode price blank to block that product in the mode.</b> A product with no Wholesale price cannot be sold in Wholesale mode until you set one. Retail always works.
+                        &#9888;&#65039; <b>Leave a fixed-mode price blank to use the product MRP.</b> If both are blank, the product has no price.
                     </div>
                     <div style="background:#e6f4ea;border:1px solid #a5d6a7;border-radius:7px;padding:8px 11px;margin-bottom:9px;color:#1b5e20">
                         &#128200; <b>Auto-WS at qty</b> &mdash; type a quantity (e.g. 10) to make a normal Retail line <b>switch itself to the Wholesale price automatically</b> once the cashier rings that many of the item. Below the quantity it stays Retail. Needs a Wholesale price set. Leave blank to turn it off.
@@ -376,7 +381,7 @@
                         <#list (priceModeChoices![]) as mode>
                         <td data-pp-mode="${mode.salesModeId?html}" <#if !selectedModeIds?seq_contains(mode.salesModeId)>hidden</#if> style="padding:7px 10px">
                           <#if mode.salesModeId == 'RETAIL' || mode.priceSource == 'PpsFixedProduct'>
-                            <input <#if !selectedModeIds?seq_contains(mode.salesModeId)>disabled</#if> class="pp-mode-price pp-price" data-mode-id="${mode.salesModeId?html}" aria-label="${mode.modeName?html} price for ${r.productName?html}" type="number" min="0" step="0.01" value="${(r.modePrices[mode.salesModeId]!'')?html}" <#if mode.salesModeId != 'RETAIL'>placeholder="blank = blocked"</#if> style="width:100%;text-align:right;padding:6px;border:1px solid #ccc;border-radius:5px;font-size:14px;box-sizing:border-box"/><div class="pp-incl" style="font-size:10px;color:#888;text-align:right;height:13px;line-height:13px;margin-top:1px"></div>
+                            <input <#if !selectedModeIds?seq_contains(mode.salesModeId)>disabled</#if> class="pp-mode-price pp-price" data-mode-id="${mode.salesModeId?html}" aria-label="${mode.modeName?html} price for ${r.productName?html}" type="number" min="0" step="0.01" value="${(r.modePrices[mode.salesModeId]!'')?html}" <#if mode.salesModeId != 'RETAIL'>placeholder="blank = use MRP"</#if> style="width:100%;text-align:right;padding:6px;border:1px solid #ccc;border-radius:5px;font-size:14px;box-sizing:border-box"/><div class="pp-incl" style="font-size:10px;color:#888;text-align:right;height:13px;line-height:13px;margin-top:1px"></div>
                           <#else><span class="pp-derived-price">${(r.modePrices[mode.salesModeId]!'')?html}</span><small class="pp-derived-note">Derived from MRP</small></#if>
                         </td>
                         <#if mode.salesModeId == 'WHOLESALE'><td data-pp-mode="${mode.salesModeId?html}" <#if !selectedModeIds?seq_contains(mode.salesModeId)>hidden</#if> style="padding:7px 10px;text-align:center;white-space:nowrap"><label class="pp-switch" title="Auto-switch this Retail line to the Wholesale price at a quantity"><input type="checkbox" class="pp-wstoggle" <#if (r.wholesaleThreshold!'')?has_content>checked</#if>/><span class="pp-switch-sl"></span></label><span class="pp-wswrap" style="<#if (r.wholesaleThreshold!'')?has_content>display:inline-flex<#else>display:none</#if>;align-items:center;gap:3px;margin-left:7px;font-size:11px;color:#6B7280">at <input class="pp-wsthreshold" type="number" step="1" min="0" value="${r.wholesaleThreshold}" placeholder="qty" style="width:50px;text-align:center;padding:4px 5px;border:1px solid #ccc;border-radius:5px;font-size:12.5px;box-sizing:border-box"/></span></td></#if>
