@@ -5217,7 +5217,7 @@ window.posToggleFullscreen = function() {
                 OPT.whenIdle().then(function() {
                     // The optimistic cart can be visible before its addItem reply gives us TX.
                     // Switch only after every queued write has settled, using that current ID.
-                    return fetchScreen({salesModeId: newSM});
+                    return fetchScreen({salesModeId: newSM, applySalesMode: "Y"});
                 }).then(function(doc) {
                     var renderedMode = doc.querySelector('#cartInlineAddForm [name="salesModeId"]');
                     if (!renderedMode) throw new Error('Could not load the selected sales mode.');

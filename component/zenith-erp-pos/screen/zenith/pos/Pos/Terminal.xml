@@ -54,6 +54,7 @@
     <parameter name="splitPay"/>
 
     <parameter name="modeSwitchError"/>
+    <parameter name="applySalesMode"/>
 
 
 
@@ -1184,7 +1185,7 @@
 
 
 
-        <default-response url="." parameter-map="[sessionId:sessionId, transactionId:transactionId, catId:catId, taxOn:taxOn, salesModeId:salesModeId]"/>
+        <default-response url="." parameter-map="[sessionId:sessionId, transactionId:transactionId, catId:catId, taxOn:taxOn, salesModeId:salesModeId, applySalesMode:'Y']"/>
 
 
 
@@ -3892,11 +3893,15 @@
 
 
 
-                if (salesModeId) {
+                def _txm = transactionId ? ec.entity.find("zenith.erp.pos.PosTransaction").condition("transactionId", transactionId).one() : null
+                def changingMode = applySalesMode == "Y" && ec.web.parameters.freshSale != "Y"
+                def displayModeId = changingMode ? salesModeId : (_txm?.salesModeId ?: salesModeId)
+                if (_txm && !ec.web.parameters.taxOn && (_txm.totalTaxAmount ?: 0) > 0) taxOn = "Y"
+                if (displayModeId) {
 
 
 
-                    currentMode = allModes.find { it.salesModeId == salesModeId }
+                    currentMode = allModes.find { it.salesModeId == displayModeId }
 
 
 
@@ -3941,9 +3946,8 @@
 
 
                     salesModeColor = currentMode.colorCode ?: '#2e7d32'
-                    if (transactionId) {
-                        def _txm = ec.entity.find("zenith.erp.pos.PosTransaction").condition("transactionId", transactionId).one()
-                        if (_txm != null && _txm.salesModeId != currentMode.salesModeId) {
+                    if (changingMode && _txm) {
+                        if (_txm.salesModeId != currentMode.salesModeId) {
                             ec.service.sync().name("zenith.pos.PosServices.reprice#PosTransaction").parameters([transactionId:transactionId, discountPercent:(currentMode.discountPercent ?: 0), salesModeId:currentMode.salesModeId, taxOn:taxOn]).call()
                             if (ec.message.hasError()) {
                                 // A cart line has no price in the requested mode -> keep the current mode and tell the cashier.
