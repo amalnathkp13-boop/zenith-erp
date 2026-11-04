@@ -130,7 +130,7 @@ module.exports=async function({a,foreign,base,check,q,invoke,post,out}) {
   await page.waitForFunction(()=>document.querySelector('#pos-held-wrap .nb-cnt')?.textContent==='1');
   check('F7 holds the real cart once',q(`SELECT * FROM pos_held_transaction WHERE session_id='${session.sessionId}' AND status_id='PhHeld'`).length===1);
   await page.keyboard.press('F9');await page.locator('.nb-held__item').first().waitFor();
-  const recalled=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('/recallSale'));
+  const recalled=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('/ajaxCart')&&new URLSearchParams(r.request().postData()||'').get('action')==='recallSale');
   await page.locator('.nb-held__item').first().click();await recalled;await page.locator('.pos-cart .aj-qi').waitFor();
   check('F9 held picker recalls items',q(`SELECT * FROM pos_held_transaction WHERE session_id='${session.sessionId}' AND status_id='PhHeld'`).length===0);
   const recalledTx=await page.locator('#cartInlineAddForm input[name=transactionId]').inputValue();

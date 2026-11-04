@@ -87,6 +87,15 @@ window.__posTermJsActive = true;
 console.log('[posterm] script loaded v120 — posOpenHistory defined:', (typeof window.posOpenHistory));
 /* POS Terminal - external JS for SPA (qapps) - Full AJAX */
 
+window._posSetCustomerChip = function(name, phone) {
+    ['pos-cust-name', 'pos-header-customer-name'].forEach(function(id) {
+        var label = document.getElementById(id);
+        if (label) label.textContent = name || 'Walk-in Customer';
+    });
+    var phoneLabel = document.getElementById('pos-cust-phone');
+    if (phoneLabel) phoneLabel.textContent = phone || '—';
+};
+
 /* === Close the SPA left nav drawer when on the POS terminal ===
    On narrow/tablet screens the Quasar nav drawer opens as an overlay and
    covers the POS header (HISTORY, fullscreen, CLOSE), making those buttons
@@ -977,9 +986,7 @@ window._posOffline = (function () {
         banner(true);
         var taxLabel = document.querySelector('.nb-tax__lbl');
         if (taxLabel) taxLabel.textContent = 'Tax: ' + (draft.taxOn === 'Y' ? 'On' : 'Off');
-        var customerLabel = document.getElementById('pos-cust-name');
-        if (customerLabel)
-            customerLabel.textContent = draft.customer ? draft.customer.name : 'Walk-in Customer';
+        window._posSetCustomerChip(draft.customer && draft.customer.name, draft.customer && draft.customer.phone);
         if (focus != null && field && tb) {
             var input = tb.querySelector('[data-i="' + focus + '"][data-field="' + field + '"]');
             if (input) {
@@ -2581,14 +2588,6 @@ window._posOffline = (function () {
         var t = af ? af.querySelector('[name=transactionId]') : document.querySelector('input[name="transactionId"]');
         return t ? (t.value || '') : '';
     }
-    function setCustChip(name, phone) {
-        ['pos-cust-name', 'pos-header-customer-name'].forEach(function(id) {
-            var el = document.getElementById(id);
-            if (el) el.textContent = (name && name.length) ? name : 'Walk-in Customer';
-        });
-        var phoneEl = document.getElementById('pos-cust-phone');
-        if (phoneEl) phoneEl.textContent = phone || '—';
-    }
     function custEscape(value) {
         return String(value == null ? '' : value).replace(/[&<>"']/g, function(ch) {
             return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
@@ -2647,11 +2646,12 @@ window._posOffline = (function () {
         panel.querySelector('#cust-tax-bill').checked = typeof window._posCurrentTax === 'function' && window._posCurrentTax() === 'Y';
         panel.querySelector('#cust-walkin').addEventListener('click', function() {
             var tx = getOpenTxId();
-            if (!tx) { setCustChip('Walk-In'); closeCustomer(); return; }
+            if (!tx) { window._posSetCustomerChip(); closeCustomer(); return; }
             custPost('clearCustomer', {transactionId: tx}).then(function(d) {
                 if (!d || !d.success) { histToast((d && d.error) || 'Could not clear customer', '#c62828'); return; }
+                if (getOpenTxId() !== tx) return;
                 if (window._posRefreshCart) window._posRefreshCart();
-                setCustChip('Walk-In'); histToast('Customer cleared — Walk-In', '#607d8b'); closeCustomer();
+                window._posSetCustomerChip(); histToast('Customer cleared — Walk-In', '#607d8b'); closeCustomer();
             });
         });
         var si = panel.querySelector('#cust-search'); var t = null;
@@ -2681,6 +2681,7 @@ window._posOffline = (function () {
                     if (!tx && !CTX.sessionId) { histToast('Open a session before selecting a customer', '#e65100'); return; }
                     custPost('setCustomer', {transactionId: tx, customerPartyId: pid}).then(function(d) {
                         if (d && d.success) {
+                            if (getOpenTxId() !== tx) return;
                             if (wantsTaxBill && typeof window._posCurrentTax === 'function' && window._posCurrentTax() !== 'Y') {
                                 closeCustomer(); enableTaxBill(d.transactionId || tx); return;
                             }
@@ -2691,7 +2692,7 @@ window._posOffline = (function () {
                                 window.location.assign(next.toString()); return;
                             }
                             if (window._posRefreshCart) window._posRefreshCart();
-                            setCustChip(d.customer || nm, d.customerPhone); histToast('Customer: ' + (d.customer || nm), '#7C3AED'); closeCustomer();
+                            window._posSetCustomerChip(d.customer || nm, d.customerPhone); histToast('Customer: ' + (d.customer || nm), '#7C3AED'); closeCustomer();
                         }
                         else { histToast((d && d.error) || 'Could not set customer', '#c62828'); }
                     });
@@ -3601,7 +3602,7 @@ window.posToggleFullscreen = function() {
                         // Another live tab or a completed bill refreshed server activity.
                         lastGestureAt = Date.now();
                         idleClosePending = false;
-                    } else if (d.reason === 'disabled') {
+                    } else if (['disabled','open_cart','held_bill'].includes(d.reason)) {
                         lastGestureAt = Date.now();
                         idleClosePending = false;
                     } else {
@@ -3697,15 +3698,40 @@ window.posToggleFullscreen = function() {
             });
         }
         function recallHeldBill(hid) {
-            // Native navigation restores the bill's mode, tax, customer and pricing together.
-            var form = document.createElement('form');
-            form.method = 'post'; form.action = 'Terminal/recallSale'; form.hidden = true;
-            var values = {heldId:hid, sessionId:SI, moquiSessionToken:TK};
-            Object.keys(values).forEach(function(name) {
-                var input = document.createElement('input'); input.type='hidden';
-                input.name=name; input.value=values[name]; form.appendChild(input);
-            });
-            document.body.appendChild(form); form.submit();
+            if (!hid || cartClearing || modeSwitching) return;
+            if (window._posCommitEdits && !window._posCommitEdits()) return;
+            cartClearing = true;
+            OPT.whenIdle().then(function() {
+                return post({action:'recallSale', heldId:hid});
+            }).then(function(data) {
+                if (!data || !data.success) throw new Error(data && data.error || 'Could not recall this bill.');
+                SM = data.salesModeId || SM;
+                af.querySelector('[name=salesModeId]').value = SM;
+                applyTaxMode(data.taxOn);
+                var url = new URL(location.href);
+                url.searchParams.set('transactionId', data.transactionId);
+                url.searchParams.set('salesModeId', SM);
+                url.searchParams.set('taxOn', TO);
+                url.searchParams.delete('freshSale');
+                url.searchParams.delete('lastCompletedId');
+                history.replaceState(history.state, '', url.href);
+                document.querySelectorAll('.pos-header a[href*="changeSalesMode"]').forEach(function(link) {
+                    link.classList.toggle('is-active', new URL(link.href).searchParams.get('salesModeId') === SM);
+                });
+                if (smRoot) smRoot.removeAttribute('data-sig');
+                var heldPicker = document.querySelector('#pos-held-wrap details');
+                if (heldPicker) heldPicker.open = false;
+                renderCart(data);
+                return fetchScreen({}).then(function(doc) {
+                    if (!doc.getElementById('pos-held-wrap')) throw new Error('Held bills unavailable.');
+                    syncHeldWrap(doc);
+                    swapGrid(doc);
+                    renderCart(lastCartData);
+                }).catch(function() {
+                    showToast('Bill recalled. Reload to refresh the Held Bills list and products.', '#b45309');
+                });
+            }).catch(function(error) { showToast(error.message, '#c62828'); })
+              .finally(function() { cartClearing = false; });
         }
         function recallBtn() {
             return '<form method="post" action="Terminal/recallSale" style="margin:0">'
@@ -4396,6 +4422,7 @@ window.posToggleFullscreen = function() {
             var url = new URL(window.location.href);
             url.searchParams.delete('transactionId');
             url.searchParams.delete('lastCompletedId');
+            url.searchParams.delete('freshSale');
             window.location.replace(url.href);
         }
 
@@ -4409,30 +4436,30 @@ window.posToggleFullscreen = function() {
         }
         // Keep stable rows connected: replacing tbody on each tap discarded other line drafts
         // and forced the browser to lay out every control again, even for an unchanged reply.
-        function patchCartRows(body, rows) {
+        function patchCartRows(body, rows, discardInputs) {
             var active = document.activeElement;
             var selection = active && active.tagName === 'INPUT' && active.type !== 'number' ? [active.selectionStart, active.selectionEnd] : null;
-            Array.from(body.children).forEach(function(row) {
-                var match = rows.find(function(item) { return item.pid === row.dataset.posProduct && item.mode === row.dataset.posMode; });
-                if (match) row.dataset.posLineKey = match.key;
-            });
             var existing = new Map(), wanted = new Set(rows.map(function(item) { return item.key; }));
             Array.from(body.children).forEach(function(row) {
-                if (wanted.has(row.dataset.posLineKey)) existing.set(row.dataset.posLineKey, row);
-                else row.remove();
+                var control = row.querySelector('[data-seq]');
+                var key = OPT.realSeq(row.dataset.posLineKey || (control && control.dataset.seq));
+                if (wanted.has(key) && !existing.has(key)) {
+                    row.dataset.posLineKey = key;
+                    existing.set(key, row);
+                } else row.remove();
             });
             rows.forEach(function(item, index) {
                 var row = existing.get(item.key);
                 if (row) existing.delete(item.key);
                 else { row = document.createElement('tr'); row.dataset.posLineKey = item.key; }
-                if (row._posMarkup !== item.html) {
+                if (discardInputs || row._posMarkup !== item.html) {
                     var next = document.createElement('tr'), cells = [];
                     next.innerHTML = item.html;
                     Array.from(next.children).forEach(function(cell, index) {
                         cells.push(cell.outerHTML);
                         if (!row.children[index]) row.appendChild(cell);
-                        else if (!row._posCells || row._posCells[index] !== cells[index]) {
-                            if (row.children[index].contains(active) && active.matches('.aj-p,.aj-qi')) {
+                        else if (discardInputs || !row._posCells || row._posCells[index] !== cells[index]) {
+                            if (!discardInputs && row.children[index].contains(active) && active.matches('.aj-p,.aj-qi')) {
                                 var replacement = cell.querySelector(active.classList.contains('aj-p') ? '.aj-p' : '.aj-qi');
                                 if (replacement) { active.dataset.seq = replacement.dataset.seq; replacement.replaceWith(active); }
                             }
@@ -4454,7 +4481,7 @@ window.posToggleFullscreen = function() {
         }
 
         var pendingProductFocus = null;
-        function renderCart(d) {
+        function renderCart(d, discardInputs) {
             if (cartFrame) { cancelAnimationFrame(cartFrame); cartFrame = 0; }
             if (d && d.cartClosed) { recoverClosedCart(); return; }
             if (!d || !d.success) { if (d && d.error) alert(d.error); return; }
@@ -4508,7 +4535,7 @@ window.posToggleFullscreen = function() {
                 rows.push({key:String(it.seq), pid:it.pid, mode:it.mode || SM || '', html:h});
             });
             var _cs = document.getElementById('cartScroll'); var _ps = _cs ? _cs.scrollTop : 0; var _pc = (lastCartData && lastCartData.items) ? lastCartData.items.length : 0;
-            if (d.items.length) patchCartRows(tb, rows);
+            if (d.items.length) patchCartRows(tb, rows, discardInputs === true);
             else tb.innerHTML = h;
             if (pendingProductFocus) {
                 var selected = d.items.findIndex(function(item) { return item.pid === pendingProductFocus; });
@@ -4559,9 +4586,7 @@ window.posToggleFullscreen = function() {
             lastPay = d.pay || 0;
             lastCartData = d;
             if(window._posOffline)window._posOffline.remember(d);
-            // Keep the header customer chip in sync with the authoritative cart
-            var _cn = document.getElementById('pos-cust-name');
-            if (_cn) _cn.textContent = (d.customer && d.customer.length) ? d.customer : 'Walk-In';
+            window._posSetCustomerChip(d.customer, d.customerPhone);
         }
 
         function lastCompletedMarkup() {
@@ -4627,30 +4652,60 @@ window.posToggleFullscreen = function() {
             var q = [];               // pending server ops (FIFO; qty/price/add coalesced)
             var inflight = false;
             var syncError = null;
-            var fallbackWork = Promise.resolve();
-            var fallbackPending = 0;
-            function fallbackEdit(params) {
-                fallbackPending++;
-                fallbackWork = fallbackWork.then(function() { return post(params); }).then(function(data) {
-                    if (!data || !data.success) throw new Error(data && data.error || 'The bill edit could not be saved. Reload before taking payment.');
-                    renderCart(data);
-                }).finally(function() { fallbackPending--; });
-                fallbackWork.catch(function(error) { showToast(error.message, '#c62828'); });
-            }
+            var recovering = null;
             var idleWaiters = [];
+            var realByTmp = {};
             function notifyIdle() {
                 if (inflight || q.length) return;
                 idleWaiters.splice(0).forEach(function(waiter) { if (syncError) waiter.reject(syncError); else waiter.resolve(); });
             }
-            var tmpMeta = {};         // tmpSeq -> {pid, mode}  (lines not yet saved server-side)
-            var realByTmp = {};       // tmpSeq -> real itemSeqId (filled when its add completes)
-            var claimed = {};         // real itemSeqId -> true (already assigned to a temp line)
+            function realSeq(seq) { return realByTmp[seq] || seq; }
+            function requestCart(params) {
+                return fetch('Terminal/ajaxCart', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+                    body:new URLSearchParams(params), credentials:'same-origin', signal:AbortSignal.timeout(25000) })
+                    .then(function(response) { return response.json(); });
+            }
+            function reconcile() {
+                if (recovering) return recovering;
+                recovering = requestCart(Object.assign(paramsFor({action:'refresh'}), {recoverDraft:'Y'})).then(function(data) {
+                    if (!data || (!data.success && !data.cartClosed)) return;
+                    pendingProductFocus = null;
+                    renderCart(data, true);
+                    if (!data.cartClosed) syncError = null;
+                }).catch(function() {
+                    // A later action can retry the read without replaying an uncertain edit.
+                }).finally(function() { recovering = null; });
+                return recovering;
+            }
+            function fail(message) {
+                inflight = false;
+                q.length = 0;
+                syncError = new Error(message + ' Check the saved cart before continuing.');
+                notifyIdle();
+                showToast(syncError.message, '#c62828');
+                reconcile();
+            }
+            function canEdit() {
+                if (cartClearing || modeSwitching) {
+                    showToast('Wait for the cart to finish updating', '#c62828');
+                    return false;
+                }
+                if (!syncError) return true;
+                showToast('Checking the saved cart. Try the edit again in a moment.', '#c62828');
+                reconcile();
+                return false;
+            }
 
             function n(x) { return Number(x) || 0; }
             function isTmp(s) { return String(s).indexOf('t#') === 0; }
             function lc() { return lastCartData; }
             function bySeq(s) { var L = lc(); if (!L) return null; for (var i = 0; i < L.items.length; i++) if (String(L.items[i].seq) === String(s)) return L.items[i]; return null; }
-            function byPid(pid, mode) { var L = lc(); if (!L) return null; for (var i = 0; i < L.items.length; i++) { var it = L.items[i]; if (String(it.pid) === String(pid) && String(it.mode || '') === String(mode || '')) return it; } return null; }
+            function byPid(pid, mode, price) {
+                var cart = lc();
+                return cart && cart.items.find(function(item) {
+                    return item.pid === pid && (item.mode || '') === mode && n(item.price) === n(price);
+                });
+            }
 
             function recompute() {
                 var L = lc(); if (!L) return;
@@ -4662,23 +4717,6 @@ window.posToggleFullscreen = function() {
                 var st = 0, sx = 0; (d.items || []).forEach(function (it) { st += n(it.total); sx += n(it.tax); });
                 var g = (d.grand != null) ? n(d.grand) : n(d.pay);
                 if (sx > 0) { var k = (g - st) / sx; if (k > -0.05 && k < 2) taxK = k; }
-            }
-            // Resolve a just-completed addItem's temp line to the real itemSeqId it
-            // created. Matching by product alone is AMBIGUOUS when the same product
-            // was removed and re-added (the old, now-deleted seq still matches), so
-            // we claim the response line for this product+mode whose seq we have not
-            // already assigned to another temp line. Tying the mapping to THIS add's
-            // completion (FIFO single-flight => its removeItem already ran) makes it
-            // unambiguous.
-            function mapAdd(op, d) {
-                if (!op.ts || realByTmp[op.ts]) return;
-                var meta = tmpMeta[op.ts]; if (!meta) return;
-                for (var i = 0; i < d.items.length; i++) {
-                    var s = d.items[i];
-                    if (String(s.pid) === String(meta.pid) && String(s.mode || '') === String(meta.mode || '') && !claimed[s.seq]) {
-                        realByTmp[op.ts] = s.seq; claimed[s.seq] = true; return;
-                    }
-                }
             }
             // Propagate every known temp->real seq to the live cart and queued ops.
             function applyRealSeqs() {
@@ -4700,48 +4738,35 @@ window.posToggleFullscreen = function() {
             function drain() {
                 if (inflight || !q.length) return;
                 var op = q[0];
-                if (op.needSeq) {
-                    if (isTmp(op.seq) && realByTmp[op.seq]) op.seq = realByTmp[op.seq];
-                    if (isTmp(op.seq)) return;   // its addItem is still in flight — retry after that reconciles
+                if (op.needSeq && isTmp(op.seq)) {
+                    fail('The item could not be matched to a saved bill line.');
+                    return;
                 }
                 inflight = true;
-                fetch('Terminal/ajaxCart', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(paramsFor(op)), credentials: 'same-origin' })
-                    .then(function (r) { return r.json(); })
-                    .then(function (d) {
-                        inflight = false; var done = q.shift();
-                        if (d && d.success) {
-                            if (d.transactionId) {
-                                // Item sequence numbers restart per bill; prior claims must not
-                                // strand a rapid edit queued behind the first add of the next bill.
-                                if (d.transactionId !== TX) { claimed = {}; realByTmp = {}; }
-                                TX = d.transactionId;
-                                document.querySelectorAll('input[name="transactionId"]').forEach(function (el) { el.value = TX; }); syncModeLinks();
-                            }
-                            calibrate(d);
-                            if (done.action === 'addItem') mapAdd(done, d);
-                            applyRealSeqs();
-                            if (q.length === 0) renderCart(d);   // unchanged cells retain drafts while totals settle
-                        } else {
-                            if (d && d.cartClosed) { q.length = 0; recoverClosedCart(); return; }
-                            if (done.action === 'updatePrice' || done.action === 'updateQty') syncError = new Error(d && d.error || 'The bill edit could not be saved. Reload before taking payment.');
-                            // server rejected this op (e.g. product has no price in the active sales
-                            // mode): undo the purely-optimistic line so the cart can't drift from server.
-                            if (done.action === 'addItem' && done.ts) {
-                                var L0 = lc();
-                                if (L0) { for (var ri = L0.items.length - 1; ri >= 0; ri--) { if (String(L0.items[ri].seq) === String(done.ts)) L0.items.splice(ri, 1); } delete tmpMeta[done.ts]; }
-                                for (var rj = q.length - 1; rj >= 0; rj--) { if (q[rj].lineKey === done.lineKey) q.splice(rj, 1); }
-                                recompute(); renderCart(lc());
-                            }
-                            if (d && d.error) { try { var _et = document.createElement('div'); _et.textContent = '⚠ ' + d.error; _et.style.cssText = 'position:fixed;top:52px;left:50%;transform:translateX(-50%);z-index:9999999;background:#c62828;color:#fff;padding:13px 24px;border-radius:10px;font-weight:700;box-shadow:0 6px 24px rgba(0,0,0,0.3);max-width:90vw;text-align:center'; document.body.appendChild(_et); setTimeout(function () { _et.remove(); }, 3500); } catch (e) {} }
-                        }
-                        drain();
+                requestCart(paramsFor(op)).then(function(d) {
+                    inflight = false;
+                    q.shift();
+                    if (d && d.cartClosed) {
+                        q.length = 0;
+                        syncError = new Error(d.error || 'This bill is no longer open.');
                         notifyIdle();
-                    })
-                    .catch(function () {
-                        syncError = new Error('The bill could not be synchronized. Reload before taking payment.');
-                        showToast(syncError.message, '#c62828');
-                        inflight = false; q.shift(); drain(); notifyIdle();
-                    });
+                        recoverClosedCart();
+                        return;
+                    }
+                    if (!d || !d.success) {
+                        // The server can create the bill before rejecting its first item.
+                        if (d && d.transactionId && !TX) TX = d.transactionId;
+                        fail(d && d.error || 'The bill edit could not be saved.');
+                        return;
+                    }
+                    if (d.transactionId && d.transactionId !== TX) { realByTmp = {}; TX = d.transactionId; }
+                    calibrate(d);
+                    if (op.ts && d.addedItemSeqId) realByTmp[op.ts] = d.addedItemSeqId;
+                    applyRealSeqs();
+                    if (!q.length) renderCart(d);
+                    drain();
+                    notifyIdle();
+                }).catch(function() { fail('The bill could not be synchronized.'); });
             }
             function mergeable(i) { return !(i === 0 && inflight); }
             // Coalesce ONLY with the most-recent pending op on the same line, and
@@ -4755,8 +4780,8 @@ window.posToggleFullscreen = function() {
                 if (COALESCE) {
                     var i = lastIdxForLine(op.lineKey);
                     if (i >= 0 && mergeable(i) && q[i].action === op.action) {
-                        if (op.action === 'addItem') { q[i].addQty = (q[i].addQty || 1) + (op.addQty || 1); drain(); return; }
-                        if (op.action === 'updateQty' || op.action === 'updatePrice') { op.needSeq = q[i].needSeq; q[i] = op; drain(); return; }
+                        if (op.action === 'addItem' && n(q[i].price) === n(op.price)) { q[i].addQty = (q[i].addQty || 1) + (op.addQty || 1); drain(); return; }
+                        if ((op.action === 'updateQty' || op.action === 'updatePrice') && q[i].seq === op.seq) { q[i] = op; drain(); return; }
                     }
                 }
                 q.push(op); drain();
@@ -4771,30 +4796,28 @@ window.posToggleFullscreen = function() {
                 // the server CREATES the transaction and returns its id, and single-flight
                 // FIFO makes every later op wait and adopt it.
                 if (!L) { L = { success: true, transactionId: TX || '', items: [], disc: 0 }; lastCartData = L; }
-                var ln = byPid(pid, SM || ''); var newTs = null;
+                var ln = byPid(pid, SM || '', price); var newTs = null;
                 if (ln && n(ln.qty) > 0) { var f = (n(ln.qty) + 1) / n(ln.qty); ln.qty = n(ln.qty) + 1; ln.total = n(ln.total) * f; ln.tax = n(ln.tax) * f; }
-                else { newTs = 't#' + (++tmp); tmpMeta[newTs] = { pid: pid, mode: SM || '' }; ln = { seq: newTs, pid: pid, name: name || pid, price: n(price), qty: 1, total: n(price), tax: 0, disc: 0, mode: SM || '', uom: uom || '' }; L.items.push(ln); }
+                else { newTs = 't#' + (++tmp); ln = { seq: newTs, pid: pid, name: name || pid, price: n(price), qty: 1, total: n(price), tax: 0, disc: 0, mode: SM || '', uom: uom || '' }; L.items.push(ln); }
                 recompute(); queueCartRender();
                 enqueue({ action: 'addItem', pid: pid, price: price, mode: SM || '', addQty: 1, ts: newTs, lineKey: pid + '|' + (SM || '') });
             }
             function doQty(seq, newQty) {
                 newQty = Number(newQty);
-                // ZETAERP-POS-CART-001: on session RE-ENTRY the optimistic model (lastCartData) is unseeded
-                // (null) while the server rendered the persisted rows, so bySeq can't find a line. THROW so the
-                // OPT.* wrapper's catch posts the edit straight to the server (TX is seeded from the cart form)
-                // and reseeds the model via renderCart — otherwise a silent return leaves the control "dead".
-                var ln = bySeq(seq); if (!ln) throw 'pos-reseed';
+                var ln = bySeq(seq);
                 // A quantity edit must NEVER delete the line — a decimal/cleared/0 value that
                 // resolved while typing would silently drop the item. Revert to the authoritative
                 // cart instead; removal is only via the explicit × (remove) button.
-                if (!(newQty > 0)) { renderCart(lc()); return; }
+                if (!(newQty > 0)) return;
+                if (!ln) { enqueue({action:'updateQty', seq:seq, newQty:newQty, needSeq:true, lineKey:seq}); return; }
                 var f = newQty / n(ln.qty); ln.qty = newQty; ln.total = n(ln.total) * f; ln.tax = n(ln.tax) * f;
                 recompute(); renderCart(lc());
                 enqueue({ action: 'updateQty', seq: ln.seq, newQty: newQty, needSeq: true, lineKey: ln.pid + '|' + (ln.mode || '') });
             }
             function doPrice(seq, newPrice) {
                 newPrice = Number(newPrice);
-                var ln = bySeq(seq); if (!ln) throw 'pos-reseed';   // ZETAERP-POS-CART-001: unseeded re-entry model → server fallback (see doQty)
+                var ln = bySeq(seq);
+                if (!ln) { enqueue({action:'updatePrice', seq:seq, newPrice:newPrice, needSeq:true, lineKey:seq}); return; }
                 var f = n(ln.price) > 0 ? newPrice / n(ln.price) : 0;
                 ln.price = newPrice;
                 if (f > 0) { ln.total = n(ln.total) * f; ln.tax = n(ln.tax) * f; } else { ln.total = newPrice * n(ln.qty); ln.tax = 0; }
@@ -4802,10 +4825,12 @@ window.posToggleFullscreen = function() {
                 enqueue({ action: 'updatePrice', seq: ln.seq, newPrice: newPrice, needSeq: true, lineKey: ln.pid + '|' + (ln.mode || '') });
             }
             function doRemove(seq) {
-                var L = lc(); if (!L) throw 'pos-reseed';   // ZETAERP-POS-CART-001: unseeded re-entry model → server-side remove fallback (see doQty)
+                var L = lc();
                 var ln = bySeq(seq); var key = ln ? (ln.pid + '|' + (ln.mode || '')) : ('rm#' + seq);
-                L.items = L.items.filter(function (it) { return String(it.seq) !== String(seq); });
-                recompute(); renderCart(L);
+                if (L) {
+                    L.items = L.items.filter(function (it) { return String(it.seq) !== String(seq); });
+                    recompute(); renderCart(L);
+                }
                 enqueue({ action: 'removeItem', seq: seq, needSeq: true, lineKey: key });
             }
             function doMode(seq, mode) {
@@ -4817,20 +4842,22 @@ window.posToggleFullscreen = function() {
             function doScan(code) { enqueue({ action: 'scanAdd', code: code, lineKey: 'scan#' + (++scanN) }); }
 
             return {
-                add: function (pid, price, name, uom) { if (cartClearing || modeSwitching) return showToast('Wait for the cart to finish updating', '#c62828'); try { doAdd(pid, price, name, uom); } catch (e) { post({ action: 'addItem', transactionId: TX, productId: pid, unitPrice: price, addQty: 1 }).then(renderCart); } },
-                qty: function (seq, q2) { if (cartClearing || modeSwitching) return showToast('Wait for the cart to finish updating', '#c62828'); try { doQty(seq, q2); } catch (e) { fallbackEdit({ action: 'updateQty', transactionId: TX, itemSeqId: seq, newQty: q2 }); } },
-                price: function (seq, p2) { if (cartClearing || modeSwitching) return showToast('Wait for the cart to finish updating', '#c62828'); try { doPrice(seq, p2); } catch (e) { fallbackEdit({ action: 'updatePrice', transactionId: TX, itemSeqId: seq, newPrice: p2 }); } },
-                remove: function (seq) { if (cartClearing || modeSwitching) return showToast('Wait for the cart to finish updating', '#c62828'); try { doRemove(seq); } catch (e) { post({ action: 'removeItem', transactionId: TX, itemSeqId: seq }).then(renderCart); } },
-                mode: function (seq, m) { if (cartClearing || modeSwitching) return showToast('Wait for the cart to finish updating', '#c62828'); try { doMode(seq, m); } catch (e) { post({ action: 'setItemMode', transactionId: TX, itemSeqId: seq, itemMode: m }).then(renderCart); } },
-                scan: function (code) { if (cartClearing || modeSwitching) return showToast('Wait for the cart to finish updating', '#c62828'); try { doScan(code); } catch (e) { post({ action: 'scanAdd', transactionId: TX, cartSearch: code }).then(function (d) { if (d && !d.success && d.error) alert(d.error); else renderCart(d); }); } },
-                _drainPending: function () { return q.length + (inflight ? 1 : 0) + fallbackPending; },
+                add: function (pid, price, name, uom) { if (canEdit()) doAdd(pid, price, name, uom); },
+                qty: function (seq, qty) { if (canEdit()) doQty(seq, qty); },
+                price: function (seq, price) { if (canEdit()) doPrice(seq, price); },
+                remove: function (seq) { if (canEdit()) doRemove(seq); },
+                mode: function (seq, mode) { if (canEdit()) doMode(seq, mode); },
+                scan: function (code) { if (canEdit()) doScan(code); },
+                realSeq: realSeq,
+                _drainPending: function () { return q.length + (inflight || syncError ? 1 : 0); },
                 whenIdle: function () {
+                    if (syncError) {
+                        var error = syncError;
+                        return reconcile().then(function() { throw error; });
+                    }
                     if (window._posCommitEdits && !window._posCommitEdits()) return Promise.reject(new Error('Correct the bill rate or quantity before continuing.'));
-                    return fallbackWork.then(function() {
-                        if (cartFrame) renderCart(lastCartData);
-                        if (syncError) return Promise.reject(syncError);
-                        return (inflight || q.length) ? new Promise(function(resolve, reject) { idleWaiters.push({resolve:resolve,reject:reject}); }) : Promise.resolve();
-                    });
+                    if (cartFrame) renderCart(lastCartData);
+                    return (inflight || q.length) ? new Promise(function(resolve, reject) { idleWaiters.push({resolve:resolve,reject:reject}); }) : Promise.resolve();
                 }
             };
         })();
@@ -5192,7 +5219,7 @@ window.posToggleFullscreen = function() {
                 OPT.whenIdle().then(function() {
                     // The optimistic cart can be visible before its addItem reply gives us TX.
                     // Switch only after every queued write has settled, using that current ID.
-                    return fetchScreen({salesModeId: newSM});
+                    return fetchScreen({salesModeId: newSM, applySalesMode: "Y"});
                 }).then(function(doc) {
                     var renderedMode = doc.querySelector('#cartInlineAddForm [name="salesModeId"]');
                     if (!renderedMode) throw new Error('Could not load the selected sales mode.');
@@ -5229,6 +5256,16 @@ window.posToggleFullscreen = function() {
 
         /* --- Tax toggle: AJAX --- */
         var taxForm = document.querySelector('.pos-header form[action*="toggleTax"]');
+        function applyTaxMode(taxOn) {
+            TO = taxOn;
+            document.querySelectorAll('input[name="taxOn"]').forEach(function(input) { input.value = TO; });
+            if (!taxForm) return;
+            taxForm.querySelector('input[name="taxOn"]').value = TO === 'Y' ? 'N' : 'Y';
+            var label = taxForm.querySelector('.nb-tax__lbl');
+            if (label) label.textContent = 'Tax: ' + (TO === 'Y' ? 'On' : 'Off');
+            var button = taxForm.querySelector('button');
+            if (button) { button.classList.toggle('on', TO === 'Y'); button.setAttribute('aria-pressed', String(TO === 'Y')); }
+        }
         if (taxForm) taxForm.addEventListener('submit', function(e) {
             e.preventDefault();
             if (modeSwitching || cartClearing) return;
@@ -5249,11 +5286,7 @@ window.posToggleFullscreen = function() {
                 var saved=doc.querySelector('#cartInlineAddForm input[name="taxOn"]');
                 var error=doc.querySelector('#posModeSwitchErr,.alert-danger');
                 if (!saved || saved.value!==newTax || error) throw new Error(error ? error.textContent.trim() : 'Tax mode was not saved. Reload the bill.');
-                TO=newTax;
-                document.querySelectorAll('input[name="taxOn"]').forEach(function(input){input.value=TO;});
-                taxForm.querySelector('input[name="taxOn"]').value=TO==='Y'?'N':'Y';
-                var label=taxForm.querySelector('.nb-tax__lbl'); if(label) label.textContent='Tax: '+(TO==='Y'?'On':'Off');
-                if(btn) { btn.classList.toggle('on',TO==='Y'); btn.setAttribute('aria-pressed',String(TO==='Y')); }
+                applyTaxMode(newTax);
                 var url=new URL(location.href);url.searchParams.set('taxOn',TO);history.replaceState(history.state,'',url.href);
                 return post({action:'refresh',transactionId:TX});
             }).then(function(data) { if(data)renderCart(data); })
@@ -5461,7 +5494,8 @@ window.posToggleFullscreen = function() {
             }
             if (act.indexOf('recallSale') !== -1) {
                 e.preventDefault(); e.stopImmediatePropagation();
-                HTMLFormElement.prototype.submit.call(form);
+                var held = form.querySelector('[name=heldId]');
+                if (held) recallHeldBill(held.value);
                 return;
             }
             if (act.indexOf('voidSale') !== -1) {

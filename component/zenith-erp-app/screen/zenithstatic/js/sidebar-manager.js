@@ -313,7 +313,7 @@
             if (pending) return pending;
             entry.setAttribute('aria-busy', 'true');
             label.textContent = 'Loading sidebar…';
-            pending = fetch('/apps/zenith/getSidebarConfiguration', { credentials:'same-origin', headers:{ Accept:'application/json' }, signal:AbortSignal.timeout(10000) })
+            pending = fetch('/apps/zenith/getSidebarConfiguration', { credentials:'same-origin', cache:'no-store', headers:{ Accept:'application/json' }, signal:AbortSignal.timeout(10000) })
                 .then(function (response) { if (!response.ok) throw new Error('Unable to load sidebar settings.'); return response.json(); })
                 .then(function (data) {
                     if (!Array.isArray(data.allowedIds)) throw new Error('Invalid sidebar settings.');

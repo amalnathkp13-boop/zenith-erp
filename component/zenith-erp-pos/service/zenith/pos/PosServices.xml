@@ -208,7 +208,15 @@
                 if (!sess.lastActivityDate || sess.lastActivityDate.time > ec.user.nowTimestamp.time - 3600000L) { reason='still_active'; return }
                 def currentIds=ec.entity.find('zenith.erp.pos.PosTransaction').condition('sessionId',sessionId).selectField('transactionId').list()*.transactionId
                 if (currentIds.toSet() != (txns*.transactionId).toSet()) { reason='still_active'; return }
-                if (txns.any { it.statusId == 'PtHeld' || !['PtCreated','PtCompleted','PtVoided'].contains(it.statusId) }) return
+                if (txns.any { it.statusId == 'PtHeld' } ||
+                    ec.entity.find('zenith.erp.pos.PosHeldTransaction').condition('sessionId',sessionId).condition('statusId','PhHeld').count()) {
+                    reason = 'held_bill'; return
+                }
+                if (txns.any { !['PtCreated','PtCompleted','PtVoided'].contains(it.statusId) }) return
+                def draftIds = txns.findAll { it.statusId == 'PtCreated' }*.transactionId
+                if (draftIds && ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId','in',draftIds).count()) {
+                    reason = 'open_cart'; return
+                }
                 if (txns.findAll { it.statusId == 'PtCreated' }.any { it.transactionNumber || ((it.paidAmount ?: 0) as BigDecimal) > 0 ||
                     ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId',it.transactionId).count() > 0 }) return
                 // Existing cash reconciliation does not net cash refunds or paid voids. Require
@@ -217,7 +225,6 @@
                     ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId',it.transactionId).count() > 0 }) return
                 def returns = ec.entity.find('zenith.erp.pos.PosReturn').condition('sessionId',sessionId).list()
                 if (returns.any { it.statusId != 'PrCancelled' && (it.statusId != 'PrCompleted' || !it.refundMethod || it.refundMethod == 'Cash') }) return
-                if (ec.entity.find('zenith.erp.pos.PosHeldTransaction').condition('sessionId',sessionId).condition('statusId','PhHeld').count()) return
                 txns.findAll { it.statusId == 'PtCreated' }.each { st ->
                     ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId',st.transactionId).deleteAll()
                     ec.entity.find('zenith.erp.pos.PosItemPriceOverride').condition('transactionId',st.transactionId).deleteAll()
@@ -618,6 +625,10 @@
             </else></if>
 
             <!-- Recalculate transaction totals -->
+            <if condition="salesModeId &amp;&amp; !txn.salesModeId">
+                <service-call name="update#zenith.erp.pos.PosTransaction"
+                    in-map="[transactionId:transactionId, salesModeId:salesModeId]"/>
+            </if>
             <service-call name="zenith.pos.PosServices.recalculate#TransactionTotals"
                 in-map="[transactionId:transactionId]"/>
 
@@ -1926,6 +1937,9 @@
             <if condition="!_posAccess.allowed"><return/></if>
             <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="txn" for-update="true"/>
             <if condition="!txn || txn.statusId != 'PtCreated'"><return/></if>
+            <if condition="(txn.paidAmount ?: 0) > 0 || ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId',transactionId).count()">
+                <return error="true" message="This bill already has a recorded payment. Complete or resolve it before changing sales mode."/>
+            </if>
             <entity-find-one entity-name="zenith.erp.pos.PosSession" value-field="session">
                 <field-map field-name="sessionId" from="txn.sessionId"/></entity-find-one>
             <entity-find-one entity-name="zenith.erp.pos.PosTerminal" value-field="terminal">
@@ -2009,6 +2023,10 @@
                     </entity-delete-by-condition>
                 </else></if>
             </iterate>
+            <if condition="salesModeId &amp;&amp; txn.salesModeId != salesModeId">
+                <service-call name="update#zenith.erp.pos.PosTransaction"
+                    in-map="[transactionId:transactionId, salesModeId:salesModeId]"/>
+            </if>
             <service-call name="zenith.pos.PosServices.recalculate#TransactionTotals"
                 in-map="[transactionId:transactionId]"/>
         </actions>

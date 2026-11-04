@@ -85,7 +85,7 @@
         view.bar.appendChild(trigger); view.trigger = trigger;
         if (view.settings) { apply(); return; }
         fetch('/apps/zenith/getSubnavConfiguration?module=' + encodeURIComponent(view.module), {
-            credentials:'same-origin', headers:{ Accept:'application/json' }
+            credentials:'same-origin', cache:'no-store', headers:{ Accept:'application/json' }
         }).then(function (response) {
             if (!response.ok) throw new Error('Navigation settings could not be loaded.');
             return response.json();

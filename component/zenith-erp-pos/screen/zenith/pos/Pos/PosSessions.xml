@@ -102,7 +102,7 @@
 
             <container style="zenith-card bg-white border-radius-lg q-pa-md q-mb-md">
                 <label text="Automatic session close" type="h6" style="text-weight-bold q-mt-none"/>
-                <label text="${idleRuleMessage} Held bills, unfinished tenders and cash refunds require manual review."/>
+                <label text="${idleRuleMessage} Open and held bills stay available. Unfinished tenders and cash refunds require manual review."/>
                 <label text="${idleWorkerMessage}" type="p"/>
                 <section name="IdlePolicyManager"><condition><expression>idleCanManage</expression></condition><widgets>
                     <form-single name="IdleSessionPolicyForm" transition="saveIdlePolicy">

@@ -54,6 +54,7 @@
     <parameter name="splitPay"/>
 
     <parameter name="modeSwitchError"/>
+    <parameter name="applySalesMode"/>
 
 
 
@@ -1184,7 +1185,7 @@
 
 
 
-        <default-response url="." parameter-map="[sessionId:sessionId, transactionId:transactionId, catId:catId, taxOn:taxOn, salesModeId:salesModeId]"/>
+        <default-response url="." parameter-map="[sessionId:sessionId, transactionId:transactionId, catId:catId, taxOn:taxOn, salesModeId:salesModeId, applySalesMode:'Y']"/>
 
 
 
@@ -1752,6 +1753,7 @@
 
 
 
+                def addedItemSeqId
                 def result = [success:false]
                 def displayNames = { rows ->
                     rows ? ec.service.sync().name('zenith.pos.PosServices.get#PosDisplayNames')
@@ -1764,6 +1766,10 @@
 
 
 
+                    if (action == 'refresh' && p.recoverDraft == 'Y' && !transactionId && sessionId) {
+                        transactionId = ec.entity.find('zenith.erp.pos.PosTransaction').condition('sessionId',sessionId)
+                            .condition('statusId','PtCreated').orderBy('-entryDate').limit(1).one()?.transactionId
+                    }
                     if (transactionId && ['addItem','setItemMode','updateQty','updatePrice','applyDiscount','removeItem','clearCart','scanAdd','refresh'].contains(action)) {
                         def editable=ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',transactionId).forUpdate(true).one()
                         if (!editable || editable.statusId!='PtCreated') { ec.web.sendJsonResponse([success:false,cartClosed:true,transactionId:'',error:'That bill is already issued or no longer open. Starting a fresh cart; use History to amend an issued bill.']);return }
@@ -1839,7 +1845,7 @@
 
 
 
-                        ec.service.sync().name("zenith.pos.PosServices.add#PosTransactionItem")
+                        def added = ec.service.sync().name("zenith.pos.PosServices.add#PosTransactionItem")
 
 
 
@@ -1849,6 +1855,7 @@
 
                                 quantity:addQty, unitPrice:unitPrice, discountPercent:(p.salesModeId ? (ec.entity.find("zenith.erp.pos.PosSalesMode").condition("salesModeId", p.salesModeId).one()?.discountPercent ?: 0) : 0), salesModeId:p.salesModeId, taxOn:taxOn]).call()
 
+                        addedItemSeqId = added.itemSeqId
                         // Explicit per-mode pricing may block the add (no price set) -> surface it so the client rolls back.
                         if (ec.message.hasError()) { def _em = ec.message.errorsString; ec.message.clearErrors(); ec.web.sendJsonResponse([success:false, error:_em, transactionId:transactionId]); return }
 
@@ -2270,6 +2277,18 @@
                             ? [success:true, heldId:held.heldId]
                             : [success:false,error:ec.message.errorsString ?: 'Could not hold this bill.'])
                         return
+                    } else if (action == 'recallSale') {
+                        if (!'POST'.equalsIgnoreCase(ec.web.request.method)) {
+                            ec.web.sendJsonResponse([success:false, error:'Use POST to recall a bill.'])
+                            return
+                        }
+                        def recalled = ec.service.sync().name('zenith.pos.PosServices.recall#Transaction')
+                            .parameters([sessionId:sessionId,heldId:p.heldId]).call()
+                        if (!recalled?.transactionId || ec.message.hasError()) {
+                            ec.web.sendJsonResponse([success:false,error:ec.message.errorsString ?: 'Could not recall this bill.'])
+                            return
+                        }
+                        transactionId = recalled.transactionId
                     } else if (action == 'receiptData') {
 
                         def rTxId = ec.web.requestParameters.transactionId ?: transactionId
@@ -2971,7 +2990,7 @@
 
 
 
-                    result = [success:true, transactionId:transactionId ?: '', txnNum:txn?.transactionNumber ?: '',
+                    result = [success:true, transactionId:transactionId ?: '', txnNum:txn?.transactionNumber ?: '', addedItemSeqId:addedItemSeqId,
 
 
 
@@ -3002,6 +3021,10 @@
 
 
                         cnt:items.size(), tQty:totalQty, modes:offeredModes.collect{[id:it.salesModeId, name:it.modeName, disc:(it.discountPercent ?: 0)]}]
+                    if (action == 'recallSale') {
+                        result.salesModeId = txn?.salesModeId ?: ''
+                        result.taxOn = (txn?.totalTaxAmount ?: 0) > 0 ? 'Y' : 'N'
+                    }
 
 
 
@@ -3143,30 +3166,12 @@
 
 
 
+
+        <!-- New Sale leaves the receipt view. Cart deletion belongs to the explicit Clear Cart action. -->
         <if condition="ec.web.parameters.freshSale == 'Y' &amp;&amp; sessionId">
-            <service-call name="zenith.pos.PosServices.check#PosSessionRetirement" in-map="[sessionId:sessionId]" out-map="_freshRetirement"/>
-            <if condition="_freshRetirement.hasUnfinishedMoney">
-                <message error="true">This cart has recorded payments. Complete or resolve it before starting a new sale.</message>
-                <else>
-            <script><![CDATA[
-                ec.entity.find("zenith.erp.pos.PosTransaction").condition("sessionId", sessionId).condition("statusId", "PtCreated").list().each { st ->
-                    ec.entity.find("zenith.erp.pos.PosTransactionItem").condition("transactionId", st.transactionId).deleteAll()
-                    ec.entity.find("zenith.erp.pos.PosPayment").condition("transactionId", st.transactionId).deleteAll()
-                    ec.entity.find("zenith.erp.pos.PosItemPriceOverride").condition("transactionId", st.transactionId).deleteAll()
-                    try { st.delete() } catch (Exception e) { st.statusId = 'PtVoided'; st.update() }
-                }
-            ]]></script>
             <set field="transactionId" from="null"/>
-            <!-- freshSale means "start a brand-new sale" -> drop any carried-forward
-                 lastCompletedId so the post-sale ReceiptSection (summary) does NOT
-                 re-render; BillingSection (condition !lastCompletedId) takes over.
-                 Without this, Moqui carries lastCompletedId into the New Sale link and
-                 clicking it (manual button, F10, or the auto-advance) loops straight
-                 back onto the summary screen instead of landing on a fresh cart. -->
             <set field="lastCompletedId" from="null"/>
             <script>ec.web.parameters.remove("lastCompletedId")</script>
-                </else>
-            </if>
         </if>
 
         <if condition="sessionId &amp;&amp; !transactionId &amp;&amp; !lastCompletedId">
@@ -3888,11 +3893,15 @@
 
 
 
-                if (salesModeId) {
+                def _txm = transactionId ? ec.entity.find("zenith.erp.pos.PosTransaction").condition("transactionId", transactionId).one() : null
+                def changingMode = applySalesMode == "Y" && ec.web.parameters.freshSale != "Y"
+                def displayModeId = changingMode ? salesModeId : (_txm?.salesModeId ?: salesModeId)
+                if (_txm && (_txm.totalTaxAmount ?: 0) > 0) taxOn = "Y"
+                if (displayModeId) {
 
 
 
-                    currentMode = allModes.find { it.salesModeId == salesModeId }
+                    currentMode = allModes.find { it.salesModeId == displayModeId }
 
 
 
@@ -3937,17 +3946,14 @@
 
 
                     salesModeColor = currentMode.colorCode ?: '#2e7d32'
-                    if (transactionId) {
-                        def _txm = ec.entity.find("zenith.erp.pos.PosTransaction").condition("transactionId", transactionId).one()
-                        if (_txm != null && _txm.salesModeId != currentMode.salesModeId) {
+                    if (changingMode && _txm) {
+                        if (_txm.salesModeId != currentMode.salesModeId) {
                             ec.service.sync().name("zenith.pos.PosServices.reprice#PosTransaction").parameters([transactionId:transactionId, discountPercent:(currentMode.discountPercent ?: 0), salesModeId:currentMode.salesModeId, taxOn:taxOn]).call()
                             if (ec.message.hasError()) {
                                 // A cart line has no price in the requested mode -> keep the current mode and tell the cashier.
                                 modeSwitchError = ec.message.errorsString; ec.message.clearErrors()
-                                def _prev = allModes.find { it.salesModeId == _txm.salesModeId }
+                                def _prev = allModes.find { it.salesModeId == _txm.salesModeId } ?: allModes.find { it.isDefault == 'Y' } ?: allModes.find()
                                 if (_prev) { currentMode = _prev; salesMode = _prev.modeName ?: 'RETAIL'; salesModeId = _prev.salesModeId; salesModeColor = _prev.colorCode ?: '#2e7d32' }
-                            } else {
-                                ec.service.sync().name("update#zenith.erp.pos.PosTransaction").parameters([transactionId:transactionId, salesModeId:currentMode.salesModeId]).call()
                             }
                         }
                     }
@@ -4293,7 +4299,7 @@
                         // still served that stale copy, so browsers non-deterministically installed the old
                         // SW. nginx now serves any sw.js (query ignored in `location =`) as no-store; pinning
                         // a never-cached query key guarantees the current SW. Bump N only to force-jump CF.
-                        var __swUrl = '/apps/zenith/pos/sw.js?v=6';
+                        var __swUrl = '/apps/zenith/pos/sw.js?v=7';
                         if (!__swUrl || __swUrl === '#') { return; }
                         navigator.serviceWorker.register(__swUrl).then(function(reg) {
 

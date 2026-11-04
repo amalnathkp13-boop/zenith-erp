@@ -68,16 +68,20 @@
     // while LOCKED, swallow the terminal's keyboard shortcuts and route digits to the keypad
     function keyGuard(e) {
       if (!locked) return;
+      // Stop before the event reaches the terminal's keyboard handlers.
+      e.stopImmediatePropagation();
       var k = e.key;
       if (mode === 'pin') {
-        if (/^[0-9]$/.test(k)) { addDigit(k); e.preventDefault(); e.stopPropagation(); return; }
-        if (k === 'Backspace') { pinBuf = pinBuf.slice(0, -1); renderPin(); e.preventDefault(); e.stopPropagation(); return; }
-      } else if (k === 'Enter') { submitPassword(); e.preventDefault(); e.stopPropagation(); return; }
-      // block everything else (F1..F10, /, etc.) from reaching the terminal
-      if (k !== 'Tab') { e.preventDefault(); }
-      e.stopPropagation();
+        if (/^[0-9]$/.test(k)) addDigit(k);
+        if (k === 'Backspace') { pinBuf = pinBuf.slice(0, -1); renderPin(); }
+      } else {
+        if (k === 'Enter' && !e.isComposing) { e.preventDefault(); submitPassword(); return; }
+        // Let the lock's own password field handle native typing and editing.
+        if (e.target.id === '__zpw' && overlay.contains(e.target) && !/^F\d+$/.test(k)) return;
+      }
+      if (k !== 'Tab') e.preventDefault();
     }
-    document.addEventListener('keydown', keyGuard, true);
+    window.addEventListener('keydown', keyGuard, true);
 
     setInterval(function () {
       if (!locked && Date.now() - lastActivity >= idleMs) lock();
@@ -137,7 +141,6 @@
         body.innerHTML = '';
         var inp = el('input', 'width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;border:1px solid #cbd5e1;border-radius:10px;text-align:center');
         inp.type = 'password'; inp.autocomplete = 'off'; inp.placeholder = 'Your login password'; inp.id = '__zpw';
-        inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); submitPassword(); } e.stopPropagation(); });
         body.appendChild(inp);
         var go = el('button', 'width:100%;margin-top:12px;padding:12px;border:0;border-radius:10px;background:#7C3AED;color:#fff;font-weight:700;font-size:15px;cursor:pointer', 'Unlock');
         go.type = 'button'; go.onclick = submitPassword; body.appendChild(go);
