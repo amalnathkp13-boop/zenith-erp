@@ -3031,6 +3031,18 @@ window._posOffline = (function () {
     }, 700);
 })();
 
+function submitPosPaymentForm(form) {
+    // A cart refresh can replace the form while its confirmation is still open.
+    // Attach it only for the submit event so no duplicate controls remain on cancel.
+    var detached = !form.isConnected;
+    if (detached) { form.hidden = true; document.body.appendChild(form); }
+    try {
+        if (form.requestSubmit) form.requestSubmit(); else form.submit();
+    } finally {
+        if (detached) form.remove();
+    }
+}
+
 window.posPayCash = function(form) {
     if (window._posCommitEdits && !window._posCommitEdits()) return false;
     if (window._posWaitForEdits && window._posWaitForEdits(form)) return false;
@@ -3099,7 +3111,7 @@ window.posPayCash = function(form) {
             if (f) f.value = r.toFixed(2);
             closeOv();
             form.dataset.posPaymentConfirmed = '1';
-            if (form.requestSubmit) form.requestSubmit(); else form.submit();
+            submitPosPaymentForm(form);
         }
         ov.querySelector('#posCashCancel').addEventListener('click', closeOv);
         confirmBtn.addEventListener('click', doConfirm);
@@ -3154,7 +3166,7 @@ window.posPayDigital = function(form) {
             if (doneOnce) return;
             doneOnce = true; closeOv();
             form.dataset.posPaymentConfirmed = '1';
-            if (form.requestSubmit) form.requestSubmit(); else form.submit();
+            submitPosPaymentForm(form);
         }
         ov.querySelector('#posPayConfCancel').addEventListener('click', closeOv);
         okBtn.addEventListener('click', doConfirm);
@@ -4975,20 +4987,24 @@ window.posToggleFullscreen = function() {
             }
             return true;
         }
+        function currentPaymentForm(form) {
+            if (!form.isConnected) {
+                var method = form.querySelector('[name=paymentMethod]');
+                var updated = method && Array.from(document.querySelectorAll('form.pos-pay-form')).find(function(candidate) {
+                    var input = candidate.querySelector('[name=paymentMethod]'); return input && input.value === method.value;
+                });
+                if (updated) return updated;
+                // The normal summary can replace the form with a Cash button.
+                var amount = form.querySelector('[name=amount]');
+                if (amount) amount.value = lastPay;
+            }
+            return form;
+        }
         window._posWaitForEdits = function(form) {
             if (!OPT._drainPending()) return false;
-            var method = form.querySelector('[name=paymentMethod]');
-            method = method && method.value;
+            var paymentTx = TX;
             OPT.whenIdle().then(function() {
-                var updated = Array.from(document.querySelectorAll('form.pos-pay-form')).find(function(candidate) {
-                    var input = candidate.querySelector('[name=paymentMethod]'); return input && input.value === method;
-                });
-                if (!updated) {
-                    updated = form;
-                    var amount = updated.querySelector('[name=amount]'); if (amount) amount.value = lastPay;
-                    if (!updated.isConnected) { updated.hidden = true; document.body.appendChild(updated); }
-                }
-                updated.requestSubmit();
+                if (af.isConnected && TX && TX === paymentTx) submitPosPaymentForm(currentPaymentForm(form));
             }).catch(function(error) { showToast(error.message, '#c62828'); });
             return true;
         };
@@ -5650,16 +5666,15 @@ window.posToggleFullscreen = function() {
                 if (/posPayCash|posPayDigital/.test(form.getAttribute('onsubmit') || '') && form.dataset.posPaymentConfirmed !== '1') {
                     if (paymentPanelPending) return;
                     var method = form.querySelector('[name="paymentMethod"]').value;
+                    var paymentTx = TX;
                     paymentPanelPending = true;
                     OPT.whenIdle().then(function() { return refreshCatalog(true); }).then(function() {
-                        if (!form.isConnected) form = Array.from(document.querySelectorAll('form.pos-pay-form')).find(function(candidate) {
-                            return candidate.querySelector('[name="paymentMethod"]').value === method;
-                        });
-                        if (!form || !TX) return;
+                        if (!af.isConnected || !TX || TX !== paymentTx) return;
+                        form = currentPaymentForm(form);
                         var gate = method === 'Cash' ? window.posPayCash : window.posPayDigital;
                         if (gate(form) !== false) {
                             form.dataset.posPaymentConfirmed = '1';
-                            form.requestSubmit();
+                            submitPosPaymentForm(form);
                         }
                     }).catch(function(error) { showToast(error.message, '#c62828'); })
                       .finally(function() { paymentPanelPending = false; });
