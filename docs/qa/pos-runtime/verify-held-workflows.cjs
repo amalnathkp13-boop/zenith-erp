@@ -13,8 +13,8 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
  try{
   for(const [saved,next,price] of [['RETAIL','WHOLESALE',100],['WHOLESALE',customMode,90],[customMode,'RETAIL',80]]){
    const bill=await invoke('cart',{sessionId:session.sessionId});
-   await invoke('reprice',{transactionId:bill.transactionId,salesModeId:saved,taxOn:'N'});
    await invoke('add',{transactionId:bill.transactionId,productId:'POS_QA_A_P18',quantity:'1',salesModeId:saved,taxOn:'N'});
+   check(saved+' bill stores the selected mode when its first item is added',tx(bill.transactionId).sales_mode_id===saved);
    await page.goto(`${base}/apps/zenith/pos/Terminal?sessionId=${session.sessionId}&transactionId=${bill.transactionId}&salesModeId=${saved}&taxOn=N`,{waitUntil:'networkidle'});
    const held=await invoke('hold',{transactionId:bill.transactionId});
    if (foreign && saved==='RETAIL') {

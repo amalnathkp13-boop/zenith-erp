@@ -625,6 +625,10 @@
             </else></if>
 
             <!-- Recalculate transaction totals -->
+            <if condition="salesModeId &amp;&amp; !txn.salesModeId">
+                <service-call name="update#zenith.erp.pos.PosTransaction"
+                    in-map="[transactionId:transactionId, salesModeId:salesModeId]"/>
+            </if>
             <service-call name="zenith.pos.PosServices.recalculate#TransactionTotals"
                 in-map="[transactionId:transactionId]"/>
 
@@ -2019,6 +2023,10 @@
                     </entity-delete-by-condition>
                 </else></if>
             </iterate>
+            <if condition="salesModeId &amp;&amp; txn.salesModeId != salesModeId">
+                <service-call name="update#zenith.erp.pos.PosTransaction"
+                    in-map="[transactionId:transactionId, salesModeId:salesModeId]"/>
+            </if>
             <service-call name="zenith.pos.PosServices.recalculate#TransactionTotals"
                 in-map="[transactionId:transactionId]"/>
         </actions>

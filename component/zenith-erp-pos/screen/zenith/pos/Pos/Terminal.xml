@@ -3954,8 +3954,6 @@
                                 modeSwitchError = ec.message.errorsString; ec.message.clearErrors()
                                 def _prev = allModes.find { it.salesModeId == _txm.salesModeId } ?: allModes.find { it.isDefault == 'Y' } ?: allModes.find()
                                 if (_prev) { currentMode = _prev; salesMode = _prev.modeName ?: 'RETAIL'; salesModeId = _prev.salesModeId; salesModeColor = _prev.colorCode ?: '#2e7d32' }
-                            } else {
-                                ec.service.sync().name("update#zenith.erp.pos.PosTransaction").parameters([transactionId:transactionId, salesModeId:currentMode.salesModeId]).call()
                             }
                         }
                     }
