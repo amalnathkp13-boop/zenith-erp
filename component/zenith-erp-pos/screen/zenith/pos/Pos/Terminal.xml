@@ -2315,15 +2315,15 @@
                         ec.web.sendJsonResponse(result)
                         return
                     } else if (action == 'creditBills') {
-                        // List unpaid CREDIT bills across the operator's organization
-                        def histTermId = null
-                        if (sessionId) { def cs = ec.entity.find("zenith.erp.pos.PosSession").condition("sessionId", sessionId).one(); histTermId = cs?.terminalId }
-                        if (!histTermId) { def rec = ec.entity.find("zenith.erp.pos.PosSession").condition("operatorPartyId", ec.user.userAccount?.partyId).orderBy("-openDate").limit(1).list(); if (rec) histTermId = rec[0].terminalId }
-                        def ct = histTermId ? ec.entity.find("zenith.erp.pos.PosTerminal").condition("terminalId", histTermId).one() : null
-                        def orgTerms = ct?.organizationPartyId ? (ec.entity.find("zenith.erp.pos.PosTerminal").condition("organizationPartyId", ct.organizationPartyId).list()*.terminalId) : (histTermId ? [histTermId] : null)
-                        def sessIds = orgTerms ? (ec.entity.find("zenith.erp.pos.PosSession").condition("terminalId", "in", orgTerms).list()*.sessionId) : null
-                        if (!sessIds) { ec.web.sendJsonResponse([success:true, action:'creditBills', bills:[], total:0]); return }
-                        def crTxns = ec.entity.find("zenith.erp.pos.PosTransaction").condition("organizationPartyId",ct?.organizationPartyId ?: ec.user.getPreference('ACTIVE_ORGANIZATION') ?: '__NO_ORGANIZATION__').condition("sessionId", "in", sessIds).condition("isCredit", "Y").orderBy("-entryDate").list()
+                        def shopScope = ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call()
+                        def creditFind = ec.entity.find('zenith.erp.pos.PosTransactionView')
+                            .condition('organizationPartyId', posOrganizationPartyId).condition('isCredit', 'Y')
+                        if (shopScope?.activeShopId) creditFind.condition('facilityId', shopScope.activeShopId)
+                        if (posTerminalRestricted && posAllowedTerminalIds) {
+                            creditFind.condition('terminalId', 'in', posAllowedTerminalIds)
+                                .condition('operatorPartyId', ec.user.userAccount?.partyId)
+                        }
+                        def crTxns = posTerminalRestricted && !posAllowedTerminalIds ? [] : creditFind.orderBy('-entryDate').list()
                         def crSearch = (p.search ?: '').toLowerCase()
                         // ---- all-time stats (across every credit bill, before the search filter) ----
                         def _nowCr = ec.user.nowTimestamp

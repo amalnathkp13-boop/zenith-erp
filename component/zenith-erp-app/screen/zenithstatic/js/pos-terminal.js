@@ -1913,21 +1913,22 @@ window._posOffline = (function () {
             historyOverlay = ov;
             ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483647;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center';
             var panel = document.createElement('div');
-            panel.style.cssText = 'background:#fff;border-radius:16px;width:90vw;max-width:800px;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 12px 48px rgba(0,0,0,0.3);overflow:hidden';
-            panel.innerHTML = '<div style="padding:16px 20px;background:#7C3AED;color:#fff;display:flex;justify-content:space-between;align-items:center">'
+            panel.style.cssText = 'background:#fff;border-radius:16px;width:90vw;max-width:800px;max-height:85vh;max-height:85dvh;display:flex;flex-direction:column;box-shadow:0 12px 48px rgba(0,0,0,0.3);overflow:hidden';
+            panel.innerHTML = '<div style="flex:none;padding:16px 20px;background:#7C3AED;color:#fff;display:flex;justify-content:space-between;align-items:center">'
                 + '<span style="font-size:18px;font-weight:700">&#128196; Bill History</span>'
                 + '<button id="hist-close" style="background:none;border:none;color:#fff;font-size:24px;cursor:pointer;padding:0 4px">&times;</button></div>'
-                + '<div style="padding:12px 20px;border-bottom:1px solid #e0e0e0;max-height:48vh;overflow:auto">'
-                + '<div style="display:flex;gap:8px"><input id="hist-search" type="search" aria-label="Search bills" placeholder="Search by bill number, amount, or customer..." style="flex:1;min-width:0;padding:10px 14px;border:1px solid #ccc;border-radius:8px;font-size:14px"/>'
+                + '<div style="flex:none;display:flex;gap:8px;padding:12px 20px;border-bottom:1px solid #e0e0e0">'
+                + '<input id="hist-search" type="search" aria-label="Search bills" placeholder="Search by bill number, amount, or customer..." style="flex:1;min-width:0;padding:10px 14px;border:1px solid #ccc;border-radius:8px;font-size:14px"/>'
                 + '<button id="hist-filter" type="button" aria-expanded="false" aria-controls="hist-filter-form" style="border:1px solid #7C3AED;border-radius:8px;background:white;color:#6D28D9;padding:0 12px">Filter</button></div>'
-                + '<form id="hist-filter-form" hidden style="padding-top:12px"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(124px,1fr));gap:8px">'
+                + '<div id="hist-scroll" style="min-height:0;overflow:auto">'
+                + '<form id="hist-filter-form" hidden style="padding:12px 20px;border-bottom:1px solid #e0e0e0"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(124px,1fr));gap:8px">'
                 + '<label>From Date<input type="date" name="historyFromDate" required style="display:block;width:100%"/></label>'
                 + '<label>To Date<input type="date" name="historyToDate" required style="display:block;width:100%"/></label>'
                 + '<label>From Time<input type="time" name="historyFromTime" style="display:block;width:100%"/></label>'
                 + '<label>To Time<input type="time" name="historyToTime" style="display:block;width:100%"/></label></div>'
                 + '<p id="hist-filter-error" role="alert" style="margin:6px 0;color:#b91c1c" hidden></p>'
-                + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px"><button id="hist-filter-reset" type="button">Reset</button><button type="submit">Apply Filter</button></div></form></div>'
-                + '<div id="hist-list" style="flex:1;overflow-y:auto;padding:8px 12px"><div style="text-align:center;padding:40px;color:#999">Loading...</div></div>';
+                + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px"><button id="hist-filter-reset" type="button">Reset</button><button type="submit">Apply Filter</button></div></form>'
+                + '<div id="hist-list" style="padding:8px 12px"><div style="text-align:center;padding:40px;color:#999">Loading...</div></div></div>';
             ov.appendChild(panel);
             document.body.appendChild(ov);
             ov.addEventListener('click', function(ev) { if (ev.target === ov) closeHistory(); });
@@ -1942,6 +1943,7 @@ window._posOffline = (function () {
             filter.addEventListener('click', function () {
                 form.hidden = !form.hidden;
                 filter.setAttribute('aria-expanded', String(!form.hidden));
+                if (!form.hidden) panel.querySelector('#hist-scroll').scrollTop = 0;
             });
             form.addEventListener('submit', function (event) {
                 event.preventDefault();
@@ -2050,6 +2052,7 @@ window._posOffline = (function () {
             var filtered = !!historyCriteria.historyFromDate;
             function current() { return version === historyVersion && listEl.isConnected; }
             listEl.innerHTML = '<div role="status" style="text-align:center;padding:40px;color:#999">Loading...</div>';
+            listEl.parentElement.scrollTop = 0;
             historyPost(Object.assign({action:'billHistory', search:search||'', offset:offset}, historyCriteria), historyRequest.signal).then(function(d) {
                 if (!current()) return;
                 if (!d || !d.success) {
@@ -2079,7 +2082,6 @@ window._posOffline = (function () {
                         + (offset + d.bills.length < d.total ? '<button type="button" id="hist-next">Next</button>' : '') + '</div>';
                 }
                 listEl.innerHTML = h;
-                listEl.scrollTop = 0;
                 var prev = listEl.querySelector('#hist-prev'), next = listEl.querySelector('#hist-next');
                 if (prev) prev.onclick = function() { loadHistoryList(search, Math.max(0, offset - 20)); };
                 if (next) next.onclick = function() { loadHistoryList(search, offset + d.bills.length); };
