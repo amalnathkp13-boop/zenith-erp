@@ -33,7 +33,7 @@
                 if(ec.context.orderType=='Take Away') selected=null
                 if(selected) {
                     selected=ec.entity.find('zenith.erp.pos.RestaurantTable').condition('tableId',selected.tableId).forUpdate(true).one()
-                    if(!selected || !(selected.statusId in [null,'TblAvailable'])) { ec.message.addError('Choose an available table.'); return }
+                    if(!selected || !(selected.statusId in [null,'TblAvailable','TblOccupied'])) { ec.message.addError('Choose an available or occupied table.'); return }
                 }
                 def shop=ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call().activeShopId
                 if(shop && selected && selected.facilityId!=shop) { ec.message.addError('Choose a table in the selected shop.'); return }
@@ -117,7 +117,7 @@
                 if(ec.context.orderType=='Take Away') selected=null
                 if(selected) {
                     selected=ec.entity.find('zenith.erp.pos.RestaurantTable').condition('tableId',selected.tableId).forUpdate(true).one()
-                    if(!selected || !(selected.statusId in [null,'TblAvailable'])) { ec.message.addError('Choose an available table.'); return }
+                    if(!selected || !(selected.statusId in [null,'TblAvailable','TblOccupied'])) { ec.message.addError('Choose an available or occupied table.'); return }
                 }
                 def shop=ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call().activeShopId
                 if(shop && selected && selected.facilityId!=shop) { ec.message.addError('Choose a table in the selected shop.'); return }
@@ -271,8 +271,8 @@
                     reject('The draft or terminal session is no longer available.'); return
                 }
                 def table=kot.tableId ? ec.entity.find('zenith.erp.pos.RestaurantTable').condition('tableId',kot.tableId).forUpdate(true).one() : null
-                if(kot.tableId && (!table || table.facilityId!=terminal.facilityId || !(table.statusId in [null,'TblAvailable']))) {
-                    reject('Choose an available table at the terminal shop.'); return
+                if(kot.tableId && (!table || table.facilityId!=terminal.facilityId || !(table.statusId in [null,'TblAvailable','TblOccupied']))) {
+                    reject('Choose an available or occupied table at the terminal shop.'); return
                 }
                 def quote=new groovy.json.JsonSlurper().parseText(kot.orderReceiptJson)
                 def tx=ec.service.sync().name('zenith.pos.PosServices.create#PosTransaction')
@@ -490,7 +490,7 @@
       <button type="button" class="kb-otbtn" data-ot="Take Away"><@ic 'box'/> Take Away</button>
     </div>
     <label class="kb-fld" id="kb-table-field">Table<select id="kb-table"><option value="">Choose table</option>
-      <#list tables as t><option value="${t.tableId?html}" <#if t.statusId?has_content && t.statusId != 'TblAvailable'>disabled</#if>>Table ${((t.tableNumber)!t.tableId)?html} · ${(t.statusId!'TblAvailable')?remove_beginning('Tbl')?html}</option></#list>
+      <#list tables as t><option value="${t.tableId?html}" <#if t.statusId?has_content && t.statusId != 'TblAvailable' && t.statusId != 'TblOccupied'>disabled</#if>>Table ${((t.tableNumber)!t.tableId)?html} · ${(t.statusId!'TblAvailable')?remove_beginning('Tbl')?html}</option></#list>
     </select></label>
     <label class="kb-fld">Waiter<select id="kb-waiter"><option value="">Choose waiter</option><#list waiters as w><option value="${w.waiterId?html}">${w.waiterName?html}</option></#list></select></label>
     <label class="kb-fld">Sales Mode<select id="kb-mode"><#if !modes?has_content><option value="">Standard</option></#if><#list modes as m><option value="${m.salesModeId?html}">${m.modeName?html}</option></#list></select></label>
