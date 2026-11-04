@@ -71,8 +71,8 @@ module.exports = async function ({a, foreign, base, check, q, invoke}) {
     }
     check('catalog browsing leaves persisted carts, money, prices and stock unchanged',snapshot()===before);
     const cart=await invoke('cart',{sessionId,reuseOpenCart:'false'});
-    await invoke('add',{transactionId:cart.transactionId,productId:'POS_QA_A_P18',quantity:'1',taxOn:'N'});
-    await invoke('add',{transactionId:cart.transactionId,productId:'POS_QA_A_P5',quantity:'1',taxOn:'N'});
+    await invoke('add',{transactionId:cart.transactionId,productId:'POS_QA_A_P18',quantity:'1',taxOn:'N',salesModeId:'RETAIL'});
+    await invoke('add',{transactionId:cart.transactionId,productId:'POS_QA_A_P5',quantity:'1',taxOn:'N',salesModeId:'RETAIL'});
     const p=await a.c.newPage();
     try {
         await p.goto(`${base}/apps/zenith/pos/Terminal?sessionId=${sessionId}&transactionId=${cart.transactionId}&taxOn=N`,{waitUntil:'networkidle'});

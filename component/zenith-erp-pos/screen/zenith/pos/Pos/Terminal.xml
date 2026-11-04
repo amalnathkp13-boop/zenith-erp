@@ -3896,7 +3896,7 @@
                 def _txm = transactionId ? ec.entity.find("zenith.erp.pos.PosTransaction").condition("transactionId", transactionId).one() : null
                 def changingMode = applySalesMode == "Y" && ec.web.parameters.freshSale != "Y"
                 def displayModeId = changingMode ? salesModeId : (_txm?.salesModeId ?: salesModeId)
-                if (_txm && !ec.web.parameters.taxOn && (_txm.totalTaxAmount ?: 0) > 0) taxOn = "Y"
+                if (_txm && (_txm.totalTaxAmount ?: 0) > 0) taxOn = "Y"
                 if (displayModeId) {
 
 
@@ -3952,7 +3952,7 @@
                             if (ec.message.hasError()) {
                                 // A cart line has no price in the requested mode -> keep the current mode and tell the cashier.
                                 modeSwitchError = ec.message.errorsString; ec.message.clearErrors()
-                                def _prev = allModes.find { it.salesModeId == _txm.salesModeId }
+                                def _prev = allModes.find { it.salesModeId == _txm.salesModeId } ?: allModes.find { it.isDefault == 'Y' } ?: allModes.find()
                                 if (_prev) { currentMode = _prev; salesMode = _prev.modeName ?: 'RETAIL'; salesModeId = _prev.salesModeId; salesModeColor = _prev.colorCode ?: '#2e7d32' }
                             } else {
                                 ec.service.sync().name("update#zenith.erp.pos.PosTransaction").parameters([transactionId:transactionId, salesModeId:currentMode.salesModeId]).call()
