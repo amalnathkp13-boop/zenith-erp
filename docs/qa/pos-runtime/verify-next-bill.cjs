@@ -54,6 +54,11 @@ module.exports = async function({a, base, check, q, invoke, post, out, terminalI
    release(); await reply; await page.unroute('**/Terminal/ajaxCart',delay);
    await quantityReply;
    check(method+' tax '+taxOn+' first tap never displays the previous bill while response is delayed',flashes===0&&!pending.includes('Disposable POS A P18')&&pending.includes('Disposable POS A P5'),{flashes,pending});
+   // Receiving the response headers does not mean the cart has applied the JSON yet.
+   await page.waitForFunction(id=>{
+    const current=document.querySelector('#cartInlineAddForm [name=transactionId]')?.value;
+    return !!current&&current!==id;
+   },oldId,{timeout:5000});
    const newId=await page.locator('#cartInlineAddForm [name=transactionId]').inputValue();
    const newLines=q(`SELECT product_id,quantity FROM pos_transaction_item WHERE transaction_id='${newId}'`);
    check(method+' tax '+taxOn+' next bill persists its own item and queued quantity edit',newId!==oldId&&newLines.length===1&&newLines[0].product_id==='POS_QA_A_P5'&&Number(newLines[0].quantity)===2,{newId,newLines});

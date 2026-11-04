@@ -21,7 +21,9 @@ try {
 
   // The fixture user has no MY_ACCOUNT_USERS membership. Header destinations
   // must open the own-user workspace, without granting access to SimpleScreens.
-  const staff = await browser.newPage();
+  await page.close();
+  const staffContext = await browser.createBrowserContext();
+  const staff = await staffContext.newPage();
   await staff.setViewport({ width: 1366, height: 900 });
   await establishSession(staff, base, 'citest.a', 'moqui');
   const staffDashboard = `${base}/qapps/zenith/pos/Dashboard`;
