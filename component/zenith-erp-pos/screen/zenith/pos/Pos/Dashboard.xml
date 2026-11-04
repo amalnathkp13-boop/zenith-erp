@@ -226,12 +226,12 @@
                 def byMethod = new LinkedHashMap()
                 (paymentsByBill[bill.transactionId] ?: []).each { p ->
                     def method = p.paymentMethod ?: 'Other'
-                    byMethod[method] = (byMethod[method] ?: 0G) + ((p.amount ?: 0) as BigDecimal)
+                    byMethod[method] = (byMethod[method] ?: BigDecimal.ZERO) + ((p.amount ?: 0) as BigDecimal)
                 }
                 if (byMethod.Cash != null)
-                    byMethod.Cash = (byMethod.Cash - ((bill.changeAmount ?: 0) as BigDecimal)).max(0G)
-                def net = byMethod.values().sum() ?: 0G
-                def applied = net.min(((bill.payableAmount ?: 0) as BigDecimal).max(0G))
+                    byMethod.Cash = (byMethod.Cash - ((bill.changeAmount ?: 0) as BigDecimal)).max(BigDecimal.ZERO)
+                def net = byMethod.values().sum(BigDecimal.ZERO)
+                def applied = net.min(((bill.payableAmount ?: 0) as BigDecimal).max(BigDecimal.ZERO))
                 if (applied <= 0) return
                 def left = applied
                 def methods = byMethod.findAll { k,v -> v > 0 }.entrySet().toList()
@@ -241,7 +241,7 @@
                     def amount = applied == net ? tender.value : (index == methods.size() - 1 ? left :
                         (tender.value * applied).divide(net, 2, java.math.RoundingMode.DOWN))
                     left -= amount
-                    if (amount > 0) paymentTotals[tender.key] = (paymentTotals[tender.key] ?: 0G) + amount
+                    if (amount > 0) paymentTotals[tender.key] = (paymentTotals[tender.key] ?: BigDecimal.ZERO) + amount
                 }
             }
             paymentBars = []
