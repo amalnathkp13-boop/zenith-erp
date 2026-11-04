@@ -61,9 +61,12 @@ module.exports=async function({manager,cashier,foreign,session,id,free,credit,ca
  }
  const unpriced=(await manager.invoke('cart',{sessionId:session.sessionId,reuseOpenCart:'false'})).result.transactionId;
  const unpricedResult=await manager.invoke('add',{transactionId:unpriced,productId:'POS_QA_A_UNPRICED',quantity:'1',taxOn:'N'});
- check('A missing catalog price stays in the draft cart',!unpricedResult.errors?.length&&Number(q(`SELECT unit_price FROM pos_transaction_item WHERE transaction_id='${unpriced}'`)[0].unit_price)===0);
+ const unpricedLines=()=>q(`SELECT unit_price FROM pos_transaction_item WHERE transaction_id='${unpriced}'`);
+ check('A missing catalog price cannot silently create a free item',unpricedResult.errors?.some(error=>error.includes('Price not configured'))&&unpricedLines().length===0,unpricedResult);
+ const intentionalFree=await manager.invoke('add',{transactionId:unpriced,productId:'POS_QA_A_UNPRICED',unitPrice:'0',quantity:'1',taxOn:'N'});
+ check('An explicitly entered zero requires approval in an opted-in shop',!intentionalFree.errors?.length&&Number(unpricedLines()[0]?.unit_price)===0&&(await state(unpriced)).required===true,intentionalFree);
  await approve(unpriced);const unpricedCompletion=await manager.invoke('complete',{transactionId:unpriced});
- check('An approved unpriced product generates a bill for an opted-in shop',!unpricedCompletion.errors?.length&&q(`SELECT status_id FROM pos_transaction WHERE transaction_id='${unpriced}'`)[0].status_id==='PtCompleted');
+ check('An approved explicit zero-price item generates a bill for an opted-in shop',!unpricedCompletion.errors?.length&&q(`SELECT status_id FROM pos_transaction WHERE transaction_id='${unpriced}'`)[0].status_id==='PtCompleted');
  const discount=(await manager.invoke('cart',{sessionId:session.sessionId,reuseOpenCart:'false'})).result.transactionId;
  await manager.invoke('add',{transactionId:discount,productId:'POS_QA_A_P18',quantity:'1',taxOn:'N'});
  await ajax({action:'applyDiscount',transactionId:discount,billDiscValue:'100',billDiscType:'pct',managerPin:'246813',taxOn:'N'});
