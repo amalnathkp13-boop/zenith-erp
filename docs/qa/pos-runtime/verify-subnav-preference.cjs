@@ -61,6 +61,10 @@ module.exports=async function ({browser,base,check}) {
   await show('/apps/zenith/pos/PosSessions');
   check('Controlled POS navigation retains the saved visibility and order after changing screens',
    await toggle.getAttribute('aria-checked')==='false'&&await transaction.getAttribute('hidden')!==null&&(await tabIds())[0]==='/pos/Terminal');
+  await p.goto(base+'/apps/zenith/Dashboard');
+  await show(dashboardPath);
+  check('The POS navigation settings survive leaving the module and returning',
+   await toggle.getAttribute('aria-checked')==='false'&&(await tabIds())[0]==='/pos/Terminal');
   await signIn('pos.qa');
   await show(dashboardPath);
   check('The same user retains their POS navigation settings after a fresh sign-in',

@@ -547,6 +547,8 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
   await require('./verify-hold-print.cjs')({a,base,check,q,invoke,post});
  }
  if(process.env.POS_QA_UI_ONLY!=='true'){
+  await require('./verify-long-cart.cjs')({a,foreign,base,check,q,invoke,post});
+  await require('./verify-subnav-preference.cjs')({browser,base,check});
   await require('./verify-kitchen-tables.cjs')({a,foreign,base,post,rows,count,check});
   await require('./verify-kitchen-print.cjs')({a,foreign,base,post,rows,count,check,out});
   await require('./verify-kot-compact.cjs')({a,foreign,base,check,q,invoke,post,out});
