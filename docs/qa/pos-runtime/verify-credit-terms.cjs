@@ -71,4 +71,46 @@ module.exports=async function({a,foreign,base,check,q,invoke,post,out}){
   await page.setViewportSize({width:390,height:844});await page.screenshot({path:path.join(out,`${shell}-credit-repayment-history.png`),fullPage:true});
   check(`${shell} history dialog fits a narrow screen`,await dialog.locator('.pch-dialog').evaluate(el=>el.getBoundingClientRect().right<=innerWidth));check(`${shell} credit interactions have no JavaScript exceptions`,errors.length===0,errors);await page.close();
  }
+ const otherSession=await invoke('open',{terminalId:'POS_QA_A_TERM_NEG',openingCash:'0'});
+ const otherBill=await invoke('cart',{sessionId:otherSession.sessionId});
+ await invoke('add',{transactionId:otherBill.transactionId,productId:'POS_QA_A_P18',quantity:'1',taxOn:'N'});
+ await invoke('credit',{transactionId:otherBill.transactionId,customerName:'Synthetic other shop credit',customerPhone:'9000000093',upfrontAmount:'23',upfrontMethod:'Card'});
+ const chooseShop=facilityId=>a.c.request.post(base+'/apps/zenith/setActiveShop',{form:{moquiSessionToken:a.t,facilityId,returnUrl:'/apps/zenith/pos/CreditBills'}});
+ const creditList=async(params={},actor=a)=>(await post('Terminal','ajaxCart',{action:'creditBills',...params},actor)).json();
+ const contains=(data,id)=>data.bills.some(bill=>bill.txId===id);
+ const shopPage=await a.c.newPage();
+ try {
+  await chooseShop('POS_QA_A_FAC');
+  const firstShop=await creditList();
+  check('selected shop contains only its own credit bills',firstShop.success&&contains(firstShop,t.transactionId)&&!contains(firstShop,otherBill.transactionId),firstShop);
+  const otherBillNo=q(`SELECT transaction_number FROM pos_transaction WHERE transaction_id='${otherBill.transactionId}'`)[0].transaction_number;
+  const search=await creditList({search:otherBillNo});
+  check('search cannot surface another shop and preserves selected-shop KPIs',search.success&&search.bills.length===0&&search.allCount===firstShop.allCount&&Number(search.outSum)===Number(firstShop.outSum),search);
+  await chooseShop('POS_QA_A_FAC_NEG');
+  const otherShop=await creditList({sessionId:s.sessionId});
+  check('selected shop overrides the recent or explicitly supplied counter for owner credit list',otherShop.success&&otherShop.bills.length===1&&contains(otherShop,otherBill.transactionId)&&otherShop.allCount===1&&otherShop.outCount===1&&Number(otherShop.outSum)===77&&Number(otherShop.paidMonthAmt)===23,otherShop);
+  await shopPage.goto(base+'/apps/zenith/pos/CreditBills');
+  await shopPage.locator('.credit-history-btn').first().waitFor();
+  check('credit screen only paints the selected shop bill',await shopPage.locator('.credit-history-btn').evaluateAll(buttons=>buttons.map(button=>button.dataset.tx).join(','))===otherBill.transactionId);
+  await shopPage.locator('#credit-hdr-kebab').click();
+  const download=shopPage.waitForEvent('download');
+  await shopPage.getByText('Export CSV',{exact:true}).click();
+  const csv=require('node:fs').readFileSync(await (await download).path(),'utf8');
+  check('credit CSV contains the selected shop bill only',csv.trim().split('\n').length===2&&csv.includes(otherShop.bills[0].billNo));
+  await chooseShop('POS_QA_B_FAC');
+  const afterForeignSelection=await creditList();
+  check('a foreign shop selection cannot alter the current credit scope',afterForeignSelection.success&&afterForeignSelection.bills.length===1&&contains(afterForeignSelection,otherBill.transactionId),afterForeignSelection);
+  await chooseShop('POS_QA_A_FAC2');
+  const noBills=await creditList();
+  check('a selected shop without credit bills has empty rows and zero KPIs',noBills.success&&noBills.bills.length===0&&noBills.allCount===0&&Number(noBills.outSum)===0&&Number(noBills.paidMonthAmt)===0,noBills);
+  await chooseShop('');
+  const allShops=await creditList();
+  check('All Shops combines organization credit bills and shop KPIs',allShops.success&&contains(allShops,t.transactionId)&&contains(allShops,otherBill.transactionId)&&allShops.allCount===firstShop.allCount+otherShop.allCount&&Number(allShops.outSum)===Number(firstShop.outSum)+Number(otherShop.outSum),allShops);
+  const foreignList=await creditList({},foreign);
+  check('another organization cannot see either selected shop credit bill',foreignList.success&&!contains(foreignList,t.transactionId)&&!contains(foreignList,otherBill.transactionId),foreignList);
+ } finally {
+  await chooseShop('');
+  await shopPage.close();
+  await invoke('close',{sessionId:otherSession.sessionId,closingCash:'0'});
+ }
 };
