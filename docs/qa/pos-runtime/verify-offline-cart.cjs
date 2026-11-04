@@ -1,10 +1,11 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),http=require('node:http'),path=require('node:path'),{chromium}=require('playwright');
 const source=fs.readFileSync(process.env.POS_QA_SOURCE||path.resolve(__dirname,'../../../component/zenith-erp-app/screen/zenithstatic/js/pos-terminal.js'),'utf8');
 const begin=source.indexOf('window._posOffline ='),end=source.indexOf('\n})();',begin);
-assert(begin>=0&&end>begin);let ackMode='none',calls=0;
+const chipStart=source.indexOf('window._posSetCustomerChip ='),chipEnd=source.indexOf('\n};',chipStart);
+assert(chipStart>=0&&chipEnd>chipStart&&begin>=0&&end>begin);let ackMode='none',calls=0;
 const server=http.createServer(async(req,res)=>{
  const url=new URL(req.url,'http://127.0.0.1');
- if(url.pathname==='/offline-module.js'){res.setHeader('Content-Type','application/javascript');res.end(source.slice(begin,end+6));return;}
+ if(url.pathname==='/offline-module.js'){res.setHeader('Content-Type','application/javascript');res.end(source.slice(chipStart,chipEnd+3)+'\n'+source.slice(begin,end+6));return;}
  if(url.pathname.endsWith('/exportPosCatalog')){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({version:2,userId:'QA_USER',organizationPartyId:'QA_ORG',terminalId:'QA_TERM',canOverride:true,state:'33',modes:[{id:'RETAIL',name:'Retail'}],products:[{productId:'P1',productName:'Water Cup',printName:'தண்ணீர் கப்',listPrice:100,taxRate:18,taxRates:[9,9],interstateRates:[18],prices:{RETAIL:{price:100,disc:0}},uom:'Nos'}]}));return;}
  if(url.pathname.endsWith('/ajaxCart')){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({success:true,transactionId:'',items:[]}));return;}
  if(url.pathname.endsWith('/syncOfflineTransactions')){let body='';for await(const chunk of req)body+=chunk;const sales=JSON.parse(body).transactions.map(JSON.parse);calls++;res.statusCode=ackMode==='error'?503:200;res.setHeader('Content-Type','application/json');res.end(JSON.stringify(ackMode==='all'?{syncedIds:sales.map(s=>s.offlineId)}:ackMode==='partial'?{syncedIds:[sales[0].offlineId]}:{syncedCount:1}));return;}

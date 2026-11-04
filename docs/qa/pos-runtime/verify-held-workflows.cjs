@@ -17,6 +17,10 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await invoke('add',{transactionId:bill.transactionId,productId:'POS_QA_A_P18',quantity:'1',salesModeId:saved,taxOn:'N'});
    await page.goto(`${base}/apps/zenith/pos/Terminal?sessionId=${session.sessionId}&transactionId=${bill.transactionId}&salesModeId=${saved}&taxOn=N`,{waitUntil:'networkidle'});
    const held=await invoke('hold',{transactionId:bill.transactionId});
+   if (foreign && saved==='RETAIL') {
+    const denied=await post('Terminal','ajaxCart',{action:'recallSale',sessionId:session.sessionId,heldId:held.heldId},foreign);
+    check('Another organization cannot recall or alter the held draft',denied.status()===403&&tx(bill.transactionId).status_id==='PtHeld');
+   }
    const other=await invoke('cart',{sessionId:session.sessionId});
    await invoke('reprice',{transactionId:other.transactionId,salesModeId:next,taxOn:'N'});
    await invoke('add',{transactionId:other.transactionId,productId:'POS_QA_A_P18',quantity:'1',salesModeId:next,taxOn:'N'});
@@ -25,7 +29,8 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await invoke('complete',{transactionId:other.transactionId});
    await page.goto(`${base}/apps/zenith/pos/Terminal?sessionId=${session.sessionId}&salesModeId=${next}&taxOn=Y`,{waitUntil:'networkidle'});
    await page.locator('#pos-held-wrap summary').click();
-   await Promise.all([page.waitForURL(url=>url.searchParams.get('transactionId')===bill.transactionId,{waitUntil:'networkidle',timeout:60000}),page.locator(`form[action$="/recallSale"]:has(input[name=heldId][value="${held.heldId}"]) button`).click()]);
+   await page.locator(`form[action$="/recallSale"]:has(input[name=heldId][value="${held.heldId}"]) button`).click();
+   await page.waitForFunction(id=>new URL(location.href).searchParams.get('transactionId')===id&&!!document.querySelector('.pos-cart .aj-qi'),bill.transactionId);
    const persisted=tx(bill.transactionId),line=q(`SELECT * FROM pos_transaction_item WHERE transaction_id='${bill.transactionId}'`)[0];
    check(saved+' recalled after '+next+' preserves its saved mode, rate and tax off',persisted.sales_mode_id===saved&&Number(line.unit_price)===price&&Number(persisted.total_tax_amount)===0,{mode:persisted.sales_mode_id,price:line.unit_price,tax:persisted.total_tax_amount});
    check(saved+' recalled client agrees with persisted mode',await page.locator('#cartInlineAddForm [name=salesModeId]').inputValue()===saved);

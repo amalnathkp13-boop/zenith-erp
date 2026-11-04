@@ -137,6 +137,7 @@
 
     <transition name="getSidebarConfiguration" read-only="true" begin-transaction="false">
         <actions><script><![CDATA[
+            ec.web.response.setHeader('Cache-Control', 'private, no-store')
             def result = ec.service.sync().name('zenith.app.SidebarServices.get#SidebarConfiguration')
                 .parameters([:]).call()
             ec.web.sendJsonResponse([allowedIds:result.allowedIds ?: [], preference:result.preference ?: ''])
@@ -173,6 +174,7 @@
 
     <transition name="getSubnavConfiguration" read-only="true" begin-transaction="false">
         <actions><script><![CDATA[
+            ec.web.response.setHeader('Cache-Control', 'private, no-store')
             def result = ec.service.sync().name('zenith.app.SidebarServices.get#SubnavConfiguration')
                 .parameter('module', ec.web.request.getParameter('module')).call()
             ec.web.sendJsonResponse([preference:result.preference ?: '', error:result.error ?: ''])
@@ -379,8 +381,8 @@
             footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=14')
             footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=48')
             footer_scripts.add('/zenithstatic/js/profile-menu.js?v=1')
-            footer_scripts.add('/zenithstatic/js/sidebar-manager.js?v=2')
-            footer_scripts.add('/zenithstatic/js/subnav-manager.js?v=3')
+            footer_scripts.add('/zenithstatic/js/sidebar-manager.js?v=3')
+            footer_scripts.add('/zenithstatic/js/subnav-manager.js?v=4')
             footer_scripts.add('/zenithstatic/js/pricing-price-lists.js?v=1')
             footer_scripts.add('/zenithstatic/js/purchase-rfq.js?v=1')
             footer_scripts.add('/zenithstatic/js/purchase-job-work.js?v=1')
@@ -427,7 +429,7 @@
             footer_scripts.add('/zenithstatic/js/zenith-copilot.js?v=8')
             footer_scripts.add('/zenithstatic/js/pw-autofill-guard.js?v=2')
             footer_scripts.add('/zenithstatic/js/idle-logout.js?v=3')
-            footer_scripts.add('/zenithstatic/js/pos-idle-lock.js?v=3')
+            footer_scripts.add('/zenithstatic/js/pos-idle-lock.js?v=4')
             footer_scripts.add('/zenithstatic/js/nav-tabfix.js?v=2')
             footer_scripts.add('/zenithstatic/js/bfcache-guard.js?v=1')
             footer_scripts.add('/zenithstatic/js/sw-tenant-guard.js?v=1')

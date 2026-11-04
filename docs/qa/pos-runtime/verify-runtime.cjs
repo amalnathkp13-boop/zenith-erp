@@ -22,6 +22,7 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  cp.execFileSync(process.execPath,[path.join(__dirname,'check-receipt-options.cjs')],{stdio:'inherit'});
  cp.execFileSync(process.execPath,[path.join(__dirname,'check-print-routing.cjs')],{stdio:'inherit'});
  cp.execFileSync(process.execPath,[path.join(__dirname,'verify-offline-cart.cjs')],{stdio:'inherit'});
+ cp.execFileSync(process.execPath,[path.join(__dirname,'check-idle-lock.cjs')],{stdio:'inherit'});
  cp.execFileSync(process.execPath,[path.join(__dirname,'check-shared-chrome.cjs')],{stdio:'inherit'});
  cp.execFileSync(process.execPath,[path.join(__dirname,'check-tablet-checkout.cjs')],{stdio:'inherit'});
  cp.execFileSync(process.execPath,[path.join(__dirname,'check-navigation-policy.cjs')],{stdio:'inherit'});
@@ -39,6 +40,8 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  if(process.env.POS_QA_FOCUS==='offline-workspace'){await require('./verify-offline-workspace.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='receipt-designs'){await require('./verify-receipt-designs.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='hold-print'){await require('./verify-hold-print.cjs')({a,base,check,q,invoke,post});await browser.close();browser=null;return;}
+ if(process.env.POS_QA_FOCUS==='subnav-preference'){await require('./verify-subnav-preference.cjs')({browser,base,check});await browser.close();browser=null;return;}
+ if(process.env.POS_QA_FOCUS==='long-cart'){await require('./verify-long-cart.cjs')({a,foreign,base,check,q,invoke,post});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='billing-display'){await require('./verify-billing-display.cjs')({a,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='normal-layout'){await require('./verify-normal-layout.cjs')({a,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='credit-terms'){await require('./verify-credit-terms.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
@@ -51,6 +54,8 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
   await require('./verify-rate-sync.cjs')({a,base,check,q,invoke,post,out});
   await require('./verify-receipt-designs.cjs')({a,foreign,base,check,q,invoke,post,out});
   await require('./verify-hold-print.cjs')({a,base,check,q,invoke,post});
+  await require('./verify-long-cart.cjs')({a,foreign,base,check,q,invoke,post});
+  await require('./verify-subnav-preference.cjs')({browser,base,check});
   await browser.close();browser=null;return;
  }
  if(process.env.POS_QA_FOCUS==='catalog'){await require('./verify-catalog-performance.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
