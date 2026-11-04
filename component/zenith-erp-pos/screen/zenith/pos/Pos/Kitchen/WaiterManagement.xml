@@ -5,8 +5,8 @@
 
     <transition name="createWaiter" method="post" begin-transaction="true">
         <actions>
-            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'pos']" out-map="context"/>
-            <if condition="canWrite != true"><return error="true" message="POS write access is required."/></if>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:kitchenModuleId]" out-map="context"/>
+            <if condition="canWrite != true"><return error="true" message="Write access is required for this kitchen workflow."/></if>
             <set field="org" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
             <if condition="!org || org == '_NA_'"><return error="true" message="Select a shop first."/></if>
             <if condition="!waiterName?.trim() || !phone?.trim() || !(isActive in ['Y','N'])"><return error="true" message="Enter a name, phone number and valid status."/></if>
@@ -16,8 +16,8 @@
     </transition>
     <transition name="updateWaiter" method="post" begin-transaction="true">
         <actions>
-            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'pos']" out-map="context"/>
-            <if condition="canWrite != true"><return error="true" message="POS write access is required."/></if>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:kitchenModuleId]" out-map="context"/>
+            <if condition="canWrite != true"><return error="true" message="Write access is required for this kitchen workflow."/></if>
             <entity-find-one entity-name="zenith.erp.pos.Waiter" value-field="_w"/>
             <if condition="_w == null"><return error="true" message="Waiter not found."/></if>
             <set field="_ao" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
@@ -31,8 +31,8 @@
     </transition>
     <transition name="deleteWaiter" method="post" begin-transaction="true">
         <actions>
-            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'pos']" out-map="context"/>
-            <if condition="canWrite != true"><return error="true" message="POS write access is required."/></if>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:kitchenModuleId]" out-map="context"/>
+            <if condition="canWrite != true"><return error="true" message="Write access is required for this kitchen workflow."/></if>
             <entity-find-one entity-name="zenith.erp.pos.Waiter" value-field="_w"/>
             <if condition="_w == null"><return error="true" message="Waiter not found."/></if>
             <set field="_ao" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
@@ -165,7 +165,7 @@
                 </div>
             </div></#if>
         </div>
-  <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" style="display:none" onload="(function(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-waiters.js?v=1';document.head.appendChild(s);})()"/>
+  <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" style="display:none" onload="(function(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-waiters.js?v=2';document.head.appendChild(s);})()"/>
         ]]></text></render-mode>
     </widgets>
 </screen>

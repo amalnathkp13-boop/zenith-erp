@@ -82,6 +82,8 @@
   <moqui.security.UserAccount userId="POS_QA_MANAGER" username="pos.qa" userFullName="Disposable POS QA" partyId="POS_QA_MANAGER" timeZone="Asia/Kolkata" disabled="Y" requirePasswordChange="N" />
   <moqui.security.UserGroupMember userId="POS_QA_MANAGER" userGroupId="ZENITH_ADMIN" fromDate="2020-01-01 00:00:00" />
   <moqui.security.UserGroupMember userId="POS_QA_MANAGER" userGroupId="ZENITH_ALL" fromDate="2020-01-01 00:00:00" />
+  <moqui.security.UserGroup userGroupId="TENANT_POS_QA_A" description="Disposable POS QA organization A" />
+  <moqui.security.UserGroupMember userId="POS_QA_MANAGER" userGroupId="TENANT_POS_QA_A" fromDate="2020-01-01 00:00:00" />
   <mantle.party.PartyRelationship partyRelationshipId="POS_QA_MANAGER_REL" fromPartyId="POS_QA_MANAGER" toPartyId="POS_QA_A" relationshipTypeEnumId="PrtAgent" toRoleTypeId="OrgInternal" fromDate="2020-01-01 00:00:00" />
   <moqui.security.UserPreference userId="POS_QA_MANAGER" preferenceKey="ACTIVE_ORGANIZATION" preferenceValue="POS_QA_A" />
   <mantle.party.Party partyId="POS_QA_CASHIER" partyTypeEnumId="PtyPerson" />

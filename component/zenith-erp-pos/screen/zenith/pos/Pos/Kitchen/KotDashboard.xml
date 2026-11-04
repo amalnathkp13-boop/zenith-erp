@@ -12,7 +12,7 @@
             import java.math.RoundingMode
             import java.util.Calendar
             import groovy.json.JsonOutput
-            org = ec.user.getPreference('ACTIVE_ORGANIZATION')
+            org = posOrganizationPartyId
             if (!org || org == '_NA_') org = null
 
             def inr = { amt, dec = 2 ->
@@ -43,17 +43,24 @@
             def yStart = new java.sql.Timestamp(dayStart.getTime() - DAYMS)
             def yEnd = new java.sql.Timestamp(dayStart.getTime() - 1000L)
 
+            // The standalone KOT role can report its linked sales without exposing general till totals.
+            def kotTxnIds = kitchenModuleId == 'kot' ? ec.entity.find('zenith.erp.pos.KitchenOrderTicket')
+                .condition('organizationPartyId', org ?: '__NO_ORGANIZATION__')
+                .condition('transactionId', 'is-not-null', null).selectField('transactionId')
+                .distinct(true).list()*.transactionId : null
             def amt = { t -> (t.payableAmount ?: t.grandTotal ?: 0) as BigDecimal }
             def findCompleted = { s, e ->
                 def f = ec.entity.find('zenith.erp.pos.PosTransaction').condition('statusId', 'PtCompleted')
                     .condition('entryDate', 'greater-equals', s).condition('entryDate', 'less-equals', e)
                 f.condition('organizationPartyId', org ?: '__NO_ORGANIZATION__')
+                if (kotTxnIds != null) f.condition('transactionId', 'in', kotTxnIds ?: ['__NO_KOT_TRANSACTIONS__'])
                 return f.orderBy('entryDate').list()
             }
             def countAll = { s, e ->
                 def f = ec.entity.find('zenith.erp.pos.PosTransaction')
                     .condition('entryDate', 'greater-equals', s).condition('entryDate', 'less-equals', e)
                 f.condition('organizationPartyId', org ?: '__NO_ORGANIZATION__')
+                if (kotTxnIds != null) f.condition('transactionId', 'in', kotTxnIds ?: ['__NO_KOT_TRANSACTIONS__'])
                 return f.count()
             }
 
@@ -280,7 +287,11 @@
         </li>
         </#list>
       </ol>
+      <#if kitchenModuleId=='kot'>
+      <a class="kd-viewall" href="<#if (ec.web.request.requestURI!'')?starts_with('/qapps/')>/qapps<#else>/apps</#if>/zenith/kot/KotHistory">View KOT History <@ic 'chevr' 14/></a>
+      <#else>
       <a class="kd-viewall" onclick="kdGo('goReports')">View All Dishes <@ic 'chevr' 14/></a>
+      </#if>
       <#else>
       <div class="kd-dishes__empty">No dishes sold for this day yet.</div>
       </#if>
@@ -288,7 +299,7 @@
   </section>
 
   <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" style="display:none"
-       onload="(function(){if(window.__kdJs)return;window.__kdJs=1;var s=document.createElement('script');s.src='/zenithstatic/js/kot-dashboard.js?v=1';document.head.appendChild(s);})()"/>
+       onload="(function(){if(window.kdInit){window.kdInit();return;}if(window.__kdJs)return;window.__kdJs=1;var s=document.createElement('script');s.src='/zenithstatic/js/kot-dashboard.js?v=2';document.head.appendChild(s);})()"/>
 </div>
         ]]></text></render-mode>
     </widgets>

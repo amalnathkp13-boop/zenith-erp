@@ -1,8 +1,7 @@
 /* KOT Dashboard — inline-SVG sales chart + interactions.
  * Loaded via <img onload> from KotDashboard.xml so it runs on both /apps and /qapps. */
 (function () {
-  if (window.__kdInit) return;
-  window.__kdInit = true;
+  if (window.kdInit) { window.kdInit(); return; }
 
   var CHART = { today: { values: [], points: [], axis: [] } };
   var curRange = 'today';
@@ -106,9 +105,11 @@
   window.kdRefresh = function () { var b = $('kd-refresh'); if (b) b.classList.add('spin'); location.reload(); };
   window.kdGo = function (path) { location.href = base() + '/' + path; };
 
-  (function init() {
+  window.kdInit = function () {
     var el = $('kd-data');
-    if (el) { try { CHART = JSON.parse(el.getAttribute('data-chart') || '{}'); } catch (e) { CHART = {}; } }
+    if (!el || el.dataset.initialized) return;
+    el.dataset.initialized = 'true';
+    try { CHART = JSON.parse(el.getAttribute('data-chart') || '{}'); } catch (e) { CHART = {}; }
     var s = CHART.today || { values: [], points: [], axis: [] };
     renderAxis(s); draw(s);
 
@@ -123,6 +124,7 @@
       });
       box.addEventListener('mouseleave', function () { showTip(peakIdx); });
     }
-    window.addEventListener('resize', function () { showTip(peakIdx); });
-  })();
+  };
+  window.addEventListener('resize', function () { showTip(peakIdx); });
+  window.kdInit();
 })();

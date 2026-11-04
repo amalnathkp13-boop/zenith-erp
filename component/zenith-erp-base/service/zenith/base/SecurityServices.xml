@@ -9,10 +9,12 @@
         <actions><script><![CDATA[
             roleRestricted = !ec.user.isInGroup('ADMIN') && !ec.user.isInGroup('ZENITH_ADMIN')
             def plan = planModules != null && !planModules.contains('all') ? planModules : null
+            if (plan?.contains('pos')) plan = (plan + 'kot').unique()
             if (!roleRestricted) { moduleIds = plan; return }
             def customScope = ec.service.sync().name('zenith.base.RoleAccessServices.get#AssignedRoleScope').disableAuthz().call()
             if (customScope.restricted) {
-                def granted = (customScope.selections.keySet() + customScope.legacyModules).unique()
+                def scoped = customScope.selections.findAll { module, routes -> module != 'pos' || routes.any { it != '/pos/Kitchen' } }
+                def granted = (scoped.keySet() + customScope.legacyModules).unique()
                 moduleIds = (plan == null ? granted : granted.findAll { plan.contains(it) }) as List
                 return
             }
@@ -102,7 +104,7 @@
                     'barcode:renderLabels': ['pos'] as Set   // SHARED-TX
                 ]
                 def _also = transitionName ? _sharedTx[_m + ':' + transitionName.toString()] : null
-                inPlan = _mods.contains('all') || _mods.contains(_m) ||
+                inPlan = _mods.contains('all') || _mods.contains(_m) || (_m == 'kot' && _mods.contains('pos')) ||
                         (_also != null && _also.any { _mods.contains(it) })
             ]]></script>
         </actions>

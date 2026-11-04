@@ -7,11 +7,13 @@
         <out-parameters><parameter name="kotNumber"/></out-parameters>
         <actions>
             <script><![CDATA[
+                def uri = ec.web?.request?.requestURI ?: ''
+                def moduleId = uri ==~ /\/(apps|qapps)\/zenith\/kot\/.+/ ? 'kot' : 'pos'
                 def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess')
-                    .parameter('moduleId', 'pos').call()
+                    .parameter('moduleId', moduleId).call()
                 def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
                 if (access?.canWrite != true || !org || org == '_NA_') {
-                    ec.message.addError('POS write access and an active shop are required.')
+                    ec.message.addError('Write access and an active shop are required for this kitchen workflow.')
                     return
                 }
                 def key = 'KOT_' + org
@@ -127,11 +129,13 @@
         </in-parameters>
         <actions>
             <script><![CDATA[
+                def uri = ec.web?.request?.requestURI ?: ''
+                def moduleId = uri ==~ /\/(apps|qapps)\/zenith\/kot\/.+/ ? 'kot' : 'pos'
                 def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess')
-                    .parameter('moduleId', 'pos').call()
+                    .parameter('moduleId', moduleId).call()
                 def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
                 if (access?.canWrite != true || !org || org == '_NA_') {
-                    ec.message.addError('POS write access and an active shop are required.')
+                    ec.message.addError('Write access and an active shop are required for this kitchen workflow.')
                     return
                 }
                 def kot = ec.entity.find('zenith.erp.pos.KitchenOrderTicket')
@@ -167,11 +171,13 @@
         <out-parameters><parameter name="printCount" type="Integer"/></out-parameters>
         <actions>
             <script><![CDATA[
+                def uri = ec.web?.request?.requestURI ?: ''
+                def moduleId = uri ==~ /\/(apps|qapps)\/zenith\/kot\/.+/ ? 'kot' : 'pos'
                 def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess')
-                    .parameter('moduleId', 'pos').call()
+                    .parameter('moduleId', moduleId).call()
                 def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
                 if (access?.canWrite != true || !org || org == '_NA_') {
-                    ec.message.addError('POS write access and an active shop are required.')
+                    ec.message.addError('Write access and an active shop are required for this kitchen workflow.')
                     return
                 }
                 def kot = ec.entity.find('zenith.erp.pos.KitchenOrderTicket')

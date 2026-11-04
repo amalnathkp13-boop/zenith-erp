@@ -1,7 +1,7 @@
 /* Waiter Management actions for both /apps and /qapps. */
 (function(){
             var tok=function(){ var t=''; try{ t=window.moqui.webrootVue.moquiSessionToken; }catch(e){} if(!t){ var h=document.getElementById('wf-token'); t=h?h.value:''; } return t; };
-            var txUrl=function(n){ var prefix=location.pathname.indexOf('/qapps/')===0?'/qapps':'/apps'; return prefix + '/zenith/pos/Kitchen/WaiterManagement/' + n; };
+            var txUrl=function(n){ var prefix=location.pathname.indexOf('/qapps/')===0?'/qapps':'/apps'; return prefix + '/zenith' + (location.pathname.includes('/zenith/kot/') ? '/kot' : '/pos/Kitchen') + '/WaiterManagement/' + n; };
             var g=function(id){ var e=document.getElementById(id); return e?(e.value||'').trim():''; };
             window.wfReset=function(){
                 document.getElementById('wf-id').value=''; document.getElementById('wf-name').value='';

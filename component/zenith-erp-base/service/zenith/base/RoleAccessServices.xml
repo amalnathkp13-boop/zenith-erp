@@ -34,11 +34,12 @@
                 root.subscreensItemsSorted.each { mod ->
                     def id = mod.name.toLowerCase()
                     def group = 'Z_' + id.toUpperCase()
-                    if (!groups.containsKey(group) || (plan != null && !plan.contains('all') && !plan.contains(id))) return
+                    if (!groups.containsKey(group) || (plan != null && !plan.contains('all') && !plan.contains(id) && !(id == 'kot' && plan.contains('pos')))) return
                     def screens = []
                     // Read the module's mounted children only. Loading every detail screen compiles
                     // hundreds of unrelated actions and makes first-time role creation unresponsive.
                     ec.screen.getScreenDefinition(mod.location).subscreensItemsSorted.each { child ->
+                        if (id == 'pos' && child.name == 'Kitchen') return
                         screens.add([id:'/' + mod.name + '/' + child.name,
                             name:child.menuTitle ?: child.name, location:child.location])
                     }
@@ -179,6 +180,11 @@
                 def saved = new groovy.json.JsonSlurper().parseText(role.selectionsJson)
                 saved.each { mod, screens -> selections[mod] = ((selections[mod] ?: []) + screens).unique() }
             }
+            // Preserve saved Kitchen access for roles created before KOT had its own module.
+            if ((selections.pos ?: []).contains('/pos/Kitchen')) {
+                def kotScreen = ec.screen.getScreenDefinition('component://zenith-erp-pos/screen/zenith/pos/Kot.xml')
+                selections.kot = ((selections.kot ?: []) + kotScreen.subscreensItemsSorted.collect { '/kot/' + it.name }).unique()
+            }
             def builtin = groups.findAll { it != 'ZENITH_ALL' && !it.startsWith('ZENITH_ORG_') }
             if (builtin) {
                 def grants = ec.entity.find('moqui.security.ArtifactAuthz').condition('userGroupId','in',builtin)
@@ -235,6 +241,7 @@
             if (!match.matches()) return
             def route = (match[0][1] ?: '').replaceFirst(/\.(qvt|vuet|html|pdf)$/, '')
             def mod = route.tokenize('/').find()?.toLowerCase()
+            if (route == '/kot' && policy.selections.kot) { authzTypeEnumId = 'AUTHZT_ALLOW'; return }
             def legacyAllowed = authzActionEnumId == 'AUTHZA_VIEW' ? policy.legacyModules : policy.legacyWriteModules
             if (legacyAllowed.contains(mod) || (policy.selections[mod] ?: []).any { route == it || route.startsWith(it + '/') })
                 authzTypeEnumId = 'AUTHZT_ALLOW'

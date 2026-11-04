@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
+        default-menu-title="KOT" default-menu-index="12">
+    <always-actions>
+        <set field="html_title" value="KOT"/>
+        <set field="kitchenModuleId" value="kot"/>
+        <set field="kitchenModulePath" value="/kot"/>
+        <script><![CDATA[
+            def nav = ec.service.sync().name('zenith.base.SecurityServices.get#ModuleNavigation').disableAuthz().call()
+            if (nav.roleRestricted && !nav.moduleIds?.contains('kot'))
+                throw new org.moqui.context.ArtifactAuthorizationException('Your role does not include KOT.')
+            def p = ec.web.parameters
+            def access = ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess')
+                .parameters([transactionId:p.transactionId, sessionId:p.sessionId, terminalId:p.terminalId,
+                    productId:p.productId, customerPartyId:p.customerPartyId, facilityId:p.facilityId,
+                    kotId:p.kotId, waiterId:p.waiterId]).call()
+            if (!access?.allowed)
+                throw new org.moqui.context.ArtifactAuthorizationException('You do not have access to this KOT organization or record.')
+            context.posOrganizationPartyId = access.organizationPartyId
+            context.posTerminalRestricted = access.terminalRestricted
+            context.posAllowedTerminalIds = access.allowedTerminalIds
+        ]]></script>
+    </always-actions>
+    <subscreens default-item="KotDashboard">
+        <subscreens-item name="KotDashboard" location="component://zenith-erp-pos/screen/zenith/pos/Pos/Kitchen/KotDashboard.xml" menu-title="KOT Dashboard" menu-index="1"/>
+        <subscreens-item name="KitchenDisplay" location="component://zenith-erp-pos/screen/zenith/pos/Pos/Kitchen/KitchenDisplay.xml" menu-title="Kitchen Display" menu-index="2"/>
+        <subscreens-item name="KotBilling" location="component://zenith-erp-pos/screen/zenith/pos/Pos/Kitchen/KotBilling.xml" menu-title="KOT Billing" menu-index="3"/>
+        <subscreens-item name="Tables" location="component://zenith-erp-pos/screen/zenith/pos/Pos/Kitchen/Tables.xml" menu-title="Tables" menu-index="4"/>
+        <subscreens-item name="KotHistory" location="component://zenith-erp-pos/screen/zenith/pos/Pos/Kitchen/KotHistory.xml" menu-title="KOT History" menu-index="5"/>
+        <subscreens-item name="WaiterManagement" location="component://zenith-erp-pos/screen/zenith/pos/Pos/Kitchen/WaiterManagement.xml" menu-title="Waiters" menu-index="6"/>
+    </subscreens>
+    <widgets>
+        <container style="z-pos-page z-kot-page">
+            <render-mode><text type="html,qvt" template="true"><![CDATA[
+<section id="kitchen-page-frame" data-kitchen-route="${(ec.web.request.requestURI!'')?html}">
+            ]]></text></render-mode>
+            <subscreens-active/>
+            <render-mode><text type="html,qvt"><![CDATA[</section>]]></text></render-mode>
+        </container>
+    </widgets>
+</screen>

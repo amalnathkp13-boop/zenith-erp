@@ -11,7 +11,7 @@
         <actions><script><![CDATA[
             def modules = [
                 '/Dashboard':null, '/Contacts':'contacts', '/sales':'sales', '/Purchase':'purchase',
-                '/Crm':'crm', '/pos':'pos', '/pos/Terminal':'pos', '/pricing':'pricing',
+                '/Crm':'crm', '/pos':'pos', '/pos/Terminal':'pos', '/kot':'kot', '/pricing':'pricing',
                 '/Inventory':'inventory', '/manufacturing':'manufacturing', '/project':'project',
                 '/Stores':null, '/barcode':'barcode', '/Accounting':'accounting', '/tax':'tax',
                 '/payroll':'payroll', '/expenses':'expenses'
@@ -44,9 +44,12 @@
                         .collect { it.artifactGroupId.substring(2).toLowerCase() } as Set
                 }
             } finally { if (!disabled) ec.artifactExecution.enableAuthz() }
+            def kotModules = ec.service.sync().name('zenith.base.SecurityServices.get#ModuleNavigation')
+                .parameter('planModules',plan != null ? plan as List : null).disableAuthz().call().moduleIds
             allowedIds = modules.findAll { id, mod ->
                 if (posOnly) return id in ['/Dashboard','/pos','/pos/Terminal','/Inventory']
                 if (mod == null) return true
+                if (mod == 'kot') return kotModules == null || kotModules.contains('kot')
                 if (plan != null && !plan.contains('all') && !plan.contains(mod)) return false
                 if (grants != null && !grants.contains(mod)) return false
                 return true
@@ -90,7 +93,7 @@
         <in-parameters><parameter name="module" required="true"/></in-parameters>
         <out-parameters><parameter name="preference"/><parameter name="error"/></out-parameters>
         <actions><script><![CDATA[
-            def modules = ['__dash','Contacts','sales','Purchase','Crm','pos','Inventory',
+            def modules = ['__dash','Contacts','sales','Purchase','Crm','pos','kot','Inventory',
                 'manufacturing','Accounting','payroll','expenses','project','Stores','tax','pricing','barcode','Hr'] as Set
             if (!modules.contains(module)) { error = 'Unknown navigation module.'; return }
             def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
@@ -103,7 +106,7 @@
         <in-parameters><parameter name="module" required="true"/><parameter name="payload" required="true"/></in-parameters>
         <out-parameters><parameter name="preference"/><parameter name="error"/></out-parameters>
         <actions><script><![CDATA[
-            def modules = ['__dash','Contacts','sales','Purchase','Crm','pos','Inventory',
+            def modules = ['__dash','Contacts','sales','Purchase','Crm','pos','kot','Inventory',
                 'manufacturing','Accounting','payroll','expenses','project','Stores','tax','pricing','barcode','Hr'] as Set
             if (!modules.contains(module)) { error = 'Unknown navigation module.'; return }
             if (payload.toString().length() > 8192) { error = 'Navigation settings are too large.'; return }

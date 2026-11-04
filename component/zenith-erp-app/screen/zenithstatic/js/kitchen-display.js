@@ -6,8 +6,8 @@
     var pending = null, version = 0, timeout, scheduled = false, hooked = false, staleNodes=new WeakSet();
     function url(value) { try { return new URL(value, location.href); } catch (_) { return null; } }
     function key(value) { var u=url(value); return u ? u.pathname.replace(/^\/(apps|qapps)/,'').replace(/\.(qvt|html)$/,'').replace(/\/$/,'') : ''; }
-    function kitchen(value) { return /^\/zenith\/pos\/Kitchen(?:\/|$)/.test(key(value)); }
-    function title(value) { var name=key(value).split('/').pop();return ({Kitchen:'Kitchen Display',KitchenDisplay:'Kitchen Display',KotBilling:'KOT Billing',KotDashboard:'KOT Dashboard',KotHistory:'KOT History',Tables:'Tables',WaiterManagement:'Waiters'})[name] || 'Kitchen'; }
+    function kitchen(value) { return /^\/zenith\/(?:kot|pos\/Kitchen)(?:\/|$)/.test(key(value)); }
+    function title(value) { var name=key(value).split('/').pop();return ({kot:'KOT Dashboard',Kitchen:'Kitchen Display',KitchenDisplay:'Kitchen Display',KotBilling:'KOT Billing',KotDashboard:'KOT Dashboard',KotHistory:'KOT History',Tables:'Tables',WaiterManagement:'Waiters'})[name] || 'Kitchen'; }
     var critical=document.createElement('style');
     critical.textContent='html.zk-initial-loading body{visibility:hidden!important}html.zk-route-pending #content>.inner>.container-fluid,html.zk-route-pending .q-page{visibility:hidden!important}#zk-route-status{visibility:visible!important;position:fixed;z-index:120;top:120px;left:240px;right:24px;padding:24px;border:1px solid #E4DFF3;border-radius:12px;background:#fff;color:#181329;font:15px/1.6 "Segoe UI",Arial,sans-serif}#zk-route-status h1{font-size:24px;margin:0 0 8px}#zk-route-status button{border:1px solid #7C3AED;background:#fff;color:#6D28D9;padding:8px 18px;border-radius:7px;cursor:pointer}#zk-route-status .zk-placeholder{height:72px;background:#F5F3FA;border-radius:8px;margin-top:18px}@media(max-width:900px){#zk-route-status{left:16px;right:16px;top:110px}}';
     document.head.appendChild(critical);
@@ -61,7 +61,7 @@
         var frame=document.getElementById('kitchen-page-frame');
         var ready=frame&&!staleNodes.has(frame)&&key(frame.dataset.kitchenRoute)===key(pending);
         if(frame) {
-            var destination=key(pending).split('/').pop(), selector=({Kitchen:'.zk-display',KitchenDisplay:'.zk-display',KotBilling:'#kb-wrap',Tables:'#tm-wrap',KotHistory:'#zk-history-toolbar',KotDashboard:'#kd-wrap',WaiterManagement:'#wf-search'})[destination];
+            var destination=key(pending).split('/').pop(), selector=({kot:'#kd-wrap',Kitchen:'.zk-display',KitchenDisplay:'.zk-display',KotBilling:'#kb-wrap',Tables:'#tm-wrap',KotHistory:'#zk-history-toolbar',KotDashboard:'#kd-wrap',WaiterManagement:'#wf-search'})[destination];
             if(selector){var content=frame.querySelector(selector);ready=!!content&&!staleNodes.has(content);}
         }
         if(!kitchen(pending))ready=!frame && window.moqui&&moqui.webrootVue&&moqui.webrootVue.loading===0;

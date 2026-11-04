@@ -3,6 +3,11 @@
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         default-menu-title="Kitchen" default-menu-index="15">
 
+    <always-actions>
+        <set field="kitchenModuleId" value="pos"/>
+        <set field="kitchenModulePath" value="/pos/Kitchen"/>
+    </always-actions>
+
     <subscreens default-item="KitchenDisplay"/>
 
     <widgets>

@@ -8,7 +8,7 @@
   function qsa(sel) { return Array.prototype.slice.call(document.querySelectorAll(sel)); }
   function base() {
     var prefix = location.pathname.indexOf('/qapps/') === 0 ? '/qapps' : '/apps';
-    return prefix + '/zenith/pos/Kitchen/Tables';
+    return prefix + '/zenith' + (location.pathname.includes('/zenith/kot/') ? '/kot' : '/pos/Kitchen') + '/Tables';
   }
 
   // Moqui session token: WebrootVue on /qapps, hidden-input fallback on /apps.

@@ -5,6 +5,8 @@
         <screen location="component://zenith-erp-app/screen/zenith/ZenithApp.xml">
             <subscreens-item name="pos" location="component://zenith-erp-pos/screen/zenith/pos/Pos.xml"
                              menu-title="Point of Sale" menu-index="11"/>
+            <subscreens-item name="kot" location="component://zenith-erp-pos/screen/zenith/pos/Kot.xml"
+                             menu-title="KOT" menu-index="12"/>
         </screen>
     </screen-facade>
 </moqui-conf>

@@ -16,9 +16,9 @@
         ]]></script></actions><default-response type="none"/>
     </transition>
 
-    <transition name="goTerminal"><default-response url="../../Terminal"/></transition>
-    <transition name="goTransactions"><default-response url="../../PosTransactions"/></transition>
-    <transition name="goDashboard"><default-response url="../../Dashboard"/></transition>
+    <transition name="goTerminal"><default-response url="${kitchenModuleId == 'kot' ? '../../pos/Terminal' : '../../Terminal'}"/></transition>
+    <transition name="goTransactions"><default-response url="${kitchenModuleId == 'kot' ? '../../pos/PosTransactions' : '../../PosTransactions'}"/></transition>
+    <transition name="goDashboard"><default-response url="${kitchenModuleId == 'kot' ? '../../pos/Dashboard' : '../../Dashboard'}"/></transition>
 
     <transition name="cancelKot" method="post" begin-transaction="true">
         <actions>
@@ -48,7 +48,7 @@
             def uri = ec.web?.request?.requestURI ?: ''
             def zenithIndex = uri.indexOf('/zenith/')
             cancelAction = (zenithIndex > 0 ? uri.substring(0, zenithIndex) : '') +
-                '/zenith/pos/Kitchen/KotHistory/cancelKot'
+                '/zenith' + kitchenModulePath + '/KotHistory/cancelKot'
             def kotIds=kotList.collect { it.kotId }
             def itemRows=kotIds ? ec.entity.find('zenith.erp.pos.KotItem').condition('kotId','in',kotIds).list() : []
             def itemsByKot=itemRows.groupBy { it.kotId }

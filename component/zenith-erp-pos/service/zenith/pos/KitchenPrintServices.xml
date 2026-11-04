@@ -7,8 +7,9 @@
         <out-parameters><parameter name="receipt" type="Map"/></out-parameters>
         <actions>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="scope"/>
-            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'pos']" out-map="access"/>
-            <if condition="!scope.allowed || access.canWrite != true"><return error="true" message="POS print access is required."/></if>
+            <set field="moduleId" from="((ec.web?.request?.requestURI ?: '') ==~ /\/(apps|qapps)\/zenith\/kot\/.+/) ? 'kot' : 'pos'"/>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:moduleId]" out-map="access"/>
+            <if condition="!scope.allowed || access.canWrite != true"><return error="true" message="Kitchen print access is required."/></if>
             <service-call name="zenith.pos.KotServices.resolve#KotTable" in-map="[tableId:tableId]" out-map="selected"/>
             <script><![CDATA[
                 def input
@@ -98,8 +99,9 @@
         <actions>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[kotId:kotId]" out-map="scope"/>
             <if condition="!scope.allowed"><return/></if>
-            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'pos']" out-map="access"/>
-            <if condition="!(kind in ['view','kot','bill','orderBill']) || (kind != 'view' &amp;&amp; access.canWrite != true)"><return error="true" message="POS print access is required."/></if>
+            <set field="moduleId" from="((ec.web?.request?.requestURI ?: '') ==~ /\/(apps|qapps)\/zenith\/kot\/.+/) ? 'kot' : 'pos'"/>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:moduleId]" out-map="access"/>
+            <if condition="!(kind in ['view','kot','bill','orderBill']) || (kind != 'view' &amp;&amp; access.canWrite != true)"><return error="true" message="Kitchen print access is required."/></if>
             <script><![CDATA[
                 def k=ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('kotId',kotId).condition('organizationPartyId',scope.organizationPartyId).one()
                 if(!k) { ec.message.addError('Kitchen order not found in this shop.'); return }

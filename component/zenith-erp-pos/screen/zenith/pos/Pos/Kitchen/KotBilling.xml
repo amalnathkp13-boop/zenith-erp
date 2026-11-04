@@ -22,7 +22,7 @@
         <actions>
             <script><![CDATA[
                 def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess')
-                    .parameter('moduleId', 'pos').call()
+                    .parameter('moduleId', ec.context.kitchenModuleId ?: 'pos').call()
                 def scope=ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess').call()
                 org=scope.organizationPartyId
                 if (access?.canWrite != true || !scope.allowed) { ec.message.addError('POS write access and an active shop are required.'); return }
@@ -106,7 +106,7 @@
         <actions>
             <script><![CDATA[
                 def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess')
-                    .parameter('moduleId', 'pos').call()
+                    .parameter('moduleId', ec.context.kitchenModuleId ?: 'pos').call()
                 def scope=ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess').call()
                 org=scope.organizationPartyId
                 if (access?.canWrite != true || !scope.allowed) { ec.message.addError('POS write access and an active shop are required.'); return }
@@ -186,7 +186,7 @@
         <actions>
             <script><![CDATA[
                 def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess')
-                    .parameter('moduleId', 'pos').call()
+                    .parameter('moduleId', ec.context.kitchenModuleId ?: 'pos').call()
                 def scope=ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess').call()
                 org=scope.organizationPartyId
                 if (access?.canWrite != true || !scope.allowed) { ec.message.addError('POS write access and an active shop are required.'); return }
@@ -224,9 +224,19 @@
             def result=[success:false,products:[]]
             if(scope.allowed) {
                 def term=(ec.context.term ?: '').toString().take(100)
-                def scan=ec.service.sync().name('zenith.barcode.BarcodeServices.resolve#ScanProduct').parameters([code:term]).call()
-                def found=ec.service.sync().name('zenith.pos.PosCheckoutServices.search#PosProducts')
-                    .parameters([term:term,offset:(ec.context.offset ?: 0),pageSize:41]).call()?.products ?: []
+                def rawOffset=(ec.context.offset ?: '0').toString()
+                def offset=rawOffset ==~ /[0-9]{1,4}/ ? Math.min(rawOffset.toInteger(),3000) : 0
+                def scan
+                def found
+                if(term.trim()) {
+                    scan=ec.service.sync().name('zenith.barcode.BarcodeServices.resolve#ScanProduct').parameters([code:term]).call()
+                    found=ec.service.sync().name('zenith.pos.PosCheckoutServices.search#PosProducts')
+                        .parameters([term:term,offset:offset,pageSize:41]).call()?.products ?: []
+                } else {
+                    found=ec.entity.find('mantle.product.Product')
+                        .condition([ownerPartyId:scope.organizationPartyId,productTypeEnumId:'PtAsset'])
+                        .orderBy('productName,productId').offset(offset).limit(41).list()
+                }
                 if(scan?.found && !found.any { it.productId==scan.productId }) {
                     def p=ec.entity.find('mantle.product.Product').condition('productId',scan.productId)
                         .condition('ownerPartyId',scope.organizationPartyId).condition('productTypeEnumId','PtAsset').one()
@@ -239,7 +249,7 @@
                     .condition('statusId','PsOpen').one() : null
                 if(authorizedSession && found) stock=ec.service.sync().name('zenith.pos.PosCheckoutServices.get#PosCardStock')
                     .parameters([sessionId:sid,productIds:found*.productId]).call()?.stock ?: [:]
-                result=[success:!ec.message.hasError(),exactId:scan?.productId,ambiguous:scan?.ambiguous,hasMore:found.size()>40,
+                result=[success:!ec.message.hasError(),exactId:scan?.productId,ambiguous:scan?.ambiguous,hasMore:found.size()>40 && offset<3000,
                     products:found.take(40).collect { p ->
                         def rate=ec.service.sync().name('zenith.pos.PosServices.resolve#PosModePrice')
                             .parameters([productId:p.productId,salesModeId:ec.context.salesModeId,product:p]).call()
@@ -257,7 +267,7 @@
             def reject={ String reason -> ec.message.addError(reason); ec.web.sendJsonResponse([success:false,error:reason]) }
             if(!sid || !kid) { reject('Choose an open terminal session and a saved order.'); return }
             def scope=ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess').parameters([sessionId:sid,kotId:kid]).call()
-            def access=ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId','pos').call()
+            def access=ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId',ec.context.kitchenModuleId ?: 'pos').call()
             if(!scope.allowed || access.canWrite!=true) { reject('You do not have access to bill this order.'); return }
             def kot=ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('kotId',kid).forUpdate(true).one()
             def session=ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',sid).one()
@@ -452,6 +462,7 @@
 <#elseif name=='clock'><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
 <#elseif name=='save'><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/>
 <#elseif name=='printer'><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/>
+<#elseif name=='fullscreen'><path d="M8 3H3v5m13-5h5v5m0 8v5h-5M3 16v5h5"/>
 <#elseif name=='arrow'><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
 </#if>
 </svg></#macro>
@@ -480,7 +491,7 @@
 
 <div class="kb-wrap" id="kb-wrap">
   <input type="hidden" id="kb-token" value="${(ec.web.sessionToken)!''}"/>
-  <div id="kb-data" style="display:none" data-stock-session="${((checkoutSessions?size == 1)?then(checkoutSessions[0].id,''))?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}"></div>
+  <div id="kb-data" style="display:none" data-kot-module="${(kitchenModuleId!'pos')?html}" data-stock-session="${((checkoutSessions?size == 1)?then(checkoutSessions[0].id,''))?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}"></div>
 
 
   <div class="kb-head"><h1 class="kb-title">KOT Billing</h1><p class="kb-sub">Build an order, send it to the kitchen, or take payment.</p></div>
@@ -495,9 +506,15 @@
     <label class="kb-fld">Waiter<select id="kb-waiter"><option value="">Choose waiter</option><#list waiters as w><option value="${w.waiterId?html}">${w.waiterName?html}</option></#list></select></label>
     <label class="kb-fld">Sales Mode<select id="kb-mode"><#if !modes?has_content><option value="">Standard</option></#if><#list modes as m><option value="${m.salesModeId?html}">${m.modeName?html}</option></#list></select></label>
     <button type="button" class="kb-control" id="kb-history-open"><@ic 'clock'/> History</button>
-    <button type="button" class="kb-control" id="kb-view-grid" aria-pressed="false">Grid View</button>
+    <button type="button" class="kb-control" id="kb-view-grid" aria-expanded="false" aria-controls="kb-product-grid">Grid View</button>
+    <button type="button" class="kb-control" id="kb-fullscreen"><@ic 'fullscreen'/> <span id="kb-fullscreen-label">Fullscreen</span></button>
     <button type="button" class="kb-control kb-tax-toggle is-on" id="kb-tax-toggle" role="switch" aria-label="Tax" aria-checked="true">Tax: ON</button>
   </div>
+
+  <p id="kb-fullscreen-status" role="status"></p>
+  <section id="kb-product-grid" aria-label="Product catalogue" hidden>
+    <h2>Products</h2>
+  </section>
 
   <aside class="kb-panel">
     <div class="kb-panel__head"><h2 class="kb-panel__title">Current Order</h2><span class="kb-panel__badge" id="kb-badge">New KOT</span><button type="button" class="kb-clear" id="kb-clear" disabled>Clear Cart</button></div>
@@ -548,7 +565,7 @@
   </dialog></#if>
 
   <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" style="display:none"
-       onload="(function(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=compact-8';document.head.appendChild(s);})()"/>
+       onload="(function(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=compact-9';document.head.appendChild(s);})()"/>
 </div>
         ]]></text></render-mode>
     </widgets>

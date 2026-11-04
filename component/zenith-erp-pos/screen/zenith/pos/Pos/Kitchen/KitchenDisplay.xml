@@ -10,9 +10,9 @@
         </actions>
         <default-response url="." parameter-map="[filterStatus:filterStatus]"/>
     </transition>
-    <transition name="goTerminal"><default-response url="../../Terminal"/></transition>
-    <transition name="goTransactions"><default-response url="../../PosTransactions"/></transition>
-    <transition name="goDashboard"><default-response url="../../Dashboard"/></transition>
+    <transition name="goTerminal"><default-response url="${kitchenModuleId == 'kot' ? '../../pos/Terminal' : '../../Terminal'}"/></transition>
+    <transition name="goTransactions"><default-response url="${kitchenModuleId == 'kot' ? '../../pos/PosTransactions' : '../../PosTransactions'}"/></transition>
+    <transition name="goDashboard"><default-response url="${kitchenModuleId == 'kot' ? '../../pos/Dashboard' : '../../Dashboard'}"/></transition>
 
     <actions>
         <set field="filterStatus" from="filterStatus ?: ''"/>
@@ -22,7 +22,7 @@
             def uri = ec.web?.request?.requestURI ?: ''
             def zenithIndex = uri.indexOf('/zenith/')
             kitchenAction = (zenithIndex > 0 ? uri.substring(0, zenithIndex) : '') +
-                '/zenith/pos/Kitchen/KitchenDisplay/updateStatus'
+                '/zenith' + kitchenModulePath + '/KitchenDisplay/updateStatus'
             kitchenToken = ec.web?.sessionToken ?: ''
             def kotQuery = ec.entity.find("zenith.erp.pos.KotView")
             kotQuery.condition('organizationPartyId', org && org != '_NA_' ? org : '__NO_ORGANIZATION__')

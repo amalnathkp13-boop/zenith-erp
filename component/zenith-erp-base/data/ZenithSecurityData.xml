@@ -45,6 +45,11 @@
     <moqui.security.ArtifactGroupMember artifactGroupId="Z_POS" artifactName="component://zenith-erp-pos/screen/zenith/.*" nameIsPattern="Y" artifactTypeEnumId="AT_XML_SCREEN" inheritAuthz="Y"/>
     <moqui.security.ArtifactGroupMember artifactGroupId="Z_POS" artifactName="zenith.pos..*" nameIsPattern="Y" artifactTypeEnumId="AT_SERVICE" inheritAuthz="Y"/>
 
+    <!-- Kitchen Order Tickets -->
+    <moqui.security.ArtifactGroup artifactGroupId="Z_KOT" description="KOT &#8212; Kitchen orders, billing, tables and waiters"/>
+    <moqui.security.ArtifactGroupMember artifactGroupId="Z_KOT" artifactName="component://zenith-erp-pos/screen/zenith/pos/(Kot\.xml|Pos/Kitchen(?:\.xml|/.*))" nameIsPattern="Y" artifactTypeEnumId="AT_XML_SCREEN" inheritAuthz="Y"/>
+    <moqui.security.ArtifactGroupMember artifactGroupId="Z_KOT" artifactName="zenith\.pos\.(KotServices|KitchenPrintServices)\..*" nameIsPattern="Y" artifactTypeEnumId="AT_SERVICE" inheritAuthz="Y"/>
+
     <!-- HR -->
     <moqui.security.ArtifactGroup artifactGroupId="Z_HR" description="HR — Employees, Departments, Leave Register"/>
     <moqui.security.ArtifactGroupMember artifactGroupId="Z_HR" artifactName="component://zenith-erp-hr/screen/zenith/.*" nameIsPattern="Y" artifactTypeEnumId="AT_XML_SCREEN" inheritAuthz="Y"/>
@@ -297,6 +302,7 @@
     <moqui.security.ArtifactAuthz artifactAuthzId="ZA_ADM_CONT" userGroupId="ZENITH_ADMIN" artifactGroupId="Z_CONTACTS" authzTypeEnumId="AUTHZT_ALWAYS" authzActionEnumId="AUTHZA_ALL"/>
     <moqui.security.ArtifactAuthz artifactAuthzId="ZA_ADM_CRM" userGroupId="ZENITH_ADMIN" artifactGroupId="Z_CRM" authzTypeEnumId="AUTHZT_ALWAYS" authzActionEnumId="AUTHZA_ALL"/>
     <moqui.security.ArtifactAuthz artifactAuthzId="ZA_ADM_INV" userGroupId="ZENITH_ADMIN" artifactGroupId="Z_INVENTORY" authzTypeEnumId="AUTHZT_ALWAYS" authzActionEnumId="AUTHZA_ALL"/>
+    <moqui.security.ArtifactAuthz artifactAuthzId="ZA_ADM_KOT" userGroupId="ZENITH_ADMIN" artifactGroupId="Z_KOT" authzTypeEnumId="AUTHZT_ALWAYS" authzActionEnumId="AUTHZA_ALL"/>
     <moqui.security.ArtifactAuthz artifactAuthzId="ZA_ADM_POS" userGroupId="ZENITH_ADMIN" artifactGroupId="Z_POS" authzTypeEnumId="AUTHZT_ALWAYS" authzActionEnumId="AUTHZA_ALL"/>
     <moqui.security.ArtifactAuthz artifactAuthzId="ZA_ADM_HR" userGroupId="ZENITH_ADMIN" artifactGroupId="Z_HR" authzTypeEnumId="AUTHZT_ALWAYS" authzActionEnumId="AUTHZA_ALL"/>
     <moqui.security.ArtifactAuthz artifactAuthzId="ZA_ADM_PAY" userGroupId="ZENITH_ADMIN" artifactGroupId="Z_PAYROLL" authzTypeEnumId="AUTHZT_ALWAYS" authzActionEnumId="AUTHZA_ALL"/>
@@ -411,6 +417,7 @@
     <moqui.security.ArtifactAuthz artifactAuthzId="ZA_IM_MFG" userGroupId="ZENITH_INVENTORY_MGR" artifactGroupId="Z_MANUFACTURING" authzTypeEnumId="AUTHZT_ALLOW" authzActionEnumId="AUTHZA_VIEW"/>
 
     <!-- ZENITH_STORE_MGR — POS, Inventory, Contacts, Sales, Retail Suite -->
+    <moqui.security.ArtifactAuthz artifactAuthzId="ZA_STM_KOT" userGroupId="ZENITH_STORE_MGR" artifactGroupId="Z_KOT" authzTypeEnumId="AUTHZT_ALLOW" authzActionEnumId="AUTHZA_ALL"/>
     <moqui.security.ArtifactAuthz artifactAuthzId="ZA_STM_POS" userGroupId="ZENITH_STORE_MGR" artifactGroupId="Z_POS" authzTypeEnumId="AUTHZT_ALLOW" authzActionEnumId="AUTHZA_ALL"/>
     <moqui.security.ArtifactAuthz artifactAuthzId="ZA_STM_INV" userGroupId="ZENITH_STORE_MGR" artifactGroupId="Z_INVENTORY" authzTypeEnumId="AUTHZT_ALLOW" authzActionEnumId="AUTHZA_ALL"/>
     <moqui.security.ArtifactAuthz artifactAuthzId="ZA_STM_CONT" userGroupId="ZENITH_STORE_MGR" artifactGroupId="Z_CONTACTS" authzTypeEnumId="AUTHZT_ALLOW" authzActionEnumId="AUTHZA_ALL"/>

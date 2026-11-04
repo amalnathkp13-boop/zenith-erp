@@ -22,7 +22,8 @@
         '/sales': ['Sales', 'SalesDashboard:Dashboard', 'FindQuotation:Quotations', 'FindOrder:Orders', 'FindDeliveryChallan:Delivery Challans', 'FindInvoice:Invoices', 'FindCreditNote:Credit / Debit Notes', 'PosSalesRegister:POS Sales', 'WarrantyPolicies:Warranty', 'Commissions:Commissions', 'SalesForecast:Forecast'],
         '/Purchase': ['Purchase', 'GoodsReceipt:Goods Receipt (GRN)', 'FindPurchaseOrder:Purchase Orders', 'FindPurchaseInvoice:Vendor Bills (ITC)', 'CreatePurchaseInvoice:Log Vendor Bill', 'PurchaseInvoices:Purchase Invoices', 'PurchaseReturns:Purchase Returns', 'JobWorkChallan:Job Work Challan', 'RfqList:RFQs', 'Gstr2bRecon:GSTR-2B Recon', 'VendorEvaluation:Vendor Evaluation'],
         '/Crm': ['CRM', 'Dashboard:Dashboard', 'Leads:Leads', 'Pipeline:Pipeline', 'Activities:Activities', 'Segments:Segments'],
-        '/pos': ['POS', 'Dashboard:Dashboard', 'Terminal:Billing Terminal', 'PosTransactions:Transactions', 'DailySummary:Daily Summary', 'PosSessions:Sessions', 'PosTerminals:Terminals', 'CreditBills:Credit Bills', 'CashEntry:Cash Entry', 'Expenses:Expenses', 'Wastage:Wastage', 'Stock:Stock', 'Reports:Reports', 'BillAuditReport:Audit Report', 'ProductPricing:Product Prices', 'PriceOverrides:Price Overrides', 'DiscountSettings:Discount', 'SalesMode:Sales Mode', 'Barcodes:Barcodes', 'BarcodeLabels:Barcode Labels', 'ProductImport:Import', 'ReceiptConfig:Receipts', 'PrinterConfig:Printers', 'Kitchen:Kitchen', 'BillNumberRegister:Bill Register', 'OfflineMode:Offline Mode'],
+        '/pos': ['POS', 'Dashboard:Dashboard', 'Terminal:Billing Terminal', 'PosTransactions:Transactions', 'DailySummary:Daily Summary', 'PosSessions:Sessions', 'PosTerminals:Terminals', 'CreditBills:Credit Bills', 'CashEntry:Cash Entry', 'Expenses:Expenses', 'Wastage:Wastage', 'Stock:Stock', 'Reports:Reports', 'BillAuditReport:Audit Report', 'ProductPricing:Product Prices', 'PriceOverrides:Price Overrides', 'DiscountSettings:Discount', 'SalesMode:Sales Mode', 'Barcodes:Barcodes', 'BarcodeLabels:Barcode Labels', 'ProductImport:Import', 'ReceiptConfig:Receipts', 'PrinterConfig:Printers', 'BillNumberRegister:Bill Register', 'OfflineMode:Offline Mode'],
+        '/kot': ['KOT', 'KotDashboard:KOT Dashboard', 'KitchenDisplay:Kitchen Display', 'KotBilling:KOT Billing', 'Tables:Tables', 'KotHistory:KOT History', 'WaiterManagement:Waiters'],
         '/Inventory': ['Inventory', 'InventoryDashboard:Dashboard', 'FindProduct:Products', 'FindFacility:Warehouse', 'StockLevels:Stock Levels', 'FindReceipt:Receiving', 'StockTransfers:Stock Transfers', 'StockAdjustments:Stock Adjustments', 'GatePasses:Gate Passes', 'CreateCatalogue:Catalogues', 'ExpiryDashboard:Expiry Risk', 'SerialNumbers:Serial Numbers', 'DemandForecast:Demand Forecast'],
         '/manufacturing': ['Manufacturing', 'WorkOrders:Work Orders', 'BillOfMaterials:Bill of Materials', 'WorkCenters:Work Centers', 'JobWork:Job Work', 'MrpPlanning:MRP Planning', 'ProductionSchedule:Production Schedule'],
         '/Accounting': ['Accounting', 'AcctgDashboard:Dashboard', 'ChartOfAccounts:Chart of Accounts', 'ManualJournalEntry:Journal Entry', 'JournalHistory:Journal History', 'Invoices:Invoices (A/R & A/P)', 'Payments:Payments', 'TrialBalance:Trial Balance', 'ProfitAndLoss:Profit & Loss', 'CashFlowStatement:Cash Flow', 'AgingReport:AR/AP Aging', 'Budgets:Budgets', 'GstReports:GST Reports', 'Gstr3bReport:GSTR-3B', 'TdsRegister:TDS Register', 'MsmeAgingReport:MSME Aging', 'AutoBrs:Bank Feeds & BRS', 'Schedule3Statements:Schedule III', 'RecurringInvoices:Recurring Invoices', 'TallyExport:Tally Export', 'VoucherAudit:Voucher Audit', 'McaAuditLog:MCA Audit Log'],
@@ -81,6 +82,7 @@
             { mod: 'crm', match: '/Crm', icon: 'campaign', label: 'CRM', href: '/qapps/zenith/Crm/Dashboard' },
             { mod: 'pos', match: '/pos', icon: 'point_of_sale', label: 'POS', href: '/qapps/zenith/pos/Dashboard' },
             { mod: 'pos', match: '/pos/Terminal', icon: 'receipt_long', label: 'POS Billing', href: '/apps/zenith/pos/Terminal' },
+            { mod: 'kot', match: '/kot', icon: 'restaurant', label: 'KOT', href: '/qapps/zenith/kot' },
             { mod: 'pricing', match: '/pricing', icon: 'sell', label: 'Pricing', href: '/qapps/zenith/pricing/PricingDashboard' }
         ] },
         { head: 'OPERATIONS', items: [
@@ -294,6 +296,7 @@
                 var group = SUBNAV[match];
                 if (group) group.slice(1).forEach(function (screen) {
                     var split = screen.indexOf(':'), route = screen.slice(0, split);
+                    if (!roleAllows(match + '/' + route)) return;
                     idx.push({ label: screen.slice(split + 1), mod: group[0], href: (match === '/pos' && route === 'Terminal' ? '/apps/' : '/qapps/') + 'zenith' + match + '/' + route });
                 });
             });
@@ -437,7 +440,7 @@
         // ZE-NAV-ALIAS: a detail/edit screen (menu-include=false, e.g. EditStockTransfer) shares no URL prefix with its
         // list tab, so no tab would highlight. Map it to the parent list route for active-state matching only (the group
         // still resolves via the /<module> prefix above, so this doesn't change which subnav renders).
-        var relA = rel, _NAV_ALIAS = { '/Inventory/EditStockTransfer': '/Inventory/StockTransfers', '/Inventory/EditStockAdjustment': '/Inventory/StockAdjustments', '/Inventory/EditFacility': '/Inventory/FindFacility' };
+        var relA = rel === '/kot' || rel === '/kot/' ? '/kot/KotDashboard' : rel, _NAV_ALIAS = { '/Inventory/EditStockTransfer': '/Inventory/StockTransfers', '/Inventory/EditStockAdjustment': '/Inventory/StockAdjustments', '/Inventory/EditFacility': '/Inventory/FindFacility' };
         for (var _ak in _NAV_ALIAS) { if (rel.indexOf(_ak) === 0) { relA = _NAV_ALIAS[_ak] + rel.slice(_ak.length); break; } }
         // ZE-POS-NAV-ROLE: a POS-only cashier (posOnlyUser -> data-pos-only) sees only till-operational POS submodules;
         // hide the rest (visibility-only). Same cashier set as the /apps #z-subnav filter (ZenithApp.xml). Admin / Store

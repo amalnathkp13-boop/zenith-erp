@@ -6,12 +6,13 @@
   root.dataset.ready='true';
   const $=id=>root.querySelector('#kb-'+id);
   const search=$('search'), suggestions=$('suggestions'), cart=new Map();
+  const cfg=$('data').dataset;
   const shell=location.pathname.startsWith('/qapps/')?'/qapps':'/apps';
-  const base=shell+'/zenith/pos/Kitchen/KotBilling';
+  const billingPath='/zenith'+(cfg.kotModule==='kot'?'/kot':'/pos/Kitchen')+'/KotBilling';
+  const base=shell+billingPath;
   const money=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR'});
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const token=()=>window.moqui?.webrootVue?.moquiSessionToken||$('token').value;
-  const cfg=$('data').dataset;
   let orderType=cfg.drafttype||'Dine In', taxOn=cfg.drafttax||'Y', draftId=cfg.draftid||'';
   let salesModeId=$('mode').value, quoteVersion=0, quoteTimer, total=null, busy=false, savedFingerprint='';
   let searchVersion=0, searchTimer, searchAbort, results=[], selected=0, exactId, ambiguous=false, hasMore=false, offset=0;
@@ -85,43 +86,90 @@
   }
   function renderMatches(message) {
     const term=search.value.trim();
-    suggestions.hidden=!term;
-    search.setAttribute('aria-expanded',String(!!term));
-    suggestions.classList.toggle('kb-results-grid',grid&&results.length>0);
-    if(!term){suggestions.replaceChildren();return;}
+    const showResults=grid||!!term;
+    suggestions.hidden=!showResults;
+    search.setAttribute('aria-expanded',String(showResults));
+    suggestions.classList.toggle('kb-results-grid',grid);
+    if(!showResults){suggestions.replaceChildren();return;}
     suggestions.innerHTML=(message?'<p class="kb-search-message" role="status">'+esc(message)+'</p>':'')+
-      results.map((p,i)=>'<button type="button" class="kb-suggestion'+(i===selected?' is-active':'')+'" data-result="'+i+'"><span><strong>'+esc(p.name)+'</strong><small>'+esc(p.code)+(p.stock==null?'':' · Stock: '+esc(p.stock))+'</small></span><span>'+esc(p.price==null?(p.reason||'No price for this mode'):money.format(p.price))+'</span></button>').join('')
+      results.map((p,i)=>'<button type="button" class="kb-suggestion'+(i===selected?' is-active':'')+'" data-result="'+i+'"'+(search.disabled?' disabled':'')+'><span><strong>'+esc(p.name)+'</strong><small>'+esc(p.code)+(p.stock==null?'':' · Stock: '+esc(p.stock))+'</small></span><span>'+esc(p.price==null?(p.reason||'No price for this mode'):money.format(p.price))+'</span></button>').join('')
       +(hasMore?'<button type="button" class="kb-control" id="kb-more">More matches</button>':'');
   }
   async function lookup(append=false) {
     const value=search.value, version=++searchVersion;
     searchAbort?.abort(); searchAbort=new AbortController();
     if(!append){results=[];selected=0;pickedMatch=false;offset=0;hasMore=false;exactId=null;ambiguous=false;}
-    if(!value.trim()){renderMatches();return false;}
-    if(!append)renderMatches('Searching…');
+    if(!grid&&!value.trim()){renderMatches();return false;}
+    if(!append)renderMatches(value.trim()?'Searching…':'Loading products…');
     try{
       const data=await request('searchMenu',{term:value,salesModeId,offset,stockSessionId:cfg.stockSession||''},searchAbort.signal);
       if(version!==searchVersion||!root.isConnected)return false;
       results=append?results.concat(data.products.filter(p=>!results.some(x=>x.id===p.id))):data.products;
       offset+=40;hasMore=data.hasMore;exactId=data.exactId;ambiguous=data.ambiguous;
       if(!append&&exactId)selected=Math.max(0,results.findIndex(p=>p.id===exactId));
-      renderMatches(ambiguous?'Multiple products use this code. Choose a product from the results.':results.length?'':'No products match your search.');
+      const noResults=value.trim()?'No products match your search.':'No products available.';
+      renderMatches(ambiguous?'Multiple products use this code. Choose a product from the results.':results.length?'':noResults);
       return true;
     }catch(e){if(version===searchVersion&&e.name!=='AbortError')renderMatches(e.message);return false;}
   }
   function clearSearch() {
-    clearTimeout(searchTimer);++searchVersion;searchAbort?.abort();results=[];selected=0;pickedMatch=false;exactId=null;ambiguous=false;hasMore=false;search.value='';renderMatches();
+    clearTimeout(searchTimer);
+    if(grid&&!search.value){
+      selected=0;pickedMatch=false;renderMatches();return;
+    }
+    search.value='';
+    lookup();
   }
+  function setGridView() {
+    grid=!grid;
+    const panel=$('product-grid'),button=$('view-grid');
+    button.textContent=grid?'List View':'Grid View';
+    button.setAttribute('aria-expanded',String(grid));
+    panel.hidden=!grid;
+    (grid?panel:search.parentElement).append(suggestions);
+    if(search.value.trim())renderMatches();
+    else {
+      clearTimeout(searchTimer);
+      lookup();
+    }
+  }
+  function fullscreenElement() {
+    return document.fullscreenElement||document.webkitFullscreenElement;
+  }
+  function syncFullscreen() {
+    $('fullscreen-label').textContent=fullscreenElement()===root?'Exit fullscreen':'Fullscreen';
+  }
+  async function toggleFullscreen() {
+    const status=$('fullscreen-status');
+    status.textContent='';
+    const active=fullscreenElement()===root;
+    const target=active?document:root;
+    const method=active?(document.exitFullscreen||document.webkitExitFullscreen):
+      (root.requestFullscreen||root.webkitRequestFullscreen);
+    if(!method){
+      status.textContent='Fullscreen is unavailable in this browser.';
+      return;
+    }
+    try {
+      await method.call(target);
+      syncFullscreen();
+    } catch {
+      status.textContent='Fullscreen could not be changed.';
+    }
+  }
+  root.addEventListener('fullscreenchange',syncFullscreen);
+  root.addEventListener('webkitfullscreenchange',syncFullscreen);
   function choose(index) {
-    const item=results[index];if(!item||busy)return;
+    const item=results[index];if(!item||busy||search.disabled)return;
     if(item.price==null){renderMatches(item.reason||'No price for this sales mode.');return;}
     if(cart.has(item.id)){const row=cart.get(item.id);row.qty++;row.amount=null;}
     else cart.set(item.id,{...item,qty:1});
-    clearSearch();quote();search.focus();
+    clearSearch();quote();search.focus({preventScroll:grid});
   }
   search.addEventListener('input',()=>{
     clearTimeout(searchTimer);++searchVersion;searchAbort?.abort();results=[];selected=0;pickedMatch=false;exactId=null;ambiguous=false;hasMore=false;
-    renderMatches('Searching…');if(search.value.trim())searchTimer=setTimeout(()=>lookup(),85);
+    renderMatches(search.value.trim()?'Searching…':'Loading products…');
+    if(grid||search.value.trim())searchTimer=setTimeout(()=>lookup(),85);
   });
   search.addEventListener('keydown',async e=>{
     if(e.isComposing||e.repeat)return;
@@ -131,7 +179,7 @@
       e.preventDefault();selected=(selected+(e.key==='ArrowDown'?1:results.length-1))%results.length;pickedMatch=true;renderMatches();
       suggestions.querySelector('.is-active')?.scrollIntoView({block:'nearest'});return;
     }
-    if(e.key!=='Enter'||!search.value.trim())return;
+    if(e.key!=='Enter'||(!search.value.trim()&&!(grid&&pickedMatch)))return;
     e.preventDefault();clearTimeout(searchTimer);
     if(!results.length&&!(await lookup()))return;
     if(ambiguous&&!pickedMatch){renderMatches('Choose a match with the mouse or arrow keys before adding.');return;}
@@ -215,7 +263,7 @@
     $('history').showModal();
     if(historyDirty){
       try{
-        const response=await fetch('/apps/zenith/pos/Kitchen/KotBilling');
+        const response=await fetch('/apps'+billingPath);
         if(!response.ok)throw Error('History could not be refreshed.');
         const page=new DOMParser().parseFromString(await response.text(),'text/html');
         const rows=page.getElementById('kb-history-rows');
@@ -234,7 +282,8 @@
     const button=e.target.closest('button');if(!button||button.disabled)return;
     if(button.dataset.ot){setType(button.dataset.ot);quote();}
     else if(button.id==='kb-tax-toggle'){taxOn=taxOn==='Y'?'N':'Y';paintTax();quote();}
-    else if(button.id==='kb-view-grid'){grid=!grid;button.setAttribute('aria-pressed',grid);renderMatches();}
+    else if(button.id==='kb-view-grid')setGridView();
+    else if(button.id==='kb-fullscreen')toggleFullscreen();
     else if(button.id==='kb-clear'&&confirm('Clear the unsent items from this order?')){cart.clear();quote();}
     else if(button.id==='kb-history-open')showHistory();
     else if(button.id==='kb-bill')openPayment();

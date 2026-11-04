@@ -5,8 +5,8 @@
 
     <transition name="createTable" method="post">
         <actions>
-            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'pos']" out-map="context"/>
-            <if condition="canWrite != true"><return error="true" message="POS write access is required."/></if>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:kitchenModuleId]" out-map="context"/>
+            <if condition="canWrite != true"><return error="true" message="Write access is required for this kitchen workflow."/></if>
             <entity-find-one entity-name="mantle.facility.Facility" value-field="tableFacility"><field-map field-name="facilityId"/></entity-find-one>
             <if condition="!tableFacility || tableFacility.ownerPartyId != ec.user.getPreference('ACTIVE_ORGANIZATION')"><return error="true" message="Select a facility in this shop."/></if>
             <if condition="!tableNumber?.trim() || !(seatingCapacity?.toString() ==~ /[0-9]{1,3}/) || (seatingCapacity as Integer) &lt; 1 || (seatingCapacity as Integer) &gt; 100"><return error="true" message="Enter a table number and seating capacity from 1 to 100."/></if>
@@ -25,8 +25,8 @@
              because RestaurantTable has no StatusFlowTransition rows. Table statuses are freely
              interchangeable (Available/Occupied/Reserved/Cleaning), so set it directly. -->
         <actions>
-            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'pos']" out-map="context"/>
-            <if condition="canWrite != true"><return error="true" message="POS write access is required."/></if>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:kitchenModuleId]" out-map="context"/>
+            <if condition="canWrite != true"><return error="true" message="Write access is required for this kitchen workflow."/></if>
             <entity-find-one entity-name="zenith.erp.pos.RestaurantTable" value-field="tbl" for-update="true"/>
             <entity-find-one entity-name="mantle.facility.Facility" value-field="tableFacility"><field-map field-name="facilityId" from="tbl?.facilityId"/></entity-find-one>
             <if condition="!tbl || !tableFacility || tableFacility.ownerPartyId != ec.user.getPreference('ACTIVE_ORGANIZATION')"><return error="true" message="Table not found in this shop."/></if>
@@ -46,8 +46,8 @@
     </transition>
     <transition name="closeTable" method="post" begin-transaction="true">
         <actions>
-            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'pos']" out-map="context"/>
-            <if condition="canWrite != true"><return error="true" message="POS write access is required."/></if>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:kitchenModuleId]" out-map="context"/>
+            <if condition="canWrite != true"><return error="true" message="Write access is required for this kitchen workflow."/></if>
             <entity-find-one entity-name="zenith.erp.pos.RestaurantTable" value-field="tbl" for-update="true"/>
             <entity-find-one entity-name="mantle.facility.Facility" value-field="tableFacility"><field-map field-name="facilityId" from="tbl?.facilityId"/></entity-find-one>
             <if condition="!tbl || !tableFacility || tableFacility.ownerPartyId != ec.user.getPreference('ACTIVE_ORGANIZATION')"><return error="true" message="Table not found in this shop."/></if>
@@ -67,8 +67,8 @@
     </transition>
     <transition name="deleteTable" method="post" begin-transaction="true">
         <actions>
-            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'pos']" out-map="context"/>
-            <if condition="canWrite != true"><return error="true" message="POS write access is required."/></if>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:kitchenModuleId]" out-map="context"/>
+            <if condition="canWrite != true"><return error="true" message="Write access is required for this kitchen workflow."/></if>
             <entity-find-one entity-name="zenith.erp.pos.RestaurantTable" value-field="tbl" for-update="true"/>
             <entity-find-one entity-name="mantle.facility.Facility" value-field="tableFacility"><field-map field-name="facilityId" from="tbl?.facilityId"/></entity-find-one>
             <if condition="!tbl || !tableFacility || tableFacility.ownerPartyId != ec.user.getPreference('ACTIVE_ORGANIZATION')"><return error="true" message="Table not found in this shop."/></if>
@@ -83,9 +83,9 @@
         </actions>
         <default-response url="."/>
     </transition>
-    <transition name="goTerminal"><default-response url="../../Terminal"/></transition>
-    <transition name="goTransactions"><default-response url="../../PosTransactions"/></transition>
-    <transition name="goDashboard"><default-response url="../../Dashboard"/></transition>
+    <transition name="goTerminal"><default-response url="${kitchenModuleId == 'kot' ? '../../pos/Terminal' : '../../Terminal'}"/></transition>
+    <transition name="goTransactions"><default-response url="${kitchenModuleId == 'kot' ? '../../pos/PosTransactions' : '../../PosTransactions'}"/></transition>
+    <transition name="goDashboard"><default-response url="${kitchenModuleId == 'kot' ? '../../pos/Dashboard' : '../../Dashboard'}"/></transition>
 
     <actions>
         <entity-find entity-name="mantle.facility.Facility" list="facilities">
@@ -432,7 +432,7 @@
   <!-- JS runs from an external file injected via img-onload: reliable on BOTH /apps and /qapps
        (/qapps' Vue template compiler strips inline <script> and chokes on a second root). -->
   <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" style="display:none"
-       onload="(function(){var s=document.createElement('script');s.src='/zenithstatic/js/tm-tables.js?v=5';document.head.appendChild(s);})()"/>
+       onload="(function(){var s=document.createElement('script');s.src='/zenithstatic/js/tm-tables.js?v=6';document.head.appendChild(s);})()"/>
 
 </div>
         ]]></text></render-mode>

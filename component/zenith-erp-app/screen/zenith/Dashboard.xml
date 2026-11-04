@@ -202,6 +202,7 @@
             } else {
                 filteredModules = moduleList.findAll { mod -> isAdmin || accessSet.contains(mod.id) }
             }
+            if (navShow?.kot) filteredModules += [[id:'Z_KOT', name:'KOT', url:'/apps/zenith/kot', bg:'bg-purple-1']]
             // ZE-POS-0201: a POS-only cashier is till-first but may step into POS + Inventory only, so keep
             // their Dashboard to those two tiles — every other module bounces back to the terminal anyway.
             def _zc = myGroupIds.findAll { it?.startsWith('ZENITH_') && it != 'ZENITH_ALL' }

@@ -19,6 +19,16 @@
                 throw new org.moqui.context.ArtifactAuthorizationException('Role not found in your organization.')
             roleCatalogueJson = groovy.json.JsonOutput.toJson(catalogue.modules)
             roleDraftJson = selectionsJson ?: roleInfo?.selectionsJson ?: '{}'
+            if (!selectionsJson && roleInfo) {
+                def draft = new groovy.json.JsonSlurper().parseText(roleDraftJson)
+                def kot = catalogue.modules.find { it.id == 'kot' }
+                if (kot && (draft.pos ?: []).contains('/pos/Kitchen')) {
+                    draft.pos.remove('/pos/Kitchen')
+                    if (!draft.pos) draft.remove('pos')
+                    draft.kot = ((draft.kot ?: []) + kot.screens*.id).unique()
+                    roleDraftJson = groovy.json.JsonOutput.toJson(draft)
+                }
+            }
             roleNameValue = roleName ?: roleInfo?.roleName ?: ''
             roleDescriptionValue = description ?: roleInfo?.description ?: ''
         ]]></script>

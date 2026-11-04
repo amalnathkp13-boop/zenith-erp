@@ -63,7 +63,7 @@
                     def _fwTx = ['formSelectColumns','formSaveColumns','formSaveFind','formDeleteFind'] as Set
                     boolean _isPost = "POST".equalsIgnoreCase(ec.web.getRequest()?.getMethod() ?: "")
                     if (_ttan && !_fwTx.contains(_ttan)) {
-                        def _gate = ['pos','sales','purchase','inventory','accounting','contacts','crm','hr','payroll',
+                        def _gate = ['pos','kot','sales','purchase','inventory','accounting','contacts','crm','hr','payroll',
                             'attendance','timeoff','recruitment','expenses','manufacturing','quality','maintenance','fleet',
                             'helpdesk','marketing','ecommerce','events','subscriptions','documents','approvals','integrations',
                             'website','studio','plm','fieldservice','discuss','sign','project','timesheets','tax','pricing','barcode'] as Set
@@ -320,7 +320,7 @@
                 def _segs = _uri ? _uri.split('/').findAll{it} : []
                 int _zi = _segs.findIndexOf{ it.toLowerCase() == 'zenith' }
                 def _rm = (_zi >= 0 && _zi + 1 < _segs.size()) ? _segs[_zi + 1].toLowerCase() : null
-                def _gate = ['pos','sales','purchase','inventory','accounting','contacts','crm','hr','payroll',
+                def _gate = ['pos','kot','sales','purchase','inventory','accounting','contacts','crm','hr','payroll',
                     'attendance','timeoff','recruitment','expenses','manufacturing','quality','maintenance','fleet',
                     'helpdesk','marketing','ecommerce','events','subscriptions','documents','approvals','integrations',
                     'website','studio','plm','fieldservice','discuss','sign','project','timesheets','tax','pricing','barcode'] as Set
@@ -379,7 +379,7 @@
             html_stylesheets.add('https://fonts.googleapis.com/icon?family=Material+Icons')
             if (footer_scripts == null) footer_scripts = []
             footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=14')
-            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=48')
+            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=49')
             footer_scripts.add('/zenithstatic/js/profile-menu.js?v=1')
             footer_scripts.add('/zenithstatic/js/sidebar-manager.js?v=3')
             footer_scripts.add('/zenithstatic/js/subnav-manager.js?v=4')
@@ -406,10 +406,10 @@
             html_stylesheets.add('/zenithstatic/css/barcode-reference.css?v=1')
             if (html_scripts == null) html_scripts = []
             html_scripts.add('/zenithstatic/js/qapps-shell-boot.js?v=1')
-            html_scripts.add('/zenithstatic/js/kitchen-display.js?v=1')
+            html_scripts.add('/zenithstatic/js/kitchen-display.js?v=2')
             html_scripts.add('/zenithstatic/js/pos-receipt-layout.js?v=3')
             html_scripts.add('/zenithstatic/js/kitchen-print.js?v=3')
-            html_stylesheets.add('/zenithstatic/css/kitchen-display.css?v=3')
+            html_stylesheets.add('/zenithstatic/css/kitchen-display.css?v=4')
             // ZE-DASH-0402: neutralise the stock framework "notifications disabled" nag toast (Safari fires it
             // on every load). HEAD script so it runs before WebrootVue's mounted() hook. Both surfaces.
             html_scripts.add('/zenithstatic/js/notif-nag-fix.js?v=2')
@@ -554,6 +554,7 @@
                             .condition("planId", tenant.planId).list()
                         def moduleSet = new HashSet()
                         planModules.each { moduleSet.add(it.moduleId.toLowerCase()) }
+                        if (moduleSet.contains('pos')) moduleSet.add('kot')
                         context.saasAllowedModules = moduleSet
                         context.saasHasAllAccess = moduleSet.contains("all")
                         context.saasAllowedModulesJson = '[' + moduleSet.collect{ '"' + it + '"' }.join(',') + ']'
@@ -593,11 +594,11 @@
             context.navRestricted = navigation.moduleIds != null
             context.saasVisibleModulesJson = new groovy.json.JsonBuilder(navigation.moduleIds ?: []).toString()
             def _navShow = [:]
-            ["contacts","sales","purchase","crm","pos","inventory","manufacturing","project","accounting","payroll","expenses","hr","tax","pricing","barcode"].each { module ->
+            ["contacts","sales","purchase","crm","pos","kot","inventory","manufacturing","project","accounting","payroll","expenses","hr","tax","pricing","barcode"].each { module ->
                 _navShow[module] = !context.navRestricted || navigation.moduleIds.contains(module)
             }
             context.navShow = _navShow
-            context.navCatSalesCrm = (_navShow['sales'] || _navShow['purchase'] || _navShow['crm'] || _navShow['pos'] || _navShow['pricing'])
+            context.navCatSalesCrm = (_navShow['sales'] || _navShow['purchase'] || _navShow['crm'] || _navShow['pos'] || _navShow['kot'] || _navShow['pricing'])
             context.navCatFinance = (_navShow['accounting'] || _navShow['payroll'] || _navShow['expenses'] || _navShow['tax'])
 
             // ===== Server-side module enforcement (plan gate + role gate; single reusable place) =====
@@ -605,7 +606,7 @@
             // client menu/tile filters are advisory only. Fail-OPEN: only redirect when the request path
             // POSITIVELY names a known module the user may not reach. Platform super-admin (ADMIN) passes.
             if (ec.web != null && !ec.user.isInGroup("ADMIN")) {
-                def gateableModules = ['pos','sales','purchase','inventory','accounting','contacts','crm','hr',
+                def gateableModules = ['pos','kot','sales','purchase','inventory','accounting','contacts','crm','hr',
                     'payroll','attendance','timeoff','recruitment','expenses','manufacturing','quality','maintenance',
                     'fleet','helpdesk','marketing','ecommerce','events','subscriptions','documents','approvals',
                     'integrations','website','studio','plm','fieldservice','discuss','sign','project','timesheets',
@@ -884,6 +885,7 @@
             <#if (navShow['crm'])!true><a class="zs-link" data-mod="crm" data-match="/Crm" href="/apps/zenith/Crm/Dashboard"><span class="material-icons">campaign</span><span class="t">CRM</span></a></#if>
             <#if (navShow['pos'])!true><a class="zs-link" data-mod="pos" data-match="/pos" href="/apps/zenith/pos/Dashboard"><span class="material-icons">point_of_sale</span><span class="t">POS</span></a></#if>
             <#if (navShow['pos'])!true><a class="zs-link" data-mod="pos" data-match="/pos/Terminal" href="/apps/zenith/pos/Terminal"><span class="material-icons">receipt_long</span><span class="t">POS Billing</span></a></#if>
+            <#if (navShow['kot'])!false><a class="zs-link" data-mod="kot" data-match="/kot" href="/apps/zenith/kot"><span class="material-icons">restaurant</span><span class="t">KOT</span></a></#if>
             <#if (navShow['pricing'])!true><a class="zs-link" data-mod="pricing" data-match="/pricing" href="/apps/zenith/pricing/PricingDashboard"><span class="material-icons">sell</span><span class="t">Pricing</span></a></#if>
             <div class="zs-cat" data-cat="2">OPERATIONS</div>
             <#if (navShow['inventory'])!true><a class="zs-link" data-mod="inventory" data-match="/Inventory" href="/apps/zenith/Inventory/InventoryDashboard"><span class="material-icons">inventory_2</span><span class="t">Inventory</span></a></#if>
@@ -995,9 +997,16 @@
             <a class="zsub-tab" data-match="/pos/ProductImport" href="/apps/zenith/pos/ProductImport">Import</a>
             <a class="zsub-tab" data-match="/pos/ReceiptConfig" href="/apps/zenith/pos/ReceiptConfig">Receipts</a>
             <a class="zsub-tab" data-match="/pos/PrinterConfig" href="/apps/zenith/pos/PrinterConfig">Printers</a>
-            <a class="zsub-tab" data-match="/pos/Kitchen" href="/apps/zenith/pos/Kitchen">Kitchen</a>
             <a class="zsub-tab" data-match="/pos/BillNumberRegister" href="/apps/zenith/pos/BillNumberRegister">Bill Register</a>
             <a class="zsub-tab" data-match="/pos/OfflineMode" href="/apps/zenith/pos/OfflineMode">Offline Mode</a>
+          </div>
+          <div class="zsub-grp" data-match="/kot"><span class="zsub-title">KOT</span>
+            <a class="zsub-tab" data-match="/kot/KotDashboard" href="/apps/zenith/kot/KotDashboard">KOT Dashboard</a>
+            <a class="zsub-tab" data-match="/kot/KitchenDisplay" href="/apps/zenith/kot/KitchenDisplay">Kitchen Display</a>
+            <a class="zsub-tab" data-match="/kot/KotBilling" href="/apps/zenith/kot/KotBilling">KOT Billing</a>
+            <a class="zsub-tab" data-match="/kot/Tables" href="/apps/zenith/kot/Tables">Tables</a>
+            <a class="zsub-tab" data-match="/kot/KotHistory" href="/apps/zenith/kot/KotHistory">KOT History</a>
+            <a class="zsub-tab" data-match="/kot/WaiterManagement" href="/apps/zenith/kot/WaiterManagement">Waiters</a>
           </div>
           <div class="zsub-grp" data-match="/Inventory"><span class="zsub-title">Inventory</span>
             <a class="zsub-tab" data-match="/Inventory/InventoryDashboard" href="/apps/zenith/Inventory/InventoryDashboard">Dashboard</a>
@@ -1151,7 +1160,7 @@
                   }}catch(_e){}
                 /* ZE-NAV-ALIAS: a detail/edit screen (menu-include=false, e.g. EditStockTransfer) shares no URL prefix
                    with its list tab, so map it to the parent list route for active-state only (group resolved above). */
-                var relA=rel,_NA={'/Inventory/EditStockTransfer':'/Inventory/StockTransfers','/Inventory/EditStockAdjustment':'/Inventory/StockAdjustments','/Inventory/EditFacility':'/Inventory/FindFacility'};
+                var relA=rel==='/kot'||rel==='/kot/'?'/kot/KotDashboard':rel,_NA={'/Inventory/EditStockTransfer':'/Inventory/StockTransfers','/Inventory/EditStockAdjustment':'/Inventory/StockAdjustments','/Inventory/EditFacility':'/Inventory/FindFacility'};
                 for(var _ak in _NA){if(rel.indexOf(_ak)===0){relA=_NA[_ak]+rel.slice(_ak.length);break;}}
                 var tabs=[].slice.call(g.querySelectorAll('.zsub-tab')),t=null,tLen=-1;
                 tabs.forEach(function(a){var m=a.getAttribute('data-match')||'';if(m&&relA.indexOf(m)===0&&m.length>tLen){t=a;tLen=m.length;}});

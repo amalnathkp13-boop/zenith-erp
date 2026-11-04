@@ -75,9 +75,14 @@
 #kb-wrap :is(button,input,select,textarea):focus-visible{outline:3px solid #c4b5fd;outline-offset:2px}
 @media(max-width:700px){#kb-wrap .kb-panel{overflow-x:auto}#kb-wrap .kb-otable{min-width:580px}#kb-wrap .kb-search{order:20}#kb-wrap .kb-clear{order:0}}
 
-/* Compact KOT billing: only the search results change between list and grid. */
+/* Compact KOT billing keeps one order panel and switches the product browser. */
 #kb-wrap{position:relative;display:flex;flex-direction:column;min-height:calc(100dvh - 255px);padding-bottom:16px}
 #kb-wrap [hidden]{display:none!important}
+#kb-wrap:is(:fullscreen,:-webkit-full-screen){box-sizing:border-box;overflow:auto;padding:16px;background:var(--z-bg,#fff)}
+#kb-wrap #kb-fullscreen-status:empty{display:none}
+#kb-wrap #kb-product-grid{margin-bottom:12px;padding:12px;border:1px solid var(--kb-bd);border-radius:10px;background:#fff}
+#kb-wrap #kb-product-grid h2{font-size:16px;margin:0 0 6px}
+#kb-wrap #kb-product-grid .kb-suggestions{position:static;max-height:min(36dvh,320px);box-shadow:none}
 #kb-wrap .kb-toolbar{align-items:end}
 #kb-wrap .kb-toolbar .kb-fld{display:grid;gap:3px;min-width:112px;font-size:12px}
 #kb-wrap .kb-toolbar .kb-fld select{min-height:37px}
@@ -92,7 +97,7 @@
 #kb-wrap .kb-search{width:100%;flex:none;margin:0}
 #kb-wrap .kb-search input{height:44px}
 #kb-wrap .kb-suggestions{top:auto;bottom:100%;max-height:min(43vh,360px)}
-#kb-wrap .kb-suggestions.kb-results-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));padding:8px;gap:8px}
+#kb-wrap .kb-suggestions.kb-results-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,180px),1fr));padding:8px;gap:8px}
 #kb-wrap .kb-results-grid .kb-suggestion{flex-direction:column;gap:4px;border:1px solid #e4dff3;border-radius:8px}
 #kb-wrap .kb-results-grid :is(#kb-more,.kb-search-message){grid-column:1/-1}
 #kb-wrap .kb-search-message{padding:8px 12px;margin:0}
