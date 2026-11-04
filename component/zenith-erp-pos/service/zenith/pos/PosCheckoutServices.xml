@@ -71,8 +71,9 @@
             def others=cf.makeCondition([cf.makeCondition('productName',EC.NOT_LIKE,escaped+'%').ignoreCase(),cf.makeCondition('productName',EC.EQUALS,null)],EC.OR)
             def find={ ec.entity.find('mantle.product.Product').condition('ownerPartyId',org).condition('productTypeEnumId','PtAsset')
                 .condition(cf.makeCondition(matches,EC.OR)).orderBy('productName,productId') }
-            def firstCount=find().condition(prefix).count()
-            if (start < firstCount) products.addAll(find().condition(prefix).offset(start).limit(size).list())
+            // Suggestions and the first grid page do not need a count round trip.
+            int firstCount = start ? find().condition(prefix).count() : 0
+            if (!start || start < firstCount) products.addAll(find().condition(prefix).offset(start).limit(size).list())
             if (products.size() < size) products.addAll(find().condition(others).offset(Math.max(0,start-firstCount) as int).limit(size-products.size()).list())
         ]]></script></actions>
     </service>

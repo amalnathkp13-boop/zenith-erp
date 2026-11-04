@@ -411,7 +411,8 @@
              split tenders) and when the sale was started/closed, to show a POS panel below. -->
         <script><![CDATA[
             posTxn = invoice != null ? ec.entity.find("zenith.erp.pos.PosTransaction")
-                .condition("linkedInvoiceId", invoiceId).list().find { true } : null
+                .condition("linkedInvoiceId", invoiceId).condition("organizationPartyId",_salesOrgId).list().find { true } : null
+            posDisplayNames = posTxn ? (invoiceItems ? ec.service.sync().name('zenith.pos.PosServices.get#PosDisplayNames').parameter('productIds',invoiceItems*.productId).call().names : [:]) ?: [:] : [:]
             posPayList = []
             posSaleStarted = null; posSaleClosed = null; posPayMethods = ''
             if (posTxn) {
@@ -694,7 +695,7 @@
             <container style="z-sales-table">
 <form-list name="InvoiceItemsForm" list="invoiceItems" skip-form="true" header-dialog="true" show-csv-button="true" show-xlsx-button="true" show-page-size="true">
                 <field name="invoiceItemSeqId"><default-field title="#"><label text="${invoiceItemSeqId}" type="span" style="text-grey-7"/></default-field></field>
-                <field name="description"><default-field title="Description"><label text="${description ?: 'N/A'}" type="strong" style="text-dark"/></default-field></field>
+                <field name="description"><default-field title="Description"><label text="${(posTxn &amp;&amp; productId ? (posDisplayNames[productId] ?: productId) : description) ?: 'N/A'}" type="strong" style="text-dark"/></default-field></field>
                 <field name="hsnSacCode"><default-field title="HSN/SAC"><label text="${hsnSacCode ?: '-'}" type="span" style="zenith-badge grey"/></default-field></field>
                 <field name="quantity"><default-field><label text="${quantity}" type="span" style="text-dark"/></default-field></field>
                 <field name="amount"><default-field title="Unit Price"><label text="${zinr.inr(ec.l10n.format(amount ?: 0, '#,##,##0.00'))}" type="span"/></default-field></field>
@@ -723,7 +724,7 @@
                             <form-single name="EditItemForm" transition="updateItem">
                                 <field name="invoiceId"><default-field><hidden default-value="${invoiceId}"/></default-field></field>
                                 <field name="invoiceItemSeqId"><default-field><hidden default-value="${invoiceItemSeqId}"/></default-field></field>
-                                <field name="itemLabel"><default-field title="Item"><label text="${description ?: ('#' + invoiceItemSeqId)}" type="span" style="text-dark text-weight-bold"/></default-field></field>
+                                <field name="itemLabel"><default-field title="Item"><label text="${(posTxn &amp;&amp; productId ? (posDisplayNames[productId] ?: productId) : description) ?: ('#' + invoiceItemSeqId)}" type="span" style="text-dark text-weight-bold"/></default-field></field>
                                 <field name="quantity"><default-field title="Quantity"><text-line size="10" default-value="${quantity}"/></default-field></field>
                                 <field name="amount"><default-field title="Unit Price"><text-line size="15" default-value="${amount}"/></default-field></field>
                                 <field name="discountPercent"><default-field title="Discount (%)"><text-line size="8" default-value="${discountPercent ?: 0}"/></default-field></field>

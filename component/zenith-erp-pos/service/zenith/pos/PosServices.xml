@@ -1216,6 +1216,21 @@
         </actions>
     </service>
 
+    <!-- UI labels are separate from the receipt snapshot stored on POS transaction items. -->
+    <service verb="get" noun="PosDisplayNames" authenticate="true" transaction="ignore">
+        <in-parameters><parameter name="productIds" type="List" required="true"/></in-parameters>
+        <out-parameters><parameter name="names" type="Map"/></out-parameters>
+        <actions><script><![CDATA[
+            names = [:]
+            def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
+            def ids = productIds.findAll { it }.unique()
+            if (!org || org == '_NA_' || !ids) return
+            ec.entity.find('mantle.product.Product').condition('ownerPartyId',org)
+                .condition('productId','in',ids).selectFields(['productId','productName'])
+                .disableAuthz().list().each { names[it.productId] = it.productName }
+        ]]></script></actions>
+    </service>
+
     <!-- ========== Hold/Recall Transaction ========== -->
 
     <service verb="hold" noun="Transaction">
@@ -1227,7 +1242,7 @@
         <actions>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[transactionId:transactionId]"/>
             <if condition="!_posAccess.allowed"><return/></if>
-            <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="txn"/>
+            <set field="txn" from="ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',transactionId).forUpdate(true).one()"/>
             <if condition="txn.statusId != 'PtCreated'">
                 <return error="true" message="Only open transactions can be held"/></if>
 
@@ -1705,7 +1720,7 @@
     <service verb="export" noun="PosCatalog">
         <description>Export full product catalog, prices, and customers for IndexedDB</description>
         <in-parameters>
-            <parameter name="organizationPartyId"/><parameter name="terminalId"/>
+            <parameter name="organizationPartyId"/><parameter name="terminalId"/><parameter name="includeCustomers" type="Boolean" default="true"/>
         </in-parameters>
         <out-parameters>
             <parameter name="products" type="List"/>
@@ -1728,28 +1743,21 @@
             <entity-find-one entity-name="zenith.erp.pos.PosTerminal" value-field="_catalogTerminal"><field-map field-name="terminalId"/></entity-find-one>
             <entity-find entity-name="zenith.erp.india.IndiaGstConfig" list="_catalogGst" limit="1"><econdition field-name="organizationPartyId"/></entity-find>
             <set field="_catalogRegion" from="_catalogTerminal?.stateCode ?: _catalogTerminal?.regionGeoId ?: (_catalogGst ? _catalogGst[0].stateCode : null)"/>
-            <iterate list="productList" entry="prod">
-                <set field="_catalogTax" from="null"/>
-                <if condition="_catalogRegion">
+            <if condition="_catalogRegion &amp;&amp; productList">
                 <service-call name="zenith.tax.TaxServices.calculate#Tax" out-map="_catalogTax"
-                    in-map="[organizationPartyId:organizationPartyId,items:[[productId:prod.productId,productTaxCode:prod.productTaxCode,taxCategoryId:prod.taxCategoryId,quantity:1,unitAmount:100,isTaxInclusive:'N']],originRegionGeoId:_catalogRegion,destinationRegionGeoId:_catalogRegion,transactionType:'SALE']"/>
-                </if>
-
-                <script>
-                    def _uom = (['OTH_ea':'Nos','WT_kg':'kg','WT_g':'g','VLIQ_L':'L','VLIQ_ml':'ml','LEN_m':'m','LEN_cm':'cm'].get(prod.amountUomId) ?: '')
-                    products.add([
-                        productId: prod.productId,
-                        productName: prod.productName,
-                        listPrice: prod.mrpAmount ?: 0,
-                        barcode: prod.pseudoId ?: prod.productId,
-                        taxCode: prod.productTaxCode ?: '',
-                        taxRate: _catalogTax?.taxedItems ? (_catalogTax.taxedItems[0].taxBreakdowns?.sum { (it.taxRate ?: 0) as BigDecimal } ?: 0) : null,
-                        taxRates: _catalogTax?.taxedItems ? (_catalogTax.taxedItems[0].taxBreakdowns?.collect { it.taxRate ?: 0 } ?: []) : null,
-                        uom: _uom
-                    ])
-                </script>
-            </iterate>
-            
+                    in-map="[organizationPartyId:organizationPartyId,items:productList.collect { prod -&gt; [productId:prod.productId,productTaxCode:prod.productTaxCode,taxCategoryId:prod.taxCategoryId,quantity:1,unitAmount:100,isTaxInclusive:'N'] },originRegionGeoId:_catalogRegion,destinationRegionGeoId:_catalogRegion,transactionType:'SALE']"/>
+            </if>
+            <script><![CDATA[
+                products = productList.withIndex().collect { prod, index ->
+                    def taxed = _catalogTax?.taxedItems?.getAt(index)
+                    def rates = taxed ? (taxed.taxBreakdowns ?: []).collect { it.taxRate ?: 0 } : null
+                    [productId:prod.productId, productName:prod.productName, listPrice:prod.mrpAmount ?: 0,
+                        barcode:prod.pseudoId ?: prod.productId, taxCode:prod.productTaxCode ?: '',
+                        taxRate:rates == null ? null : (rates.sum() ?: 0), taxRates:rates,
+                        uom:(['OTH_ea':'Nos','WT_kg':'kg','WT_g':'g','VLIQ_L':'L','VLIQ_ml':'ml','LEN_m':'m','LEN_cm':'cm'].get(prod.amountUomId) ?: '')]
+                }
+            ]]></script>
+            <if condition="!includeCustomers"><return/></if>
             <entity-find entity-name="mantle.party.PartyRole" list="customerRoles">
                 <econdition field-name="roleTypeId" value="Customer"/>
             </entity-find>

@@ -21,7 +21,7 @@
         <actions>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[terminalId:terminalId]" out-map="access"/>
             <if condition="!access.allowed"><return/></if>
-            <service-call name="zenith.pos.PosServices.export#PosCatalog" in-map="[terminalId:terminalId]" out-map="catalog"/>
+            <service-call name="zenith.pos.PosServices.export#PosCatalog" in-map="[terminalId:terminalId,includeCustomers:false]" out-map="catalog"/>
             <service-call name="zenith.pos.PosModeServices.get#TerminalModes" in-map="[terminalId:terminalId]" out-map="offered"/>
             <service-call name="zenith.pos.PosPriceServices.get#PriceOverrideAccess" out-map="priceAccess"/>
             <script><![CDATA[
@@ -38,7 +38,7 @@
                 def interstate=other && productIds ? ec.service.sync().name('zenith.tax.TaxServices.calculate#Tax').parameters([organizationPartyId:org,
                     items:productIds.collect { id -> def p=productRows[id];[productId:id,productTaxCode:p.productTaxCode,taxCategoryId:p.taxCategoryId,quantity:1,unitAmount:100,isTaxInclusive:'N'] },
                     originRegionGeoId:region,destinationRegionGeoId:other,transactionType:'SALE']).call() : null
-                def products=catalog.products.collect { product ->
+                def products=catalog.products.withIndex().collect { product, index ->
                     def p=productRows[product.productId]
                     def prices=[:]
                     modes.each { mode ->
@@ -46,7 +46,6 @@
                         def price=fixed ? fixedPrices[p.productId+'\u0000'+mode.id] : (p.mrpAmount ?: 0)
                         prices[mode.id]=[price:price ?: 0,disc:mode.source in ['PpsDiscountMrp','PpsDiscountList'] ? mode.disc : 0,blocked:fixed && (price==null || price<=0)]
                     }
-                    def index=productIds.indexOf(p.productId)
                     product+[printName:p.printName ?: p.productName,prices:prices,
                         interstateRates:interstate?.taxedItems ? (interstate.taxedItems[index].taxBreakdowns?.collect { it.taxRate ?: 0 } ?: []) : null]
                 }

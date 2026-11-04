@@ -1,0 +1,70 @@
+
+const path=require('node:path');
+module.exports=async({a,base,check,q,invoke,post,out})=>{
+ const productId='POS_QA_A_P18', printName='டீ கப்', terminalId='POS_QA_A_DISPLAY_'+Date.now().toString(36);
+ const product=q("SELECT product_name FROM product WHERE product_id='POS_QA_A_P18'")[0].product_name;
+ const saveName=printName=>a.c.request.post(base+'/apps/zenith/Inventory/EditProduct/updateProduct',{form:{moquiSessionToken:a.t,productId,printName},maxRedirects:0});
+ const page=await a.c.newPage(), dashboard=await a.c.newPage();
+ await page.route('**/qz-tray@*/qz-tray.js',r=>r.fulfill({contentType:'application/javascript',body:''}));
+ await saveName(printName);
+ try {
+  await post('PosTerminals','createTerminal',{terminalId,terminalName:'Disposable label and category',facilityId:'POS_QA_A_FAC',organizationPartyId:'POS_QA_A',stateCode:'33',isActive:'Y'});
+  const session=await invoke('open',{terminalId,openingCash:'0'});
+  const bill=await invoke('cart',{sessionId:session.sessionId});
+  await invoke('add',{transactionId:bill.transactionId,productId,quantity:'1',salesModeId:'RETAIL',taxOn:'N'});
+  const args={sessionId:session.sessionId,transactionId:bill.transactionId,taxOn:'N'};
+  const refreshed=await (await post('Terminal','ajaxCart',{action:'refresh',...args})).json();
+  check('Cart AJAX separates the display name and receipt snapshot',refreshed.items[0].name===product&&refreshed.items[0].printName===printName,refreshed.items);
+  await page.goto(base+'/apps/zenith/pos/Terminal?'+new URLSearchParams(args));
+  const cart=await page.locator('.pos-cart tbody').innerText();
+  check('Server-rendered cart uses the English product name',cart.includes(product)&&!cart.includes(printName),cart);
+  await page.waitForFunction(()=>typeof window._posAjax==='function');
+  await page.evaluate(()=>{window._posPrintReceipt=()=>{};});
+  await page.locator('.nb-modes summary').click(); await page.locator('[data-pos-layout=advanced]').click();
+  const category=page.locator('.pos-cat-strip a[href*="POS_QA_A_CAT"]');
+  await category.click();
+  await page.waitForFunction(()=>document.querySelector('#pos-terminal-root')?.dataset.checkoutCategory==='POS_QA_A_CAT');
+  if (out) await page.screenshot({path:path.join(out,'pos-english-cart.png')});
+  const cashTotal=async()=> {
+   await dashboard.goto(base+'/apps/zenith/pos/Dashboard?dashLoc=POS_QA_A_FAC');
+   const cash=await dashboard.locator('.pos-dash-payment-list > div').filter({has:dashboard.getByText('Cash',{exact:true})}).locator('strong').allTextContents();
+   return Number((cash[0]||'0').replace(/[^\d.]/g,''));
+  };
+  const beforeCash=await cashTotal();
+    await page.locator('#pos-pay-cash').click();
+  const pay=page.locator('#posCashConfirm,.pos-cash-confirm');
+  await page.locator('#posCashRecv,.pos-cash-input').fill('100');
+  await pay.click();
+  await page.waitForFunction(()=>document.querySelector('#pos-terminal-root')?.dataset.checkoutCategory===''&&document.getElementById('pos-cart-count')?.textContent==='0');
+  check('Successful cash payment resets the next bill to All Items',true);
+  const receipt=(await invoke('receipt',{transactionId:bill.transactionId})).receipt;
+  check('Receipt keeps the saved Tamil label',receipt.items[0].name===printName,receipt.items);
+  const hist=await (await post('Terminal','ajaxCart',{action:'billHistory',sessionId:session.sessionId})).json();
+  check('Bill history uses the English product name',hist.bills.find(b=>b.txId===bill.transactionId)?.items[0].name===product);
+  await invoke('close',{sessionId:session.sessionId,closingCash:String(receipt.summary.total)});
+  const item=receipt.items[0];
+  const revised=await (await post('Terminal','ajaxCart',{action:'amendBill',editTxId:bill.transactionId,editType:'PRICE_CHANGE',editItemSeqId:'00001',newPrice:'80',editReason:'Disposable cash correction'})).json();
+  check('Amendment preserves the original cash tender',revised.success&&Number(q(`SELECT amount FROM pos_payment WHERE transaction_id='${bill.transactionId}'`)[0].amount)===100,revised);
+  const afterCash=await cashTotal();
+  check('Payment Breakdown counts only the revised ₹80 cash amount',afterCash-beforeCash===80,{beforeCash,afterCash});
+    await dashboard.goto(base+'/qapps/zenith');
+  const owner=dashboard.locator('#zq-ownerview button');
+  await owner.click();
+  const shop=dashboard.locator('#zq-shopmenu a').filter({hasText:'Disposable POS facility A'});
+  await shop.click();
+  await dashboard.waitForFunction(()=>document.querySelector('.home-title p')?.textContent.includes('Disposable POS facility A'));
+  const aSales=await dashboard.locator('.zsc-num').first().textContent();
+  await owner.click();
+  await dashboard.locator('#zq-shopmenu a').filter({hasText:'Synthetic other shop'}).click();
+  await dashboard.waitForFunction(()=>document.querySelector('.home-title p')?.textContent.includes('Synthetic other shop'));
+  const bSales=await dashboard.locator('.zsc-num').first().textContent();
+  check('Switching shops changes the Overview sales total',aSales!==bSales,{aSales,bSales});
+  check('Desktop has no duplicate framework menu button',!await dashboard.locator('.q-header .q-toolbar > button:first-child').isVisible());
+  await dashboard.locator('.zsm-entry').click();
+  await dashboard.getByRole('dialog',{name:'Customize Sidebar'}).waitFor();
+  check('Manage Sidebar opens its settings',true);
+ } finally {
+  await saveName('');
+  await dashboard.close();await page.close();
+ }
+};

@@ -126,9 +126,8 @@ module.exports=async function({a,foreign,base,check,q,invoke,post,out}) {
   check('F2 cash Proceed is reachable',await page.locator('.pos-cash-confirm').evaluate(e=>{const r=e.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;}));
   await page.locator('.pos-cash-cancel').click();
   check('payment shortcuts exist immediately after cancelling Cash',await page.evaluate(()=>['pos-discount','pos-pay-cash','pos-pay-card','pos-credit','pos-pay-upi','pos-split','pos-hold'].every(id=>document.getElementById(id))));
-  const heldRequest=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('/holdSale'));
-  await page.locator('.pos-cart-heading h2').click();await page.keyboard.press('F7');await heldRequest;
-  await page.locator('#pos-held-wrap summary').waitFor();
+  await page.locator('.pos-cart-heading h2').click();await page.keyboard.press('F7');
+  await page.waitForFunction(()=>document.querySelector('#pos-held-wrap .nb-cnt')?.textContent==='1');
   check('F7 holds the real cart once',q(`SELECT * FROM pos_held_transaction WHERE session_id='${session.sessionId}' AND status_id='PhHeld'`).length===1);
   await page.keyboard.press('F9');await page.locator('.nb-held__item').first().waitFor();
   const recalled=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('/recallSale'));

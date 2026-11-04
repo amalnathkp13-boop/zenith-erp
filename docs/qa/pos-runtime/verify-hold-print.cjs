@@ -15,17 +15,25 @@ module.exports=async({a,base,check,q,invoke,post})=>{
    await page.goto(`${base}/apps/zenith/pos/Terminal?sessionId=${session.sessionId}&transactionId=${bill.transactionId}&taxOn=${taxOn}`,{waitUntil:'networkidle'});
    await page.waitForFunction(()=>window.qaHoldPrinter&&window.__posKeysBound);
    await page.locator('#pos-hold').waitFor();
-   await page.locator('#cartInlineSearch,#pos-search').first().focus();
-   await Promise.all([page.waitForNavigation({waitUntil:'networkidle'}),page.keyboard.press('F7')]);
-   await page.waitForFunction(()=>window.qaHoldPrinter&&window.__posKeysBound);
+   await page.locator('#posFullscreenBtn').click();
+   await page.waitForFunction(()=>document.fullscreenElement);
+   const previousUrl=page.url();
+   if (index % 2) await page.locator('#pos-hold').click();
+   else {
+    await page.locator('#cartInlineSearch,#pos-search').first().focus();
+    await page.keyboard.press('F7');
+   }
+   await page.waitForFunction(count=>Number(document.querySelector('#pos-held-wrap .nb-cnt')?.textContent)===count,index+1);
+   check('Hold keeps native fullscreen and the terminal document',await page.evaluate(()=>!!document.fullscreenElement)&&new URL(page.url()).pathname===new URL(previousUrl).pathname);
+   check('Hold removes the previous draft from the URL',!new URL(page.url()).searchParams.has('transactionId'));
    await page.waitForFunction(()=>document.getElementById('pos-hold')?.disabled);
-   await page.waitForTimeout(1500); // Includes the old page-load printer probe after Hold.
+   await page.waitForTimeout(1500); // Allow a deferred printer probe to run, if one was accidentally scheduled.
    const printer=await page.evaluate(()=>window.qaHoldPrinter);
-   check('F7 hold '+(index+1)+' never connects to QZ or prints',printer?.connections===0&&printer.jobs===0,printer);
+   check('Hold '+(index+1)+' never connects to QZ or prints',printer?.connections===0&&printer.jobs===0,printer);
    const saved=q(`SELECT status_id FROM pos_transaction WHERE transaction_id='${bill.transactionId}'`)[0];
    const snapshots=q(`SELECT items_json FROM pos_held_transaction WHERE session_id='${session.sessionId}' AND status_id='PhHeld'`)
        .filter(row=>JSON.parse(row.items_json).some(item=>item.sourceTransactionId===bill.transactionId));
-   check('F7 holds the exact draft once',saved.status_id==='PtHeld'&&snapshots.length===1);
+   check('Hold saves the exact draft once',saved.status_id==='PtHeld'&&snapshots.length===1);
   }
  }finally{
   await post('Terminal','closeSession',{sessionId:session.sessionId,closingCash:'0',wantJson:'1'});

@@ -15,7 +15,7 @@
 <fieldset <#if !invCanWrite>disabled</#if>>
 <section class="pe-card" id="pe-identity"><header><i class="material-icons">layers</i><div><h2>Product Identity</h2><p>Basic details about this product.</p></div></header><div class="pe-fields">
 <@field key="productName" title="Product Name" required=true/>
-<label>Print Name (on bills)<input name="printName" value="${(product.printName!product.productName!'')?html}" maxlength="255" data-custom="${product.printName?has_content?then('true','false')}"/><small>Defaults to Product Name. Change it for a different name on new POS bills.</small><button type="button" class="pe-text" data-pe-reset-name>Use Product Name</button></label>
+<label>Print Name (on bills)<input name="printName" value="${(product.printName!product.productName!'')?html}" maxlength="255" data-custom="${product.printName?has_content?then('true','false')}"/><small>Defaults to Product Name. Used on printed POS bills and reprints.</small><button type="button" class="pe-text" data-pe-reset-name>Use Product Name</button></label>
 <div id="pe-barcode"><@field key="pseudoId" title="Item Code / Barcode"/></div>
 <@choice key="productTypeEnumId" title="Product Type" values=['PtAsset','PtService','PtDigitalAsset'] labels=['Physical product (stock & count)','Service (no stock)','Digital product']/>
 <label class="pe-wide">Description<textarea name="description" maxlength="500" rows="3" placeholder="Enter product description (optional)...">${(product.description!'')?html}</textarea><small class="pe-count" data-pe-count></small></label>
