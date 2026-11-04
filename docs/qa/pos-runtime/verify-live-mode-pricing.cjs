@@ -1,7 +1,10 @@
+const { randomUUID } = require('node:crypto');
 const path = require('node:path');
 
-module.exports = async ({a, base, check, invoke, q, out}) => {
-  const session = await invoke('open', {terminalId:'POS_QA_A_TERM1', openingCash:'0'});
+module.exports = async ({a, base, check, invoke, post, q, out}) => {
+  const terminalId = 'POS_QA_LIVE_PRICE_'+randomUUID().slice(0,8);
+  await post('PosTerminals','createTerminal',{terminalId,terminalName:'Disposable live pricing',facilityId:'POS_QA_A_FAC',organizationPartyId:'POS_QA_A',stateCode:'33',isActive:'Y'});
+  const session = await invoke('open', {terminalId, openingCash:'0'});
   const page = await a.c.newPage();
   let transactionId;
   const originalPrice = q("SELECT price FROM pos_product_mode_price WHERE product_id='POS_QA_A_P18' AND sales_mode_id='WHOLESALE'")[0]?.price;
