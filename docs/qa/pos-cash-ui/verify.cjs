@@ -4,7 +4,7 @@ const fs=require('node:fs'),path=require('node:path'),{chromium,webkit}=require(
 const root=path.resolve(__dirname,'../../..'),out=process.env.POS_CASH_OUT;
 if(!out)throw Error('Set POS_CASH_OUT to an evidence directory');fs.mkdirSync(out,{recursive:true});
 const source=fs.readFileSync(path.join(root,'component/zenith-erp-app/screen/zenithstatic/js/pos-terminal.js'),'utf8');
-const start=source.indexOf('window.posPayCash = function(form)'),end=source.indexOf('window.posPayDigital = function(form)',start);
+const start=source.indexOf('function submitPosPaymentForm(form)'),end=source.indexOf('window.posPayDigital = function(form)',start);
 if(start<0||end<start)throw Error('Production modal function not found');
 const css=['zenith-theme-v4.css','pos-checkout.css'].map(n=>fs.readFileSync(path.join(root,'component/zenith-erp-app/screen/zenithstatic/css',n),'utf8')).join('\n');
 const panel=source.match(/'<input type="number" class="pos-cash-input"[^\n]+?\/>/);
