@@ -300,26 +300,35 @@
             links.push({ id:id, el:n, section:heading, label:(n.querySelector('.t') || n).textContent.trim(),
                 icon:(n.querySelector('.material-icons') || {}).textContent || 'apps' });
         });
-        var entry = button('', 'zsm-entry', open); entry.disabled = true;
-        entry.appendChild(icon('tune')); entry.appendChild(node('span', 't', 'Manage Sidebar'));
+        var pending, loaded = false;
+        var entry = button('', 'zsm-entry', function () {
+            if (loaded) { open(); return; }
+            load().then(function () { if (entry.isConnected) open(); }).catch(function () {});
+        });
+        entry.appendChild(icon('tune'));
+        var label = node('span', 't', 'Manage Sidebar'); entry.appendChild(label);
         entry.setAttribute('aria-label', 'Manage Sidebar'); entry.title = 'Manage Sidebar';
         side.appendChild(entry); trigger = entry;
-        fetch('/apps/zenith/getSidebarConfiguration', { credentials:'same-origin', headers:{ Accept:'application/json' } })
-            .then(function (response) { if (!response.ok) throw new Error('Unable to load sidebar settings.'); return response.json(); })
-            .then(function (data) {
-                allowed = Array.isArray(data.allowedIds) ? data.allowedIds : [];
-                var raw = {}; try { raw = JSON.parse(data.preference || '{}'); } catch (_e) {}
-                saved = normalize(raw); applySidebar();
-                entry.disabled = false; entry.title = 'Manage Sidebar';
-            }).catch(function () {
-                entry.title = 'Sidebar settings unavailable. Select to retry.';
-                entry.disabled = false;
-                entry.addEventListener('click', function retry(e) {
-                    e.stopImmediatePropagation(); entry.removeEventListener('click', retry);
-                    entry.disabled = true; entry.title = 'Loading sidebar settings';
-                    side.removeChild(entry); links = []; build();
-                }, true);
-            });
+        function load() {
+            if (pending) return pending;
+            entry.setAttribute('aria-busy', 'true');
+            label.textContent = 'Loading sidebar…';
+            pending = fetch('/apps/zenith/getSidebarConfiguration', { credentials:'same-origin', headers:{ Accept:'application/json' }, signal:AbortSignal.timeout(10000) })
+                .then(function (response) { if (!response.ok) throw new Error('Unable to load sidebar settings.'); return response.json(); })
+                .then(function (data) {
+                    if (!Array.isArray(data.allowedIds)) throw new Error('Invalid sidebar settings.');
+                    allowed = data.allowedIds;
+                    var raw = {}; try { raw = JSON.parse(data.preference || '{}'); } catch (_e) {}
+                    saved = normalize(raw); applySidebar();
+                    loaded = true; label.textContent = entry.title = 'Manage Sidebar';
+                }).catch(function (error) {
+                    label.textContent = 'Retry Sidebar Settings';
+                    entry.title = 'Sidebar settings unavailable. Select to retry.';
+                    throw error;
+                }).finally(function () { pending = null; entry.removeAttribute('aria-busy'); });
+            return pending;
+        }
+        load().catch(function () {});
         return true;
     }
     var attempts = 0, timer = setInterval(function () {

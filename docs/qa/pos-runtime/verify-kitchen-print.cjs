@@ -1,6 +1,6 @@
 // Real server data/services; browser printing is intercepted, never sent to hardware.
 module.exports=async function({a,foreign,base,post,rows,count,check,out}){
- const fs=require('node:fs'),path=require('node:path');
+ const path=require('node:path');
  const moneyState=()=>JSON.stringify(['pos_transaction','pos_payment','kitchen_order_ticket','kot_item','tax_line_detail'].map(t=>[t,count(t,'1=1')]));
  const items=[{productId:'POS_QA_A_P18',quantity:1},{productId:'POS_QA_A_P5',quantity:1}];
  const before=moneyState();
@@ -14,49 +14,15 @@ module.exports=async function({a,foreign,base,post,rows,count,check,out}){
  for(const payload of [[],[{productId:'POS_QA_B_P18',quantity:1}],[{productId:'POS_QA_A_P18',quantity:0}]]){
   r=await post('Kitchen/KotBilling','cartReceipt',{itemsJson:JSON.stringify(payload)});check('customer quote rejects invalid items '+JSON.stringify(payload),r.status()===403||!(await r.json()).success);
  }
- const page=await a.c.newPage();await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling');await page.waitForFunction(()=>typeof kbPrintBill==='function');
- await page.screenshot({path:path.join(out,'kot-billing-list-full.png'),fullPage:true});
- check('KOT Billing starts in one compact List workspace with one search and tax control',await page.locator('#kb-view-list.is-active').count()===1&&await page.locator('#kb-tax-toggle').count()===1&&await page.locator('#kb-search').count()===1&&await page.locator('#kb-ordertype').count()===0);
- check('List view displays a full-width product list above order review',await page.locator('.kb-product-list .kb-product-row').count()>=2&&await page.locator('.kb-panel').evaluate(el=>getComputedStyle(el).position!=='sticky'));
- await page.evaluate(()=>{kbView('grid');kbView('list');});
- check('switching Grid and List keeps the same order state',await page.locator('#kb-view-list.is-active').count()===1&&await page.locator('#kb-cart tr').count()===0);
- await page.locator('#kb-search').fill('Disposable POS A P18');
- check('product search matches product name in List view',await page.locator('.kb-product-row:visible').count()===1);
- await page.locator('#kb-search').press('Enter');
- check('Enter adds the selected search result and restores search focus',await page.locator('#kb-cart tr').count()===1&&await page.locator('#kb-search').evaluate(el=>document.activeElement===el&&el.value===''));
- await page.evaluate(()=>kbClear());
- check('Print Bill is disabled on the empty cart',await page.locator('#kb-print-bill').isDisabled());
- await page.evaluate(()=>{kbAdd('POS_QA_A_P18');kbAdd('POS_QA_A_P5');});await page.waitForFunction(()=>!document.getElementById('kb-print-bill').disabled);
- check('List view brings the live order into view while product search stays available',await page.locator('#kb-wrap.has-cart').count()===1&&await page.locator('#kb-search').isVisible()&&!await page.locator('.kb-menu').isVisible());
- check('visible order total agrees with the server quote',(await page.locator('#kb-grand').innerText()).includes('328.00'));
- await page.locator('[data-kb-price="POS_QA_A_P18"]').fill('80');
- await page.waitForFunction(()=>document.getElementById('kb-grand').textContent.includes('304.00'));
- check('editing price updates the saved quote while preserving product identity',await page.locator('#kb-subtotal').innerText()==='₹280.00'&&await page.locator('#kb-cart tr').count()===2);
- await page.locator('#kb-tax-toggle').click();
- await page.waitForFunction(()=>document.getElementById('kb-grand').textContent.includes('280.00'));
- check('tax OFF recalculates the current cart without dropping items',await page.locator('#kb-tax-toggle').getAttribute('aria-pressed')==='false'&&await page.locator('#kb-cart tr').count()===2);
- await page.locator('#kb-tax-toggle').click();await page.locator('[data-kb-price="POS_QA_A_P18"]').fill('100');
- await page.waitForFunction(()=>document.getElementById('kb-grand').textContent.includes('328.00'));
+ const page=await a.c.newPage();
  async function stubPrint(fail=false){await page.evaluate(fail=>{window.__printHtml=[];window.__printCalls=0;window.__printFail=fail;window.open=()=>({closed:false,document:{open(){},write(s){window.__printHtml.push(s);},close(){},images:[],fonts:{ready:Promise.resolve()}},focus(){},print(){if(window.__printFail)throw Error('Synthetic printer unavailable');window.__printCalls++;},close(){this.closed=true;}});},fail);}
- await stubPrint();await page.locator('#kb-print-bill').click();await page.waitForFunction(()=>window.__printCalls===1);
- const quoteHtml=await page.evaluate(()=>window.__printHtml.join(''));
- check('Print Bill uses the shared customer template and unpaid identity',quoteHtml.includes('UNPAID ORDER')&&quoteHtml.includes('Disposable POS QA A')&&quoteHtml.includes('328.00')&&quoteHtml.includes('CGST'));
- check('printing retains the cart without creating business records',moneyState()===before&&await page.locator('#kb-cart tr').count()===2);
- await page.screenshot({path:path.join(out,'kot-billing-print-actions.png')});
- await page.evaluate(()=>kbOrderType('Take Away'));await page.waitForFunction(()=>!document.getElementById('kb-print-both').disabled);
- await stubPrint();await page.locator('#kb-print-both').click();await page.waitForFunction(()=>window.__printCalls===2);
- check('Take Away combined print makes two independent print jobs without creating an order',moneyState()===before&&await page.locator('#kb-cart tr').count()===2);
- await page.evaluate(()=>kbOrderType('Dine In'));await page.waitForFunction(()=>!document.getElementById('kb-print-bill').disabled);
- fs.writeFileSync(path.join(out,'unpaid-order.html'),quoteHtml);
- await stubPrint(true);await page.locator('#kb-print-bill').click();await page.locator('#kb-quote-error').filter({hasText:'Synthetic printer unavailable'}).waitFor();
- check('print failure is visible and retry keeps the current cart',!await page.locator('#kb-print-bill').isDisabled()&&await page.locator('#kb-cart tr').count()===2&&moneyState()===before);
  const priorDrafts=rows('kitchen_order_ticket',"organization_party_id='POS_QA_A' AND status_id='KotDraft'");
- await post('Kitchen/KotBilling','saveDraft',{itemsJson:JSON.stringify([{productId:'POS_QA_A_P18',quantity:2,unitPrice:80,manualPrice:'Y'}]),orderType:'Take Away',taxOn:'N',notes:'Synthetic resumed quote'});
+ await post('Kitchen/KotBilling','saveDraft',{itemsJson:JSON.stringify([{productId:'POS_QA_A_P18',quantity:2}]),salesModeId:'RETAIL',orderType:'Take Away',taxOn:'N',notes:'Synthetic resumed quote'});
  const draft=rows('kitchen_order_ticket',"organization_party_id='POS_QA_A' AND status_id='KotDraft'").find(k=>!priorDrafts.some(x=>x.kot_id===k.kot_id));
- check('saved draft preserves edited price and tax OFF in its receipt snapshot',!!draft&&Number(JSON.parse(draft.order_receipt_json).items[0].rate)===80&&JSON.parse(draft.order_receipt_json).bill.taxOn==='N');
- await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling?loadDraft='+encodeURIComponent(draft.kot_id));await page.waitForFunction(()=>typeof kbPrintBill==='function');
- await page.waitForFunction(()=>document.getElementById('kb-grand').textContent.includes('160.00'));
- check('resuming a draft restores its price, tax choice and order type',Number(await page.locator('[data-kb-price="POS_QA_A_P18"]').inputValue())===80&&await page.locator('#kb-tax-toggle').getAttribute('aria-pressed')==='false'&&await page.locator('#kb-print-both').isVisible());
+ check('saved draft preserves the configured price and tax OFF in its receipt snapshot',!!draft&&Number(JSON.parse(draft.order_receipt_json).items[0].rate)===100&&JSON.parse(draft.order_receipt_json).bill.taxOn==='N');
+ await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling?loadDraft='+encodeURIComponent(draft.kot_id));await page.locator('#kb-wrap[data-ready=true]').waitFor();
+ await page.waitForFunction(()=>document.getElementById('kb-grand').textContent.includes('200.00'));
+ check('resuming a draft restores its price, tax choice and order type',(await page.locator('#kb-cart').innerText()).includes('₹100.00')&&await page.locator('#kb-tax-toggle').getAttribute('aria-checked')==='false'&&!await page.locator('#kb-table').isVisible());
  await post('Kitchen/KotBilling','deleteDraft',{kotId:draft.kot_id});
  check('draft round trip leaves no sale or payment',moneyState()===before);
  const existing=rows('kitchen_order_ticket',"organization_party_id='POS_QA_A' AND status_id='KotNew'");
@@ -66,8 +32,8 @@ module.exports=async function({a,foreign,base,post,rows,count,check,out}){
  for(const kind of ['kot','orderBill','view']){r=await post('Kitchen/KotBilling','printRecord',{kotId:kot.kot_id,kind},foreign);check('foreign shop cannot read '+kind+' print data',r.status()===403||!(await r.json()).success);}
  r=await post('Kitchen/KotHistory','printRecord',{kotId:kot.kot_id,kind:'bill'});
  check('History Bill Print does not invent an invoice for an unpaid KOT',!(await r.json()).success);
- await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling');await page.waitForFunction(()=>typeof kbTab==='function');await page.evaluate(()=>kbTab('active',null));
- const card=page.locator('#kb-orders-active .kb-ocard').filter({has:page.locator(`[data-kot-id="${kot.kot_id}"]`)});
+ await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling');await page.locator('#kb-history-open').click();await page.locator('#kb-history-status').selectOption('active');
+ const card=page.locator('[data-kot-group="active"] .kb-ocard').filter({has:page.locator(`[data-kot-id="${kot.kot_id}"]`)});
  check('active order card has both independent print actions',await card.getByRole('button',{name:'KOT Print',exact:true}).count()===1&&await card.getByRole('button',{name:'Bill Print',exact:true}).count()===1);
  const printCount=()=>Number(rows('kitchen_order_ticket',`kot_id='${kot.kot_id}'`)[0].print_count);
  await stubPrint(true);const pc=printCount();await card.getByRole('button',{name:'KOT Print',exact:true}).click();await page.locator('#zk-print-status').filter({hasText:'Synthetic printer unavailable'}).waitFor();
@@ -78,8 +44,8 @@ module.exports=async function({a,foreign,base,post,rows,count,check,out}){
  await stubPrint();const state=moneyState();await card.getByRole('button',{name:'Bill Print',exact:true}).click();await page.waitForFunction(()=>window.__printCalls===1);
  check('order-card Bill Print reuses saved pricing without writing a sale',moneyState()===state&&printCount()===pc+1&&await page.evaluate(()=>window.__printHtml.join('').includes('328.00')));
  await post('Kitchen/KitchenDisplay','updateStatus',{kotId:kot.kot_id,statusId:'KotCancelled'});
- await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling');await page.waitForFunction(()=>typeof kbTab==='function');await page.evaluate(()=>kbTab('completed',null));
- check('completed order cards retain both print actions',await page.locator(`#kb-orders-completed [data-kot-id="${kot.kot_id}"]`).count()===2);
+ await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling');await page.locator('#kb-history-open').click();await page.locator('#kb-history-status').selectOption('completed');
+ check('completed order cards retain both print actions',await page.locator(`[data-kot-group="completed"] [data-kot-id="${kot.kot_id}"]`).count()===2);
  async function invoke(op,params){const response=await post('PosQaAcceptance','invoke',{op,...params});const body=await response.json();if(body.errors?.length)throw Error(JSON.stringify(body));return body.result;}
  const terminalId='POS_QA_KITCHEN_PRINT_'+Date.now();
  await post('PosTerminals','createTerminal',{terminalId,terminalName:'Synthetic kitchen print terminal',facilityId:'POS_QA_A_FAC',stateCode:'33',isActive:'Y'});

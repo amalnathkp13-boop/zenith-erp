@@ -18,11 +18,31 @@ module.exports=async function({a,foreign,base,post,rows,count,check}) {
  const payload={itemsJson:JSON.stringify([{productId:'POS_QA_A_P18',quantity:1}]),tableId:table.table_id,tableNumber:label,orderType:'Dine In'};
  await post('Kitchen/KotBilling','saveDraft',payload);
  check('saving a draft does not occupy a table',rows('restaurant_table',`table_id='${table.table_id}'`)[0].status_id==='TblAvailable');
+ for(const statusId of ['TblReserved','TblCleaning']){
+  await post('Kitchen/Tables','updateTableStatus',{tableId:table.table_id,statusId});
+  const updated=rows('restaurant_table',"table_id='"+table.table_id+"'")[0];
+  const orderCount=count('kitchen_order_ticket','1=1');
+  await post('Kitchen/KotBilling','saveDraft',payload);
+  await post('Kitchen/KotBilling','createKot',payload);
+  check(statusId+' blocks both drafts and kitchen orders',updated.status_id===statusId&&count('kitchen_order_ticket','1=1')===orderCount);
+ }
+ await post('Kitchen/Tables','updateTableStatus',{tableId:table.table_id,statusId:'TblAvailable'});
  const before=count('kitchen_order_ticket','1=1');
  await post('Kitchen/KotBilling','createKot',payload,foreign);
  check('another shop cannot submit an order for this table',count('kitchen_order_ticket','1=1')===before);
  await post('Kitchen/KotBilling','createKot',payload);
  check('sending an order marks its selected table occupied',rows('restaurant_table',`table_id='${table.table_id}'`)[0].status_id==='TblOccupied');
+ await page.goto(base+'/apps/zenith/pos/Kitchen/Tables');
+ await page.waitForFunction(()=>typeof tmOpenBilling==='function');
+ await page.evaluate(id=>tmSelect(id),table.table_id);
+ await Promise.all([page.waitForNavigation(),page.getByRole('button',{name:'Open Billing',exact:true}).click()]);
+ await page.locator('#kb-wrap[data-ready=true]').waitFor();
+ const selectedTable=page.locator('#kb-table option:checked');
+ check('Open Billing retains the occupied table for the next order',await selectedTable.getAttribute('value')===table.table_id&&await selectedTable.isEnabled());
+ const draft=await post('Kitchen/KotBilling','saveDraft',{...payload,wantJson:'Y'});
+ const savedDraft=await draft.json();
+ check('a draft can be saved for an occupied table',savedDraft.success&&!!savedDraft.kotId,savedDraft);
+ await post('Kitchen/KotBilling','deleteDraft',{kotId:savedDraft.kotId});
  await post('Kitchen/Tables','closeTable',{tableId:table.table_id});
  check('closing a table with active kitchen orders is rejected',rows('restaurant_table',`table_id='${table.table_id}'`)[0].status_id==='TblOccupied');
  await post('Kitchen/Tables','deleteTable',{tableId:table.table_id});
@@ -30,6 +50,7 @@ module.exports=async function({a,foreign,base,post,rows,count,check}) {
  const kot=rows('kitchen_order_ticket',`table_number='${label}' AND status_id='KotNew'`)[0];
  await post('Kitchen/KotBilling','createKot',payload);
  const second=rows('kitchen_order_ticket',`table_number='${label}' AND status_id='KotNew'`).find(k=>k.kot_id!==kot.kot_id);
+ check('another kitchen order can be sent to an occupied table',!!second);
  await post('Kitchen/KitchenDisplay','updateStatus',{kotId:kot.kot_id,statusId:'KotCancelled'});
  check('cancelling one order keeps a table occupied while another is active',rows('restaurant_table',`table_id='${table.table_id}'`)[0].status_id==='TblOccupied');
  await post('Kitchen/KitchenDisplay','updateStatus',{kotId:second.kot_id,statusId:'KotCancelled'});

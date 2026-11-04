@@ -34,10 +34,12 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  const a=await account('pos.qa');const foreign=await account('pos.b.qa');const p=a.p;p.on('pageerror',e=>report.consoleErrors.push({url:p.url(),message:e.message,stack:e.stack}));
  async function post(screen,transition,params={},actor=a,csrf=true,shell='apps'){return actor.c.request.post(`${base}/${shell}/zenith/pos/${screen}/${transition}`,{form:{...(csrf?{moquiSessionToken:actor.t}:{}),...params},maxRedirects:0});}
  async function invoke(op,params={},reject=false,actor=a){const r=await post('PosQaAcceptance','invoke',{op,...params},actor);let b;try{b=await r.json()}catch{b={errors:[(await r.text()).slice(0,160)]}}check(op+(reject?' rejected':' succeeded'),reject?(r.status()===403||b.errors?.length>0):r.status()===200&&!b.errors?.length,{status:r.status(),...b});return b.result||{};}
+ if(process.env.POS_QA_FOCUS==='kot-compact'){await require('./verify-kot-compact.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='checkout-reference'){await require('./verify-checkout-reference.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='offline-workspace'){await require('./verify-offline-workspace.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='receipt-designs'){await require('./verify-receipt-designs.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='hold-print'){await require('./verify-hold-print.cjs')({a,base,check,q,invoke,post});await browser.close();browser=null;return;}
+ if(process.env.POS_QA_FOCUS==='billing-display'){await require('./verify-billing-display.cjs')({a,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='normal-layout'){await require('./verify-normal-layout.cjs')({a,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='credit-terms'){await require('./verify-credit-terms.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='confirmation'){await require('./verify-checkout-confirmation.cjs')({a,base,check,q,invoke,out});await browser.close();browser=null;return;}
@@ -214,6 +216,11 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  const stock=await cart(s);const sl=await item(stock,{productId:'POS_QA_A_STOCK',quantity:'2'});await invoke('pay',{transactionId:stock.transactionId,paymentMethod:'Card',amount:'236'});await invoke('complete',{transactionId:stock.transactionId});await invoke('sync',{transactionId:stock.transactionId});check('tracked stock depleted exactly once at invoice sync',Number(q("SELECT sum(quantity_on_hand_total) AS qty FROM asset WHERE product_id='POS_QA_A_STOCK' AND owner_party_id='POS_QA_A'")[0].qty)===98);let sr=await post('Terminal','ajaxCart',{action:'amendBill',editTxId:stock.transactionId,editType:'QTY_CHANGE',editItemSeqId:sl.itemSeqId,newQty:'3',editReason:'Synthetic stock delta'});check('amendment applies only tracked-stock delta',sr.status()===200&&(await sr.json()).success&&Number(q("SELECT sum(quantity_on_hand_total) AS qty FROM asset WHERE product_id='POS_QA_A_STOCK' AND owner_party_id='POS_QA_A'")[0].qty)===97);
  // A fully discounted positive-price line may complete without creating a bogus zero payment.
  const free=await cart(s);await item(free,{productId:'POS_QA_A_P5',discountPercent:'100'});await invoke('approveFree',{transactionId:free.transactionId,reason:'Synthetic manager-approved free bill'});await invoke('pay',{transactionId:free.transactionId,paymentMethod:'Cash',amount:'0'});await invoke('complete',{transactionId:free.transactionId});check('free bill completes with a line and no payment',tx(free.transactionId).status_id==='PtCompleted'&&count('pos_payment',`transaction_id='${free.transactionId}'`)===0);
+ const freeBillDashboard=await a.c.newPage();
+ await freeBillDashboard.goto(base+'/apps/zenith/pos/Dashboard');
+ const dashboardWithFreeBill=await freeBillDashboard.locator('.pos-dash-payment-list').count();
+ await freeBillDashboard.close();
+ check('POS Dashboard renders its payment breakdown with a completed bill that has no tender',dashboardWithFreeBill===1);
  const customerState=id=>JSON.stringify({header:tx(id),items:rows('pos_transaction_item',`transaction_id='${id}'`),tax:rows('tax_line_detail',`reference_id='${id}'`),tenders:rows('pos_payment',`transaction_id='${id}'`)});
  const blockedDestination=await cart(s);await item(blockedDestination,{unitPrice:'80',discountPercent:'10'});
  const blockedBefore=customerState(blockedDestination.transactionId);
@@ -428,7 +435,7 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  const cashGross=Number(q("SELECT sum(p.amount) AS amount FROM pos_payment p JOIN pos_transaction t ON p.transaction_id=t.transaction_id WHERE t.organization_party_id='POS_QA_A' AND t.status_id='PtCompleted' AND p.payment_method='Cash'")[0].amount);
  const change=Number(q("SELECT sum(t.change_amount) AS amount FROM pos_transaction t WHERE t.organization_party_id='POS_QA_A' AND t.status_id='PtCompleted' AND EXISTS (SELECT 1 FROM pos_payment p WHERE p.transaction_id=t.transaction_id AND p.payment_method='Cash')")[0].amount);
  const cashBills=Number(q("SELECT count(DISTINCT p.transaction_id) AS n FROM pos_payment p JOIN pos_transaction t ON p.transaction_id=t.transaction_id WHERE t.organization_party_id='POS_QA_A' AND t.status_id='PtCompleted' AND p.payment_method='Cash'")[0].n);
- for(const shell of ['apps','qapps']){const r=await a.c.request.get(`${base}/${shell}/zenith/pos/Reports/PaymentWise/exportCsv`);const csv=await r.text();const cashRow=csv.split(/\r?\n/).find(x=>x.startsWith('Cash,'))?.split(',');check(shell+' payment CSV reconciles retained cash and distinct bills',r.status()===200&&Number(cashRow?.[1])===cashGross-change&&Number(cashRow?.[2])===cashBills,{cashGross,change,cashBills,cashRow});}
+ for(const shell of ['apps','qapps']){const r=await a.c.request.get(`${base}/${shell}/zenith/pos/Reports/PaymentWise/exportCsv?fromDate=2000-01-01&thruDate=2099-12-31`);const csv=await r.text();const cashRow=csv.split(/\r?\n/).find(x=>x.startsWith('Cash,'))?.split(',');check(shell+' payment CSV reconciles retained cash and distinct bills',r.status()===200&&Number(cashRow?.[1])===cashGross-change&&Number(cashRow?.[2])===cashBills,{cashGross,change,cashBills,cashRow});}
  const rp=await a.c.request.get(base+'/fop/apps/zenith/pos/Reports/PaymentWisePdf');check('net payment report PDF renders',rp.status()===200&&(rp.headers()['content-type']||'').includes('pdf'));fs.writeFileSync(path.join(out,'payment-wise.pdf'),await rp.body());
  const beforeExpense=count('pos_expense',"organization_party_id='POS_QA_A'");for(const amount of ['','0','-1','abc']){await post('Expenses/ExpenseEntry','createExpense',{amount,description:'Rejected synthetic expense'});check('invalid expense writes no row: '+JSON.stringify(amount),count('pos_expense',"organization_party_id='POS_QA_A'")===beforeExpense);}
  for(const bad of [{quantity:'0',unitCost:'1'},{quantity:'1',unitCost:'-1'},{quantity:'abc',unitCost:'1'}]){const r=await post('Wastage/WastageEntry','recordExpiredWastage',{productId:'POS_QA_A_STOCK',...bad});check('expired stock rejects invalid quantity/cost',r.status()===200&&!(await r.json()).success);}
@@ -537,6 +544,7 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  if(process.env.POS_QA_UI_ONLY!=='true'){
   await require('./verify-kitchen-tables.cjs')({a,foreign,base,post,rows,count,check});
   await require('./verify-kitchen-print.cjs')({a,foreign,base,post,rows,count,check,out});
+  await require('./verify-kot-compact.cjs')({a,foreign,base,check,q,invoke,post,out});
  }
  cp.execFileSync(process.execPath,[path.join(__dirname,'check-kitchen-navigation.cjs')],{stdio:'inherit'});
  await browser.close();browser=null;

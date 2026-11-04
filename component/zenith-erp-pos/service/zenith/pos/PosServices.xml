@@ -1216,6 +1216,21 @@
         </actions>
     </service>
 
+    <!-- UI labels are separate from the receipt snapshot stored on POS transaction items. -->
+    <service verb="get" noun="PosDisplayNames" authenticate="true" transaction="ignore">
+        <in-parameters><parameter name="productIds" type="List" required="true"/></in-parameters>
+        <out-parameters><parameter name="names" type="Map"/></out-parameters>
+        <actions><script><![CDATA[
+            names = [:]
+            def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
+            def ids = productIds.findAll { it }.unique()
+            if (!org || org == '_NA_' || !ids) return
+            ec.entity.find('mantle.product.Product').condition('ownerPartyId',org)
+                .condition('productId','in',ids).selectFields(['productId','productName'])
+                .disableAuthz().list().each { names[it.productId] = it.productName }
+        ]]></script></actions>
+    </service>
+
     <!-- ========== Hold/Recall Transaction ========== -->
 
     <service verb="hold" noun="Transaction">
@@ -1227,7 +1242,7 @@
         <actions>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_posAccess" in-map="[transactionId:transactionId]"/>
             <if condition="!_posAccess.allowed"><return/></if>
-            <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="txn"/>
+            <set field="txn" from="ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',transactionId).forUpdate(true).one()"/>
             <if condition="txn.statusId != 'PtCreated'">
                 <return error="true" message="Only open transactions can be held"/></if>
 

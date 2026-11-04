@@ -776,6 +776,7 @@ window._posOffline = (function () {
                     return {
                         productId: i.pid,
                         name: i.name,
+                        printName: i.printName,
                         qty: Number(i.qty),
                         price: Number(i.price),
                         mode: i.mode || draft.mode,
@@ -1408,7 +1409,7 @@ window._posOffline = (function () {
         sale.items.forEach(function (i) {
             html +=
                 '<tr><td>' +
-                esc((catalog[i.productId] || {}).printName || i.name) +
+                esc(i.printName || (catalog[i.productId] || {}).printName || i.name) +
                 '</td><td>' +
                 esc(i.qty) +
                 ' ' +
@@ -4567,7 +4568,7 @@ window.posToggleFullscreen = function() {
                 + cartText(bill && bill.dataset.sessionLastAmount || '0') + '</div>';
         }
 
-        function resetCompletedCart() {
+        function resetCompletedCart(keepCategory) {
             // Reset the live model and any scheduled optimistic paint before the next tap.
             // The receipt keeps its own completed-bill payload.
             renderCart({success:true, transactionId:'', items:[], sub:0, tax:0, disc:0,
@@ -4575,10 +4576,13 @@ window.posToggleFullscreen = function() {
             // Checkout leaves an empty cart. A refresh must not reopen the completed
             // transaction still present in the original cashier URL.
             var current = new URL(window.location.href);
-            if (current.searchParams.has('transactionId')) {
-                current.searchParams.delete('transactionId');
-                history.replaceState(history.state, '', current.pathname + current.search + current.hash);
+            current.searchParams.delete('transactionId');
+            if (!keepCategory) {
+                current.searchParams.delete('catId');
+                current.searchParams.delete('searchTerm');
+                resetProductCategory();
             }
+            if (current.href !== location.href) history.replaceState(history.state, '', current.pathname + current.search + current.hash);
         }
 
         function syncIssuedBillHeader(doc) {
@@ -5130,22 +5134,31 @@ window.posToggleFullscreen = function() {
             var g = document.querySelector('.pos-product-grid');
             if (g && !CATID && !new URL(location.href).searchParams.get('searchTerm')) __allGridCache = g.innerHTML;
         } catch(e) {} })();
+        function selectProductCategory(id) {
+            CATID = id;
+            var root = document.getElementById('pos-terminal-root');
+            if (root) root.dataset.checkoutCategory = id;
+            document.querySelectorAll('.pos-cat-strip a').forEach(function (link) {
+                var selected = (new URL(link.href).searchParams.get('catId') || '') === id;
+                link.classList.toggle('is-selected', selected);
+                link.style.background = selected ? '#7C3AED' : '#455a64';
+            });
+            var search = document.getElementById('cartInlineSearch');
+            if (search && search.value) {
+                search.value = '';
+                search.dispatchEvent(new Event('input'));
+            }
+            return loadCatalog({catId:id, searchTerm:''}, id ? null : __allGridCache);
+        }
+        function resetProductCategory() {
+            var search = document.getElementById('cartInlineSearch');
+            var current = new URL(location.href);
+            if (CATID || (search && search.value) || current.searchParams.has('searchTerm')) selectProductCategory('');
+        }
         document.querySelectorAll('.pos-cat-strip a').forEach(function(link) {
             link.addEventListener('click', function(e) {
                 e.preventDefault();
-                var linkUrl = new URL(this.href);
-                var newCatId = linkUrl.searchParams.get('catId') || '';
-                CATID = newCatId;
-                document.querySelectorAll('.pos-cat-strip a').forEach(function(a) { a.style.background = '#455a64'; });
-                this.style.background = '#7C3AED';
-                var grid = document.querySelector('.pos-product-grid');
-                var searchInput = document.getElementById('cartInlineSearch');
-                if (searchInput) searchInput.value = '';
-                if (newCatId === '' && __allGridCache && grid) {
-                    loadCatalog({catId: '', searchTerm: ''}, __allGridCache);
-                    return;
-                }
-                loadCatalog({catId: newCatId, searchTerm: ''});
+                selectProductCategory(new URL(link.href).searchParams.get('catId') || '');
             });
         });
 
@@ -5415,19 +5428,33 @@ window.posToggleFullscreen = function() {
         function syncHeldWrap(doc) {
             try { var s = doc.querySelector('#pos-held-wrap'); var d = document.getElementById('pos-held-wrap'); if (s && d) d.innerHTML = s.innerHTML; } catch (e) {}
         }
-        /* Hold and recall use native POST/redirect to restore the complete bill context.
-           Void continues through the delegated handler. */
+        // Hold in place: a native navigation exits browser fullscreen.
         document.addEventListener('submit', function(e) {
+            if (!af.isConnected) return;
             var form = e.target.closest ? e.target.closest('form') : null;
             if (!form) return;
             var act = form.getAttribute('action') || '';
             if (act.indexOf('holdSale') !== -1) {
                 e.preventDefault(); e.stopImmediatePropagation();
+                if (cartClearing || modeSwitching || !TX) return;
+                cartClearing = true;
                 OPT.whenIdle().then(function() {
-                    var id = form.querySelector('[name=transactionId]'); if (id) id.value = TX;
-                    if (!form.isConnected) { form.hidden = true; document.body.appendChild(form); }
-                    HTMLFormElement.prototype.submit.call(form);
-                }).catch(function(error) { showToast(error.message, '#c62828'); });
+                    var reason = form.querySelector('[name=holdReason]');
+                    return post({action:'holdSale', transactionId:TX, holdReason:reason ? reason.value : ''});
+                }).then(function(data) {
+                    if (!data || !data.success || !data.heldId) throw new Error(data && data.error || 'Could not hold this bill.');
+                    resetCompletedCart(true);
+                    showToast('Bill held', '#b45309');
+                    // Fetch the existing server-rendered picker; no document navigation.
+                    return fetchScreen({transactionId:''}).then(function(doc) {
+                        if (!doc.getElementById('pos-held-wrap')) throw new Error('Held bills unavailable.');
+                        syncHeldWrap(doc);
+                        if (lastCartData) renderCart(lastCartData);
+                    }).catch(function() {
+                        showToast('Bill held. Reload to refresh the Held Bills list.', '#b45309');
+                    });
+                }).catch(function(error) { showToast(error.message, '#c62828'); })
+                  .finally(function() { cartClearing = false; });
                 return;
             }
             if (act.indexOf('recallSale') !== -1) {

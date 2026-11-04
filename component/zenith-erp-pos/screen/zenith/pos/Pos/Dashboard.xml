@@ -218,10 +218,31 @@
                 .condition("transactionId", "in", txnIds).list() : []
 
             def pmColorMap = [UPI:'#7C3AED', Card:'#2563EB', Cash:'#F59E0B', Wallet:'#60A5FA', BankTransfer:'#60A5FA', Cheque:'#9CA3AF', Other:'#9CA3AF']
+            // This chart reports payment applied to sales, not gross drawer receipts.
+            // Amendments keep original tenders for audit; their excess must not inflate the chart.
+            def paymentsByBill = allPayments.groupBy { it.transactionId }
             def paymentTotals = new LinkedHashMap()
-            allPayments.each { p ->
-                def method = p.paymentMethod ?: 'Other'
-                paymentTotals[method] = (paymentTotals[method] ?: BigDecimal.ZERO) + ((p.amount ?: 0) as BigDecimal)
+            completedTxns.each { bill ->
+                def byMethod = new LinkedHashMap()
+                (paymentsByBill[bill.transactionId] ?: []).each { p ->
+                    def method = p.paymentMethod ?: 'Other'
+                    byMethod[method] = (byMethod[method] ?: BigDecimal.ZERO) + ((p.amount ?: 0) as BigDecimal)
+                }
+                if (byMethod.Cash != null)
+                    byMethod.Cash = (byMethod.Cash - ((bill.changeAmount ?: 0) as BigDecimal)).max(BigDecimal.ZERO)
+                def net = byMethod.values().sum(BigDecimal.ZERO)
+                def applied = net.min(((bill.payableAmount ?: 0) as BigDecimal).max(BigDecimal.ZERO))
+                if (applied <= 0) return
+                def left = applied
+                def methods = byMethod.findAll { k,v -> v > 0 }.entrySet().toList()
+                methods.eachWithIndex { tender, index ->
+                    // The revised bill does not record a refund method. Allocate any
+                    // remaining excess proportionally without altering tender records.
+                    def amount = applied == net ? tender.value : (index == methods.size() - 1 ? left :
+                        (tender.value * applied).divide(net, 2, java.math.RoundingMode.DOWN))
+                    left -= amount
+                    if (amount > 0) paymentTotals[tender.key] = (paymentTotals[tender.key] ?: BigDecimal.ZERO) + amount
+                }
             }
             paymentBars = []
             def totalPaymentAmt = paymentTotals.values().sum() ?: BigDecimal.ONE
@@ -274,10 +295,11 @@
             if (txnIds) {
                 def itemList = ec.entity.find("zenith.erp.pos.PosTransactionItem")
                     .condition("transactionId", "in", txnIds).list()
+                def names = (itemList ? ec.service.sync().name('zenith.pos.PosServices.get#PosDisplayNames').parameter('productIds',itemList*.productId).call().names : [:]) ?: [:]
                 def productMap = [:]
                 itemList.each { item ->
-                    def pid = item.productName ?: item.productId
-                    if (!productMap[pid]) productMap[pid] = [name: pid, orders: new java.util.HashSet(), total: BigDecimal.ZERO]
+                    def pid = item.productId ?: 'Unknown item'
+                    if (!productMap[pid]) productMap[pid] = [name: names[pid] ?: pid, orders: new java.util.HashSet(), total: BigDecimal.ZERO]
                     productMap[pid].orders.add(item.transactionId)
                     productMap[pid].total = productMap[pid].total + ((item.lineTotal ?: 0) as BigDecimal)
                 }
@@ -797,7 +819,7 @@
     </section>
     <#if showPayments>
     <section class="pos-dash-panel pos-dash-payments">
-      <header><h2>Payment Breakdown</h2></header>
+      <header><h2 title="Payment applied to current bill totals, excluding change and overpayments">Payment Breakdown</h2></header>
       <div class="pos-dash-payment-main">
         <div class="pos-dash-donut">${paymentDonutSvg}<div><strong>&#8377;${zinr.inr(ec.l10n.format(totalSales, '#,##0'))}</strong><small>Total</small></div></div>
         <div class="pos-dash-payment-list"><#list paymentBars as pb><div><i style="background:${pb.color}"></i><span>${pb.method?html}</span><strong>&#8377;${pb.amount?html}</strong><small>${pb.pct}%</small></div></#list><#if !paymentBars?has_content><p class="pos-dash-empty">No payments in this date range</p></#if></div>

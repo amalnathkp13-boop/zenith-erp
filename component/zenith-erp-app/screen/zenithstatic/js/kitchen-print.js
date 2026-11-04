@@ -39,7 +39,14 @@
     document.querySelectorAll('[data-kitchen-bulk]').forEach(e=>e.disabled=busy||!(e.dataset.kitchenBulk==='bill'?eligible.length:selected.length));
     return (kind==='bill'?eligible:selected).map(e=>e.dataset.kitchenSelect);
   }
-  function status(message){let el=document.getElementById('zk-print-status');if(!el){el=document.createElement('p');el.id='zk-print-status';el.setAttribute('role','status');(document.querySelector('#kb-wrap')||document.querySelector('#kitchen-page-frame')).prepend(el);}el.textContent=message;}
+  function status(message){
+    const host=document.querySelector('#kb-history[open]')||document.querySelector('#kb-wrap')||document.querySelector('#kitchen-page-frame');
+    if(!host)return;
+    let el=document.getElementById('zk-print-status');
+    if(!el){el=document.createElement('p');el.id='zk-print-status';el.setAttribute('role','status');}
+    if(el.parentElement!==host)host.prepend(el);
+    el.textContent=message;
+  }
   async function run(kind,ids,button,skipped=0){
     if(busy||!ids.length)return;
     const origin=screen();let w,accepted=0,errors=[];

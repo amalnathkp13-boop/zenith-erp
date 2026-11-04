@@ -3,7 +3,7 @@
     <!-- Read-only quote: uses canonical product prices and the installed tax dispatcher.
          An unsent order has no legal invoice number, payment or sale to reprint. -->
     <service verb="get" noun="CartReceipt">
-        <in-parameters><parameter name="itemsJson" required="true" allow-html="any"/><parameter name="tableId"/><parameter name="orderType"/><parameter name="taxOn" default-value="Y"/><parameter name="notes" allow-html="any"/></in-parameters>
+        <in-parameters><parameter name="itemsJson" required="true" allow-html="any"/><parameter name="tableId"/><parameter name="orderType"/><parameter name="taxOn" default-value="Y"/><parameter name="salesModeId"/><parameter name="waiterId"/><parameter name="notes" allow-html="any"/></in-parameters>
         <out-parameters><parameter name="receipt" type="Map"/></out-parameters>
         <actions>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="scope"/>
@@ -14,6 +14,13 @@
                 def input
                 try { input=new groovy.json.JsonSlurper().parseText(itemsJson) } catch(Exception ignored) { input=null }
                 if (!(input instanceof List) || !input || input.size()>100) { ec.message.addError('Add 1 to 100 valid items before printing a bill.'); return }
+                def mode=salesModeId ? ec.entity.find('zenith.erp.pos.PosSalesMode').condition('salesModeId',salesModeId).one() : null
+                if(salesModeId && (!mode || mode.isActive!='Y' || (mode.organizationPartyId && mode.organizationPartyId!=scope.organizationPartyId))) {
+                    ec.message.addError('Choose an active sales mode.'); return
+                }
+                def waiter=waiterId ? ec.entity.find('zenith.erp.pos.Waiter').condition('waiterId',waiterId)
+                    .condition('organizationPartyId',scope.organizationPartyId).condition('isActive','Y').one() : null
+                if(waiterId && !waiter) { ec.message.addError('Choose an active waiter.'); return }
                 def products=[], taxInputs=[]
                 for (def item : input) {
                     def p=item instanceof Map && item.productId ? ec.entity.find('mantle.product.Product').condition('productId',item.productId).one() : null
@@ -21,12 +28,22 @@
                     try { qty=new BigDecimal(String.valueOf(item instanceof Map ? item.quantity : null)) } catch(Exception ignored) { }
                     if (!p || p.ownerPartyId!=scope.organizationPartyId || p.productTypeEnumId!='PtAsset' || qty==null || qty<=0 || qty>1000000) { ec.message.addError('The order contains an invalid product or quantity.'); return }
                     def price=(p.mrpAmount ?: 0) as BigDecimal
-                    if(item.manualPrice=='Y') {
+                    def mp=mode ? ec.service.sync().name('zenith.pos.PosServices.resolve#PosModePrice')
+                        .parameters([productId:p.productId,salesModeId:salesModeId,product:p]).call() : [:]
+                    if(mp.blocked) { ec.message.addError(mp.blockReason); return }
+                    if(mp.isFixed) price=mp.unitPrice
+                    else if(mode) {
+                        def priced=ec.service.sync().name('zenith.pricing.PricingServices.calculate#Price')
+                            .parameters([productId:p.productId,quantity:qty,organizationPartyId:scope.organizationPartyId,salesChannelEnumId:'ScPos']).call()
+                        if(priced?.unitPrice>0) price=priced.unitPrice
+                    }
+                    if(!mode && item.manualPrice=='Y') {
                         try { price=new BigDecimal(String.valueOf(item.unitPrice)) } catch(Exception ignored) { price=null }
                     }
                     if(price==null || price<0 || price>10000000 || price.scale()>2) { ec.message.addError('Enter a valid item price before printing.'); return }
-                    products.add([product:p,qty:qty,price:price])
-                    taxInputs.add([productId:p.productId,productTaxCode:p.productTaxCode,taxCategoryId:p.taxCategoryId,quantity:qty,unitAmount:price,discountAmount:BigDecimal.ZERO,isTaxInclusive:'N'])
+                    def discount=(price*qty*((mp.discountPercent ?: 0) as BigDecimal)/100).setScale(2,java.math.RoundingMode.HALF_UP)
+                    products.add([product:p,qty:qty,price:price,discount:discount])
+                    taxInputs.add([productId:p.productId,productTaxCode:p.productTaxCode,taxCategoryId:p.taxCategoryId,quantity:qty,unitAmount:price,discountAmount:discount,isTaxInclusive:mode?.isTaxInclusive ?: 'N'])
                 }
                 def templates=ec.entity.find('zenith.erp.pos.PosReceiptTemplate').condition('organizationPartyId',scope.organizationPartyId)
                     .condition('isActive','Y').orderBy('-isDefault,templateId').list()
@@ -47,8 +64,8 @@
                 products.eachWithIndex { row,i ->
                     def ti=tax?.taxedItems?.getAt(i)
                     (ti?.taxBreakdowns ?: []).each { b -> sumTax[b.taxName]=(sumTax[b.taxName] ?: 0)+(b.taxAmount ?: 0) }
-                    lines.add([productId:row.product.productId,name:row.product.productName ?: row.product.productId,qty:row.qty,rate:row.price,
-                        total:(ti?.taxableAmount ?: row.price * row.qty),tax:(ti?.totalTaxAmount ?: 0),discount:0,
+                    lines.add([productId:row.product.productId,name:row.product.productName ?: row.product.productId,code:row.product.pseudoId ?: row.product.productId,qty:row.qty,rate:row.price,
+                        total:(ti?.taxableAmount != null ? ti.taxableAmount : row.price*row.qty-row.discount),tax:(ti?.totalTaxAmount ?: 0),discount:row.discount,
                         uom:['OTH_ea':'Nos','WT_kg':'kg','WT_g':'g','VLIQ_L':'L','VLIQ_ml':'ml'][row.product.amountUomId] ?: ''])
                 }
                 def party=ec.entity.find('mantle.party.Organization').condition('partyId',scope.organizationPartyId).one()
@@ -56,7 +73,7 @@
                 def options=ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#ReceiptOptions')
                     .parameters([storedJson:tpl?.receiptOptionsJson,receiptDesign:'normal']).call().options
                 // Match recalculate#TransactionTotals: round the customer payable once, after GST.
-                def subtotal=taxOn=='Y' ? (tax.totalTaxableAmount ?: 0) as BigDecimal : (products.sum { it.price * it.qty } ?: BigDecimal.ZERO) as BigDecimal
+                def subtotal=taxOn=='Y' ? (tax.totalTaxableAmount ?: 0) as BigDecimal : (products.sum { it.price*it.qty-it.discount } ?: BigDecimal.ZERO) as BigDecimal
                 def grand=taxOn=='Y' ? (tax.totalAmount ?: 0) as BigDecimal : subtotal
                 def payable=grand.setScale(0,java.math.RoundingMode.HALF_UP)
                 receipt=[success:true,preview:true,store:[name:tpl?.companyName ?: party?.organizationName ?: 'Store',
@@ -67,7 +84,7 @@
                     showDiscount:tpl?.showDiscount ?: 'Y',showCustomerInfo:tpl?.showCustomerInfo ?: 'Y',showPaymentDetails:'N',showItemTax:tpl?.showItemTax ?: 'N'],
                     options:options,bill:[number:'UNPAID ORDER',date:ec.l10n.format(ec.user.nowTimestamp,'dd/MM/yyyy hh:mm a'),
                     cashier:person ? [person.firstName,person.lastName].findAll{it}.join(' ') : '',customer:'Walk-In Customer',
-                    table:selected.table?.tableNumber ?: '',orderType:orderType ?: 'Dine In',taxOn:taxOn],items:lines,
+                    table:selected.table?.tableNumber ?: '',orderType:orderType ?: 'Dine In',taxOn:taxOn,salesModeId:salesModeId,waiterId:waiterId,waiter:waiter?.waiterName],items:lines,
                     summary:[subtotal:subtotal,tax:(tax?.totalTaxAmount ?: 0),discount:0,roundOff:payable-grand,total:payable,
                         totalQty:products.sum { it.qty },itemCount:lines.size(),taxBreakdown:sumTax.collect { n,v -> [name:n,amount:v] }],
                     payments:[],saving:0,change:0,notes:notes ?: '']
@@ -90,7 +107,14 @@
                     def tx=k.transactionId ? ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',k.transactionId)
                         .condition('organizationPartyId',scope.organizationPartyId).condition('statusId','PtCompleted').one() : null
                     if(tx && tx.transactionNumber) record=ec.service.sync().name('zenith.pos.PosServices.get#PosReceiptData').parameter('transactionId',tx.transactionId).call().receipt
-                    else if(kind=='orderBill' && k.orderReceiptJson) record=new groovy.json.JsonSlurper().parseText(k.orderReceiptJson)
+                    else if(kind=='orderBill' && k.orderReceiptJson) {
+                        record=new groovy.json.JsonSlurper().parseText(k.orderReceiptJson)
+                        for(def item in record.items ?: []) {
+                            def product=item.productId ? ec.entity.find('mantle.product.Product').condition('productId',item.productId)
+                                .condition('ownerPartyId',scope.organizationPartyId).one() : null
+                            item.name=product?.printName ?: item.name
+                        }
+                    }
                     else { ec.message.addError('No finalized customer bill is linked to this KOT. Older orders without a saved pricing snapshot cannot print an unpaid bill.'); return }
                 } else {
                     record=[number:k.kotNumber ?: k.kotId,date:ec.l10n.format(k.kotDate,'dd/MM/yyyy hh:mm a'),table:k.tableNumber ?: '-',

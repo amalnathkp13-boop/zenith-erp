@@ -19,9 +19,11 @@
                 def txnIds = tf.list().collect { it.transactionId }
                 def pm = new LinkedHashMap()
                 if (txnIds) {
-                    ec.entity.find("zenith.erp.pos.PosTransactionItem").condition("transactionId","in",txnIds).list().each { it2 ->
-                        def key = it2.productId ?: it2.productName ?: 'Unknown'
-                        if (!pm[key]) pm[key] = [pid:(it2.productId ?: ''), pname:(it2.productName ?: it2.productId ?: 'Unknown'), qty:0.0G, amt:0.0G, bills:0]
+                    def items = ec.entity.find("zenith.erp.pos.PosTransactionItem").condition("transactionId","in",txnIds).list()
+                    def names = (items ? ec.service.sync().name('zenith.pos.PosServices.get#PosDisplayNames').parameter('productIds',items*.productId).call().names : [:]) ?: [:]
+                    items.each { it2 ->
+                        def key = it2.productId ?: 'Unknown'
+                        if (!pm[key]) pm[key] = [pid:(it2.productId ?: ''), pname:(names[it2.productId] ?: it2.productId ?: 'Unknown'), qty:0.0G, amt:0.0G, bills:0]
                         pm[key].qty += (it2.quantity ?: 0) as BigDecimal
                         pm[key].amt += (it2.lineTotal ?: 0) as BigDecimal
                         pm[key].bills++
@@ -75,11 +77,12 @@
             totalAmount = BigDecimal.ZERO
             if (txnIds) {
                 def items = ec.entity.find("zenith.erp.pos.PosTransactionItem").condition("transactionId","in",txnIds).list()
+                def names = (items ? ec.service.sync().name('zenith.pos.PosServices.get#PosDisplayNames').parameter('productIds',items*.productId).call().names : [:]) ?: [:]
                 def productMap = new LinkedHashMap()
                 items.each { item ->
-                    def key = item.productId ?: item.productName ?: 'Unknown'
+                    def key = item.productId ?: 'Unknown'
                     if (!productMap[key]) productMap[key] = [productId: item.productId ?: '',
-                        productName: item.productName ?: item.productId ?: 'Unknown',
+                        productName: names[item.productId] ?: item.productId ?: 'Unknown',
                         totalQty: BigDecimal.ZERO, totalAmount: BigDecimal.ZERO, avgPrice: BigDecimal.ZERO, txnCount: 0 as int]
                     productMap[key].totalQty += (item.quantity ?: 0) as BigDecimal
                     productMap[key].totalAmount += (item.lineTotal ?: 0) as BigDecimal

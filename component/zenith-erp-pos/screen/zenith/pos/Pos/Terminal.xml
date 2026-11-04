@@ -1753,6 +1753,10 @@
 
 
                 def result = [success:false]
+                def displayNames = { rows ->
+                    rows ? ec.service.sync().name('zenith.pos.PosServices.get#PosDisplayNames')
+                        .parameter('productIds',rows*.productId).call().names ?: [:] : [:]
+                }
 
 
 
@@ -2249,6 +2253,23 @@
 
 
 
+                    } else if (action == 'holdSale') {
+                        if (!'POST'.equalsIgnoreCase(ec.web.request.method)) {
+                            ec.web.sendJsonResponse([success:false, error:'Use POST to hold a bill.'])
+                            return
+                        }
+                        def access = ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess')
+                            .parameters([sessionId:sessionId,transactionId:transactionId]).call()
+                        if (!access?.allowed || !transactionId) {
+                            ec.web.sendJsonResponse([success:false, error:'No open bill to hold on this counter.'])
+                            return
+                        }
+                        def held = ec.service.sync().name('zenith.pos.PosServices.hold#Transaction')
+                            .parameters([transactionId:transactionId,holdReason:p.holdReason]).call()
+                        ec.web.sendJsonResponse(held?.heldId && !ec.message.hasError()
+                            ? [success:true, heldId:held.heldId]
+                            : [success:false,error:ec.message.errorsString ?: 'Could not hold this bill.'])
+                        return
                     } else if (action == 'receiptData') {
 
                         def rTxId = ec.web.requestParameters.transactionId ?: transactionId
@@ -2411,6 +2432,7 @@
                                 .condition("transactionId", tx.transactionId).list()
                             def amendments = ec.entity.find("zenith.erp.pos.PosTransactionAmendment")
                                 .condition("transactionId", tx.transactionId).orderBy("-amendmentDate").list()
+                            def names = displayNames(items + amendments)
                             bills.add([txId: tx.transactionId, billNo: tx.transactionNumber ?: tx.transactionId,
                                 date: ec.l10n.format(tx.entryDate, 'dd/MM/yyyy hh:mm a'),
                                 customer: tx.customerName ?: 'Walk-In',
@@ -2419,14 +2441,14 @@
                                 payable: tx.payableAmount ?: 0,
                                 itemCount: items.size(),
                                 items: items.collect { [seq: it.itemSeqId, pid: it.productId,
-                                    name: it.productName ?: it.productId, qty: it.quantity ?: 0,
+                                    name: names[it.productId] ?: it.productId, qty: it.quantity ?: 0,
                                     price: it.unitPrice ?: 0, discount: it.discountAmount ?: 0,
                                     tax: it.totalTaxAmount ?: 0, total: it.lineTotal ?: 0, mode:(it.salesModeId ? (ec.entity.find("zenith.erp.pos.PosSalesMode").condition("salesModeId", it.salesModeId).one()?.modeName ?: "") : ""), uom:(it.uomId ? (["OTH_ea":'Nos',"WT_g":'g',"WT_kg":'kg',"VLIQ_ml":'ml',"VLIQ_L":'L',"LEN_m":'m',"LEN_cm":'cm'].get(it.uomId) ?: '') : '')] },
                                 payments: payments.collect { [method: it.paymentMethod ?: '', amount: it.amount ?: 0] },
                                 amendCount: amendments.size(),
                                 amendments: amendments.collect { [date: ec.l10n.format(it.amendmentDate, 'dd/MM hh:mm a'),
                                     type: it.changeType ?: '', reason: it.reason ?: '',
-                                    product: it.productName ?: '', oldVal: it.oldValue ?: '', newVal: it.newValue ?: ''] }
+                                    product: names[it.productId] ?: it.productId ?: '', oldVal: it.oldValue ?: '', newVal: it.newValue ?: ''] }
                             ])
                         }
                         result = [success:true, action:'billHistory', bills:bills, total:totalCount, offset:offset]
@@ -2732,18 +2754,19 @@
                             .condition("transactionId", txId).list()
                         def amendsFinal = ec.entity.find("zenith.erp.pos.PosTransactionAmendment")
                             .condition("transactionId", txId).orderBy("-amendmentDate").list()
+                        def names = displayNames(itemsFinal + amendsFinal)
                         result = [success:true, action:'amendBill',
                             bill:[txId:txId, billNo:txnFinal.transactionNumber ?: txId,
                                 grand:txnFinal.grandTotal ?: 0, payable:txnFinal.payableAmount ?: 0,
                                 refundDue:_refundDue, balanceDue:_balanceDue, newSeq:_addedSeqId,
                                 subtotal:txnFinal.subtotal ?: 0, tax:txnFinal.totalTaxAmount ?: 0,
                                 items:itemsFinal.collect { [seq:it.itemSeqId, pid:it.productId,
-                                    name:it.productName ?: it.productId, qty:it.quantity ?: 0,
+                                    name:names[it.productId] ?: it.productId, qty:it.quantity ?: 0,
                                     price:it.unitPrice ?: 0, tax:it.totalTaxAmount ?: 0, total:it.lineTotal ?: 0] },
                                 payments:paymentsFinal.collect { [method:it.paymentMethod ?: '', amount:it.amount ?: 0] },
                                 amendments:amendsFinal.collect { [date:ec.l10n.format(it.amendmentDate, 'dd/MM hh:mm a'),
                                     type:it.changeType ?: '', reason:it.reason ?: '',
-                                    product:it.productName ?: '', oldVal:it.oldValue ?: '', newVal:it.newValue ?: ''] }
+                                    product:names[it.productId] ?: it.productId ?: '', oldVal:it.oldValue ?: '', newVal:it.newValue ?: ''] }
                             ]]
                         if (ec.message.hasError()) throw new IllegalStateException(ec.message.errorsString)
                         }
@@ -2771,8 +2794,9 @@
                                 try {
                                     def parsed = new groovy.json.JsonSlurper().parseText(ht.itemsJson)
                                     if (parsed instanceof List) {
+                                        def names = displayNames(parsed)
                                         parsed.each { pi ->
-                                            itemsList.add([name: pi.productName ?: pi.productId ?: '', qty: pi.quantity ?: 0])
+                                            itemsList.add([name: names[pi.productId] ?: pi.productId ?: '', qty: pi.quantity ?: 0])
                                         }
                                     }
                                 } catch (Exception ignored) {}
@@ -2939,6 +2963,7 @@
 
 
 
+                    def names = displayNames(items)
                     def totalQty = 0; items.each { totalQty += (it.quantity ?: 0) }
 
                     def modeSession = (txn?.sessionId ?: sessionId) ? ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',txn?.sessionId ?: sessionId).one() : null
@@ -2950,7 +2975,8 @@
 
 
 
-                        items: items.collect { [seq:it.itemSeqId, pid:it.productId, name:it.productName ?: it.productId,
+                        items: items.collect { [seq:it.itemSeqId, pid:it.productId, name:names[it.productId] ?: it.productId,
+                            printName:it.productName ?: it.productId,
 
 
 
@@ -3754,6 +3780,8 @@
 
 
 
+            cartDisplayNames = (cartItems || receiptItems) ? ec.service.sync().name('zenith.pos.PosServices.get#PosDisplayNames')
+                .parameter('productIds',(cartItems ?: [])*.productId + (receiptItems ?: [])*.productId).call().names ?: [:] : [:]
             cartQty = BigDecimal.ZERO
 
 
@@ -4501,7 +4529,7 @@
 
 
 
-                                <field name="productName"><default-field title="Item"><display/></default-field></field>
+                                <field name="productName"><default-field title="Item"><label text="${cartDisplayNames[productId] ?: productId}"/></default-field></field>
 
 
 
@@ -5529,7 +5557,7 @@ window.sendWhatsAppWithPdf=function() {
 
 
 
-                                <div style="font-size:14px;font-weight:600;color:#333;line-height:1.2">${(item.productName!'')?html}</div>
+                                <div style="font-size:14px;font-weight:600;color:#333;line-height:1.2">${((cartDisplayNames[item.productId]!item.productId)!'')?html}</div>
 
 
 
