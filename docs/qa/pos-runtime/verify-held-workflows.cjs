@@ -35,7 +35,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    check(saved+' recalled after '+next+' preserves its saved mode, rate and tax off',persisted.sales_mode_id===saved&&Number(line.unit_price)===price&&Number(persisted.total_tax_amount)===0,{mode:persisted.sales_mode_id,price:line.unit_price,tax:persisted.total_tax_amount});
    check(saved+' recalled client agrees with persisted mode',await page.locator('#cartInlineAddForm [name=salesModeId]').inputValue()===saved);
    if(out&&saved==='RETAIL')await page.screenshot({path:require('node:path').join(out,'recalled-retail.png'),fullPage:true});
-   await page.locator('.nb-customer-picker').click();
+   await page.locator('.nb-customer-picker:visible, .nb-customer__change:visible').click();
    const selected=page.waitForResponse(r=>r.url().includes('/setCustomer')&&r.request().method()==='POST');
    await page.locator('.cust-row[data-pid="POS_QA_A_CUST_SAME"]').click();
    const customer=await (await selected).json();
