@@ -464,6 +464,9 @@
         <conditional-response url="." parameter-map="[sessionId:sessionId, transactionId:transactionId, taxOn:taxOn, salesModeId:salesModeId]">
             <condition><expression>_catalogReview.notice || ec.message.hasError()</expression></condition>
         </conditional-response>
+        <conditional-response url="." parameter-map="[sessionId:sessionId, freshSale:'Y', taxOn:taxOn, salesModeId:salesModeId]">
+            <condition><expression>paymentMethod == 'UPI' &amp;&amp; ec.web.requestParameters.skipReceipt == 'Y'</expression></condition>
+        </conditional-response>
         <default-response url="." parameter-map="[sessionId:sessionId, lastCompletedId:transactionId]"/>
 
 

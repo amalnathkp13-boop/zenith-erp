@@ -3,11 +3,16 @@ module.exports=async function({a,base,check,q,invoke,out}) {
  const session=await invoke('open',{terminalId:'POS_QA_A_TERM2',openingCash:'100'});
  const page=await a.c.newPage();page.setDefaultTimeout(60000);
  const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.dismiss());
+ await page.addInitScript(()=>{
+  localStorage.setItem('posPrinter','Disposable QA printer');
+  window.qaPrints=0;
+  window.qz={websocket:{isActive:()=>true},configs:{create:()=>({})},print:()=>{window.qaPrints++;return Promise.resolve();}};
+ });
  let posts=0;page.on('request',r=>{if(r.method()==='POST'&&r.url().includes('/payAndComplete'))posts++;});
  const ledger=id=>q(`SELECT status_id,paid_amount,change_amount FROM pos_transaction WHERE transaction_id='${id}'`)[0];
  const payments=id=>q(`SELECT payment_method,amount FROM pos_payment WHERE transaction_id='${id}'`);
  try {
-  for(const method of ['Cash','Card','UPI']) {
+  for(const [method,receiptChoice] of [['Cash'],['Card'],['UPI','Save'],['UPI','Save and print']]) {
    const cart=await invoke('cart',{sessionId:session.sessionId});await invoke('add',{transactionId:cart.transactionId,productId:'POS_QA_A_P18',quantity:'1'});
    await page.goto(`${base}/apps/zenith/pos/Terminal?sessionId=${session.sessionId}&transactionId=${cart.transactionId}&taxOn=Y`);
    const button=page.locator('#pos-pay-'+method.toLowerCase()),overlay=page.locator(method==='Cash'?'#posCashTenderOverlay':'#posPayConfirmOverlay');
@@ -23,8 +28,16 @@ module.exports=async function({a,base,check,q,invoke,out}) {
    const today=Number(await page.locator('#pos-today-bills').innerText());
    const response=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('/payAndComplete'));
    await overlay.locator(method==='Cash'?'#posCashConfirm':'#posPayConfOk').click();
+   if(receiptChoice) {
+    await overlay.getByRole('button',{name:receiptChoice,exact:true}).waitFor();
+    check('UPI confirmation waits for '+receiptChoice+' before posting payment',posts===before&&payments(cart.transactionId).length===0);
+    await overlay.getByRole('button',{name:receiptChoice,exact:true}).click();
+   }
    check(`${method} confirmation completes through real checkout`,(await (await response).json()).success===true);
    await page.waitForFunction(count=>Number(document.querySelector('#pos-today-bills')?.textContent)===count,today+1);
+   if(receiptChoice==='Save and print') await page.waitForFunction(()=>window.qaPrints===1);
+   if(receiptChoice) check('UPI '+receiptChoice+' produces the selected print count',
+    await page.evaluate(()=>window.qaPrints)===(receiptChoice==='Save'?0:1));
    const rows=payments(cart.transactionId),saved=ledger(cart.transactionId);
    check(`${method} Confirm submits exactly once with the entered tender`,posts===before+1&&rows.length===1&&rows[0].payment_method===method&&Number(rows[0].amount)===(method==='Cash'?200:118)&&saved.status_id==='PtCompleted'&&Number(saved.change_amount||0)===(method==='Cash'?82:0));
   }
