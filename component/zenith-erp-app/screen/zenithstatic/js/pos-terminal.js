@@ -3591,6 +3591,8 @@ window.posToggleFullscreen = function() {
         }
         function checkSessionIdle() {
             if (!af.isConnected) return;
+            checkAssetVersion();
+            maybeAutoReload();
             if (dayFormatter && Date.now() - lastDayCheckAt >= 60000) {
                 lastDayCheckAt = Date.now();
                 var parts = {};
@@ -3642,6 +3644,39 @@ window.posToggleFullscreen = function() {
         var idleInterval = setInterval(function(){ checkSessionIdle(); pollCatalog(); },10000);
         window.__posIdleCleanup = function(){ idleAbort.abort(); clearInterval(idleInterval); };
         sendSessionTouch();
+
+        // --- Auto-update: reload the open terminal to the newest deploy, but ONLY when idle ----------
+        // window.__posAssetVer is pos-terminal.js's build mtime embedded at render; the server returns
+        // the current one. Every deploy changes it (build-from-git resets file mtimes), so a mismatch
+        // means a newer build is live. We reload only when no sale is in progress (same safe-gate as
+        // pollCatalog: no open cart, no payment/cash/split/credit modal, no pending sync, not mid
+        // cart-clear/mode-switch) AND after 30s with no cashier gesture, and never more than once per
+        // 2 min (sessionStorage guard) so a version mismatch can never cause a reload loop. No-op if
+        // the baseline is absent (e.g. a surface that strips the inline script).
+        var __baseVer = String((window.__posAssetVer != null) ? window.__posAssetVer : '');
+        var __lastVerCheck = 0, __updateReady = false, __reloading = false;
+        function checkAssetVersion() {
+            if (__reloading || !__baseVer || Date.now() - __lastVerCheck < 120000) return;
+            __lastVerCheck = Date.now();
+            fetch('Terminal/posAssetVersion', {method:'POST', credentials:'same-origin',
+                headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:''})
+                .then(function(r){ return r.json(); })
+                .then(function(d){ if (d && d.ver != null && String(d.ver) !== __baseVer) __updateReady = true; })
+                .catch(function(){});
+        }
+        function maybeAutoReload() {
+            if (!__updateReady || __reloading || !af.isConnected) return;
+            if (lastCartData && lastCartData.items && lastCartData.items.length) return;
+            if (cartClearing || modeSwitching || busy || OPT._drainPending() ||
+                (window._posOffline && window._posOffline.active()) ||
+                document.querySelector('#posCreditOverlay,#posPayConfirmOverlay,#posCashTenderOverlay,.pos-cash-panel,.pos-split-panel')) return;
+            if (Date.now() - lastGestureAt < 30000) return;
+            try { if (Date.now() - (parseInt(sessionStorage.getItem('posAutoReloadTs'), 10) || 0) < 120000) return; } catch (e) {}
+            __reloading = true;
+            try { sessionStorage.setItem('posAutoReloadTs', String(Date.now())); } catch (e) {}
+            try { showToast('Updating POS to the latest version...', '#7C3AED'); } catch (e) {}
+            setTimeout(function(){ try { location.reload(); } catch (e) { window.location.href = window.location.pathname + window.location.search; } }, 1500);
+        }
 
 
         function fmt(n) { return Math.round(Number(n)).toLocaleString('en-IN'); }

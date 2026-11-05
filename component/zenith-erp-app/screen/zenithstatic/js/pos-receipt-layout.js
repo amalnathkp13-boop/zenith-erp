@@ -6,7 +6,7 @@
     function render(data, isTax, edited) {
         var d=data||{},s=d.store||{},b=d.bill||{},m=d.summary||{},o=d.options||{};
         var width=s.receiptWidth==='58mm'?58:80;
-        var printW=width===58?48:72;
+        var pad=width===58?4:6;
         function enabled(key) { return o[key]!==false; }
         function shown(key) { return s[key]!=='N'; }
         function number(value) { return Number(value||0).toFixed(2); }
@@ -15,8 +15,8 @@
         function block(value,section,extra) { return value?'<div class="block" style="color:'+tone(section)+';'+(extra||'')+'">'+text(value)+'</div>':''; }
         function row(label,value,section,strong) { return '<tr style="color:'+tone(section)+'"><td>'+text(label)+'</td><td class="r'+(strong?' b':'')+'">'+text(value)+'</td></tr>'; }
         var h='<!DOCTYPE html><html><head><meta charset="utf-8"><title>Receipt</title><style>'
-            +'@page{size:'+width+'mm auto;margin:0}body{margin:0;padding:0;color:#000;font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:'+(o.density==='light'?400:o.density==='dark'?700:600)+'}'
-            +'.rcpt{width:'+printW+'mm;max-width:100%;margin:auto;padding:5mm 0;box-sizing:border-box;overflow-wrap:anywhere}'
+            +'@page{size:'+width+'mm auto;margin:0}html,body{margin:0;padding:0;width:'+width+'mm;color:#000;font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:'+(o.density==='light'?400:o.density==='dark'?700:600)+'}'
+            +'.rcpt{width:100%;margin:0;padding:5mm '+pad+'mm;box-sizing:border-box;overflow-wrap:anywhere}'
             +'.block{white-space:pre-line;text-align:center}.c{text-align:center}.r{text-align:right}.b{font-weight:700}.sep{border-bottom:1px dashed #000;margin:4px 0}.sep2{border-bottom:2px solid #000;margin:4px 0}'
             +'table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{padding:3px 2px;font-size:'+(width===58?10:11)+'px;vertical-align:top;overflow-wrap:anywhere}th{border-bottom:1px solid #000}.items th:first-child,.items td:first-child{text-align:left}.items td:nth-child(3),.items th:nth-child(3){text-align:center}.tot td{font-size:'+(width===58?14:16)+'px;font-weight:700}.meta td:first-child{width:30%;text-align:left}.meta td:last-child{text-align:left}.notice{border:1px dashed #000;padding:3px;text-align:center;font-weight:700}img{display:block;margin:2px auto;max-width:90%;max-height:60px}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body><div class="rcpt" data-paper-width="'+width+'">';
         if(o.openingPreset&&o.openingPreset!=='none'&&o.openingMessage)h+=block(o.openingMessage,'greeting','text-align:'+align('greetingAlign')+';font-weight:'+(o.greetingBold===false?400:700)+';font-size:'+(o.greetingSize==='small'?10:o.greetingSize==='large'?18:14)+'px');

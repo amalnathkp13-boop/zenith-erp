@@ -310,6 +310,17 @@
         <default-response type="none"/>
     </transition>
 
+    <!-- Auto-update signal: pos-terminal.js's file mtime changes on every deploy (build-from-git
+         resets all component file mtimes), so a changed value means a newer build is live. The open
+         terminal polls this and reloads itself when idle (see pos-terminal.js checkAssetVersion). -->
+    <transition name="posAssetVersion" require-session-token="false" read-only="true">
+        <actions><script><![CDATA[
+            def ref = ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-terminal.js')
+            ec.web.sendJsonResponse([ver: (ref?.getLastModified() ?: 0)])
+        ]]></script></actions>
+        <default-response type="none"/>
+    </transition>
+
     <transition name="syncOfflineTransactions" method="post" begin-transaction="false">
         <actions><script><![CDATA[
             def tid = ec.web.parameters.terminalId
@@ -6118,6 +6129,7 @@ window.sendWhatsAppWithPdf=function() {
 
 
 <script src="/zenithstatic/js/pos-clock.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-clock.js').getLastModified()?c}"></script>
+<script>window.__posAssetVer=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-terminal.js').getLastModified()?c};</script>
 <script src="/zenithstatic/js/pos-receipt-layout.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-receipt-layout.js').getLastModified()?c}"></script><script src="/zenithstatic/js/pos-terminal.js?perf=1&amp;v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-terminal.js').getLastModified()?c}"></script>
 
 
