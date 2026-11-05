@@ -206,16 +206,18 @@
         var shopData = document.getElementById('z-shopdata');
         var orgName = (cfg && cfg.getAttribute('data-org-name')) || '';
         var posOnly = cfg && cfg.getAttribute('data-pos-only') === 'true';
-        var canSwitch = false, shops = [], activeShop = '', shopTok = '';
+        var canSwitch = false, shops = [], activeShop = '', shopTok = '', restricted = false, shopName = '';
         if (shopData) {
             canSwitch = shopData.getAttribute('data-multishop') === 'true' && !posOnly;
+            restricted = shopData.getAttribute('data-restricted') === 'true';
+            shopName = shopData.getAttribute('data-shop-name') || '';
             activeShop = shopData.getAttribute('data-active') || '';
             shopTok = shopData.getAttribute('data-token') || '';
             [].slice.call(shopData.querySelectorAll('i')).forEach(function (n) { shops.push({ id: n.getAttribute('data-id'), name: n.getAttribute('data-name') }); });
         }
         var ov = el('div'); ov.id = 'zq-ownerview';
         ov.appendChild(mi('grid_view'));   // ZE-QAPPS-TOPBAR-PARITY: match the /apps Owner-View icon (was verified_user)
-        ov.appendChild(el('span', null, 'Owner View'));
+        ov.appendChild(el('span', null, restricted ? 'Shop View' : 'Owner View'));
         if (canSwitch) {
             ov.classList.add('zqov-switch');
             ov.appendChild(el('span', 'zqov-sep', '·'));
@@ -231,13 +233,15 @@
             var item = function (id, name, on) { var a = el('a', 'zqsm-item' + (on ? ' on' : '')); a.href = '#';
                 a.appendChild(mi(on ? 'check' : (id ? 'storefront' : 'apps'))); a.appendChild(el('span', null, name));
                 a.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); submit(id); }); return a; };
-            menu.appendChild(item('', 'All Shops (combined)', !activeShop));
+            if (!restricted) menu.appendChild(item('', 'All Shops (combined)', !activeShop));
             shops.forEach(function (s) { menu.appendChild(item(s.id, s.name, s.id === activeShop)); });
-            var msep = el('div'); msep.style.cssText = 'height:1px;background:#EEE9F7;margin:5px 6px'; menu.appendChild(msep);
-            var mmg = el('a', 'zqsm-item'); mmg.href = '/qapps/zenith/Stores/FindStore'; mmg.style.fontWeight = '700';
-            mmg.appendChild(mi('add')); mmg.appendChild(el('span', null, 'Add / manage shops'));
-            mmg.addEventListener('click', function (e) { onNavClick(e); e.stopPropagation(); });
-            menu.appendChild(mmg);
+            if (!restricted) {
+                var msep = el('div'); msep.style.cssText = 'height:1px;background:#EEE9F7;margin:5px 6px'; menu.appendChild(msep);
+                var mmg = el('a', 'zqsm-item'); mmg.href = '/qapps/zenith/Stores/FindStore'; mmg.style.fontWeight = '700';
+                mmg.appendChild(mi('add')); mmg.appendChild(el('span', null, 'Add / manage shops'));
+                mmg.addEventListener('click', function (e) { onNavClick(e); e.stopPropagation(); });
+                menu.appendChild(mmg);
+            }
             ov.appendChild(menu);
             var toggle = el('button', 'zqov-trigger');
             toggle.type = 'button';
@@ -253,9 +257,9 @@
                     menu.classList.remove('show'); toggle.setAttribute('aria-expanded', 'false'); toggle.focus();
                 }
             });
-        } else if (orgName) {
+        } else if (restricted || orgName) {
             ov.appendChild(el('span', 'zqov-sep', '·'));
-            ov.appendChild(el('span', 'zqov-org', orgName));
+            ov.appendChild(el('span', 'zqov-org', restricted ? (shopName || 'No shop assigned') : orgName));
         }
         return ov;
     }

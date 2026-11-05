@@ -75,8 +75,8 @@
         <default-response type="none"/>
     </transition>
 
-    <transition name="saveRoles" begin-transaction="true">
-        <actions><service-call name="zenith.base.RoleAccessServices.save#UserRoles" in-map="[userId:userId, selectedRoles:selectedRoles]"/></actions>
+    <transition name="saveRoles" method="post" begin-transaction="true">
+        <actions><service-call name="zenith.base.RoleAccessServices.save#UserRoles" in-map="[userId:userId, selectedRoles:selectedRoles == null ? [] : (selectedRoles instanceof List ? selectedRoles : [selectedRoles]), saveShopAccess:saveShopAccess, selectedShopIds:selectedShopIds == null ? [] : (selectedShopIds instanceof List ? selectedShopIds : [selectedShopIds])]"/></actions>
         <default-response url="."/>
     </transition>
 
@@ -273,6 +273,10 @@
                 .findAll { roleNamesById.containsKey(it.userGroupId) }.unique { it.userId + ':' + it.userGroupId } : []
             userRolesById = memberships.groupBy { it.userId }
             userRoleIdsById = userRolesById.collectEntries { id, roles -> [(id):roles.collect { it.userGroupId }] }
+            def shopOrg = ec.user.getPreference('ACTIVE_ORGANIZATION')
+            userShopIdsById = shopOrg && visibleUserIds ? ec.entity.find('zenith.erp.base.OrganizationUserShopAccess')
+                .condition('organizationPartyId',shopOrg).condition('userId','in',visibleUserIds).disableAuthz().list()
+                .collectEntries { [(it.userId):new groovy.json.JsonSlurper().parseText(it.shopIdsJson)] } : [:]
             usersWithTwoFactor = visibleUserIds ? ec.entity.find('moqui.security.UserAuthcFactor')
                 .condition('userId','in',visibleUserIds).disableAuthz().list().collect { it.userId } as Set : [] as Set
         ]]></script>
@@ -337,11 +341,31 @@
                             <label text="${roleNamesById[roleMap.userGroupId] ?: roleMap.userGroupId}" style="z-role-chip"/>
                         </widgets></section-iterate>
                         <container-dialog id="AssignRoleDialog" button-text="Manage roles" button-class="z-users-button">
-                            <form-single name="AssignRoleForm" transition="saveRoles">
-                                <field name="userId"><default-field><hidden/></default-field></field>
-                                <field name="selectedRoles" entry-name="userRoleIdsById[userId]"><default-field title="Access roles"><drop-down allow-empty="true" allow-multiple="true"><list-options list="allRolesList" key="${userGroupId}" text="${description}"/></drop-down></default-field></field>
-                                <field name="submitButton"><default-field title="Save roles"><submit/></default-field></field>
-                            </form-single>
+                            <render-mode><text type="html,vuet,qvt"><![CDATA[
+                            <form class="z-manage-roles" method="post" action="${ec.web.request.requestURI?replace('\\.(qvt|vuet|html)$','','r')?html}/saveRoles">
+                                <input type="hidden" name="userId" value="${userId?html}"/>
+                                <input type="hidden" name="moquiSessionToken" value="${ec.web.sessionToken?html}"/>
+                                <input type="hidden" name="saveShopAccess" value="Y"/>
+                                <div class="z-manage-role-fields">
+                                    <fieldset><legend>Access roles</legend>
+                                        <div class="z-manage-role-options">
+                                            <#list allRolesList as role>
+                                                <label><input type="checkbox" name="selectedRoles" value="${role.userGroupId?html}"<#if (userRoleIdsById[userId]![])?seq_contains(role.userGroupId)> checked</#if>/> <span>${role.description?html}</span></label>
+                                            </#list>
+                                        </div>
+                                    </fieldset>
+                                    <fieldset><legend>Assigned shops</legend>
+                                        <p>Owner can view all shops. Multiple Shop Manager can switch between assigned shops. With no explicit assignment, a billing login uses its assigned terminal’s shop.</p>
+                                        <div class="z-manage-role-options">
+                                            <#list (shopList![]) as shop>
+                                                <label><input type="checkbox" name="selectedShopIds" value="${shop.id?html}"<#if (userShopIdsById[userId]![])?seq_contains(shop.id)> checked</#if>/> <span>${shop.name?html}</span></label>
+                                            <#else><p>No shops available in this organization.</p></#list>
+                                        </div>
+                                    </fieldset>
+                                </div>
+                                <button class="z-users-button z-users-primary" type="submit">Save access</button>
+                            </form>
+                            ]]></text></render-mode>
                         </container-dialog>
                     </default-field></field>
                     <field name="actions"><header-field title="Actions"/><default-field>

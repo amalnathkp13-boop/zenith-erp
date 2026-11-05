@@ -31,6 +31,9 @@
                 def groups = ec.entity.find('moqui.security.ArtifactGroup').condition('artifactGroupId','like','Z_%')
                     .disableAuthz().useCache(true).list().collectEntries { [(it.artifactGroupId):it.description] }
                 def root = ec.screen.getScreenDefinition('component://zenith-erp-app/screen/zenith/ZenithApp.xml')
+                def posTabs = ['Dashboard','Terminal','PosTransactions','DailySummary','PosSessions','PosTerminals','CreditBills',
+                    'CashEntry','Expenses','Wastage','Stock','Reports','BillAuditReport','ProductPricing','PriceOverrides','DiscountSettings',
+                    'SalesMode','Barcodes','BarcodeLabels','ProductImport','ReceiptConfig','PrinterConfig','BillNumberRegister','OfflineMode']
                 root.subscreensItemsSorted.each { mod ->
                     def id = mod.name.toLowerCase()
                     def group = 'Z_' + id.toUpperCase()
@@ -39,7 +42,7 @@
                     // Read the module's mounted children only. Loading every detail screen compiles
                     // hundreds of unrelated actions and makes first-time role creation unresponsive.
                     ec.screen.getScreenDefinition(mod.location).subscreensItemsSorted.each { child ->
-                        if (id == 'pos' && child.name == 'Kitchen') return
+                        if (id == 'pos' && !posTabs.contains(child.name)) return
                         screens.add([id:'/' + mod.name + '/' + child.name,
                             name:child.menuTitle ?: child.name, location:child.location])
                     }
@@ -62,7 +65,7 @@
                     .disableAuthz().list().collectEntries { [(it.userGroupId):it.roleName] }
                 roles = ec.entity.find('moqui.security.UserGroup').condition('userGroupId','like','ZENITH_%').disableAuthz().list()
                     .findAll { !it.userGroupId.startsWith('ZENITH_ORG_') || owned.containsKey(it.userGroupId) }
-                    .collect { [userGroupId:it.userGroupId, description:owned[it.userGroupId] ?: (it.description ?: it.userGroupId).split(' — ',2)[0],
+                    .collect { [userGroupId:it.userGroupId, description:it.userGroupId == 'ZENITH_ADMIN' ? 'Owner' : (owned[it.userGroupId] ?: (it.description ?: it.userGroupId).split(' — ',2)[0]),
                         custom:owned.containsKey(it.userGroupId)] }.sort { it.description }
             ]]></script>
         </actions>
@@ -105,6 +108,11 @@
                 if (userGroupId && (!role || role.organizationPartyId != scope.organizationPartyId)) {
                     ec.message.addError('Role not found in your organization.'); return
                 }
+                if (role && clean.pos) {
+                    def previous = new groovy.json.JsonSlurper().parseText(role.selectionsJson)
+                    def visible = available.pos.screens*.id as Set
+                    clean.pos = (clean.pos + (previous.pos ?: []).findAll { it != '/pos/Kitchen' && !visible.contains(it) }).unique().sort()
+                }
                 def duplicate = ec.entity.find('zenith.erp.base.OrganizationAccessRole').condition('organizationPartyId',scope.organizationPartyId)
                     .condition('nameKey',name.toLowerCase(java.util.Locale.ROOT)).disableAuthz().one()
                 if (duplicate && duplicate.userGroupId != userGroupId) { ec.message.addError('A role with that name already exists in this organization.'); return }
@@ -133,8 +141,12 @@
     </service>
 
     <service verb="save" noun="UserRoles" authenticate="true">
-        <in-parameters><parameter name="userId" required="true"/><parameter name="selectedRoles" type="List"/></in-parameters>
+        <in-parameters>
+            <parameter name="userId" required="true"/><parameter name="selectedRoles" type="List"/>
+            <parameter name="saveShopAccess"/><parameter name="selectedShopIds" type="List"/>
+        </in-parameters>
         <actions>
+            <if condition="!(ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN'))"><return error="true" message="Only an owner can manage user access."/></if>
             <service-call name="zenith.settings.SettingsServices.check#UserInActiveOrg" in-map="[userId:userId]"/>
             <if condition="ec.message.hasError()"><return/></if>
             <service-call name="zenith.base.RoleAccessServices.get#RoleOrganization" out-map="scope"/>
@@ -149,16 +161,50 @@
                 def valid = available.roles.collect { it.userGroupId } as Set
                 def wanted = (selectedRoles ?: []).findAll { it } as Set
                 if (!valid.containsAll(wanted)) { ec.message.addError('Choose roles available to your organization.'); return }
+                def shops = (selectedShopIds ?: []).findAll { it } as Set
+                def owner = wanted.contains('ZENITH_ADMIN')
+                if (saveShopAccess == 'Y') {
+                    def scopeShops = ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').disableAuthz().call()
+                    if (!((scopeShops.shopList ?: [])*.id as Set).containsAll(shops)) {
+                        ec.message.addError('Choose shops in the selected organization.'); return
+                    }
+                    if (!owner && shops.size() > 1 && !wanted.contains('ZENITH_MULTI_SHOP_MANAGER')) {
+                        ec.message.addError('Select Multiple Shop Manager to assign more than one shop.'); return
+                    }
+                    if (!owner && wanted.contains('ZENITH_MULTI_SHOP_MANAGER') && !shops) {
+                        ec.message.addError('Assign at least one shop to the Multiple Shop Manager.'); return
+                    }
+                }
+                ec.entity.find('moqui.security.UserAccount').condition('userId',userId).disableAuthz().forUpdate(true).one()
                 def current = ec.entity.find('moqui.security.UserGroupMember').condition('userId',userId)
                     .conditionDate('fromDate','thruDate',ec.user.nowTimestamp).list().findAll { valid.contains(it.userGroupId) }
                     .collect { it.userGroupId } as Set
+                if (owner != current.contains('ZENITH_ADMIN') && !ec.user.isInGroup('ADMIN')) {
+                    def memberOrgs = ec.entity.find('mantle.party.PartyRelationship').condition('fromPartyId',target.partyId)
+                        .condition('toRoleTypeId','OrgInternal').condition('relationshipTypeEnumId','in',['PrtEmployee','PrtAgent','PrtMember'])
+                        .conditionDate('fromDate','thruDate',ec.user.nowTimestamp).disableAuthz().list()*.toPartyId as Set
+                    if (memberOrgs.size() > 1) { ec.message.addError('Only a platform administrator can change Owner access for a user in multiple organizations.'); return }
+                }
                 for (def id in current - wanted) {
                     ec.service.sync().name('zenith.settings.SettingsServices.remove#UserRole').parameters([userId:userId,userGroupId:id]).call()
                     if (ec.message.hasError()) return
                 }
                 for (def id in wanted - current) ec.service.sync().name('create#moqui.security.UserGroupMember')
                     .parameters([userId:userId,userGroupId:id,fromDate:ec.user.nowTimestamp]).call()
-                if (!ec.message.hasError()) ec.message.addMessage('Access roles updated.')
+                if (ec.message.hasError()) return
+                if (saveShopAccess == 'Y' && !owner) {
+                    def entity = 'zenith.erp.base.OrganizationUserShopAccess'
+                    def key = [organizationPartyId:scope.organizationPartyId, userId:userId]
+                    def disabled = ec.artifactExecution.disableAuthz()
+                    try {
+                        if (shops) {
+                            ec.entity.makeValue(entity).setAll(key + [shopIdsJson:groovy.json.JsonOutput.toJson(shops.sort())]).createOrUpdate()
+                        } else {
+                            ec.entity.find(entity).condition(key).one()?.delete()
+                        }
+                    } finally { if (!disabled) ec.artifactExecution.enableAuthz() }
+                }
+                ec.message.addMessage(saveShopAccess == 'Y' ? 'Access roles and shops updated.' : 'Access roles updated.')
             ]]></script>
         </actions>
     </service>
@@ -179,6 +225,13 @@
             roles.each { role ->
                 def saved = new groovy.json.JsonSlurper().parseText(role.selectionsJson)
                 saved.each { mod, screens -> selections[mod] = ((selections[mod] ?: []) + screens).unique() }
+            }
+            if (selections.pos) {
+                [EditSession:'PosSessions', PosSessionsPdf:'PosSessions', EditTransaction:'PosTransactions',
+                 BillAuditReportPdf:'BillAuditReport', PriceOverridesPdf:'PriceOverrides', ReceiptPdf:'Terminal'].each { screen, tab ->
+                    def route = '/pos/' + screen
+                    if (selections.pos.contains('/pos/' + tab) && !selections.pos.contains(route)) selections.pos.add(route)
+                }
             }
             // Preserve saved Kitchen access for roles created before KOT had its own module.
             if ((selections.pos ?: []).contains('/pos/Kitchen')) {

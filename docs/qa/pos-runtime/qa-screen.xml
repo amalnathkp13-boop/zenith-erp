@@ -128,6 +128,31 @@
         mrpAmount:8,amountUomId:'WT_kg',gstSlabId:'GST_0',inventoryTracked:'N']).createOrUpdate()
     ec.web.sendJsonResponse([prepared:!ec.message.hasError()])
 ]]></script></actions><default-response type="none"/></transition>
+<transition name="seedShopDashboard" method="post" begin-transaction="true"><actions><script><![CDATA[
+    if (System.getProperty('pos.qa.disposable') != 'true' || ec.user.username != 'pos.qa') {
+        ec.web.response.setStatus(403); ec.web.sendJsonResponse([success:false]); return
+    }
+    def org = 'POS_QA_A'
+    def shop = 'POS_QA_A_FAC'
+    def customer = 'POS_QA_A_CUST_SAME'
+    def now = ec.user.nowTimestamp
+    ec.entity.makeValue('mantle.facility.Facility').setAll([facilityId:'POS_QA_A_KPI_FAC',ownerPartyId:org,
+        facilityTypeEnumId:'FcTpRetailStore',facilityName:'Disposable KPI shop']).create()
+    ['FINAL':'InvoiceFinalized','DRAFT':'InvoiceInProcess','VOID':'InvoiceCancelled'].each { suffix, status ->
+        ec.entity.makeValue('mantle.account.invoice.Invoice').setAll([invoiceId:'POS_QA_KPI_'+suffix,
+            invoiceTypeEnumId:'InvoiceSales',fromPartyId:org,toPartyId:customer,facilityId:shop,invoiceDate:now,
+            statusId:status,invoiceTotal:41,currencyUomId:'INR']).create()
+    }
+    ['POSTED':'PmntConfirmed','PENDING':'PmntPromised','VOID':'PmntVoid'].each { suffix, status ->
+        ec.entity.makeValue('mantle.account.payment.Payment').setAll([paymentId:'POS_QA_KPI_'+suffix,
+            paymentTypeEnumId:'PtInvoicePayment',paymentInstrumentEnumId:'PiWireTransfer',fromPartyId:customer,toPartyId:org,
+            forInvoiceId:'POS_QA_KPI_FINAL',effectiveDate:now,statusId:status,amount:41,amountUomId:'INR']).create()
+    }
+    ec.entity.makeValue('mantle.account.payment.Payment').setAll([paymentId:'POS_QA_KPI_REFUND',
+        paymentTypeEnumId:'PtRefund',paymentInstrumentEnumId:'PiWireTransfer',fromPartyId:org,toPartyId:customer,
+        refundForPaymentId:'POS_QA_KPI_POSTED',effectiveDate:now,statusId:'PmntConfirmed',amount:10,amountUomId:'INR']).create()
+    ec.web.sendJsonResponse([success:true])
+]]></script></actions><default-response type="none"/></transition>
 <transition name="invoke"><actions><script><![CDATA[
     if (System.getProperty('pos.qa.disposable')!='true' || !['pos.qa','pos.b.qa','pos.cashier.qa'].contains(ec.user.username)) {
         ec.web.response.setStatus(403);ec.web.sendJsonResponse([denied:true]);return

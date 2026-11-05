@@ -56,6 +56,9 @@
                 def assigned = assignment ? ec.entity.find('zenith.erp.pos.PosTerminal')
                     .condition('terminalId',assignment.terminalId).condition('organizationPartyId',organizationPartyId)
                     .condition('isActive','Y').disableAuthz().one() : null
+                def shopPolicy = ec.entity.find('zenith.erp.base.OrganizationUserShopAccess')
+                    .condition('organizationPartyId',organizationPartyId).condition('userId',ec.user.userId).disableAuthz().useCache(true).one()
+                if (assigned && shopPolicy && !(assigned.facilityId in new groovy.json.JsonSlurper().parseText(shopPolicy.shopIdsJson))) assigned = null
                 allowedTerminalIds = assigned ? [assigned.terminalId] : []
                 def sessions = []
                 if (sessionId) sessions.add(sessionId)

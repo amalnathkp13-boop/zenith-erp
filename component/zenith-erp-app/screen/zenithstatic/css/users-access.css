@@ -51,3 +51,18 @@
  .z-users-page table { min-width:650px; }
  .z-users-page .z-user-more-menu { position:relative; }
 }
+
+.z-manage-roles { display:grid; gap:16px; min-width:0; }
+.z-manage-role-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+.z-manage-roles fieldset { margin:0; padding:10px 12px; border:1px solid #e3def3; border-radius:8px; min-width:0; }
+.z-manage-roles legend { width:auto; margin:0; padding:0 5px; border:0; color:inherit; font-size:inherit; font-weight:700; }
+.z-manage-roles fieldset p { margin:0 0 8px; }
+.z-manage-role-options { max-height:35vh; overflow:auto; }
+.z-manage-role-options label { display:flex; align-items:flex-start; gap:8px; padding:6px 0; margin:0; overflow-wrap:anywhere; }
+.z-manage-role-options input { flex:none; }
+.z-manage-roles > button { justify-self:start; }
+.z-manage-roles > .z-users-primary { background:var(--z-primary,#7c3aed); border-color:transparent; color:white; }
+@media(max-width:640px) {
+    .z-manage-role-fields { grid-template-columns:minmax(0,1fr); }
+    .z-manage-role-options { max-height:22vh; }
+}

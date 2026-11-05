@@ -5,9 +5,7 @@
     <!-- ZE-SHOP: the ONE resolver every shop-aware screen consumes. A "shop" = a FcTpRetailStore Facility owned by the
          active org. The per-user ACTIVE_SHOP preference holds the selected shop's facilityId (empty = All / combined).
 
-         The linchpin correctness rule: RE-VALIDATE ownership on EVERY read. A stale ACTIVE_SHOP (left over after an
-         org switch, or forged) that points at another org's / a non-store facility MUST fall back to All — otherwise
-         every downstream filter silently scopes to a foreign facilityId and returns empty ("my sales vanished").
+         Validate the selection against the allowed facilities on every read. A stale selection falls back to the first permitted shop for restricted users, or All Shops for owners.
 
          Usage (one line per screen):
            <service-call name="zenith.base.ShopServices.get#ActiveShopScope" out-map="context"
@@ -23,6 +21,7 @@
             <parameter name="activeShopId"><description>Validated selected shop facilityId, or null = All Shops (combined).</description></parameter>
             <parameter name="activeShopName"/>
             <parameter name="isAllShops" type="Boolean"/>
+            <parameter name="shopAccessRestricted" type="Boolean"/>
             <parameter name="shopCount" type="Integer"/>
             <parameter name="hasMultiShop" type="Boolean"/>
             <parameter name="shopListJson"><description>JSON array of {id,name} for the org's shops, ordered by name.</description></parameter>
@@ -32,12 +31,15 @@
         </out-parameters>
         <actions>
             <script><![CDATA[
-                // defaults => All Shops / single-tenant no-op
-                activeShopId = null; activeShopName = null; isAllShops = true
+                def owner = ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN')
+                shopAccessRestricted = !owner && ['ZENITH_CASHIER','ZENITH_STORE_MGR','ZENITH_MULTI_SHOP_MANAGER'].any { ec.user.isInGroup(it) }
+                activeShopId = shopAccessRestricted ? '__NONE__' : null
+                activeShopName = null; isAllShops = !shopAccessRestricted
                 shopCount = 0; hasMultiShop = false; shopListJson = '[]'; shopList = []
                 terminalIds = null; sessionIds = null
 
-                def org = ec.user.getPreference("ACTIVE_ORGANIZATION")
+                def org = ec.service.sync().name('zenith.base.RoleAccessServices.get#RoleOrganization')
+                    .disableAuthz().call()?.organizationPartyId
                 if (!org || org == '_NA_') { return }
 
                 boolean _dz = ec.artifactExecution.disableAuthz()
@@ -55,6 +57,28 @@
                         def registeredIds = registered.collect { it.facilityId }.findAll { it } as Set
                         shops = shops.findAll { registeredIds.contains(it.facilityId) }
                     }
+                    if (!owner) {
+                        def policy = ec.entity.find('zenith.erp.base.OrganizationUserShopAccess')
+                            .condition('organizationPartyId',org).condition('userId',ec.user.userId).useCache(true).one()
+                        def assignment = ec.entity.find('zenith.erp.pos.PosTerminalAssignment')
+                            .condition('organizationPartyId',org).condition('userId',ec.user.userId).useCache(true).one()
+                        shopAccessRestricted = shopAccessRestricted || policy != null || assignment != null
+                        if (!shopAccessRestricted && ec.user.userGroupIdSet.any { it.startsWith('ZENITH_ORG_') }) {
+                            def roleScope = ec.service.sync().name('zenith.base.RoleAccessServices.get#AssignedRoleScope').disableAuthz().call()
+                            shopAccessRestricted = !!roleScope.selections?.pos
+                        }
+                        if (shopAccessRestricted) {
+                            def shopIds = policy ? new groovy.json.JsonSlurper().parseText(policy.shopIdsJson ?: '[]') : []
+                            if (!policy && assignment) {
+                                def terminal = ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',assignment.terminalId)
+                                    .condition('organizationPartyId',org).condition('isActive','Y').useCache(true).one()
+                                if (terminal?.organizationPartyId == org && terminal.facilityId) shopIds = [terminal.facilityId]
+                            }
+                            shops = shops.findAll { it.facilityId in shopIds }
+                            activeShopId = '__NONE__'
+                            isAllShops = false
+                        }
+                    }
                     shops = shops ? shops.sort { (it.facilityName ?: it.facilityId) } : []
                     shopCount = shops.size()
                     hasMultiShop = shopCount >= 2
@@ -63,10 +87,12 @@
 
                     // candidate = explicit override else the stored preference
                     def cand = facilityId ?: ec.user.getPreference("ACTIVE_SHOP")
-                    if (cand) {
-                        // RE-VALIDATE: must be one of THIS org's retail stores, else silently fall back to All
-                        def match = shops.find { it.facilityId == cand }
-                        if (match) { activeShopId = cand; activeShopName = (match.facilityName ?: match.facilityId); isAllShops = false }
+                    def match = cand ? shops.find { it.facilityId == cand } : null
+                    if (!match && shopAccessRestricted && shops) match = shops.first()
+                    if (match) {
+                        activeShopId = match.facilityId
+                        activeShopName = match.facilityName ?: match.facilityId
+                        isAllShops = false
                     }
 
                     if (includePosScope && activeShopId) {

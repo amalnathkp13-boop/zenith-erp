@@ -1003,4 +1003,22 @@
         <field name="failedAttempts" type="number-integer"/><field name="lockedUntil" type="date-time"/>
     </entity>
 
+    <view-entity entity-name="PosDashboardPayment" package="zenith.erp.pos">
+        <member-entity entity-alias="P" entity-name="zenith.erp.pos.PosPayment"/>
+        <member-entity entity-alias="T" entity-name="zenith.erp.pos.PosTransaction" join-from-alias="P">
+            <key-map field-name="transactionId"/>
+        </member-entity>
+        <alias-all entity-alias="P"/>
+        <alias entity-alias="T" name="organizationPartyId"/>
+        <alias entity-alias="T" name="sessionId"/>
+        <alias entity-alias="T" name="statusId"/>
+    </view-entity>
+    <view-entity entity-name="PosDashboardReturn" package="zenith.erp.pos">
+        <member-entity entity-alias="R" entity-name="zenith.erp.pos.PosReturn"/>
+        <member-entity entity-alias="S" entity-name="zenith.erp.pos.PosSession" join-from-alias="R">
+            <key-map field-name="sessionId"/>
+        </member-entity>
+        <alias-all entity-alias="R"/>
+        <alias entity-alias="S" name="organizationPartyId"/>
+    </view-entity>
 </entities>

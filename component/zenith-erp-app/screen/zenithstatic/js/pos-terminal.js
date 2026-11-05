@@ -1921,11 +1921,11 @@ window._posOffline = (function () {
                 + '<input id="hist-search" type="search" aria-label="Search bills" placeholder="Search by bill number, amount, or customer..." style="flex:1;min-width:0;padding:10px 14px;border:1px solid #ccc;border-radius:8px;font-size:14px"/>'
                 + '<button id="hist-filter" type="button" aria-expanded="false" aria-controls="hist-filter-form" style="border:1px solid #7C3AED;border-radius:8px;background:white;color:#6D28D9;padding:0 12px">Filter</button></div>'
                 + '<div id="hist-scroll" style="min-height:0;overflow:auto">'
-                + '<form id="hist-filter-form" hidden style="padding:12px 20px;border-bottom:1px solid #e0e0e0"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(124px,1fr));gap:8px">'
-                + '<label>From Date<input type="date" name="historyFromDate" required style="display:block;width:100%"/></label>'
-                + '<label>To Date<input type="date" name="historyToDate" required style="display:block;width:100%"/></label>'
-                + '<label>From Time<input type="time" name="historyFromTime" style="display:block;width:100%"/></label>'
-                + '<label>To Time<input type="time" name="historyToTime" style="display:block;width:100%"/></label></div>'
+                + '<form id="hist-filter-form" hidden novalidate style="padding:12px 20px;border-bottom:1px solid #e0e0e0"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(124px,1fr));gap:8px">'
+                + '<label style="min-width:0;font-weight:600">From Date<input type="date" name="historyFromDate" required style="display:block;box-sizing:border-box;width:100%;min-width:0;margin-top:4px;padding:8px;border:1px solid #d7d1e6;border-radius:7px;background:white;color:#202036"/></label>'
+                + '<label style="min-width:0;font-weight:600">To Date<input type="date" name="historyToDate" required style="display:block;box-sizing:border-box;width:100%;min-width:0;margin-top:4px;padding:8px;border:1px solid #d7d1e6;border-radius:7px;background:white;color:#202036"/></label>'
+                + '<label style="min-width:0;font-weight:600">From Time<input type="time" name="historyFromTime" style="display:block;box-sizing:border-box;width:100%;min-width:0;margin-top:4px;padding:8px;border:1px solid #d7d1e6;border-radius:7px;background:white;color:#202036"/></label>'
+                + '<label style="min-width:0;font-weight:600">To Time<input type="time" name="historyToTime" style="display:block;box-sizing:border-box;width:100%;min-width:0;margin-top:4px;padding:8px;border:1px solid #d7d1e6;border-radius:7px;background:white;color:#202036"/></label></div>'
                 + '<p id="hist-filter-error" role="alert" style="margin:6px 0;color:#b91c1c" hidden></p>'
                 + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px"><button id="hist-filter-reset" type="button">Reset</button><button type="submit">Apply Filter</button></div></form>'
                 + '<div id="hist-list" style="padding:8px 12px"><div style="text-align:center;padding:40px;color:#999">Loading...</div></div></div>';
@@ -1938,6 +1938,22 @@ window._posOffline = (function () {
             var filter = panel.querySelector('#hist-filter');
             var form = panel.querySelector('#hist-filter-form');
             var error = panel.querySelector('#hist-filter-error');
+            var fromDate = form.elements.historyFromDate, toDate = form.elements.historyToDate;
+            var earliest = '0001-01-01';
+            var clock = document.getElementById('nb-clock');
+            var parts = new Intl.DateTimeFormat('en-CA', {timeZone: clock ? clock.dataset.timeZone : undefined,
+                year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+            function part(type) { return parts.find(function(p) { return p.type === type; }).value; }
+            var today = part('year') + '-' + part('month') + '-' + part('day');
+            function validDate(value) { return /^\d{4}-\d{2}-\d{2}$/.test(value) && value >= earliest && value <= today; }
+            function syncDateBounds() {
+                fromDate.min = earliest;
+                fromDate.max = validDate(toDate.value) ? toDate.value : today;
+                toDate.min = validDate(fromDate.value) ? fromDate.value : earliest;
+                toDate.max = today;
+            }
+            syncDateBounds();
+            form.addEventListener('input', syncDateBounds);
             var searchTimer;
             function reload() { clearTimeout(searchTimer); loadHistoryList(searchInput.value); }
             filter.addEventListener('click', function () {
@@ -1948,6 +1964,11 @@ window._posOffline = (function () {
             form.addEventListener('submit', function (event) {
                 event.preventDefault();
                 var values = Object.fromEntries(new FormData(form));
+                if (!validDate(values.historyFromDate) || !validDate(values.historyToDate)) {
+                    error.textContent = 'Choose both dates, up to today, using a four-digit year.';
+                    error.hidden = false;
+                    return;
+                }
                 var from = values.historyFromDate + 'T' + (values.historyFromTime || '00:00');
                 var to = values.historyToDate + 'T' + (values.historyToTime || '23:59');
                 error.hidden = from <= to;
@@ -1955,7 +1976,7 @@ window._posOffline = (function () {
                 historyCriteria = values; filter.textContent = 'Filter •'; reload();
             });
             panel.querySelector('#hist-filter-reset').addEventListener('click', function () {
-                form.reset(); error.hidden = true; historyCriteria = {}; filter.textContent = 'Filter'; reload();
+                form.reset(); syncDateBounds(); error.hidden = true; historyCriteria = {}; filter.textContent = 'Filter'; reload();
             });
             searchInput.addEventListener('input', function() {
                 clearTimeout(searchTimer);

@@ -16,4 +16,11 @@
                 filterMap="[organizationPartyId: ec.user.getPreference('ACTIVE_ORGANIZATION') ?: null]"/>
         </seed-data>
     </entity>
+    <entity entity-name="OrganizationUserShopAccess" package="zenith.erp.base" use="configuration">
+        <field name="organizationPartyId" type="id" is-pk="true"/>
+        <field name="userId" type="id" is-pk="true"/>
+        <field name="shopIdsJson" type="text-long"/>
+        <relationship type="one" related="moqui.security.UserAccount"/>
+        <relationship type="one" related="mantle.party.Party"><key-map field-name="organizationPartyId" related="partyId"/></relationship>
+    </entity>
 </entities>

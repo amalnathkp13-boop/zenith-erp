@@ -124,11 +124,79 @@
                 if (it.entryType=='CashIn') _finCash+=homeBd(it.amount)
                 else if (it.entryType=='CashOut') _finCash-=homeBd(it.amount)
             }
+            // Digital receipts are a period flow. Keep the existing physical cash KPI separate.
+            def _online = _read('Online payments', {
+                def period = { query, field ->
+                    dayStart == null ? query : query.condition(field,'greater-equals',dayStart).condition(field,'less',dayEndExcl)
+                }
+                def digital = ['UPI','Card','BankTransfer','Wallet']
+                def receipts = period(ec.entity.find('zenith.erp.pos.PosDashboardPayment')
+                    .condition('organizationPartyId',activeOrgId).condition('statusId','PtCompleted')
+                    .condition('paymentMethod','in',digital),'paymentDate').disableAuthz()
+                def returns = period(ec.entity.find('zenith.erp.pos.PosDashboardReturn')
+                    .condition('organizationPartyId',activeOrgId).condition('statusId','PrCompleted')
+                    .condition('refundMethod','in',digital),'returnDate').disableAuthz()
+                if (homeShopId) {
+                    def sessions = homeShopSessions ?: ['__NONE__']
+                    def cf = ec.entity.conditionFactory
+                    receipts.condition(cf.makeCondition([
+                        cf.makeCondition('collectionSessionId',EC.IN,sessions),
+                        cf.makeCondition([cf.makeCondition('collectionSessionId',EC.IS_NULL,null),
+                            cf.makeCondition('sessionId',EC.IN,sessions)],EC.AND)
+                    ],EC.OR))
+                    returns.condition('sessionId','in',sessions)
+                }
+                def total = receipts.selectField('amount').list().sum(BigDecimal.ZERO) { homeBd(it.amount) }
+                total -= returns.selectField('refundAmount').list().sum(BigDecimal.ZERO) { homeBd(it.refundAmount) }
+
+                // POS invoices are mirrors of the POS ledger. Sales payments qualify through an
+                // invoice allocation or explicit invoice reference and their own posted date.
+                def linked = ec.entity.find('zenith.erp.pos.PosTransaction').condition('organizationPartyId',activeOrgId)
+                    .condition('linkedInvoiceId',EC.IS_NOT_NULL,null).selectField('linkedInvoiceId').disableAuthz().list()*.linkedInvoiceId as Set
+                def invoiceIds = homeSales.findAll { !linked.contains(it.invoiceId) && (!it.currencyUomId || it.currencyUomId == 'INR') }*.invoiceId as Set
+                if (!invoiceIds) return total
+                def instruments = ['PiAch','PiCreditCard','PiDebitCard','PiWireTransfer','PiAmazonPay','PiPayPalAccount']
+                def posted = ['PmntDelivered','PmntConfirmed']
+                def paymentQuery = { ->
+                    ec.entity.find('mantle.account.payment.Payment').condition('statusId','in',posted)
+                        .condition('paymentInstrumentEnumId','in',instruments).condition('amountUomId','INR').disableAuthz()
+                }
+                def salesReceipts = period(paymentQuery().condition('toPartyId',activeOrgId),'effectiveDate').list()
+                def salesRefunds = period(paymentQuery().condition('fromPartyId',activeOrgId)
+                    .condition('paymentTypeEnumId','PtRefund'),'effectiveDate').list()
+                def paymentIds = (salesReceipts*.paymentId + salesRefunds*.paymentId + salesRefunds*.refundForPaymentId).findAll { it }.unique()
+                def allocations = paymentIds.collate(500).collectMany { ids ->
+                    ec.entity.find('mantle.account.payment.PaymentApplication').condition('paymentId','in',ids)
+                        .disableAuthz().list()
+                }.groupBy { it.paymentId }
+                def refundsByOriginal = [:]
+                salesRefunds.each { refund ->
+                    def originalId = refund.refundForPaymentId ?: (allocations[refund.paymentId] ?: []).find { it.toPaymentId }?.toPaymentId
+                    if (originalId) refundsByOriginal[refund.paymentId] = originalId
+                }
+                def originals = refundsByOriginal.values().unique().collate(500).collectMany { ids ->
+                    paymentQuery().condition('paymentId','in',ids).condition('toPartyId',activeOrgId).list()
+                }.collectEntries { [(it.paymentId):it] }
+                def scopedAmount = { payment ->
+                    def amount = homeBd(payment.amount).max(BigDecimal.ZERO)
+                    def rows = (allocations[payment.paymentId] ?: []).findAll { it.invoiceId && homeBd(it.amountApplied) > 0 }
+                    if (!rows) return invoiceIds.contains(payment.forInvoiceId) ? amount : BigDecimal.ZERO
+                    return rows.findAll { invoiceIds.contains(it.invoiceId) }.sum(BigDecimal.ZERO) { homeBd(it.amountApplied) }.min(amount)
+                }
+                salesReceipts.each { payment -> total += scopedAmount(payment) }
+                salesRefunds.each { refund ->
+                    def original = originals[refundsByOriginal[refund.paymentId]]
+                    def paid = homeBd(original?.amount)
+                    if (paid > 0) total -= (homeBd(refund.amount) * scopedAmount(original)).divide(paid,2,java.math.RoundingMode.HALF_UP)
+                }
+                return total
+            })
+            def invoiceCount = homeSales.findAll { homeInRange(it.invoiceDate) }*.invoiceId.unique().size()
             kpiCards = [
-                [lab:'Total Sales', disp:homeMoney(_finSales), icon:'trending_up', tintBg:'#FEF3C7', tintFg:'#D97706', url:'/apps/zenith/sales/FindInvoice', trend:_salesTrend, extra:'No. of Invoices: '+homeSales.count { homeInRange(it.invoiceDate) }, source:['Sales']],
+                [lab:'Total Sales', disp:homeMoney(_finSales), icon:'trending_up', tintBg:'#FEF3C7', tintFg:'#D97706', url:'/apps/zenith/sales/FindInvoice', trend:_salesTrend, extra:'', footer:[label:'Total invoices', icon:'receipt_long', value:(activeOrgId && !homeDataErrors.contains('Sales') ? invoiceCount.toString() : 'Unavailable')], source:['Sales']],
                 [lab:'Total Payables', disp:homeMoney(_finPay), icon:'receipt_long', tintBg:'#FEE2E2', tintFg:'#DC2626', url:'/apps/zenith/Purchase/PurchaseInvoices', trend:null, extra:(homeShopId ? 'Organization-wide vendor balances' : 'Outstanding vendor balances'), source:['Vendor bills']],
                 [lab:'Total Receivables', disp:homeMoney(_finRecv), icon:'account_balance_wallet', tintBg:'#DBEAFE', tintFg:'#3B82F6', url:'/apps/zenith/pos/CreditBills', trend:null, extra:'POS credits and sales invoices', source:['Sales','POS balances']],
-                [lab:'Cash in Hand', disp:homeMoney(_finCash), icon:'payments', tintBg:'#D1FAE5', tintFg:'#059669', url:'/apps/zenith/pos/CashEntry', trend:null, extra:'Net cash sales and cash entries', source:['POS balances','Cash receipts','Cash entries']]
+                [lab:'Cash in Hand', disp:homeMoney(_finCash), icon:'payments', tintBg:'#D1FAE5', tintFg:'#059669', url:'/apps/zenith/pos/CashEntry', trend:null, extra:'Net cash sales and cash entries', footer:[label:'Online payment', icon:'credit_card', value:(_online instanceof BigDecimal && !homeDataErrors.contains('Sales') ? '₹'+homeMoney(_online) : 'Unavailable'), hint:'Net recorded digital receipts for the selected period. Separate from physical cash.'], source:['POS balances','Cash receipts','Cash entries']]
             ]
             kpiCards.each { it.available = activeOrgId && !it.source.any { source -> homeDataErrors.contains(source) } }
         ]]></script>
@@ -641,7 +709,14 @@
       <span class="material-icons zsc-ic" style="background:${c.tintBg};color:${c.tintFg}">${c.icon}</span>
     </div>
     <div class="zsc-num"><#if c.available>&#8377;${c.disp}<#else>Unavailable</#if></div>
-    <div class="zsc-sub"><#if c.trend??><span class="zsc-chip ${(c.trend.dir=='up')?string('zsc-up','zsc-dn')}">${(c.trend.dir=='up')?string('&#9650; +','&#9660; ')}${c.trend.pct}%</span><span style="color:#9CA3AF">vs previous period</span><#else><span class="zsc-more">${c.extra?html}</span></#if></div>
+    <div class="zsc-sub"><#if c.trend??><span class="zsc-chip ${(c.trend.dir=='up')?string('zsc-up','zsc-dn')}">${(c.trend.dir=='up')?string('&#9650; +','&#9660; ')}${c.trend.pct}%</span><span style="color:#9CA3AF">vs previous period</span><#else><#if c.extra?has_content><span class="zsc-more">${c.extra?html}</span></#if></#if></div>
+    <#if c.footer??>
+    <div class="zsc-footer"<#if c.footer.hint??> title="${c.footer.hint?html}"</#if>>
+      <span class="material-icons" aria-hidden="true">${c.footer.icon}</span>
+      <span>${c.footer.label}</span>
+      <strong>${c.footer.value?html}</strong>
+    </div>
+    </#if>
   </a>
   </#list>
 </div>

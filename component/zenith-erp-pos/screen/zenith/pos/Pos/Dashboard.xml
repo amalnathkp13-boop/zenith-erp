@@ -148,14 +148,16 @@
             def _org = dashboardOrgId
             // ZE-SHOP: the global shop switcher (ACTIVE_SHOP) drives this dashboard's store-mode filter unless the
             // user picked a specific location chip on THIS page (explicit dashLoc always wins).
-            if (!dashLoc) { try { def _ass = ec.service.sync().name("zenith.base.ShopServices.get#ActiveShopScope").call(); if (_ass?.activeShopId) dashLoc = _ass.activeShopId } catch (Exception _ge) {} }
+            def _scope = ec.service.sync().name("zenith.base.ShopServices.get#ActiveShopScope").parameter('includePosScope',true).call()
+            if (_scope.shopAccessRestricted || !dashLoc) dashLoc = _scope.activeShopId
             locMode = 'none'; locOptions = []; _locSessionIds = dashLoc ? ['__NONE__'] : null
             try {
-                if (_org && _org != '_NA_') {
+                if (_scope.shopAccessRestricted) {
+                    _locSessionIds = _scope.sessionIds ?: ['__NONE__']
+                } else if (_org && _org != '_NA_') {
                     def _terms = ec.entity.find("zenith.erp.pos.PosTerminal").condition("organizationPartyId", _org).list()
                     if (_terms) {
                         def _facIds = _terms.collect { it.facilityId }.findAll { it }.unique()
-                        def _scope = ec.service.sync().name("zenith.base.ShopServices.get#ActiveShopScope").call()
                         def _storeIds = (_scope.shopList ?: []).collect { it.id }
                         def _stores = _facIds ? ec.entity.find("mantle.facility.Facility").condition("facilityId","in",_facIds).condition("ownerPartyId",dashboardOrgId).condition("facilityTypeEnumId","FcTpRetailStore").list().findAll { _storeIds.contains(it.facilityId) } : []
                         def _locTermIds = null

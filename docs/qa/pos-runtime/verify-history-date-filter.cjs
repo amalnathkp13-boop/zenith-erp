@@ -21,12 +21,17 @@ module.exports=async({a,base,check,invoke,post,out})=>{
   check('A different date excludes the current bill',(await query({historyFromDate:'2000-01-01',historyToDate:'2000-01-01'})).total===0);
   check('Inverted time range is rejected',(await query({...filters,historyFromTime:'23:30',historyToTime:'01:00'})).success===false);
   check('Incomplete date range is rejected',(await query({historyFromDate:date})).success===false);
+  check('Expanded and future years are rejected by the history endpoint',
+   (await query({...filters,historyToDate:'+544545-04-05'})).success===false&&
+   (await query({...filters,historyToDate:'9999-12-31'})).success===false);
   check('Text search and date filters use AND',(await query({...filters,search:'NO_SUCH_BILL'})).total===0);
   const [hour,minute]=bill.date.split(' ')[1].split(':').map(Number);
   const pm=bill.date.toLowerCase().endsWith('pm');
   const seconds=(hour%12+(pm?12:0))*3600+minute*60;
   const time=sec=>[Math.floor(sec/3600),Math.floor(sec/60)%60,sec%60].map(x=>String(x).padStart(2,'0')).join(':');
   check('Same-day time range includes the matching bill',(await query({...filters,historyFromTime:time(seconds),historyToTime:time(seconds+59)})).bills.some(x=>x.txId===tx.transactionId));
+  const minuteValue=time(seconds).slice(0,5);
+  check('The To Time includes the whole selected minute',(await query({...filters,historyFromTime:minuteValue,historyToTime:minuteValue})).bills.some(x=>x.txId===tx.transactionId));
   const nonMatch=seconds>3600?{historyFromTime:'00:00',historyToTime:'00:30'}:{historyFromTime:'23:00',historyToTime:'23:30'};
   check('Same-day time range excludes outside bills',(await query({...filters,...nonMatch})).total===0);
   await page.goto(base+'/apps/zenith/pos/Terminal?sessionId='+session.sessionId);
@@ -34,7 +39,13 @@ module.exports=async({a,base,check,invoke,post,out})=>{
   await page.locator('#pos-history-btn').click();
   await page.locator('#hist-filter').click();
   const panel=page.locator('#hist-filter-form');
-  await panel.getByLabel('From Date').fill(date); await panel.getByLabel('To Date').fill(date);
+  await panel.getByLabel('To Date').evaluate(input=>{input.value='544545-04-05';input.dispatchEvent(new Event('input',{bubbles:true}));});
+  await panel.getByLabel('From Date').fill(date);
+  await panel.getByRole('button',{name:'Apply Filter'}).click();
+  check('History displays an inline message for an invalid year',await panel.getByRole('alert').isVisible());
+  await panel.getByLabel('To Date').fill(date);
+  check('Selecting the dates links the calendar bounds',await panel.getByLabel('From Date').getAttribute('max')===date&&
+   await panel.getByLabel('To Date').getAttribute('min')===date);
   await panel.getByRole('button',{name:'Apply Filter'}).click();
   const row=page.locator('.hist-bill-row[data-tx-id="'+tx.transactionId+'"]');
   await row.waitFor();

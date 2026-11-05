@@ -274,14 +274,10 @@
         <actions>
             <script><![CDATA[
                 def fid = ec.web.getRequest().getParameter("facilityId")
-                def org = ec.user.getPreference("ACTIVE_ORGANIZATION")
-                if (!fid) {
-                    ec.user.setPreference("ACTIVE_SHOP", "")   // All Shops (combined)
-                } else if (org && org != '_NA_') {
-                    def scope = ec.service.sync().name("zenith.base.ShopServices.get#ActiveShopScope")
-                        .parameter("facilityId", fid).call()
-                    if (scope?.activeShopId == fid) ec.user.setPreference("ACTIVE_SHOP", fid)
-                }
+                def scope = ec.service.sync().name("zenith.base.ShopServices.get#ActiveShopScope")
+                    .parameter("facilityId", fid).call()
+                if (fid && scope?.shopList?.any { it.id == fid }) ec.user.setPreference("ACTIVE_SHOP", fid)
+                else if (!fid && scope && !scope.shopAccessRestricted) ec.user.setPreference("ACTIVE_SHOP", "")
                 def ru = ec.web.getRequest().getParameter("returnUrl")
                 // Preserve the current shell and date filters, but never carry a stale counter
                 // selection into a newly selected shop. Validate a local route, not just a prefix.
@@ -334,7 +330,7 @@
         <script><![CDATA[
             if (html_stylesheets == null) html_stylesheets = []
             html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=306')
-            html_stylesheets.add('/zenithstatic/css/users-access.css?v=1')
+            html_stylesheets.add('/zenithstatic/css/users-access.css?v=2')
             html_stylesheets.add('/zenithstatic/css/sidebar-manager.css?v=3')
             html_stylesheets.add('/zenithstatic/css/subnav-manager.css?v=3')
             html_stylesheets.add('/zenithstatic/css/my-subscription-reference.css?v=1')
@@ -360,7 +356,7 @@
             html_stylesheets.add('/zenithstatic/css/warehouse-facilities.css?v=7')
             html_stylesheets.add('/zenithstatic/css/pos-terminals-reference.css?v=6')
             html_stylesheets.add('/zenithstatic/css/pos-daily-summary-reference.css?v=2')
-            html_stylesheets.add('/zenithstatic/css/main-dashboard.css?v=13')
+            html_stylesheets.add('/zenithstatic/css/main-dashboard.css?v=14')
             html_stylesheets.add('/zenithstatic/css/pricing-history.css?v=1')
             html_stylesheets.add('/zenithstatic/css/stock-transfers.css?v=1')
             html_stylesheets.add('/zenithstatic/css/stock-levels.css?v=2')
@@ -379,7 +375,7 @@
             html_stylesheets.add('https://fonts.googleapis.com/icon?family=Material+Icons')
             if (footer_scripts == null) footer_scripts = []
             footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=14')
-            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=50')
+            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=51')
             footer_scripts.add('/zenithstatic/js/profile-menu.js?v=1')
             footer_scripts.add('/zenithstatic/js/sidebar-manager.js?v=3')
             footer_scripts.add('/zenithstatic/js/subnav-manager.js?v=4')
@@ -502,13 +498,14 @@
 
             // ZE-SHOP: cheap shop context for the top-bar switcher + shop-aware screens (heavier POS session
             // derivation stays in the POS screens). Self-contained; fails open to All-Shops / single-shop no-op.
-            context.activeShopId = null; context.activeShopName = null; context.hasMultiShop = false; context.shopListJson = '[]'; context.shopList = []
+            context.activeShopId = null; context.activeShopName = null; context.hasMultiShop = false; context.shopAccessRestricted = false; context.shopListJson = '[]'; context.shopList = []
             try {
                 def _shopScope = ec.service.sync().name("zenith.base.ShopServices.get#ActiveShopScope").parameters([:]).call()
                 if (_shopScope) {
                     context.activeShopId = _shopScope.activeShopId
                     context.activeShopName = _shopScope.activeShopName
                     context.hasMultiShop = _shopScope.hasMultiShop ?: false
+                    context.shopAccessRestricted = _shopScope.shopAccessRestricted ?: false
                     context.shopListJson = _shopScope.shopListJson ?: '[]'
                     context.shopList = _shopScope.shopList ?: []
                 }
@@ -712,7 +709,7 @@
         <render-mode><text type="html,qvt"><![CDATA[
             <div id="zenith-saas-cfg" data-role-scope="${(roleNavJson!'{}')?html}" style="display:none" data-nav-restricted="${(navRestricted!false)?c}" data-tenant="${(isSaasTenant!false)?c}" data-all="${(saasHasAllAccess!false)?c}" data-pos-only="${(posOnlyUser!false)?c}" data-is-admin="${(canManageSettings!false)?c}" data-super="${(isSuperAdmin!false)?c}" data-org-name="${(zTopOrgName!'')?html}" data-user-name="${((ec.user.userAccount.userFullName)!(ec.user.username)!'')?html}" data-modules='${saasVisibleModulesJson!saasAllowedModulesJson!"[]"}'></div>
             <!-- ZE-SHOP: shop switcher data (rendered server-side to avoid attribute-escaping pitfalls in shop names). -->
-            <div id="z-shopdata" style="display:none" data-multishop="${(hasMultiShop!false)?c}" data-active="${(activeShopId!'')?html}" data-token="${(ec.web.sessionToken)!''}"><#if shopList??><#list shopList as s><i data-id="${(s.id!'')?html}" data-name="${(s.name!'')?html}"></i></#list></#if></div>
+            <div id="z-shopdata" style="display:none" data-multishop="${(hasMultiShop!false)?c}" data-restricted="${(shopAccessRestricted!false)?c}" data-shop-name="${(activeShopName!'')?html}" data-active="${(activeShopId!'')?html}" data-token="${(ec.web.sessionToken)!''}"><#if shopList??><#list shopList as s><i data-id="${(s.id!'')?html}" data-name="${(s.name!'')?html}"></i></#list></#if></div>
         ]]></text></render-mode>
 
         <section name="SaasBillingAccess">
@@ -1175,16 +1172,18 @@
             if(host&&!document.getElementById('z-ownerview')){
               var orgName=(cfg2&&cfg2.getAttribute('data-org-name'))||'';
               var shopData=document.getElementById('z-shopdata');
-              var canSwitch=false,shops=[],activeShop='',shopTok='';
+              var canSwitch=false,shops=[],activeShop='',shopTok='',restricted=false,shopName='';
               if(shopData){
                 canSwitch=shopData.getAttribute('data-multishop')==='true'&&!(cfg2&&cfg2.getAttribute('data-pos-only')==='true');
+                restricted=shopData.getAttribute('data-restricted')==='true';
+                shopName=shopData.getAttribute('data-shop-name')||'';
                 activeShop=shopData.getAttribute('data-active')||'';
                 shopTok=shopData.getAttribute('data-token')||'';
                 [].slice.call(shopData.querySelectorAll('i')).forEach(function(n){shops.push({id:n.getAttribute('data-id'),name:n.getAttribute('data-name')});});
               }
               var ov=document.createElement('div');ov.id='z-ownerview';
               var ovi=document.createElement('span');ovi.className='material-icons';ovi.textContent='grid_view';ov.appendChild(ovi);
-              var ovl=document.createElement('span');ovl.textContent='Owner View';ov.appendChild(ovl);
+              var ovl=document.createElement('span');ovl.textContent=restricted?'Shop View':'Owner View';ov.appendChild(ovl);
               if(canSwitch){
                 ov.classList.add('zov-switch');
                 var ss=document.createElement('span');ss.className='zov-sep';ss.textContent='·';ov.appendChild(ss);
@@ -1196,16 +1195,18 @@
                 var hd=document.createElement('div');hd.className='zsm-head';hd.textContent='View shop';menu.appendChild(hd);
                 var submitShop=function(id){var f=document.createElement('form');f.method='POST';f.action='/apps/zenith/setActiveShop';f.style.display='none';var add=function(n,v){var i=document.createElement('input');i.type='hidden';i.name=n;i.value=v;f.appendChild(i);};add('facilityId',id||'');add('moquiSessionToken',shopTok);add('returnUrl',location.pathname+location.search);document.body.appendChild(f);f.submit();};
                 var shopItem=function(id,name,on){var a=document.createElement('a');a.href='#';a.className='zsm-item'+(on?' on':'');var ic=document.createElement('span');ic.className='material-icons';ic.textContent=on?'check':(id?'storefront':'apps');a.appendChild(ic);var lb=document.createElement('span');lb.textContent=name;a.appendChild(lb);a.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();submitShop(id);});return a;};
-                menu.appendChild(shopItem('','All Shops (combined)',!activeShop));
+                if(!restricted)menu.appendChild(shopItem('','All Shops (combined)',!activeShop));
                 shops.forEach(function(s){menu.appendChild(shopItem(s.id,s.name,s.id===activeShop));});
+                if(!restricted){
                 var msep=document.createElement('div');msep.style.cssText='height:1px;background:#EEE9F7;margin:5px 6px';menu.appendChild(msep);
                 var mmg=document.createElement('a');mmg.href='/apps/zenith/Stores/FindStore';mmg.className='zsm-item';mmg.style.fontWeight='700';var mmi=document.createElement('span');mmi.className='material-icons';mmi.textContent='add';mmg.appendChild(mmi);var mml=document.createElement('span');mml.textContent='Add / manage shops';mmg.appendChild(mml);mmg.addEventListener('click',function(e){e.stopPropagation();});menu.appendChild(mmg);
+                }
                 ov.appendChild(menu);
                 ov.addEventListener('click',function(e){e.stopPropagation();menu.classList.toggle('show');});
                 document.addEventListener('click',function(){menu.classList.remove('show');});
-              } else if(orgName){
+              } else if(restricted||orgName){
                 var ss2=document.createElement('span');ss2.className='zov-sep';ss2.textContent='·';ov.appendChild(ss2);
-                var og=document.createElement('span');og.className='zov-org';og.textContent=orgName;ov.appendChild(og);
+                var og=document.createElement('span');og.className='zov-org';og.textContent=restricted?(shopName||'No shop assigned'):orgName;ov.appendChild(og);
               }
               var sc=document.createElement('div');sc.id='z-search';
               var box=document.createElement('div');box.className='zsr-box';
@@ -1296,7 +1297,7 @@
             <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"/>
             <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
             <link rel="stylesheet" href="/zenithstatic/css/zenith-theme-v4.css?v=306"/>
-            <link rel="stylesheet" href="/zenithstatic/css/users-access.css?v=1"/>
+            <link rel="stylesheet" href="/zenithstatic/css/users-access.css?v=2"/>
             <link rel="stylesheet" href="/zenithstatic/css/my-subscription-reference.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/saas-admin.css?v=4"/>
             <link rel="stylesheet" href="/zenithstatic/css/product-catalog.css?v=2"/>
@@ -1318,7 +1319,7 @@
             <link rel="stylesheet" href="/zenithstatic/css/pos-reference.css?v=10"/>
             <link rel="stylesheet" href="/zenithstatic/css/pos-terminals-reference.css?v=6"/>
             <link rel="stylesheet" href="/zenithstatic/css/pos-daily-summary-reference.css?v=2"/>
-            <link rel="stylesheet" href="/zenithstatic/css/main-dashboard.css?v=13"/>
+            <link rel="stylesheet" href="/zenithstatic/css/main-dashboard.css?v=14"/>
             <link rel="stylesheet" href="/zenithstatic/css/pricing-history.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/stock-transfers.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/stock-levels.css?v=2"/>

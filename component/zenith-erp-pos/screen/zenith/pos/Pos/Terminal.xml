@@ -2413,21 +2413,26 @@
                         def offset = Math.max(0, p.offset ? (p.offset as int) : 0)
                         def limit = Math.max(1, Math.min(100, p.histLimit ? (p.histLimit as int) : 20))
                         java.sql.Timestamp historyStart = null, historyEnd = null
-                        boolean historyEndExclusive = !p.historyToTime
+                        boolean historyEndExclusive = !p.historyToTime || p.historyToTime.toString() ==~ /\d{2}:\d{2}/
                         if (p.historyFromDate || p.historyToDate || p.historyFromTime || p.historyToTime) {
                             try {
-                                if (!p.historyFromDate || !p.historyToDate) throw new IllegalArgumentException()
+                                if (!(p.historyFromDate?.toString() ==~ /\d{4}-\d{2}-\d{2}/) ||
+                                        !(p.historyToDate?.toString() ==~ /\d{4}-\d{2}-\d{2}/)) throw new IllegalArgumentException()
                                 def from = java.time.LocalDate.parse(p.historyFromDate.toString())
                                 def to = java.time.LocalDate.parse(p.historyToDate.toString())
                                 def zone = ec.user.timeZone.toZoneId()
+                                def today = ec.user.nowTimestamp.toInstant().atZone(zone).toLocalDate()
+                                if (from.year < 1 || to.isAfter(today)) throw new IllegalArgumentException()
                                 def start = from.atTime(p.historyFromTime ? java.time.LocalTime.parse(p.historyFromTime.toString()) : java.time.LocalTime.MIDNIGHT)
                                 def end = to.atTime(p.historyToTime ? java.time.LocalTime.parse(p.historyToTime.toString()) : java.time.LocalTime.MAX)
                                 if (end.isBefore(start)) throw new IllegalArgumentException()
                                 historyStart = java.sql.Timestamp.from(start.atZone(zone).toInstant())
-                                historyEnd = java.sql.Timestamp.from((historyEndExclusive ? to.plusDays(1).atStartOfDay(zone) : end.atZone(zone)).toInstant())
+                                def endBoundary = !p.historyToTime ? to.plusDays(1).atStartOfDay(zone) :
+                                    historyEndExclusive ? end.atZone(zone).plusMinutes(1) : end.atZone(zone)
+                                historyEnd = java.sql.Timestamp.from(endBoundary.toInstant())
                                 if (historyEnd.before(historyStart)) throw new IllegalArgumentException()
                             } catch (Exception ignored) {
-                                ec.web.sendJsonResponse([success:false, error:'Enter both dates and a valid start and end time. The end must be on or after the start.'])
+                                ec.web.sendJsonResponse([success:false, error:'Choose both dates up to today. Enter valid times and an end on or after the start.'])
                                 return
                             }
                         }

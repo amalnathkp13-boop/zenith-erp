@@ -269,6 +269,7 @@
     <moqui.security.UserGroup userGroupId="ZENITH_HR_EXEC" description="HR Executive — HR, Attendance, Time Off"/>
     <moqui.security.UserGroup userGroupId="ZENITH_INVENTORY_MGR" description="Inventory Manager — Inventory, Warehouses, Stock"/>
     <moqui.security.UserGroup userGroupId="ZENITH_STORE_MGR" description="Store Manager — POS, Inventory, Contacts"/>
+    <moqui.security.UserGroup userGroupId="ZENITH_MULTI_SHOP_MANAGER" description="Multiple Shop Manager — Choose between assigned shops"/>
     <moqui.security.UserGroup userGroupId="ZENITH_CASHIER" description="POS Cashier — POS Terminal Only"/>
     <moqui.security.UserGroup userGroupId="ZENITH_MFG_MGR" description="Manufacturing Manager — Manufacturing, Quality, PLM, Maintenance"/>
     <moqui.security.UserGroup userGroupId="ZENITH_MFG_OPERATOR" description="Manufacturing Operator — Work Orders, Quality Inspections"/>
@@ -708,6 +709,8 @@
          entity REST must not bypass validation or a primary-key ownership check. -->
     <moqui.security.ArtifactGroup artifactGroupId="ORG_ROLE_PRIVATE" description="Organization role policy service boundary"/>
     <moqui.security.ArtifactGroupMember artifactGroupId="ORG_ROLE_PRIVATE" artifactName="zenith.erp.base.OrganizationAccessRole"
+        artifactTypeEnumId="AT_ENTITY" inheritAuthz="N"/>
+    <moqui.security.ArtifactGroupMember artifactGroupId="ORG_ROLE_PRIVATE" artifactName="zenith.erp.base.OrganizationUserShopAccess"
         artifactTypeEnumId="AT_ENTITY" inheritAuthz="N"/>
     <moqui.security.ArtifactAuthz artifactAuthzId="ZA_ROLE_PRIVATE" userGroupId="ZENITH_ALL" artifactGroupId="ORG_ROLE_PRIVATE"
         authzTypeEnumId="AUTHZT_DENY" authzActionEnumId="AUTHZA_ALL"/>

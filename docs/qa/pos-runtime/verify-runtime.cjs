@@ -73,6 +73,7 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
   await require('./verify-rate-sync.cjs')({a,base,check,q,invoke,post,out});await browser.close();browser=null;return;
  }
  if(process.env.POS_QA_UI_ONLY!=='true'||process.env.POS_QA_FOCUS==='history-window')await require('./verify-history-window.cjs')({a,foreign,base,check,q,invoke,post,out});
+ if(process.env.POS_QA_FOCUS==='shop-dashboard-access'){await require('./verify-shop-dashboard-access.cjs')({a,browser,base,check,invoke,post,q,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='history-date-filter'){await require('./verify-history-date-filter.cjs')({a,base,check,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='history-window'){await browser.close();browser=null;return;}
  if(process.env.POS_QA_UI_ONLY!=='true')await require('./verify-catalog-performance.cjs')({a,foreign,base,check,q,invoke,post,out});
@@ -566,6 +567,7 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
   await require('./verify-product-mode-prices.cjs')({a,foreign,base,check,q,invoke,post});
   await require('./verify-product-mode-form.cjs')({a,base,check,out});
   await require('./verify-live-mode-pricing.cjs')({a,base,check,q,invoke,post,out});
+  await require('./verify-shop-dashboard-access.cjs')({a,browser,base,check,invoke,post,q,out});
  }
  cp.execFileSync(process.execPath,[path.join(__dirname,'check-kitchen-navigation.cjs')],{stdio:'inherit'});
  await browser.close();browser=null;
