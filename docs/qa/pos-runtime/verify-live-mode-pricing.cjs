@@ -53,11 +53,11 @@ module.exports = async ({a, base, check, invoke, post, q, out}) => {
     const confirm = page.locator('#posPayConfirmOverlay');
     await confirm.waitFor();
     await updateModePrice('POS_QA_A_P18',112);
-    const review = page.waitForEvent('dialog');
-    page.once('dialog', dialog => dialog.accept());
+    const review = page.getByRole('alert').filter({hasText:'Product prices changed'});
     await confirm.locator('#posPayConfOk').click();
+    await review.waitFor();
     check('a price change during confirmation requires review and writes no tender',
-      (await review).message().includes('Product prices changed') && payments().length===0);
+      await review.isVisible() && payments().length===0);
     await waitForRate('POS_QA_A_P18',112);
     check('catalog refresh preserves the cashier’s deliberate rate override',
       Number(rates().find(row => row.product_id==='POS_QA_A_P5')?.unit_price)===87 &&
