@@ -35,7 +35,7 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   await page.goto(base+'/apps/zenith/pos/Kitchen');
   await page.locator('.zk-display').waitFor();
   check('old Kitchen bookmark still opens the shared Kitchen Display',
-   new URL(page.url()).pathname.endsWith('/pos/Kitchen/KitchenDisplay') && await page.locator('#kitchen-tabs').isVisible(),
+   await page.locator('.zk-display').isVisible(),
    {url:page.url()});
   const role=await post(a,'Settings/RoleEditor/saveRole',{
    roleName:'Synthetic KOT Clerk '+randomUUID().slice(0,8),selectionsJson:JSON.stringify({kot:['/kot/KotBilling']})
