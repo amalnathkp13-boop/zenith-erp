@@ -7,6 +7,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await page.goto(base+'/'+shell+'/zenith/kot/KotBilling');
    await page.locator('#kot-terminal-entry').waitFor();
    check(shell+' KOT starts at terminal selection instead of a sessionless cart',await page.locator('#kot-terminal-entry').count()===1&&await page.locator('#kb-search').count()===0);
+   check(shell+' terminal gateway uses readable full-size controls',await page.locator('#kot-terminal-entry select').evaluate(el=>el.getBoundingClientRect().height>=40));
    if(out)await page.screenshot({path:require('node:path').join(out,shell+'-kot-terminal-entry.png')});
   }
   const terminalId='POS_QA_KOT_GATE_'+randomUUID().slice(0,8);
