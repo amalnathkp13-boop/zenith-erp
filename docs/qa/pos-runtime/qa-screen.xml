@@ -66,6 +66,14 @@
     def errors=ec.message.errorsString;ec.message.clearErrors()
     ec.web.sendJsonResponse([result:errors ? null : r?.result,errors:errors ?: ''])
 ]]></script></actions><default-response type="none"/></transition>
+<transition name="rotateBrowserSession" method="post"><actions><script><![CDATA[
+    if (System.getProperty('pos.qa.disposable')!='true' || ec.user.username!='pos.qa' ||
+            ec.user.getPreference('ACTIVE_ORGANIZATION')!='POS_QA_A') {
+        ec.web.response.setStatus(403);ec.web.sendJsonResponse([denied:true]);return
+    }
+    ec.web.makeNewSession()
+    ec.web.sendJsonResponse([rotated:true])
+]]></script></actions><default-response type="none"/></transition>
 <transition name="priceRoleProbe" method="post"><actions><script><![CDATA[
     if (System.getProperty('pos.qa.disposable')!='true' || ec.user.username!='pos.qa' || !ec.user.isInGroup('ZENITH_ADMIN') ||
             !['hybrid','view','manager','restore'].contains(ec.web.parameters.role) ||

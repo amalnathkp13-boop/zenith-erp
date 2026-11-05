@@ -4072,6 +4072,7 @@ window.posToggleFullscreen = function() {
                 confirmCatalogTender().then(function(){
                     hid('catalogRevision', catalogRevision);
                     f.querySelector('[name="transactionId"]').value = TX;
+                    f.querySelector('[name="moquiSessionToken"]').value = TK;
                     return window.PosFreeItems.ensure(TX, TK);
                 }).then(function(){
                     document.body.appendChild(f);f.submit();
@@ -4325,6 +4326,7 @@ window.posToggleFullscreen = function() {
                 options.body.set('transactionId', TX);
                 options.body.set('catalogRevision', catalogRevision);
                 options.body.set('taxOn', TO);
+                options.body.set('moquiSessionToken', TK);
                 return window.PosFreeItems.ensure(TX, TK);
             }).then(function() { return fetch(url, options); })
                 .then(function(r) { return r.json().catch(function() { return null; }); })
@@ -4759,10 +4761,21 @@ window.posToggleFullscreen = function() {
                 idleWaiters.splice(0).forEach(function(waiter) { if (syncError) waiter.reject(syncError); else waiter.resolve(); });
             }
             function realSeq(seq) { return realByTmp[seq] || seq; }
-            function requestCart(params) {
-                return fetch('Terminal/ajaxCart', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+            function requestCart(params, renewed) {
+                return fetch('Terminal/ajaxCart', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded',Accept:'application/json','X-Requested-With':'XMLHttpRequest'},
                     body:new URLSearchParams(params), credentials:'same-origin', signal:AbortSignal.timeout(25000) })
-                    .then(function(response) { return response.json(); });
+                    .then(function(response) {
+                        // Only retry an explicitly rejected request and absolute edits/reads.
+                        // Never replay an add/scan delta or an ambiguous network failure.
+                        if (response.status === 401 && !response.redirected && !renewed &&
+                            ['refresh','updatePrice','updateQty','setItemMode'].indexOf(params.action) !== -1) {
+                            return refreshBrowserToken(params.transactionId).then(function() {
+                                params.moquiSessionToken = TK;
+                                return requestCart(params, true);
+                            });
+                        }
+                        return response.json();
+                    });
             }
             function reconcile() {
                 if (recovering) return recovering;
@@ -4999,9 +5012,22 @@ window.posToggleFullscreen = function() {
             if (CATID) p.catId = CATID;
             for (var k in params) { if (params[k] !== undefined && params[k] !== null && params[k] !== '') p[k] = params[k]; else delete p[k]; }
             var qs = Object.keys(p).filter(function(k) { return p[k] !== '' && p[k] !== undefined; }).map(function(k) { return k + '=' + encodeURIComponent(p[k]); }).join('&');
-            return fetch(base + '?' + qs, {credentials: 'same-origin', signal: signal})
+            return fetch(base + '?' + qs, {credentials: 'same-origin', cache:'no-store', signal: signal})
                 .then(function(r) { if (!r.ok) throw new Error('Product refresh failed'); return r.text(); })
                 .then(function(html) { return new DOMParser().parseFromString(html, 'text/html'); });
+        }
+        function refreshBrowserToken(expectedTx) {
+            // A different tab can renew the session while the till stays open. A fresh,
+            // authorized form supplies its token without replacing the cashier's cart.
+            return fetchScreen({}).then(function(doc) {
+                var form = doc.getElementById('cartInlineAddForm');
+                var session = form && form.querySelector('[name=sessionId]');
+                var token = form && form.querySelector('[name=moquiSessionToken]');
+                if (!af.isConnected || expectedTx !== TX || !session || session.value !== SI || !token || !token.value || token.value === TK)
+                    throw new Error('Your sign-in session needs attention. Sign in again to continue this bill.');
+                TK = token.value;
+                document.querySelectorAll('[name=moquiSessionToken]').forEach(function(input) { input.value = TK; });
+            });
         }
 
         function fetchCatalog(params, signal) {
@@ -5293,15 +5319,38 @@ window.posToggleFullscreen = function() {
                 return catalogCheck.catch(function() {}).then(function() { return refreshCatalog(true); });
             }
             var checkedTx = TX, previous = catalogRevision;
-            catalogCheck = fetch('Terminal/catalogRevision', {
-                method:'POST', credentials:'same-origin', signal:AbortSignal.timeout(10000),
-                body:new URLSearchParams({sessionId:SI, transactionId:checkedTx, taxOn:TO,
-                    since:previous, revalidate:revalidate ? 'Y' : 'N', moquiSessionToken:TK})
-            }).then(function(response) {
-                return response.json().catch(function() { return null; });
-            }).then(function(data) {
+            function request(attempt) {
+                return fetch('Terminal/catalogRevision', {
+                    method:'POST', credentials:'same-origin', cache:'no-store', signal:AbortSignal.timeout(10000),
+                    headers:{Accept:'application/json','X-Requested-With':'XMLHttpRequest'},
+                    body:new URLSearchParams({sessionId:SI, transactionId:checkedTx, taxOn:TO,
+                        since:previous, revalidate:revalidate ? 'Y' : 'N', moquiSessionToken:TK})
+                }).then(function(response) {
+                    if (response.status === 401 && !attempt) {
+                        return refreshBrowserToken(checkedTx).then(function() {
+                            catalogDirtyTx = checkedTx;
+                            return request(1);
+                        });
+                    }
+                    if (response.status === 401 || response.redirected && /\/Login(?:[/?#]|$)/i.test(response.url))
+                        throw new Error('Your sign-in session expired. Sign in again to continue this bill.');
+                    if (!response.ok) {
+                        var error = new Error(response.status === 403 ? 'Access to this POS session was denied.' : 'Could not verify product prices. Try again.');
+                        error.retryable = response.status >= 500 || response.status === 408 || response.status === 429;
+                        throw error;
+                    }
+                    return response.json();
+                }).catch(function(error) {
+                    if (attempt || !af.isConnected || checkedTx !== TX ||
+                        !(error.retryable || error instanceof TypeError || error instanceof SyntaxError || error.name === 'TimeoutError')) throw error;
+                    // The verification is idempotent. Re-read the saved cart if a response was lost.
+                    catalogDirtyTx = checkedTx;
+                    return new Promise(function(resolve) { setTimeout(resolve, 300); }).then(function() { return request(1); });
+                });
+            }
+            catalogCheck = request(0).then(function(data) {
                 if (!data || !data.success || !data.revision)
-                    throw new Error(data && data.error || 'Could not verify product prices. Try again.');
+                    throw new Error(data && (data.error || (data.errors || []).join(' ')) || 'Could not verify product prices. Try again.');
                 if (!af.isConnected) return data;
                 catalogRevision = data.revision;
                 if (data.changed) {
@@ -5348,8 +5397,9 @@ window.posToggleFullscreen = function() {
             }).catch(function() {});
         }
         function confirmCatalogTender() {
-            var total = Number(lastPay);
+            var total = Number(lastPay), checkedTx = TX;
             return OPT.whenIdle().then(function() { return refreshCatalog(true); }).then(function(data) {
+                if (TX !== checkedTx) throw new Error('The active bill changed. Review it before taking payment.');
                 if (!af.isConnected || !TX || catalogDirtyTx === TX) throw new Error('Could not verify the current bill. Try again.');
                 if (data.cartChanged || Number(lastPay) !== total)
                     throw new Error('Product prices changed. Review the updated bill total before taking payment.');

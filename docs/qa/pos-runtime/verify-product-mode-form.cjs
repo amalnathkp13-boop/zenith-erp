@@ -57,6 +57,18 @@ module.exports = async ({a,base,check,out}) => {
         edit.locator('.pe-savebar button[type=submit]').click()]);
       check(shell+' clearing an override persists MRP inheritance after save',
         await stored.inputValue()===''&&await stored.getAttribute('placeholder')==='110');
+      await page.goto(base+'/'+shell+'/zenith/Inventory/FindProduct',{waitUntil:'domcontentloaded'});
+      await (shell==='apps'?page.locator('#CreateProductDialog-button'):page.getByRole('button',{name:'New Product',exact:true})).click();
+      const blank=page.locator('#CreateProductForm[data-bound=true]');
+      await blank.locator('[name=productName]').fill('Blank MRP QA '+randomUUID().slice(0,8));
+      await blank.locator('[name=uqcEnumId]').selectOption('PCS',{force:true});
+      for(const input of await blank.locator('[data-pe-mode-id]').all()) await input.fill('4.5');
+      await Promise.all([page.waitForURL('**/EditProduct?*'),blank.locator('#CreateProductForm_submitButton').click()]);
+      const saved=page.locator('#productEditorForm');
+      await saved.locator('[data-pe-mode-id]').first().waitFor();
+      check(shell+' creates a product with blank MRP, tax and stock and decimal mode prices',
+        await saved.locator('[name=mrpAmount]').inputValue()===''&&
+        await saved.locator('[data-pe-mode-id]').evaluateAll(inputs=>inputs.every(input=>Number(input.value)===4.5)));
     }
   } finally { await page.close(); }
 };
