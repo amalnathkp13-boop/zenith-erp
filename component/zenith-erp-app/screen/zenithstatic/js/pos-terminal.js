@@ -1886,9 +1886,9 @@ window._posOffline = (function () {
 (function() {
     var CTX = { sessionId: '', terminalId: '' };
     function histToken() {
-        try { if (window.moqui && window.moqui.webrootVue && window.moqui.webrootVue.moquiSessionToken) return window.moqui.webrootVue.moquiSessionToken; } catch(e){}
         var af = document.getElementById('cartInlineAddForm');
         if (af) { var t = af.querySelector('[name=moquiSessionToken]'); if (t && t.value) return t.value; }
+        try { if (window.moqui && window.moqui.webrootVue && window.moqui.webrootVue.moquiSessionToken) return window.moqui.webrootVue.moquiSessionToken; } catch(e){}
         // Start-session screen: no cart form and window.moqui.webrootVue may not be initialised yet,
         // so the token came back EMPTY and the history POST was rejected (non-JSON -> "Couldn't load").
         // Any server-rendered token on the page (e.g. the OpenSessionForm) is valid for this session.
@@ -1990,7 +1990,7 @@ window._posOffline = (function () {
             if (i >= 0) return path.slice(0, i) + '/zenith/pos/Terminal/ajaxCart';
             return path.slice(0, path.lastIndexOf('/')) + '/Terminal/ajaxCart';  // fallback: sibling of current screen
         }
-        function historyPost(params, signal) {
+        function historyPost(params, signal, renewed) {
             if (CTX.sessionId) params.sessionId = CTX.sessionId;
             if (CTX.terminalId) params.terminalId = CTX.terminalId;
             // Start-session screen: no active session, so scope bill history by the terminal chosen
@@ -2007,6 +2007,14 @@ window._posOffline = (function () {
                 body: new URLSearchParams(params), credentials: 'same-origin', signal: signal
             }).then(function(r) {
                 var loginRedirect = r.redirected && /\/Login(?:[/?#]|$)/i.test(r.url);
+                if (params.action === 'billHistory' && r.status === 401 && !r.redirected && !renewed &&
+                    typeof window._posRefreshBrowserToken === 'function') {
+                    return window._posRefreshBrowserToken().then(function() { return historyPost(params, signal, true); }, function() {
+                        var authError = new Error('Sign in again to load bill history.');
+                        authError.historyAuth = true;
+                        throw authError;
+                    });
+                }
                 if (params.action === 'billHistory' && (!r.ok || loginRedirect)) {
                     var error = new Error('Bill history request failed (HTTP ' + r.status + ').');
                     error.status = r.status;
@@ -5023,12 +5031,13 @@ window.posToggleFullscreen = function() {
                 var form = doc.getElementById('cartInlineAddForm');
                 var session = form && form.querySelector('[name=sessionId]');
                 var token = form && form.querySelector('[name=moquiSessionToken]');
-                if (!af.isConnected || expectedTx !== TX || !session || session.value !== SI || !token || !token.value || token.value === TK)
+                if (!af.isConnected || expectedTx !== TX || !session || session.value !== SI || !token || !token.value)
                     throw new Error('Your sign-in session needs attention. Sign in again to continue this bill.');
                 TK = token.value;
                 document.querySelectorAll('[name=moquiSessionToken]').forEach(function(input) { input.value = TK; });
             });
         }
+        window._posRefreshBrowserToken = function() { return refreshBrowserToken(TX); };
 
         function fetchCatalog(params, signal) {
             var data = Object.assign({sessionId:SI, salesModeId:SM, moquiSessionToken:TK}, params);

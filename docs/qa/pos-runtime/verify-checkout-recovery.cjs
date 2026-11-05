@@ -93,6 +93,24 @@ module.exports=async function({a,base,check,q,invoke,post,out}) {
   check('the old held bill completes once at the saved total',result.success&&payments().length===1&&Number(payments()[0].amount)===747);
   await page.locator('.pos-cart .aj-p').waitFor({state:'detached'});
   if(out)await page.screenshot({path:require('node:path').join(out,'held-checkout-recovered.png')});
+  const beforeHistory=await post('PosQaAcceptance','rotateBrowserSession');
+  check('browser session renews before opening Bill History',(await beforeHistory.json()).rotated);
+  a.t=beforeHistory.headers()['x-csrf-token'];
+  const historyReplies=[];
+  page.on('response',response=>{
+   if(response.url().endsWith('/ajaxCart')&&new URLSearchParams(response.request().postData()||'').get('action')==='billHistory')historyReplies.push(response.status());
+  });
+  await page.locator('#pos-history-btn').click();
+  const history=page.getByRole('dialog',{name:'Bill history'});
+  await history.locator('.hist-bill-row').first().waitFor({timeout:8000});
+  check('Bill History recovers the rotated token without leaving POS',historyReplies.join(',')==='401,200'&&payments().length===1);
+  await history.locator('#hist-close').click();
+  historyReplies.length=0;
+  await page.evaluate(()=>{document.querySelector('#cartInlineAddForm [name=moquiSessionToken]').value='STALE-FORM-TOKEN';});
+  await page.locator('#pos-history-btn').click();
+  await history.locator('.hist-bill-row').first().waitFor({timeout:8000});
+  check('history also repairs an old form when the till already has the current token',historyReplies.join(',')==='401,200');
+  await history.locator('#hist-close').click();
   ({transactionId}=await invoke('cart',{sessionId}));
   await invoke('add',{transactionId,productId:'POS_QA_A_P18',quantity:'1',taxOn:'N'});
   await page.goto(terminal);

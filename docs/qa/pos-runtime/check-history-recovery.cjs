@@ -12,6 +12,7 @@ const playwright = require('playwright');
         const bill = {txId:'QA-HISTORY',billNo:'QA-HISTORY',grand:100,date:'05/11/2026 10:00 am',customer:'Synthetic',itemCount:1,payments:[]};
         let calls = [], failure = 'transient';
         await page.route(terminal, route => route.fulfill({contentType:'text/html',body:'<button id="pos-history-btn">History</button><form id="cartInlineAddForm"><input name="sessionId" value="QA-SESSION"><input name="moquiSessionToken" value="QA-CSRF"></form>'}));
+        await page.route(terminal+'.qvt?*',route=>route.fulfill({contentType:'text/html',body:'<p>Sign in required</p>'}));
         await page.route(terminal + '/ajaxCart', async route => {
             const params = Object.fromEntries(new URLSearchParams(route.request().postData()));
             calls.push(params);
@@ -27,6 +28,7 @@ const playwright = require('playwright');
         });
         await page.goto(terminal);
         await page.addScriptTag({path:path.resolve(__dirname,'../../../component/zenith-erp-app/screen/zenithstatic/js/pos-terminal.js')});
+        await page.evaluate(() => {window.moqui={webrootVue:{moquiSessionToken:'STALE-SHELL-TOKEN'}};});
         assert.equal(await page.evaluate(() => navigator.onLine), true);
         await page.locator('#pos-history-btn').click();
         const history = page.getByRole('dialog',{name:'Bill history'});
