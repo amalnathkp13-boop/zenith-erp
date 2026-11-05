@@ -4040,15 +4040,17 @@ window.posToggleFullscreen = function() {
                     return window.PosFreeItems.ensure(TX, TK);
                 }).then(function(){
                     document.body.appendChild(f);f.submit();
-                }).catch(function(error){updateDuePreview();btn.disabled=false;btn.textContent='Complete Credit Sale';alert(error.message);});
+                }).catch(function(error){updateDuePreview();btn.disabled=false;btn.textContent='Complete Credit Sale';showToast(error.message, '#c62828');});
             });
         };
 
         function showToast(msg, bg) {
             var t = document.createElement('div');
-            t.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:999999;padding:18px 36px;border-radius:12px;font-size:20px;font-weight:700;color:#fff;background:'+(bg||'#2e7d32')+';box-shadow:0 6px 32px rgba(0,0,0,0.3);opacity:0;transition:opacity 0.3s;white-space:nowrap;letter-spacing:0.5px';
+            t.setAttribute('role', bg === '#c62828' ? 'alert' : 'status');
+            t.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:2147483647;max-width:calc(100vw - 32px);box-sizing:border-box;padding:14px 22px;border-radius:12px;font-size:18px;font-weight:700;color:#fff;background:'+(bg||'#2e7d32')+';box-shadow:0 6px 32px rgba(0,0,0,0.3);opacity:0;transition:opacity 0.3s;overflow-wrap:anywhere';
             t.textContent = msg;
-            document.body.appendChild(t);
+            var fullscreen = document.fullscreenElement || document.webkitFullscreenElement;
+            (fullscreen && fullscreen !== document.documentElement ? fullscreen : document.body).appendChild(t);
             setTimeout(function() { t.style.opacity = '1'; }, 30);
             setTimeout(function() { t.style.opacity = '0'; setTimeout(function() { t.remove(); }, 400); }, 3500);
             return t;
@@ -4549,7 +4551,7 @@ window.posToggleFullscreen = function() {
         function renderCart(d, discardInputs) {
             if (cartFrame) { cancelAnimationFrame(cartFrame); cartFrame = 0; }
             if (d && d.cartClosed) { recoverClosedCart(); return; }
-            if (!d || !d.success) { if (d && d.error) alert(d.error); return; }
+            if (!d || !d.success) { if (d && d.error) showToast(d.error, '#c62828'); return; }
             TX = d.transactionId || '';
             document.querySelectorAll('input[name="transactionId"]').forEach(function(el) { if (el.value !== TX) el.value = TX; });
             syncModeLinks();
@@ -5473,7 +5475,7 @@ window.posToggleFullscreen = function() {
                     body: new URLSearchParams({action:'sessionSummary', sessionId: SI, taxOn: TO, salesModeId: SM, moquiSessionToken: TK}),
                     credentials: 'same-origin'
                 }).then(function(r) { return r.json(); }).then(function(d) {
-                    if (!d || !d.success) { alert(d ? d.error : 'Failed to load session summary'); return; }
+                    if (!d || !d.success) { showToast((d && d.error) || 'Failed to load session summary', '#c62828'); return; }
                     var ov = document.createElement('div');
                     ov.className = 'pos-close-overlay'; ov.id='posCloseSessionOverlay'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-label','Close session');
                     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box';
@@ -5566,7 +5568,7 @@ window.posToggleFullscreen = function() {
                             }).catch(function(error) {
                                 confirmButton.disabled = false;
                                 confirmButton.textContent = 'CLOSE SESSION';
-                                alert(error.message);
+                                showToast(error.message, '#c62828');
                             });
                     });
                     inp.focus();
@@ -5748,7 +5750,7 @@ window.posToggleFullscreen = function() {
                         if (bn) bn.textContent = 'BILL- 0';
                     })
                     .catch(function(err) {
-                        alert('Payment error: ' + err.message);
+                        showToast('Payment error: ' + err.message, '#c62828');
                         if (btn) { btn.disabled = false; btn.style.opacity = ''; }
                     });
             }
@@ -5763,7 +5765,7 @@ window.posToggleFullscreen = function() {
                 var uAmt = Number(fd.get('upiAmount') || 0);
                 var splitTotal = cAmt + dAmt + uAmt;
                 if (splitTotal < lastPay) {
-                    alert('Split total (' + CS + fmt(splitTotal) + ') is less than the payable amount (' + CS + fmt(lastPay) + '). Please adjust.');
+                    showToast('Split total (' + CS + fmt(splitTotal) + ') is less than the payable amount (' + CS + fmt(lastPay) + '). Please adjust.', '#c62828');
                     return;
                 }
                 var splitParts = [];
@@ -5796,7 +5798,7 @@ window.posToggleFullscreen = function() {
                         if (bn) bn.textContent = 'BILL- 0';
                     })
                     .catch(function(err) {
-                        alert('Split payment error: ' + err.message);
+                        showToast('Split payment error: ' + err.message, '#c62828');
                         if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.textContent = '✓ CONFIRM SPLIT'; }
                     });
             }
@@ -5896,7 +5898,7 @@ window.posToggleFullscreen = function() {
                         if (bn) bn.textContent = 'BILL- 0';
                     })
                     .catch(function(err) {
-                        alert('Payment error: ' + err.message);
+                        showToast('Payment error: ' + err.message, '#c62828');
                         if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.textContent = '💰 CONFIRM PAYMENT'; }
                     });
             }

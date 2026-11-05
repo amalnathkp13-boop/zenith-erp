@@ -7005,7 +7005,7 @@ window.numpadQty=function() { /* qty override for next add */ };
 
 
         if(d&&d.cartClosed){var u=new URL(location.href);u.searchParams.delete('transactionId');u.searchParams.delete('lastCompletedId');location.replace(u.href);return}
-        if(!d||!d.success){if(d&&d.error)alert(d.error);return}
+        if(!d||!d.success){if(d&&d.error&&window._posCheckoutNotice)window._posCheckoutNotice(d.error);return}
 
 
 
@@ -7455,7 +7455,7 @@ window.numpadQty=function() { /* qty override for next add */ };
 
 
 
-            if(d&&!d.success&&d.error) alert(d.error);
+            if(d&&!d.success&&d.error) { if(window._posCheckoutNotice)window._posCheckoutNotice(d.error); }
 
 
 
