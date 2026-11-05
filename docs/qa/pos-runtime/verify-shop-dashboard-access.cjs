@@ -20,6 +20,8 @@ module.exports=async({a,browser,base,check,invoke,post,q,out})=>{
   return {sales:await amount('Total invoices'),digital:await amount('Online payment')};
  };
  try{
+  await select(a,'');
+  const combinedBaseline=await kpis();
   await select(a,shop);
   const baseline=await kpis();
   const seed=await post('PosQaAcceptance','seedShopDashboard',{});
@@ -43,7 +45,10 @@ module.exports=async({a,browser,base,check,invoke,post,q,out})=>{
   check('Second shop counts one POS invoice and only the digital tender less its refund',second.sales===1&&second.digital===57,second);
   await select(a,'');
   const combined=await kpis();
-  check('Combined owner view adds authorized shops once',combined.sales===first.sales+second.sales&&combined.digital===first.digital+second.digital,{first,second,combined});
+  check('Combined owner view adds both test shops without double counting',
+   combined.sales===combinedBaseline.sales+(first.sales-baseline.sales)+second.sales&&
+   combined.digital===combinedBaseline.digital+(first.digital-baseline.digital)+second.digital,
+   {combinedBaseline,baseline,first,second,combined});
   if(out) await page.locator('.zsc-row').screenshot({path:path.join(out,'owner-dashboard-kpis.png')});
   await page.setViewportSize({width:390,height:780});
   check('Both KPI footers fit the dashboard on mobile',await page.locator('.zsc-footer').evaluateAll(nodes=>nodes.every(n=>n.getBoundingClientRect().right<=innerWidth)));
