@@ -1906,6 +1906,7 @@ window._posOffline = (function () {
     }
         /* === Bill History Panel === */
         var historyOverlay = null, historyCriteria = {}, historyRequest, historyVersion = 0;
+        var historyReconnect, historyFailed = false;
         function openBillHistory(search) {
             closeHistory(); historyCriteria = {};
             var ov = document.createElement('div');
@@ -1940,6 +1941,8 @@ window._posOffline = (function () {
             var error = panel.querySelector('#hist-filter-error');
             var searchTimer;
             function reload() { clearTimeout(searchTimer); loadHistoryList(searchInput.value); }
+            historyReconnect = function() { if (historyFailed) reload(); };
+            window.addEventListener('online', historyReconnect);
             filter.addEventListener('click', function () {
                 form.hidden = !form.hidden;
                 filter.setAttribute('aria-expanded', String(!form.hidden));
@@ -1968,6 +1971,8 @@ window._posOffline = (function () {
         }
         function closeHistory() {
             ++historyVersion;
+            window.removeEventListener('online', historyReconnect);
+            historyReconnect = null; historyFailed = false;
             if (historyRequest) historyRequest.abort();
             if (historyOverlay) { historyOverlay.remove(); historyOverlay = null; }
         }
@@ -2000,7 +2005,16 @@ window._posOffline = (function () {
             return send(ajaxCartUrl(), {   // ZE-POS-0211: absolute (was relative 'Terminal/ajaxCart' -> broke on a trailing-slash page URL)
                 method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'},
                 body: new URLSearchParams(params), credentials: 'same-origin', signal: signal
-            }).then(function(r) { return r.json(); });
+            }).then(function(r) {
+                var loginRedirect = r.redirected && /\/Login(?:[/?#]|$)/i.test(r.url);
+                if (params.action === 'billHistory' && (!r.ok || loginRedirect)) {
+                    var error = new Error('Bill history request failed (HTTP ' + r.status + ').');
+                    error.status = r.status;
+                    error.historyAuth = r.status === 401 || r.status === 403 || loginRedirect;
+                    throw error;
+                }
+                return r.json();
+            });
         }
         /* === Auto-print a REVISED receipt (with EDITED note) after a bill is amended === */
         function printEditedReceipt(txId, billNo, taxOn) {
@@ -2042,7 +2056,7 @@ window._posOffline = (function () {
             iDoc.open(); iDoc.write(html); iDoc.close();
         }
         function histEsc(value) { return String(value == null ? '' : value).replace(/[&<>"']/g, function(c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
-        function loadHistoryList(search, offset) {
+        function loadHistoryList(search, offset, retried) {
             var listEl = document.getElementById('hist-list');
             if (!listEl) return;
             offset = offset || 0;
@@ -2051,6 +2065,7 @@ window._posOffline = (function () {
             var version = ++historyVersion;
             var filtered = !!historyCriteria.historyFromDate;
             function current() { return version === historyVersion && listEl.isConnected; }
+            historyFailed = false;
             listEl.innerHTML = '<div role="status" style="text-align:center;padding:40px;color:#999">Loading...</div>';
             listEl.parentElement.scrollTop = 0;
             historyPost(Object.assign({action:'billHistory', search:search||'', offset:offset}, historyCriteria), historyRequest.signal).then(function(d) {
@@ -2099,12 +2114,32 @@ window._posOffline = (function () {
                 });
             }).catch(function(failure) {
                 if (!current() || failure.name === 'AbortError') return;
-                if (filtered) { listEl.textContent = 'Reconnect to search saved bills by date and time.'; return; }
+                // Only replay this read, never payments, amendments or receipt printing.
+                var temporary = failure.status >= 500 || failure.status === 408 || failure.status === 429 || failure.name === 'TypeError' || failure.name === 'SyntaxError';
+                if (!retried && temporary && !failure.historyAuth && navigator.onLine !== false) {
+                    setTimeout(function() { if (current()) loadHistoryList(search, offset, true); }, 300);
+                    return;
+                }
+                historyFailed = !failure.historyAuth;
                 // ZE-POS-017: while offline, show the bills saved on THIS device (pending sync) instead of
                 // a bare connection error. Falls back to the error only when there is nothing queued.
+                function addRetry() {
+                    var retry = document.createElement('button');
+                    retry.type = 'button'; retry.textContent = 'Retry';
+                    retry.style.cssText = 'display:block;margin:12px auto;padding:10px 24px;border:1px solid #7C3AED;border-radius:8px;background:white;color:#6D28D9;cursor:pointer';
+                    retry.onclick = function() { if (current()) loadHistoryList(search, offset); };
+                    listEl.appendChild(retry);
+                }
                 var showErr = function() {
-                    if (current()) listEl.innerHTML = '<div style="text-align:center;padding:40px;color:#c62828">Couldn&#39;t load bill history &mdash; check your connection and try again.</div>';
+                    if (!current()) return;
+                    listEl.innerHTML = '<div role="alert" style="text-align:center;padding:24px;color:#c62828"></div>';
+                    var message = listEl.firstElementChild;
+                    message.textContent = failure.historyAuth
+                        ? 'History access was refused. Sign in again if your session expired, or check your access with an administrator.'
+                        : 'Bill history is temporarily unavailable. Retry here without leaving billing.';
+                    addRetry();
                 };
+                if (failure.historyAuth || filtered) { showErr(); return; }
                 if (window._posOffline && window._posOffline.getQueue) {
                     window._posOffline.getQueue().then(function(q) {
                         if (!q || !q.length) { showErr(); return; }
@@ -2129,7 +2164,7 @@ window._posOffline = (function () {
                                 + '<span>' + (x.items || []).length + ' item' + ((x.items || []).length !== 1 ? 's' : '') + ' &middot; qty ' + n + ' &middot; ' + histEsc(x.paymentMethod) + '</span>'
                                 + '</div></div>';
                         });
-                        if (current()) listEl.innerHTML = h;
+                        if (current()) { listEl.innerHTML = h; addRetry(); }
                     }).catch(showErr);
                 } else showErr();
             });
