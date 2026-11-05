@@ -16,7 +16,6 @@ module.exports=async({a,base,check,q,out})=>{
     await page.setViewportSize({width,height:900});
     check(shell+' creation form fits '+width+'px',await form.evaluate(el=>el.scrollWidth<=el.clientWidth+1));
    }
-   if(out) await form.screenshot({path:require('path').join(out,'receipt-create-'+shell+'-mobile.png')});
    await page.setViewportSize({width:1366,height:900});
    const sent=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('/createTemplate'));
    await form.getByRole('button',{name:'Create Template',exact:true}).click();
