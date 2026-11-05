@@ -151,10 +151,11 @@
                 <field-map field-name="transactionId" from="posTransactionId"/></entity-find-one>
             <entity-find-one entity-name="zenith.erp.pos.PosSession" value-field="kotSession"><field-map field-name="sessionId" from="kotTxn.sessionId"/></entity-find-one>
             <entity-find-one entity-name="zenith.erp.pos.PosTerminal" value-field="kotTerminal"><field-map field-name="terminalId" from="kotSession.terminalId"/></entity-find-one>
+            <if condition="selected.table &amp;&amp; selected.table.facilityId != kotTerminal.facilityId"><return error="true" message="Choose a table in the terminal's shop."/></if>
             <service-call name="zenith.pos.KotServices.get#KitchenDisplayPolicy" in-map="[facilityId:kotTerminal.facilityId]" out-map="displayPolicy"/>
             <if condition="!displayPolicy.enabled"><return error="true" message="Kitchen Display is disabled for this shop. Use KOT printing instead of sending to the kitchen."/></if>
             <service-call name="create#zenith.erp.pos.KitchenOrderTicket"
-                          in-map="[transactionId:posTransactionId, tableId:selected.table?.tableId, tableNumber:selected.table?.tableNumber ?: tableNumber,
+                          in-map="[transactionId:posTransactionId, terminalId:kotTerminal.terminalId, tableId:selected.table?.tableId, tableNumber:selected.table?.tableNumber ?: tableNumber,
                                    waiterName:waiterName, statusId:'KotNew',
                                    organizationPartyId:kotTxn?.organizationPartyId,
                                    printCount:0, kotDate:ec.user.nowTimestamp]"

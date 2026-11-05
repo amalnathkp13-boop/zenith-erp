@@ -59,6 +59,14 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   const order=q(`SELECT status_id,terminal_id,transaction_id FROM kitchen_order_ticket WHERE kot_id='${saved.kotId}'`)[0];
   check('print-only bill completes without waiting for kitchen status',order.status_id==='KotServed'&&order.terminal_id===terminalId);
   for(const kind of ['kot','bill']) check('print-only takeaway retains '+kind+' document',(await (await request('printRecord',{kotId:saved.kotId,kind})).json()).success);
+  const legacy=await (await request('saveDraft',{itemsJson,orderType:'Take Away',taxOn:'N',salesModeId:'RETAIL',wantJson:'Y',notes:'Synthetic legacy KOT QA'})).json();
+  await post('PosQaAcceptance','legacyKot',{kotId:legacy.kotId});
+  await page.goto(base+'/apps/zenith/kot/KotBilling?loadDraft='+legacy.kotId);
+  await page.locator('#kot-terminal-entry select[name=terminalId]').selectOption(terminalId);
+  await page.getByRole('button',{name:'Open / Resume Session'}).click();
+  await page.locator('#kb-wrap[data-ready=true]').waitFor();
+  check('owner can recover a pre-terminal draft through its old bookmark',await page.locator('#kb-data').getAttribute('data-draftid')===legacy.kotId&&await page.locator('#kb-cart tr').count()===1);
+  await request('deleteDraft',{kotId:legacy.kotId});
   const label='DINING_'+randomUUID().slice(0,8);
   await post('Kitchen/Tables','createTable',{facilityId:'POS_QA_A_FAC',tableNumber:label,seatingCapacity:'4'});
   const tableId=q(`SELECT table_id FROM restaurant_table WHERE table_number='${label}'`)[0].table_id;
@@ -69,6 +77,11 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await policy('Y');
   await request('createKot',{itemsJson,orderType:'Take Away',taxOn:'N'});
   check('enabling display restores sending to kitchen',q(`SELECT kot_id FROM kitchen_order_ticket WHERE terminal_id='${terminalId}' AND status_id='KotNew'`).length===1);
+  const posCart=await invoke('cart',{sessionId});
+  await invoke('add',{transactionId:posCart.transactionId,productId:'POS_QA_A_P18',quantity:'1',taxOn:'N'});
+  await invoke('kitchenSend',{posTransactionId:posCart.transactionId,items:JSON.stringify([{productId:'POS_QA_A_P18',quantity:1}])});
+  check('shared POS send records the terminal so the shop policy follows the ticket',q(`SELECT terminal_id FROM kitchen_order_ticket WHERE transaction_id='${posCart.transactionId}'`)[0]?.terminal_id===terminalId);
+  await invoke('void',{transactionId:posCart.transactionId});
  } catch(error) {
   console.error('KOT gateway state',page.url(),(await page.locator('body').innerText()).slice(-1800));
   if(out)await page.screenshot({path:require('node:path').join(out,'kot-gateway-failure.png')});
