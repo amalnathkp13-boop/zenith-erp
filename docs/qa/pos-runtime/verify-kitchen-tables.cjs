@@ -1,5 +1,8 @@
 // Called by the disposable runtime verifier; every mutation uses the real POST transition.
 module.exports=async function({a,foreign,base,post,rows,count,check}) {
+ const kotSessionId=await require('./kot-test-session.cjs')({a,base});
+ const rawPost=post; post=(screen,action,args={},actor)=>rawPost(screen,action,screen==='Kitchen/KotBilling'?{sessionId:kotSessionId,...args}:args,actor);
+
  const label='QA_KITCHEN_ROUTE_'+Date.now();
  await post('Kitchen/Tables','createTable',{facilityId:'POS_QA_A_FAC',tableNumber:label,seatingCapacity:'4'});
  const table=rows('restaurant_table',`table_number='${label}'`)[0];
@@ -9,6 +12,8 @@ module.exports=async function({a,foreign,base,post,rows,count,check}) {
  await page.evaluate(id=>tmSelect(id),table.table_id);
  const open=page.getByRole('button',{name:'Open Billing',exact:true});
  await Promise.all([page.waitForNavigation(),open.click()]);
+ await page.getByRole('button',{name:'Open / Resume Session'}).click();
+ await page.locator('#kb-wrap[data-ready=true]').waitFor();
  check('Open Billing opens KOT Billing with the selected table',page.url().includes('/Kitchen/KotBilling')&&await page.locator('#kb-table').inputValue()===table.table_id);
  await page.goto(base+'/apps/zenith/pos/Kitchen/Tables');
  await page.waitForFunction(()=>typeof tmAddSave==='function');
@@ -36,6 +41,7 @@ module.exports=async function({a,foreign,base,post,rows,count,check}) {
  await page.waitForFunction(()=>typeof tmOpenBilling==='function');
  await page.evaluate(id=>tmSelect(id),table.table_id);
  await Promise.all([page.waitForNavigation(),page.getByRole('button',{name:'Open Billing',exact:true}).click()]);
+ await page.getByRole('button',{name:'Open / Resume Session'}).click();
  await page.locator('#kb-wrap[data-ready=true]').waitFor();
  const selectedTable=page.locator('#kb-table option:checked');
  check('Open Billing retains the occupied table for the next order',await selectedTable.getAttribute('value')===table.table_id&&await selectedTable.isEnabled());

@@ -37,6 +37,13 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  async function post(screen,transition,params={},actor=a,csrf=true,shell='apps'){return actor.c.request.post(`${base}/${shell}/zenith/pos/${screen}/${transition}`,{form:{...(csrf?{moquiSessionToken:actor.t}:{}),...params},maxRedirects:0});}
  async function invoke(op,params={},reject=false,actor=a){const r=await post('PosQaAcceptance','invoke',{op,...params},actor);let b;try{b=await r.json()}catch{b={errors:[(await r.text()).slice(0,160)]}}check(op+(reject?' rejected':' succeeded'),reject?(r.status()===403||b.errors?.length>0):r.status()===200&&!b.errors?.length,{status:r.status(),...b});return b.result||{};}
  if(process.env.POS_QA_FOCUS==='kot-module'){await require('./verify-kot-module.cjs')({browser,a,foreign,base,check,q,out});await browser.close();browser=null;return;}
+ if(process.env.POS_QA_FOCUS==='kot-terminal-policy'){await require('./verify-kot-terminal-policy.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
+ if(process.env.POS_QA_FOCUS==='kot-workflows'){
+  await require('./verify-kot.cjs')({a,foreign,base,post,rows,count,check});
+  await require('./verify-kitchen-tables.cjs')({a,foreign,base,post,rows,count,check});
+  await require('./verify-kitchen-print.cjs')({a,foreign,base,post,rows,count,check,out});
+  await browser.close();browser=null;return;
+ }
  if(process.env.POS_QA_FOCUS==='product-mode-prices'){await require('./verify-product-mode-prices.cjs')({a,foreign,base,check,q,invoke,post});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='product-mode-form'){await require('./verify-product-mode-form.cjs')({a,base,check,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='live-mode-pricing'){await require('./verify-live-mode-pricing.cjs')({a,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
@@ -361,7 +368,8 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  // Both shells' report children are exercised, not just the default report tab.
  for(const shell of ['apps','qapps'])for(const screen of ['Reports/ItemWise','Reports/PaymentWise','Reports/UserWise','Reports/CancelledBills','Reports/EditedBills','Stock/StockAlerts','Kitchen/KotDashboard','Kitchen/KotBilling','Kitchen/Tables','Kitchen/KotHistory','Kitchen/WaiterManagement','ReceiptConfig/Templates']){const r=await p.goto(`${base}/${shell}/zenith/pos/${screen}`,{waitUntil:'networkidle'});check(shell+' '+screen+' child renders',r.status()===200&&!/Error rendering|ScreenRenderException|HTTP Status 500/.test(await p.locator('body').innerText()),{status:r.status()});check(shell+' '+screen+' stored name does not execute',!await p.evaluate(()=>window.posQaXss));}
  const kotBefore=new Set(rows('kitchen_order_ticket',"organization_party_id='POS_QA_A'").map(k=>k.kot_id));
- const createdKot=await post('Kitchen/KotBilling','createKot',{itemsJson:JSON.stringify([{productId:'POS_QA_A_P18',productName:'Disposable product',quantity:1}]),orderType:'Dine In'});
+ const kotSessionId=await require('./kot-test-session.cjs')({a,base});
+ const createdKot=await post('Kitchen/KotBilling','createKot',{sessionId:kotSessionId,itemsJson:JSON.stringify([{productId:'POS_QA_A_P18',productName:'Disposable product',quantity:1}]),orderType:'Dine In'});
  const kot=rows('kitchen_order_ticket',"organization_party_id='POS_QA_A'").find(k=>!kotBefore.has(k.kot_id));
  check('KOT billing creates a ticket in the active shop',createdKot.status()<400&&!!kot&&kot.status_id==='KotNew',{status:createdKot.status(),kotId:kot?.kot_id});
  const kitchenPage=await a.c.newPage();await kitchenPage.goto(base+'/qapps/zenith/pos/Kitchen',{waitUntil:'networkidle'});
@@ -563,6 +571,7 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
   await require('./verify-kitchen-print.cjs')({a,foreign,base,post,rows,count,check,out});
   await require('./verify-kot-module.cjs')({browser,a,foreign,base,check,q,out});
   await require('./verify-kot-compact.cjs')({a,foreign,base,check,q,invoke,post,out});
+  await require('./verify-kot-terminal-policy.cjs')({a,foreign,base,check,q,invoke,post,out});
   await require('./verify-product-mode-prices.cjs')({a,foreign,base,check,q,invoke,post});
   await require('./verify-product-mode-form.cjs')({a,base,check,out});
   await require('./verify-live-mode-pricing.cjs')({a,base,check,q,invoke,post,out});

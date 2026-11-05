@@ -3,6 +3,13 @@
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         default-menu-title="Kitchen Display" default-menu-index="1">
 
+    <transition name="saveDisplayPolicy" method="post" begin-transaction="true">
+        <actions>
+            <service-call name="zenith.pos.KotServices.save#KitchenDisplayPolicy" in-map="[facilityId:facilityId,enabled:enabled]"/>
+        </actions>
+        <default-response url="." parameter-map="[facilityId:facilityId]"/>
+    </transition>
+
     <transition name="updateStatus" method="post" begin-transaction="true">
         <actions>
             <service-call name="zenith.pos.KotServices.update#KotStatus"
@@ -24,11 +31,30 @@
             kitchenAction = (zenithIndex > 0 ? uri.substring(0, zenithIndex) : '') +
                 '/zenith' + kitchenModulePath + '/KitchenDisplay/updateStatus'
             kitchenToken = ec.web?.sessionToken ?: ''
+            displayAdmin=ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN')
+            def shopScope=ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call()
+            policyShops=shopScope.shopList
+            def policy=ec.service.sync().name('zenith.pos.KotServices.get#KitchenDisplayPolicy').parameter('facilityId',ec.context.facilityId).call()
+            policyShopId=policy.shopId ?: ''; kitchenDisplayEnabled=policy.enabled
             def kotQuery = ec.entity.find("zenith.erp.pos.KotView")
             kotQuery.condition('organizationPartyId', org && org != '_NA_' ? org : '__NO_ORGANIZATION__')
             def statuses=['KotNew','KotPreparing','KotReady']
             if (!(filterStatus in statuses)) filterStatus=''
             def allActive=kotQuery.condition('statusId','in',statuses).orderBy('-kotDate,kotId').list()
+            def policies=[:]
+            def terminals=allActive*.terminalId.findAll { it }.unique()
+            def tableIds=allActive*.tableId.findAll { it }.unique()
+            def terminalShops=terminals ? ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId','in',terminals)
+                .condition('organizationPartyId',org).list().collectEntries { [it.terminalId,it.facilityId] } : [:]
+            def tableShops=tableIds ? ec.entity.find('zenith.erp.pos.RestaurantTable').condition('tableId','in',tableIds)
+                .list().collectEntries { [it.tableId,it.facilityId] } : [:]
+            allActive=allActive.findAll { order ->
+                def shopId=terminalShops[order.terminalId] ?: tableShops[order.tableId]
+                if(policyShopId && shopId!=policyShopId) return false
+                if(!shopId) return true
+                if(!policies.containsKey(shopId)) policies[shopId]=ec.service.sync().name('zenith.pos.KotServices.get#KitchenDisplayPolicy').parameter('facilityId',shopId).call().enabled
+                return policies[shopId]
+            }
             newCount=allActive.count { it.statusId=='KotNew' }
             preparingCount=allActive.count { it.statusId=='KotPreparing' }
             readyCount=allActive.count { it.statusId=='KotReady' }
@@ -42,6 +68,13 @@
     <widgets>
         <render-mode><text type="html,qvt" template="true"><![CDATA[
 <main class="zk-display" aria-labelledby="zk-title">
+    <#if displayAdmin><form method="post" action="${kitchenPageUrl?html}/saveDisplayPolicy" class="zk-filter" id="kitchen-display-policy">
+        <input type="hidden" name="moquiSessionToken" value="${kitchenToken?html}"/>
+        <label>Shop<select name="facilityId" required><option value="">Choose shop</option><#list policyShops as shop><option value="${shop.id?html}"<#if shop.id==policyShopId> selected</#if>>${shop.name?html}</option></#list></select></label>
+        <label>Kitchen Display<select name="enabled"><option value="Y"<#if kitchenDisplayEnabled> selected</#if>>Enable</option><option value="N"<#if !kitchenDisplayEnabled> selected</#if>>Disable</option></select></label>
+        <button type="submit">Save Kitchen Display setting</button>
+    </form></#if>
+    <#if policyShopId?has_content && !kitchenDisplayEnabled><p role="status">Kitchen Display is disabled for this shop. Send to Kitchen is unavailable. Takeaway bills still print a KOT and customer receipt; dine-in bills can be settled after the meal.</p></#if>
     <header class="zk-heading"><span class="zk-heading-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 9a4 4 0 0 1 2-7 5 5 0 0 1 8 0 4 4 0 0 1 2 7v10H6Z"/><path d="M6 15h12"/></svg></span><div><h1 id="zk-title">Kitchen Display</h1><p>Track and manage food orders in the kitchen by order status.</p></div></header>
     <section class="zk-overview" aria-label="Kitchen order summary">
         <article class="zk-metric zk-metric-new"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 3h14v18l-3-2-4 2-4-2-3 2Z"/><path d="M8 7h8M8 11h8M8 15h4"/></svg><div><h2>New Orders</h2><strong data-kitchen-count="KotNew">${newCount}</strong></div></article>

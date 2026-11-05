@@ -157,6 +157,7 @@
         importProduct:['zenith.pos.PosServices.upsert#PosProduct',['sku','productName','listPrice','mrp','unit']],
         scale:['zenith.pos.PosServices.configure#WeighingScale',['terminalId','connectionType','portName','baudRate','dataFormat']],
         open:['zenith.pos.PosServices.open#PosSession',['terminalId','openingCash']],
+        kitchenSend:['zenith.pos.KotServices.create#KitchenOrderTicket',['posTransactionId','items']],
         close:['zenith.pos.PosServices.close#PosSession',['sessionId','closingCash']],
         cart:['zenith.pos.PosServices.create#PosTransaction',['sessionId','transactionType','customerName','destinationRegionGeoId','reuseOpenCart']],
         add:['zenith.pos.PosServices.add#PosTransactionItem',['transactionId','productId','quantity','unitPrice','discountPercent','salesModeId','taxOn']],
