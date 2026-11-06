@@ -30,6 +30,7 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
    if(method==='Cash')await page.locator('#posCashRecv').fill('73');
    const paid=page.waitForResponse(r=>r.url().includes('/payAndComplete'));
    await page.locator(method==='Cash'?'#posCashConfirm':'#posPayConfOk').click();
+   if(method==='UPI') await page.locator('#posPaySavePrint').click();
    const receipt=await (await paid).json();await page.waitForFunction(()=>window.__jobs.length===1);
    check(method+' checkout waits for a rate typed without Enter',Number(read(tx.transactionId).paid_amount)===73&&Number(read(tx.transactionId).payable_amount)===73&&payRequests===index+1,read(tx.transactionId));
    check(method+' receipt uses the persisted edited rate',Number(receipt.items[0].rate)===73);

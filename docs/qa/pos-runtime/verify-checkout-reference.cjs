@@ -7,7 +7,7 @@ module.exports=async function({a,foreign,base,check,q,invoke,post,out}) {
  }
  const session=await invoke('open',{terminalId,openingCash:'100'});
  const page=await a.c.newPage();page.setDefaultTimeout(30000);
- const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
+ const errors=[], dialogs=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>{dialogs.push(d.message());return d.accept();});
  const cart=await invoke('cart',{sessionId:session.sessionId});
  const tx=()=>q(`SELECT * FROM pos_transaction WHERE transaction_id='${cart.transactionId}'`)[0];
  const lines=()=>q(`SELECT * FROM pos_transaction_item WHERE transaction_id='${cart.transactionId}' ORDER BY item_seq_id`);
@@ -85,6 +85,19 @@ module.exports=async function({a,foreign,base,check,q,invoke,post,out}) {
   const denied=await api({action:'clearCart'},foreign);check('foreign cart clear rejected',denied.r.status()===403||!denied.d.success);
   const csrf=await post('Terminal','ajaxCart',{action:'clearCart',sessionId:session.sessionId,transactionId:cart.transactionId},a,false);
   check('Clear Cart requires CSRF protection',[401,403].includes(csrf.status())&&lines().length===1,{status:csrf.status(),lineCount:lines().length});
+  await page.locator('#posFullscreenBtn').click();
+  await page.waitForFunction(()=>!!document.fullscreenElement);
+  const dialogCount=dialogs.length;
+  const denyClear=async route=>{
+   if(new URLSearchParams(route.request().postData()||'').get('action')!=='clearCart') return route.continue();
+   await route.fulfill({json:{success:false,error:'QA: payment already recorded.'}});
+  };
+  await page.route('**/Terminal/ajaxCart',denyClear);
+  await page.locator('#pos-clear-cart').click();
+  await page.locator('#pos-checkout-notice').filter({hasText:'QA: payment already recorded.'}).waitFor();
+  check('Clear Cart rejection leaves items and shows an in-page notice in fullscreen',lines().length===1&&dialogs.length===dialogCount&&
+   await page.evaluate(()=>document.fullscreenElement?.contains(document.querySelector('#pos-checkout-notice'))));
+  await page.unroute('**/Terminal/ajaxCart',denyClear);
   let delayed=false;
   const delayEdit=async route=>{if(new URLSearchParams(route.request().postData()||'').get('action')==='updateQty'){delayed=true;await new Promise(resolve=>setTimeout(resolve,700));}await route.continue();};
   await page.route('**/Terminal/ajaxCart',delayEdit);
@@ -92,6 +105,10 @@ module.exports=async function({a,foreign,base,check,q,invoke,post,out}) {
   await clickAndSettle('#pos-clear-cart','clearCart');
   await page.unroute('**/Terminal/ajaxCart',delayEdit);
   check('Clear Cart waits for the queued edit before clearing',delayed&&lines().length===0);
+  check('Clear Cart succeeds in one click without a browser dialog or exiting fullscreen',dialogs.length===dialogCount&&
+   await page.evaluate(()=>!!document.fullscreenElement));
+  await page.locator('#posFullscreenBtn').click();
+  await page.waitForFunction(()=>!document.fullscreenElement);
   check('Clear Cart removes draft items and tax details, consumes no bill number',lines().length===0&&Number(tx().payable_amount)===0&&!tx().transaction_number&&q(`SELECT * FROM tax_line_detail WHERE reference_type='PosTransactionItem' AND reference_id='${cart.transactionId}'`).length===0);
   await clickAndSettle(product,'addItem');
   await invoke('pay',{transactionId:cart.transactionId,paymentMethod:'Cash',amount:'10'});

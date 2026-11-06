@@ -3189,9 +3189,12 @@ window.posPayDigital = function(form) {
         var where = isUpi ? 'UPI / QR app' : 'card machine';
         var accent = isUpi ? '#9c27b0' : '#2196f3';
         var old = document.getElementById('posPayConfirmOverlay');
-        if (old && old.parentNode) old.parentNode.removeChild(old);
+        if (old) return false;
         var ov = document.createElement('div');
         ov.id = 'posPayConfirmOverlay';
+        ov.setAttribute('role', 'dialog');
+        ov.setAttribute('aria-modal', 'true');
+        ov.setAttribute('aria-label', label);
         ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.55);z-index:2147483600;display:flex;align-items:center;justify-content:center;padding:12px';
         ov.innerHTML =
             '<div style="background:#fff;border-radius:14px;max-width:420px;width:100%;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,0.4);font-family:inherit">'
@@ -3204,19 +3207,50 @@ window.posPayDigital = function(form) {
         document.body.appendChild(ov);
         function closeOv() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
         var okBtn = ov.querySelector('#posPayConfOk');
-        var doneOnce = false;
-        function doConfirm() {
-            if (doneOnce) return;
-            doneOnce = true; closeOv();
+        var choosingReceipt = false;
+        var submitted = false;
+        function completePayment(skipReceipt) {
+            if (submitted) return;
+            submitted = true;
+            if (skipReceipt) {
+                var choice = document.createElement('input');
+                choice.type = 'hidden';
+                choice.name = 'skipReceipt';
+                choice.value = 'Y';
+                form.appendChild(choice);
+            }
+            closeOv();
             form.dataset.posPaymentConfirmed = '1';
-            submitPosPaymentForm(form);
+            try { submitPosPaymentForm(form); }
+            finally { if (choice) choice.remove(); }
+        }
+        function doConfirm() {
+            if (choosingReceipt || submitted) return;
+            if (!isUpi) { completePayment(false); return; }
+            choosingReceipt = true;
+            ov.setAttribute('aria-label', 'Save UPI bill');
+            var panel = ov.firstElementChild;
+            panel.innerHTML = '<h2 style="font-size:18px;margin:0 0 12px">Save UPI bill</h2>'
+                + '<p style="color:#444;margin:0 0 18px">UPI payment received: &#8377; ' + due.toFixed(2) + '.</p>'
+                + '<div style="display:flex;gap:10px">'
+                + '<button type="button" id="posPaySave" style="flex:1;padding:14px;border:1px solid #bbb;background:#f5f5f5;color:#444;border-radius:10px;font-weight:700">Save</button>'
+                + '<button type="button" id="posPaySavePrint" style="flex:1;padding:14px;border:0;background:' + accent + ';color:#fff;border-radius:10px;font-weight:800">Save and print</button></div>';
+            var save = panel.querySelector('#posPaySave');
+            save.addEventListener('click', function() { completePayment(true); });
+            panel.querySelector('#posPaySavePrint').addEventListener('click', function() { completePayment(false); });
+            save.focus();
         }
         ov.querySelector('#posPayConfCancel').addEventListener('click', closeOv);
         okBtn.addEventListener('click', doConfirm);
-        ov.addEventListener('click', function(e) { if (e.target === ov) closeOv(); });
+        ov.addEventListener('click', function(e) { if (e.target === ov && !choosingReceipt) closeOv(); });
         ov.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') { e.preventDefault(); doConfirm(); }
-            else if (e.key === 'Escape') { e.preventDefault(); closeOv(); }
+            if (e.key === 'Enter' && (!choosingReceipt || e.repeat)) {
+                e.preventDefault();
+                if (!e.repeat) doConfirm();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                if (!choosingReceipt) closeOv();
+            }
         });
         setTimeout(function() { try { okBtn.focus(); } catch (e) {} }, 50);
         return false;
@@ -4084,15 +4118,17 @@ window.posToggleFullscreen = function() {
                     return window.PosFreeItems.ensure(TX, TK);
                 }).then(function(){
                     document.body.appendChild(f);f.submit();
-                }).catch(function(error){updateDuePreview();btn.disabled=false;btn.textContent='Complete Credit Sale';alert(error.message);});
+                }).catch(function(error){updateDuePreview();btn.disabled=false;btn.textContent='Complete Credit Sale';showToast(error.message, '#c62828');});
             });
         };
 
         function showToast(msg, bg) {
             var t = document.createElement('div');
-            t.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:999999;padding:18px 36px;border-radius:12px;font-size:20px;font-weight:700;color:#fff;background:'+(bg||'#2e7d32')+';box-shadow:0 6px 32px rgba(0,0,0,0.3);opacity:0;transition:opacity 0.3s;white-space:nowrap;letter-spacing:0.5px';
+            t.setAttribute('role', bg === '#c62828' ? 'alert' : 'status');
+            t.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:2147483647;max-width:calc(100vw - 32px);box-sizing:border-box;padding:14px 22px;border-radius:12px;font-size:18px;font-weight:700;color:#fff;background:'+(bg||'#2e7d32')+';box-shadow:0 6px 32px rgba(0,0,0,0.3);opacity:0;transition:opacity 0.3s;overflow-wrap:anywhere';
             t.textContent = msg;
-            document.body.appendChild(t);
+            var fullscreen = document.fullscreenElement || document.webkitFullscreenElement;
+            (fullscreen && fullscreen !== document.documentElement ? fullscreen : document.body).appendChild(t);
             setTimeout(function() { t.style.opacity = '1'; }, 30);
             setTimeout(function() { t.style.opacity = '0'; setTimeout(function() { t.remove(); }, 400); }, 3500);
             return t;
@@ -4594,7 +4630,7 @@ window.posToggleFullscreen = function() {
         function renderCart(d, discardInputs) {
             if (cartFrame) { cancelAnimationFrame(cartFrame); cartFrame = 0; }
             if (d && d.cartClosed) { recoverClosedCart(); return; }
-            if (!d || !d.success) { if (d && d.error) alert(d.error); return; }
+            if (!d || !d.success) { if (d && d.error) showToast(d.error, '#c62828'); return; }
             TX = d.transactionId || '';
             document.querySelectorAll('input[name="transactionId"]').forEach(function(el) { if (el.value !== TX) el.value = TX; });
             syncModeLinks();
@@ -5567,7 +5603,7 @@ window.posToggleFullscreen = function() {
                     body: new URLSearchParams({action:'sessionSummary', sessionId: SI, taxOn: TO, salesModeId: SM, moquiSessionToken: TK}),
                     credentials: 'same-origin'
                 }).then(function(r) { return r.json(); }).then(function(d) {
-                    if (!d || !d.success) { alert(d ? d.error : 'Failed to load session summary'); return; }
+                    if (!d || !d.success) { showToast((d && d.error) || 'Failed to load session summary', '#c62828'); return; }
                     var ov = document.createElement('div');
                     ov.className = 'pos-close-overlay'; ov.id='posCloseSessionOverlay'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-label','Close session');
                     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box';
@@ -5660,7 +5696,7 @@ window.posToggleFullscreen = function() {
                             }).catch(function(error) {
                                 confirmButton.disabled = false;
                                 confirmButton.textContent = 'CLOSE SESSION';
-                                alert(error.message);
+                                showToast(error.message, '#c62828');
                             });
                     });
                     inp.focus();
@@ -5816,6 +5852,7 @@ window.posToggleFullscreen = function() {
                 fd.set('wantJson', '1'); // get the print-receipt data back in the same response
                 var method = fd.get('paymentMethod') || 'Cash';
                 var paidAmt = fd.get('amount') || '0';
+                var shouldPrint = method !== 'UPI' || fd.get('skipReceipt') !== 'Y';
                 var savedTx = TX;
                 var btn = form.querySelector('button');
                 if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
@@ -5824,7 +5861,7 @@ window.posToggleFullscreen = function() {
                         if (!d || !d.success) throw new Error((d && d.error) || 'Payment failed');
                         var billNum = d.bill && d.bill.number || '';
                         showToast('✔ Sale Complete' + (billNum ? ' — ' + billNum : '') + ' — ' + CS + fmt(paidAmt) + ' ' + method.toUpperCase());
-                        printReceipt(savedTx, billNum, TO, false, d.receiptUnavailable ? null : d);
+                        if (shouldPrint) printReceipt(savedTx, billNum, TO, false, d.receiptUnavailable ? null : d);
                         resetCompletedCart();
                         return fetchScreen({});
                     })
@@ -5842,7 +5879,7 @@ window.posToggleFullscreen = function() {
                         if (bn) bn.textContent = 'BILL- 0';
                     })
                     .catch(function(err) {
-                        alert('Payment error: ' + err.message);
+                        showToast('Payment error: ' + err.message, '#c62828');
                         if (btn) { btn.disabled = false; btn.style.opacity = ''; }
                     });
             }
@@ -5857,7 +5894,7 @@ window.posToggleFullscreen = function() {
                 var uAmt = Number(fd.get('upiAmount') || 0);
                 var splitTotal = cAmt + dAmt + uAmt;
                 if (splitTotal < lastPay) {
-                    alert('Split total (' + CS + fmt(splitTotal) + ') is less than the payable amount (' + CS + fmt(lastPay) + '). Please adjust.');
+                    showToast('Split total (' + CS + fmt(splitTotal) + ') is less than the payable amount (' + CS + fmt(lastPay) + '). Please adjust.', '#c62828');
                     return;
                 }
                 var splitParts = [];
@@ -5890,7 +5927,7 @@ window.posToggleFullscreen = function() {
                         if (bn) bn.textContent = 'BILL- 0';
                     })
                     .catch(function(err) {
-                        alert('Split payment error: ' + err.message);
+                        showToast('Split payment error: ' + err.message, '#c62828');
                         if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.textContent = '✓ CONFIRM SPLIT'; }
                     });
             }
@@ -5990,7 +6027,7 @@ window.posToggleFullscreen = function() {
                         if (bn) bn.textContent = 'BILL- 0';
                     })
                     .catch(function(err) {
-                        alert('Payment error: ' + err.message);
+                        showToast('Payment error: ' + err.message, '#c62828');
                         if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.textContent = '💰 CONFIRM PAYMENT'; }
                     });
             }

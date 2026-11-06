@@ -1,8 +1,9 @@
 const path=require('node:path');
 module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
+ let session;
  const screen='Kitchen/KotBilling';
  const json=async(action,args,actor=a)=>{
-  const response=await post(screen,action,args,actor);
+  const response=await post(screen,action,{sessionId:session?.sessionId,...args},actor);
   return {status:response.status(),data:await response.json().catch(()=>null)};
  };
  const lookup=await json('searchMenu',{term:'pos a p18',salesModeId:'RETAIL'});
@@ -16,12 +17,12 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
  check('KOT inherits MRP when a fixed mode has no override',Number(mode.data?.products?.[0]?.price)===50,mode);
  const terminalId='POS_QA_A_KB_'+Date.now().toString(36);
  await post('PosTerminals','createTerminal',{terminalId,terminalName:'Disposable KOT checkout',facilityId:'POS_QA_A_FAC',organizationPartyId:'POS_QA_A',stateCode:'33',isActive:'Y'});
- const session=await invoke('open',{terminalId,openingCash:'0'});
+ session=await invoke('open',{terminalId,openingCash:'0'});
  const page=await a.c.newPage();
  const waiterName='Disposable compact KOT waiter '+Date.now().toString(36);
  await post('Kitchen/WaiterManagement','createWaiter',{waiterName,phone:'0000000000',isActive:'Y'});
  try{
-  await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling');
+  await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling?sessionId='+session.sessionId);
   await page.locator('#kb-wrap[data-ready=true]').waitFor();
   check('Default workspace has one search and tax toggle, no permanent catalogue',await page.locator('#kb-search').count()===1&&await page.getByRole('switch',{name:'Tax'}).count()===1&&await page.locator('.kb-catlist,.kb-menu').count()===0);
   await page.locator('#kb-mode').selectOption('RETAIL');
@@ -76,7 +77,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await page.waitForFunction(()=>!document.fullscreenElement);
   await search.press('Space');
   await page.locator('#kb-payment').waitFor();
-  await page.locator('select[name=sessionId]').selectOption(session.sessionId);
+  check('Checkout keeps the selected entry terminal',await page.locator('input[name=sessionId]').inputValue()===session.sessionId);
   await page.evaluate(()=>{
    window.kotPrints=[];
    window.open=()=>{

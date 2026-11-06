@@ -61,7 +61,7 @@
         var frame=document.getElementById('kitchen-page-frame');
         var ready=frame&&!staleNodes.has(frame)&&key(frame.dataset.kitchenRoute)===key(pending);
         if(frame) {
-            var destination=key(pending).split('/').pop(), selector=({kot:'#kd-wrap',Kitchen:'.zk-display',KitchenDisplay:'.zk-display',KotBilling:'#kb-wrap',Tables:'#tm-wrap',KotHistory:'#zk-history-toolbar',KotDashboard:'#kd-wrap',WaiterManagement:'#wf-search'})[destination];
+            var destination=key(pending).split('/').pop(), selector=({kot:'#kd-wrap',Kitchen:'.zk-display',KitchenDisplay:'.zk-display',KotBilling:'#kb-wrap,#kot-terminal-entry',Tables:'#tm-wrap',KotHistory:'#zk-history-toolbar',KotDashboard:'#kd-wrap',WaiterManagement:'#wf-search'})[destination];
             if(selector){var content=frame.querySelector(selector);ready=!!content&&!staleNodes.has(content);}
         }
         if(!kitchen(pending))ready=!frame && window.moqui&&moqui.webrootVue&&moqui.webrootVue.loading===0;

@@ -33,6 +33,7 @@ module.exports = async function({a, base, check, q, invoke, post, out, terminalI
     await page.locator('#pos-split').click(); await page.locator('.pos-split-panel [name=cashAmount]').fill(String(amount/2)); await page.locator('.pos-split-panel [name=cardAmount]').fill(String(amount/2)); await page.locator('.pos-split-panel button[type=submit]').click();
    } else {
     await page.locator('#pos-pay-'+method.toLowerCase()).click(); await page.locator('#posPayConfOk').click();
+    if(method==='UPI') await page.locator('#posPaySavePrint').click();
    }
    const payment=await (await paid).json(); check(method+' tax '+taxOn+' checkout succeeds',payment.success,payment.error);
    let screenTimer;
