@@ -37,6 +37,13 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  async function post(screen,transition,params={},actor=a,csrf=true,shell='apps'){return actor.c.request.post(`${base}/${shell}/zenith/pos/${screen}/${transition}`,{form:{...(csrf?{moquiSessionToken:actor.t}:{}),...params},maxRedirects:0});}
  async function invoke(op,params={},reject=false,actor=a){const r=await post('PosQaAcceptance','invoke',{op,...params},actor);let b;try{b=await r.json()}catch{b={errors:[(await r.text()).slice(0,160)]}}check(op+(reject?' rejected':' succeeded'),reject?(r.status()===403||b.errors?.length>0):r.status()===200&&!b.errors?.length,{status:r.status(),...b});return b.result||{};}
  if(process.env.POS_QA_FOCUS==='kot-module'){await require('./verify-kot-module.cjs')({browser,a,foreign,base,check,q,out});await browser.close();browser=null;return;}
+ if(process.env.POS_QA_FOCUS==='kot-terminal-policy'){await require('./verify-kot-terminal-policy.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
+ if(process.env.POS_QA_FOCUS==='kot-workflows'){
+  await require('./verify-kot.cjs')({a,foreign,base,post,rows,count,check});
+  await require('./verify-kitchen-tables.cjs')({a,foreign,base,post,rows,count,check});
+  await require('./verify-kitchen-print.cjs')({a,foreign,base,post,rows,count,check,out});
+  await browser.close();browser=null;return;
+ }
  if(process.env.POS_QA_FOCUS==='product-mode-prices'){await require('./verify-product-mode-prices.cjs')({a,foreign,base,check,q,invoke,post});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='product-mode-form'){await require('./verify-product-mode-form.cjs')({a,base,check,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='live-mode-pricing'){await require('./verify-live-mode-pricing.cjs')({a,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
@@ -360,8 +367,22 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  for(const shell of ['apps','qapps']){const pricingTab=await a.c.newPage();await pricingTab.goto(base+'/'+shell+'/zenith/pos/ProductPricing',{waitUntil:'networkidle'});const href=await pricingTab.locator('a').filter({hasText:'Add Product'}).first().getAttribute('href');const target=href?new URL(href,base):null;const catalog=target?await a.c.request.get(target.href):null;check(shell+' Add Product opens the Inventory catalog',target?.pathname==='/apps/zenith/Inventory/FindProduct'&&catalog?.status()===200&&(await catalog.text()).includes('Product Catalog'),{href,status:catalog?.status()});await pricingTab.close();}
  // Both shells' report children are exercised, not just the default report tab.
  for(const shell of ['apps','qapps'])for(const screen of ['Reports/ItemWise','Reports/PaymentWise','Reports/UserWise','Reports/CancelledBills','Reports/EditedBills','Stock/StockAlerts','Kitchen/KotDashboard','Kitchen/KotBilling','Kitchen/Tables','Kitchen/KotHistory','Kitchen/WaiterManagement','ReceiptConfig/Templates']){const r=await p.goto(`${base}/${shell}/zenith/pos/${screen}`,{waitUntil:'networkidle'});check(shell+' '+screen+' child renders',r.status()===200&&!/Error rendering|ScreenRenderException|HTTP Status 500/.test(await p.locator('body').innerText()),{status:r.status()});check(shell+' '+screen+' stored name does not execute',!await p.evaluate(()=>window.posQaXss));}
+ // Finish the active POS cart before the KOT gateway opens another terminal session.
+ await p.goto(base+'/apps/zenith/pos/Terminal?sessionId='+us.sessionId+'&transactionId='+uc.transactionId,{waitUntil:'networkidle'});
+ await Promise.all([p.waitForNavigation({waitUntil:'networkidle'}),p.locator('#pos-hold').click()]);
+ const uiHeld=rows('pos_held_transaction',`session_id='${us.sessionId}' AND status_id='PhHeld'`).find(h=>JSON.parse(h.items_json||'[]').some(i=>i.sourceTransactionId===uc.transactionId));
+ check('terminal Hold confirms on server and releases the cart',!!uiHeld&&tx(uc.transactionId).status_id==='PtHeld'&&!new URL(p.url()).searchParams.get('transactionId'),{url:p.url(),heldId:uiHeld?.held_id});
+ await invoke('recall',{heldId:uiHeld.held_id,sessionId:us.sessionId}); await invoke('void',{transactionId:uc.transactionId});
+ await p.goto(base+'/apps/zenith/pos/Terminal?sessionId='+us.sessionId,{waitUntil:'networkidle'});
+ await p.locator('.pos-header form[action*="closeSession"] button').click();
+ await p.locator('.pos-close-overlay').waitFor({state:'visible'});
+ await p.locator('.pos-close-cash').fill('100');
+ await p.locator('.pos-close-confirm').click();
+ await p.locator('.pos-no-session').waitFor();
+ check('terminal session close returns to opening screen and stores closing cash',new URL(p.url()).pathname==='/apps/zenith/pos/Terminal'&&count('pos_session',`session_id='${us.sessionId}' AND status_id='PsClosed' AND closing_cash=100`)===1,{url:p.url(),sessionId:us.sessionId});
  const kotBefore=new Set(rows('kitchen_order_ticket',"organization_party_id='POS_QA_A'").map(k=>k.kot_id));
- const createdKot=await post('Kitchen/KotBilling','createKot',{itemsJson:JSON.stringify([{productId:'POS_QA_A_P18',productName:'Disposable product',quantity:1}]),orderType:'Dine In'});
+ const kotSessionId=await require('./kot-test-session.cjs')({a,base});
+ const createdKot=await post('Kitchen/KotBilling','createKot',{sessionId:kotSessionId,itemsJson:JSON.stringify([{productId:'POS_QA_A_P18',productName:'Disposable product',quantity:1}]),orderType:'Dine In'});
  const kot=rows('kitchen_order_ticket',"organization_party_id='POS_QA_A'").find(k=>!kotBefore.has(k.kot_id));
  check('KOT billing creates a ticket in the active shop',createdKot.status()<400&&!!kot&&kot.status_id==='KotNew',{status:createdKot.status(),kotId:kot?.kot_id});
  const kitchenPage=await a.c.newPage();await kitchenPage.goto(base+'/qapps/zenith/pos/Kitchen',{waitUntil:'networkidle'});
@@ -375,18 +396,6 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  for(const [label,next] of [['Ready','KotReady'],['Served','KotServed']]){await kitchenPage.goto(base+'/qapps/zenith/pos/Kitchen',{waitUntil:'networkidle'});await Promise.all([kitchenPage.waitForNavigation({waitUntil:'networkidle'}),kitchenPage.getByRole('button',{name:label}).first().click()]);check('Kitchen '+label+' action persists',rows('kitchen_order_ticket',`kot_id='${kot.kot_id}'`)[0].status_id===next,{url:kitchenPage.url()});}
  await kitchenPage.close();
  await require('./verify-kot.cjs')({a,foreign,base,post,rows,count,check});
- await p.goto(base+'/apps/zenith/pos/Terminal?sessionId='+us.sessionId+'&transactionId='+uc.transactionId,{waitUntil:'networkidle'});
- await Promise.all([p.waitForNavigation({waitUntil:'networkidle'}),p.locator('#pos-hold').click()]);
- const uiHeld=rows('pos_held_transaction',`session_id='${us.sessionId}' AND status_id='PhHeld'`).find(h=>JSON.parse(h.items_json||'[]').some(i=>i.sourceTransactionId===uc.transactionId));
- check('terminal Hold confirms on server and releases the cart',!!uiHeld&&tx(uc.transactionId).status_id==='PtHeld'&&!new URL(p.url()).searchParams.get('transactionId'),{url:p.url(),heldId:uiHeld?.held_id});
- await invoke('recall',{heldId:uiHeld.held_id,sessionId:us.sessionId}); await invoke('void',{transactionId:uc.transactionId});
- await p.goto(base+'/apps/zenith/pos/Terminal?sessionId='+us.sessionId,{waitUntil:'networkidle'});
- await p.locator('.pos-header form[action*="closeSession"] button').click();
- await p.locator('.pos-close-overlay').waitFor({state:'visible'});
- await p.locator('.pos-close-cash').fill('100');
- await p.locator('.pos-close-confirm').click();
- await p.locator('.pos-no-session').waitFor();
- check('terminal session close returns to opening screen and stores closing cash',new URL(p.url()).pathname==='/apps/zenith/pos/Terminal'&&count('pos_session',`session_id='${us.sessionId}' AND status_id='PsClosed' AND closing_cash=100`)===1,{url:p.url(),sessionId:us.sessionId});
  const cashier=await account('pos.cashier.qa');let cr=await cashier.c.request.get(base+'/apps/zenith/pos/Terminal');check('cashier reaches terminal',cr.status()===200);cr=await cashier.c.request.get(base+'/apps/zenith/Inventory/FindProduct');check('cashier reaches authorized inventory',cr.status()===200);cr=await cashier.c.request.get(base+'/apps/zenith/Accounting/AcctgDashboard');check('cashier cannot access accounting',cr.status()===403||cr.url().includes('/pos/Terminal'),{status:cr.status(),url:cr.url()});await cashier.c.close();
  // Opening another session retires this operator's abandoned unpaid carts by design.
  // Finish the online cart/hold/close assertions before the offline scenario opens its own session.
@@ -563,6 +572,7 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
   await require('./verify-kitchen-print.cjs')({a,foreign,base,post,rows,count,check,out});
   await require('./verify-kot-module.cjs')({browser,a,foreign,base,check,q,out});
   await require('./verify-kot-compact.cjs')({a,foreign,base,check,q,invoke,post,out});
+  await require('./verify-kot-terminal-policy.cjs')({a,foreign,base,check,q,invoke,post,out});
   await require('./verify-product-mode-prices.cjs')({a,foreign,base,check,q,invoke,post});
   await require('./verify-product-mode-form.cjs')({a,base,check,out});
   await require('./verify-live-mode-pricing.cjs')({a,base,check,q,invoke,post,out});

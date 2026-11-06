@@ -3,7 +3,7 @@
     <!-- Read-only quote: uses canonical product prices and the installed tax dispatcher.
          An unsent order has no legal invoice number, payment or sale to reprint. -->
     <service verb="get" noun="CartReceipt">
-        <in-parameters><parameter name="itemsJson" required="true" allow-html="any"/><parameter name="tableId"/><parameter name="orderType"/><parameter name="taxOn" default-value="Y"/><parameter name="salesModeId"/><parameter name="waiterId"/><parameter name="notes" allow-html="any"/></in-parameters>
+        <in-parameters><parameter name="sessionId"/><parameter name="itemsJson" required="true" allow-html="any"/><parameter name="tableId"/><parameter name="orderType"/><parameter name="taxOn" default-value="Y"/><parameter name="salesModeId"/><parameter name="waiterId"/><parameter name="notes" allow-html="any"/></in-parameters>
         <out-parameters><parameter name="receipt" type="Map"/></out-parameters>
         <actions>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="scope"/>
@@ -48,7 +48,10 @@
                 }
                 def templates=ec.entity.find('zenith.erp.pos.PosReceiptTemplate').condition('organizationPartyId',scope.organizationPartyId)
                     .condition('isActive','Y').orderBy('-isDefault,templateId').list()
-                def facilityId=selected.table?.facilityId
+                def billing=sessionId ? ec.service.sync().name('zenith.pos.KotServices.get#BillingSession').parameter('sessionId',sessionId).call() : null
+                if(ec.message.hasError()) return
+                def facilityId=billing?.terminal?.facilityId ?: selected.table?.facilityId
+                if(billing && selected.table && selected.table.facilityId!=facilityId) { ec.message.addError('Choose a table at this terminal shop.'); return }
                 def tpl=templates.find { facilityId && it.facilityId==facilityId } ?: templates.find { !it.facilityId }
                 def state=tpl?.taxRegistrationNumber?.size()==15 ? tpl.taxRegistrationNumber.substring(0,2) : null
                 if(!state) {

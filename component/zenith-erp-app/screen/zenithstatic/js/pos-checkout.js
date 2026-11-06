@@ -4,10 +4,14 @@
     var root, observer, scheduled = false, noticeTimer, stockTimer, stockBusy = false;
     function notice(message) {
         var el = document.getElementById('pos-checkout-notice');
-        if (!el) { el = document.createElement('div'); el.id = 'pos-checkout-notice'; el.setAttribute('role', 'status'); document.body.appendChild(el); }
+        if (!el) { el = document.createElement('div'); el.id = 'pos-checkout-notice'; el.setAttribute('role', 'status'); }
+        var fullscreen = document.fullscreenElement || document.webkitFullscreenElement;
+        var parent = fullscreen && fullscreen !== document.documentElement ? fullscreen : document.body;
+        if (el.parentElement !== parent) parent.appendChild(el);
         el.textContent = message; clearTimeout(noticeTimer);
         noticeTimer = setTimeout(function () { el.remove(); }, 3500);
     }
+    window._posCheckoutNotice = notice;
     window.posShowNoHeld = function () { notice('No held bills in this session. Use Hold (F7) to save the current cart.'); };
     window.posCheckoutCopilot = function () {
         var button = document.getElementById('ai-copilot-toggle');
@@ -90,7 +94,6 @@
             if (category) { root.dataset.checkoutCategory = new URL(category.href).searchParams.get('catId') || ''; schedule(); }
             if (event.target.closest('#pos-clear-cart')) {
                 if (typeof window._posClearCart !== 'function') { notice('The bill is still loading. Try again.'); return; }
-                if (!confirm('Clear all items from this unpaid bill?')) return;
                 var button = document.getElementById('pos-clear-cart'); button.disabled = true;
                 window._posClearCart().then(function () { notice('Cart cleared.'); }).catch(function (error) { notice(error.message); }).finally(schedule);
             }

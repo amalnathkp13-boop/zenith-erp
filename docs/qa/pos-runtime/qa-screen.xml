@@ -128,6 +128,13 @@
         mrpAmount:8,amountUomId:'WT_kg',gstSlabId:'GST_0',inventoryTracked:'N']).createOrUpdate()
     ec.web.sendJsonResponse([prepared:!ec.message.hasError()])
 ]]></script></actions><default-response type="none"/></transition>
+<transition name="legacyKot" method="post"><actions><script><![CDATA[
+    if(System.getProperty('pos.qa.disposable')!='true' || ec.user.username!='pos.qa') {ec.web.response.setStatus(403);return}
+    def kot=ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('kotId',ec.context.kotId)
+        .condition('organizationPartyId','POS_QA_A').condition('statusId','KotDraft').one()
+    if(!kot || !(kot.notes ?: '').contains('Synthetic legacy KOT QA')) {ec.web.response.setStatus(400);return}
+    kot.set('terminalId',null).update(); ec.web.sendJsonResponse([prepared:true])
+]]></script></actions><default-response type="none"/></transition>
 <transition name="invoke"><actions><script><![CDATA[
     if (System.getProperty('pos.qa.disposable')!='true' || !['pos.qa','pos.b.qa','pos.cashier.qa'].contains(ec.user.username)) {
         ec.web.response.setStatus(403);ec.web.sendJsonResponse([denied:true]);return
@@ -157,6 +164,7 @@
         importProduct:['zenith.pos.PosServices.upsert#PosProduct',['sku','productName','listPrice','mrp','unit']],
         scale:['zenith.pos.PosServices.configure#WeighingScale',['terminalId','connectionType','portName','baudRate','dataFormat']],
         open:['zenith.pos.PosServices.open#PosSession',['terminalId','openingCash']],
+        kitchenSend:['zenith.pos.KotServices.create#KitchenOrderTicket',['posTransactionId','items']],
         close:['zenith.pos.PosServices.close#PosSession',['sessionId','closingCash']],
         cart:['zenith.pos.PosServices.create#PosTransaction',['sessionId','transactionType','customerName','destinationRegionGeoId','reuseOpenCart']],
         add:['zenith.pos.PosServices.add#PosTransactionItem',['transactionId','productId','quantity','unitPrice','discountPercent','salesModeId','taxOn']],
