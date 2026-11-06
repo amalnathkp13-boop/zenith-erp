@@ -2097,7 +2097,7 @@
             <service-call name="update#zenith.erp.pos.PosTransactionItem"
                 in-map="[transactionId:transactionId, itemSeqId:itemSeqId, unitPrice:newUnit,
                          mrp:(prod?.mrpAmount ?: newUnit),
-                         discountPercent:md, discountAmount:dAmt, manualDiscount:'N', salesModeId:salesModeId,
+                         discountPercent:md, discountAmount:dAmt, manualDiscount:'N', manualPrice:'N', salesModeId:salesModeId,
                          taxableAmount:taxable, totalTaxAmount:ttax, lineTotal:(taxable + ttax)]"/>
             <if condition="taxOn != 'N' &amp;&amp; taxedI?.taxBreakdowns">
                 <service-call name="zenith.tax.TaxServices.store#TaxLineDetails"

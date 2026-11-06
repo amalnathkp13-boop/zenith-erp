@@ -26,15 +26,24 @@
   try {
    const body=new URLSearchParams(new FormData(form));
    prepare(body);
-   const response=await fetch(form.action,{method:'POST',body,credentials:'same-origin',cache:'no-store'});
-   const target=new URL(response.url,location.href);
-   const saved=response.ok&&target.origin===location.origin&&target.pathname.endsWith('/EditProduct')&&
+   const response=await fetch(form.action,{method:'POST',body,credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json','X-Requested-With':'XMLHttpRequest'}});
+   let target=new URL(response.url,location.href),errors=[];
+   const json=(response.headers.get('Content-Type')||'').includes('application/json');
+   if(json){
+    const result=await response.json();
+    errors=[].concat(result.errors||[],result.validationErrors||[])
+     .map(error=>typeof error==='string'?error:error.message||'').filter(Boolean);
+    if(typeof result.screenUrl==='string')target=new URL(result.screenUrl,location.href);
+   }
+   const saved=response.ok&&!errors.length&&target.origin===location.origin&&target.pathname.endsWith('/EditProduct')&&
     (form.dataset.peSave==='create'?target.searchParams.has('productId'):target.searchParams.get('productSaved')==='Y');
    if(saved){location.assign(target.href);return;}
-   const html=new DOMParser().parseFromString(await response.text(),'text/html');
-   const errors=[...html.querySelectorAll('.alert-danger,.q-notification.bg-negative,.text-negative[role="alert"]')]
-    .map(element=>element.textContent.trim()).filter(Boolean);
-   throw Error(errors[0]||'The product could not be saved. Check the values and try again.');
+   if(!json){
+    const html=new DOMParser().parseFromString(await response.text(),'text/html');
+    errors=[...html.querySelectorAll('.alert-danger,.q-notification.bg-negative,.text-negative[role="alert"]')]
+     .map(element=>element.textContent.trim()).filter(Boolean);
+   }
+   throw Error(errors[0]||(response.status===401?'Your sign-in session expired. Sign in again before saving.':'The product could not be saved. Check the values and try again.'));
   }catch(error){
    status.dataset.error='true';
    status.textContent=error instanceof TypeError?'Connection lost while saving. Check the product list before retrying.':error.message;

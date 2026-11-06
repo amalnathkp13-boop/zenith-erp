@@ -29,6 +29,16 @@ const base = 'http://localhost/apps/zenith/pos';
             await page.goto(base + '/Terminal');
             await page.evaluate(() => {
                 window.cashierShortcuts = 0;
+                // A response event precedes response.json() and arm(). Advancing the
+                // fake clock before arm() starts makes the idle boundary nondeterministic.
+                const interval = window.setInterval;
+                window.qaIdleTimerReady = new Promise(resolve => {
+                    window.setInterval = function() {
+                        const id = interval.apply(this, arguments);
+                        if (arguments[1] === 5000) { window.setInterval = interval; resolve(); }
+                        return id;
+                    };
+                });
                 document.addEventListener('keydown', e => {
                     if (e.key === 'F7' || e.key === '/') window.cashierShortcuts++;
                 }, true);
@@ -36,6 +46,7 @@ const base = 'http://localhost/apps/zenith/pos';
             const config = page.waitForResponse(response => response.url().includes('/PosLock/config?_='));
             await page.addScriptTag({ path: script });
             await config;
+            await page.evaluate(() => window.qaIdleTimerReady);
             await page.clock.runFor(65_000);
             await page.getByText('Till locked', { exact: true }).waitFor();
         }

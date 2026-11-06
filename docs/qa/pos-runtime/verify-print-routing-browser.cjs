@@ -2,7 +2,12 @@ const path = require('node:path');
 
 module.exports = async function ({a, base, sessionId, transactionId, receipt, check, out}) {
     for (const shell of ['apps', 'qapps']) {
-        const page = await a.c.newPage();
+        // Fullscreen and print-preview state belong to the browser context. Each
+        // surface starts with the same authenticated fixture, without the other
+        // surface's compositor/print state or remembered mock printer.
+        const context = await a.c.browser().newContext({storageState:await a.c.storageState(),
+            viewport:{width:1366,height:900},serviceWorkers:'block'});
+        const page = await context.newPage();
         page.setDefaultTimeout(15000);
         // Never contact the workstation's QZ service or send a real printer job.
         await page.route('**/qz-tray@*/qz-tray.js', route => route.fulfill({contentType:'text/javascript', body:'/* Disposable QA uses a mock printer. */'}));
@@ -13,6 +18,7 @@ module.exports = async function ({a, base, sessionId, transactionId, receipt, ch
                 check('Quasar printing uses its canonical standalone billing link',href==='/apps/zenith/pos/Terminal',{href});
             }
             await page.goto(`${base}/apps/zenith/pos/Terminal?sessionId=${sessionId}&taxOn=N`, {waitUntil:'domcontentloaded'});
+            await page.waitForLoadState('load');
             await page.waitForFunction(()=>typeof window._posPrintReceipt==='function' && typeof window.posToggleFocus==='function');
             await page.evaluate(()=>{
                 window.qaPrinter = {active:false, connections:0, jobs:[], browser:0, rejectPrint:false};
@@ -89,8 +95,12 @@ module.exports = async function ({a, base, sessionId, transactionId, receipt, ch
             await fallback.locator('.pos-print-cancel').click();
             await page.evaluate(()=>document.exitFullscreen());
         } catch(error) {
+            console.error('Printer browser state',await page.evaluate(()=>({url:location.href,ready:document.readyState,
+                fullscreen:!!document.fullscreenElement,bodyDisplay:getComputedStyle(document.body).display,
+                bodyVisibility:getComputedStyle(document.body).visibility,bodyOpacity:getComputedStyle(document.body).opacity,
+                bodyClass:document.body.className,buttonVisible:!!document.getElementById('posFullscreenBtn')?.getClientRects().length})));
             if(out)await page.screenshot({path:path.join(out,'printer-'+shell+'-failure.png')});
             throw error;
-        } finally { await page.close(); }
+        } finally { await context.close(); }
     }
 };
