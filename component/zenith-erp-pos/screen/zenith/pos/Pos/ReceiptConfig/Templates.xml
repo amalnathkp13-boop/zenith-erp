@@ -107,30 +107,21 @@
                         <label text="Enter the basic details for your receipt template." type="span" style="rcpt-psub"/>
                     </container>
                 </container>
-                <form-single name="CreateTemplate" transition="createTemplate">
-                    <field name="templateName"><default-field title="Template Name">
-                        <text-line size="30"/>
-                    </default-field></field>
-                    <field name="companyName"><default-field title="Company Name">
-                        <text-line size="40"/>
-                    </default-field></field>
-                    <field name="facilityId"><default-field title="Shop (blank = organization default)"><drop-down allow-empty="true"><list-options list="receiptFacilities" key="${facilityId}" text="${facilityName}"/></drop-down></default-field></field>
-                    <field name="phone"><default-field title="Phone">
-                        <text-line size="20"/>
-                    </default-field></field>
-                    <field name="receiptWidth"><default-field title="Receipt Width">
-                        <drop-down>
-                            <option key="80mm" text="80mm (Standard)"/>
-                            <option key="58mm" text="58mm (Compact)"/>
-                        </drop-down>
-                    </default-field></field>
-                    <field name="submitBtn"><default-field title="">
-                        <submit text="Create Template" icon="fa fa-plus"/>
-                    </default-field></field>
-                </form-single>
-                <!-- Moqui's placeholder attr is a no-op app-wide; set them cross-surface via an img-onload shim
-                     (/qapps strips <script> but keeps <img onload>). Retries catch the Quasar SPA's late render. -->
-                <render-mode><text type="html,qvt,vuet"><![CDATA[<img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="" style="display:none" onload="(function(){var p={templateName:'Enter template name',companyName:'Enter company name',phone:'Enter phone number'};function a(){for(var n in p){var e=document.getElementsByName(n);for(var i=0;i<e.length;i++){var el=e[i];if(el&&(el.tagName=='INPUT'||el.tagName=='TEXTAREA')&&!el.getAttribute('placeholder')){el.setAttribute('placeholder',p[n]);}}}}a();setTimeout(a,120);setTimeout(a,450);setTimeout(a,950);})()"/>]]></text></render-mode>
+                <!-- Native POST keeps qvt from treating the POST-only transition as a navigation link. -->
+                <render-mode><text type="html,qvt" template="true"><![CDATA[
+<#assign createUrl=sri.buildUrl('createTemplate').url>
+<#if sri.getRenderMode() == 'qvt'><#assign createUrl=createUrl?replace('/apps/','/qapps/')></#if>
+<link rel="stylesheet" href="/zenithstatic/css/pos-receipt-editor.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/pos-receipt-editor.css').getLastModified()?c}"/>
+<form id="CreateTemplate" class="receipt-create-form" method="post" action="${createUrl?html}">
+<input type="hidden" name="moquiSessionToken" value="${(ec.web.sessionToken!'')?html}"/>
+<div class="form-group q-ma-sm"><label for="receipt-create-name">Template Name</label><input class="form-control" id="receipt-create-name" name="templateName" maxlength="255" placeholder="Enter template name" required/></div>
+<div class="form-group q-ma-sm"><label for="receipt-create-company">Company Name</label><input class="form-control" id="receipt-create-company" name="companyName" maxlength="255" placeholder="Enter company name" required/></div>
+<div class="form-group q-ma-sm"><label for="receipt-create-shop">Shop</label><select class="form-control" id="receipt-create-shop" name="facilityId"><option value="">All shops (organization default)</option><#list receiptFacilities as facility><option value="${facility.facilityId?html}">${(facility.facilityName!facility.facilityId)?html}</option></#list></select></div>
+<div class="form-group q-ma-sm"><label for="receipt-create-phone">Phone</label><input class="form-control" id="receipt-create-phone" name="phone" maxlength="60" placeholder="Enter phone number"/></div>
+<div class="form-group q-ma-sm"><label for="receipt-create-width">Receipt Width</label><select class="form-control" id="receipt-create-width" name="receiptWidth"><option value="80mm">80mm (Standard)</option><option value="58mm">58mm (Compact)</option></select></div>
+<div class="q-ma-sm"><button type="submit" class="btn btn-primary">Create Template</button></div>
+</form>
+                ]]></text></render-mode>
             </container>
             </widgets></section>
 

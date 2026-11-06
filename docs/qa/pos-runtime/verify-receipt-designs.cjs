@@ -117,4 +117,5 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await update('normal',{receiptWidth:baseline.receipt_width||'80mm',isActive:baseline.is_active});
   await page.close();
  }
+ await require('./verify-receipt-create.cjs')({a,base,check,q,out});
 };
