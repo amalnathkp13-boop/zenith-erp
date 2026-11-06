@@ -23,7 +23,7 @@
 
   async function request(action,data,signal) {
     const response=await fetch(base+'/'+action,{method:'POST',credentials:'same-origin',signal,
-      body:new URLSearchParams({...data,moquiSessionToken:token()})});
+      body:new URLSearchParams({...data,sessionId:cfg.session,moquiSessionToken:token()})});
     const result=await response.json().catch(()=>null);
     if(!response.ok||!result?.success) throw Error(result?.error||'The request could not be completed. Check your connection and try again.');
     return result;
@@ -31,7 +31,7 @@
   function post(action,data) {
     const form=document.createElement('form');
     form.method='POST';form.action=base+'/'+action;
-    for(const [name,value] of Object.entries({...data,moquiSessionToken:token()})) {
+    for(const [name,value] of Object.entries({...data,sessionId:cfg.session,moquiSessionToken:token()})) {
       const input=document.createElement('input');input.type='hidden';input.name=name;input.value=value;form.append(input);
     }
     root.append(form);form.submit();
@@ -53,6 +53,9 @@
   function controls() {
     $('clear').disabled=busy||!cart.size;
     for(const id of ['draft','send','bill']) if($(id)) $(id).disabled=busy||!cart.size||total===null;
+    if($('send') && cfg.displayEnabled==='false') {
+      $('send').disabled=true;$('send').title='Kitchen Display is disabled for this shop. Use KOT printing.';
+    }
   }
   function rows() {
     $('cart').innerHTML=Array.from(cart.values(),(it,i)=>'<tr data-product="'+esc(it.id)+'"><td>'+(i+1)+'</td><td><strong>'+esc(it.name)+'</strong><small>'+esc(it.code)+'</small></td>'
@@ -263,7 +266,7 @@
     $('history').showModal();
     if(historyDirty){
       try{
-        const response=await fetch('/apps'+billingPath);
+        const response=await fetch('/apps'+billingPath+'?sessionId='+encodeURIComponent(cfg.session));
         if(!response.ok)throw Error('History could not be refreshed.');
         const page=new DOMParser().parseFromString(await response.text(),'text/html');
         const rows=page.getElementById('kb-history-rows');
@@ -275,6 +278,7 @@
   }
   function sendOrHold(send) {
     if(busy||!cart.size||total===null)return;
+    if(send && cfg.displayEnabled==='false')return;
     busy=true;controls();
     post(send?'createKot':'saveDraft',{...orderData(),loadedDraftId:draftId,existingDraftId:draftId});
   }
@@ -290,7 +294,7 @@
     else if(button.id==='kb-draft'||button.id==='kb-send')sendOrHold(button.id==='kb-send');
     else if(button.id==='kb-payment-close')$('payment').close();
     else if(button.dataset.kotResume){
-      if(!cart.size||confirm('Replace the current unsent items with this held order?'))location.href=base+'/?loadDraft='+encodeURIComponent(button.dataset.kotResume);
+      if(!cart.size||confirm('Replace the current unsent items with this held order?'))location.href=base+'/?sessionId='+encodeURIComponent(cfg.session)+'&loadDraft='+encodeURIComponent(button.dataset.kotResume);
     }else if(button.dataset.kotDiscard){
       if(confirm('Discard this held order?'))post('deleteDraft',{kotId:button.dataset.kotDiscard});
     }else if(button.dataset.remove||button.dataset.qty){

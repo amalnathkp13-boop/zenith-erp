@@ -1,5 +1,8 @@
 // Disposable KOT browser and transition checks. Runs only from verify-runtime.cjs.
 module.exports = async function verifyKot({a,foreign,base,post,rows,count,check}) {
+ const kotSessionId=await require('./kot-test-session.cjs')({a,base});
+ const rawPost=post; post=(screen,action,args={},actor)=>rawPost(screen,action,screen==='Kitchen/KotBilling'?{sessionId:kotSessionId,...args}:args,actor);
+
   const kotRows = () => rows('kitchen_order_ticket', "organization_party_id='POS_QA_A'");
   const before = new Set(kotRows().map(row => row.kot_id));
   const valid = {productId:'POS_QA_A_P18',productName:'Forged menu label',quantity:1};
@@ -41,7 +44,7 @@ module.exports = async function verifyKot({a,foreign,base,post,rows,count,check}
   check('another shop cannot increase the KOT print count',
     printDenied&&Number(rows('kitchen_order_ticket',`kot_id='${ticket.kot_id}'`)[0].print_count)===0,{status:foreignPrint.status()});
   const printPage=await a.c.newPage();
-  await printPage.goto(base+'/apps/zenith/pos/Kitchen/KotBilling',{waitUntil:'networkidle'});
+  await printPage.goto(base+'/apps/zenith/pos/Kitchen/KotBilling?sessionId='+kotSessionId,{waitUntil:'networkidle'});
   await printPage.locator('#kb-wrap[data-ready=true]').waitFor();
   await printPage.evaluate(()=>{
     window.__printedHtml='';window.__printCalls=0;
@@ -57,7 +60,7 @@ module.exports = async function verifyKot({a,foreign,base,post,rows,count,check}
     await printPage.evaluate(()=>window.__printedHtml.includes('KOT #')));
   await printPage.close();
 
-  const ownTable='POS_QA_KOT_A_TABLE';
+  const ownTable='POS_QA_KOT_A_TABLE_'+Date.now().toString(36);
   await post('Kitchen/Tables','createTable',{facilityId:'POS_QA_B_FAC',tableNumber:ownTable,seatingCapacity:'4'});
   check('KOT table creation rejects another shops facility',count('restaurant_table',`table_number='${ownTable}'`)===0);
   await post('Kitchen/Tables','createTable',{facilityId:'POS_QA_A_FAC',tableNumber:ownTable,seatingCapacity:'0'});
@@ -76,7 +79,7 @@ module.exports = async function verifyKot({a,foreign,base,post,rows,count,check}
   const foreignTable='POS_QA_KOT_B_TABLE';
   await post('Kitchen/Tables','createTable',{facilityId:'POS_QA_B_FAC',tableNumber:foreignTable,seatingCapacity:'2'},foreign);
   const menu=await a.c.newPage();
-  await menu.goto(base+'/apps/zenith/pos/Kitchen/KotBilling',{waitUntil:'networkidle'});
+  await menu.goto(base+'/apps/zenith/pos/Kitchen/KotBilling?sessionId='+kotSessionId,{waitUntil:'networkidle'});
   await menu.locator('#kb-wrap[data-ready=true]').waitFor();
   check('KOT table picker contains only active-shop tables',await menu.locator('#kb-table').locator('option').allTextContents().then(labels=>labels.some(x=>x.includes(ownTable))&&!labels.some(x=>x.includes(foreignTable))));
   await menu.locator('#kb-mode').selectOption('RETAIL');
@@ -86,10 +89,10 @@ module.exports = async function verifyKot({a,foreign,base,post,rows,count,check}
   const draft=kotRows().find(row=>!before.has(row.kot_id)&&row.status_id==='KotDraft');
   check('Save as Draft browser action persists one draft',!!draft&&count('kot_item',`kot_id='${draft.kot_id}'`)===1,{draft});
   const foreignDraft=await foreign.c.newPage();
-  await foreignDraft.goto(base+`/apps/zenith/pos/Kitchen/KotBilling?loadDraft=${draft.kot_id}`,{waitUntil:'networkidle'});
-  check('another shop cannot load the draft cart',await foreignDraft.locator('#kb-data').getAttribute('data-draftid')==='');
+  const deniedDraft=await foreignDraft.goto(base+`/apps/zenith/pos/Kitchen/KotBilling?sessionId=${kotSessionId}&loadDraft=${draft.kot_id}`,{waitUntil:'networkidle'});
+  check('another shop cannot load the draft cart',deniedDraft.status()===403&&await foreignDraft.locator('#kb-data').count()===0);
   await foreignDraft.close();
-  await menu.goto(base+`/apps/zenith/pos/Kitchen/KotBilling?loadDraft=${draft.kot_id}`,{waitUntil:'networkidle'});
+  await menu.goto(base+`/apps/zenith/pos/Kitchen/KotBilling?sessionId=${kotSessionId}&loadDraft=${draft.kot_id}`,{waitUntil:'networkidle'});
   await menu.locator('#kb-wrap[data-ready=true]').waitFor();
   check('Load Draft restores the browser cart',await menu.locator('#kb-badge').innerText()==='Editing Held Order'&&await menu.locator('#kb-cart').innerText().then(x=>x.includes('Disposable POS A P18')));
   await Promise.all([menu.waitForNavigation({waitUntil:'networkidle'}),menu.locator('#kb-send').click()]);
