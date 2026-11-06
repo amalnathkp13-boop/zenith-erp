@@ -2,6 +2,58 @@
 <services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
           xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
 
+    <service verb="get" noun="BillingSession">
+        <in-parameters><parameter name="sessionId" required="true"/></in-parameters>
+        <out-parameters><parameter name="session" type="Map"/><parameter name="terminal" type="Map"/></out-parameters>
+        <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[sessionId:sessionId]" out-map="scope"/>
+            <if condition="!scope.allowed"><return/></if>
+            <script><![CDATA[
+                def row=ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',sessionId).one()
+                def counter=row ? ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',row.terminalId).one() : null
+                def shop=ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call().activeShopId
+                def facility=counter?.facilityId ? ec.entity.find('mantle.facility.Facility').condition('facilityId',counter.facilityId).one() : null
+                if(row?.statusId!='PsOpen' || row.operatorPartyId!=ec.user.userAccount?.partyId || counter?.isActive!='Y' ||
+                    counter.organizationPartyId!=scope.organizationPartyId || facility?.ownerPartyId!=scope.organizationPartyId || (shop && counter.facilityId!=shop)) {
+                    ec.message.addError('Choose your open terminal session in this shop.'); return
+                }
+                session=row.getMap(); terminal=counter.getMap()
+            ]]></script>
+        </actions>
+    </service>
+
+    <!-- Store the shop switch in the existing organization settings table; no global or per-user fallback. -->
+    <service verb="get" noun="KitchenDisplayPolicy">
+        <in-parameters><parameter name="facilityId"/></in-parameters>
+        <out-parameters><parameter name="enabled" type="Boolean"/><parameter name="shopId"/></out-parameters>
+        <actions>
+            <set field="enabled" from="true"/>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[facilityId:facilityId]" out-map="scope"/>
+            <if condition="!scope.allowed"><return/></if>
+            <script><![CDATA[
+                shopId=facilityId ?: ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call().activeShopId
+                if(!shopId) return
+                def setting=ec.entity.find('zenith.erp.base.CompanySettings').condition('organizationPartyId',scope.organizationPartyId)
+                    .condition('settingKey','KITCHEN_DISPLAY_'+shopId).one()
+                enabled=setting?.settingValue!='N'
+            ]]></script>
+        </actions>
+    </service>
+    <service verb="save" noun="KitchenDisplayPolicy">
+        <in-parameters><parameter name="facilityId" required="true"/><parameter name="enabled" required="true"/></in-parameters>
+        <actions>
+            <if condition="!ec.user.isInGroup('ADMIN') &amp;&amp; !ec.user.isInGroup('ZENITH_ADMIN')"><return error="true" message="Only an administrator can change Kitchen Display settings."/></if>
+            <if condition="!(enabled in ['Y','N'])"><return error="true" message="Choose Enable or Disable."/></if>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[facilityId:facilityId]" out-map="scope"/>
+            <if condition="!scope.allowed"><return/></if>
+            <entity-find-one entity-name="mantle.facility.Facility" value-field="shop"><field-map field-name="facilityId" from="facilityId"/></entity-find-one>
+            <if condition="shop.facilityTypeEnumId != 'FcTpRetailStore'"><return error="true" message="Choose a retail shop."/></if>
+            <entity-find-one entity-name="mantle.party.Organization" value-field="organization" for-update="true"><field-map field-name="partyId" from="scope.organizationPartyId"/></entity-find-one>
+            <entity-make-value entity-name="zenith.erp.base.CompanySettings" value-field="setting" map="[organizationPartyId:scope.organizationPartyId,settingKey:'KITCHEN_DISPLAY_'+facilityId,settingValue:enabled]"/>
+            <script>setting.createOrUpdate()</script>
+        </actions>
+    </service>
+
     <!-- Reuse the row-locked counter store with a KOT-only key. Seed from existing numbers once. -->
     <service verb="next" noun="KotNumber">
         <out-parameters><parameter name="kotNumber"/></out-parameters>
@@ -97,8 +149,13 @@
             </iterate>
             <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="kotTxn">
                 <field-map field-name="transactionId" from="posTransactionId"/></entity-find-one>
+            <entity-find-one entity-name="zenith.erp.pos.PosSession" value-field="kotSession"><field-map field-name="sessionId" from="kotTxn.sessionId"/></entity-find-one>
+            <entity-find-one entity-name="zenith.erp.pos.PosTerminal" value-field="kotTerminal"><field-map field-name="terminalId" from="kotSession.terminalId"/></entity-find-one>
+            <if condition="selected.table &amp;&amp; selected.table.facilityId != kotTerminal.facilityId"><return error="true" message="Choose a table in the terminal's shop."/></if>
+            <service-call name="zenith.pos.KotServices.get#KitchenDisplayPolicy" in-map="[facilityId:kotTerminal.facilityId]" out-map="displayPolicy"/>
+            <if condition="!displayPolicy.enabled"><return error="true" message="Kitchen Display is disabled for this shop. Use KOT printing instead of sending to the kitchen."/></if>
             <service-call name="create#zenith.erp.pos.KitchenOrderTicket"
-                          in-map="[transactionId:posTransactionId, tableId:selected.table?.tableId, tableNumber:selected.table?.tableNumber ?: tableNumber,
+                          in-map="[transactionId:posTransactionId, terminalId:kotTerminal.terminalId, tableId:selected.table?.tableId, tableNumber:selected.table?.tableNumber ?: tableNumber,
                                    waiterName:waiterName, statusId:'KotNew',
                                    organizationPartyId:kotTxn?.organizationPartyId,
                                    printCount:0, kotDate:ec.user.nowTimestamp]"

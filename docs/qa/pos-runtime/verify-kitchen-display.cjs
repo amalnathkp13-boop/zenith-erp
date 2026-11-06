@@ -13,7 +13,8 @@ try{
  if(!process.env.POS_QA_SKIP_INIT){const r=await bootstrap.request.post(base+'/apps/zenith/pos/PosQaAcceptance/initialize',{form:{moquiSessionToken:token}});check('fresh synthetic fixture initialized',(await r.json()).initialized);}await bootstrap.close();
  async function actor(user){const c=await browser.newContext({viewport:{width:1440,height:1000},serviceWorkers:'block'});await c.route('**/qz-tray@*/qz-tray.js',r=>r.fulfill({contentType:'text/javascript',body:'/* no hardware */'}));await c.request.get(base+'/apps/zenith/pos/Terminal',{headers:{Authorization:'Basic '+Buffer.from(user+':moqui').toString('base64')}});const p=await c.newPage();p.setDefaultTimeout(20000);await p.goto(base+'/apps/zenith/pos/Terminal');return {c,p,t:await p.locator('[name=moquiSessionToken]').first().inputValue()};}
  const a=await actor('pos.qa'),foreign=await actor('pos.b.qa');
- const post=async(screen,transition,params={},who=a,csrf=true,shell='apps')=>who.c.request.post(`${base}/${shell}/zenith/pos/${screen}/${transition}`,{form:{...(csrf?{moquiSessionToken:who.t}:{}),...params},maxRedirects:0});
+ const kotSessionId=await require('./kot-test-session.cjs')({a,base});
+ const post=async(screen,transition,params={},who=a,csrf=true,shell='apps')=>who.c.request.post(`${base}/${shell}/zenith/pos/${screen}/${transition}`,{form:{...(csrf?{moquiSessionToken:who.t}:{}),...(screen==='Kitchen/KotBilling'?{sessionId:kotSessionId}:{}),...params},maxRedirects:0});
  if(['tables','workflows','print'].includes(process.env.POS_QA_PHASE)){
   if(process.env.POS_QA_PHASE!=='print')await require('./verify-kitchen-tables.cjs')({a,foreign,base,post,rows:(t,w)=>q(`SELECT * FROM ${t} WHERE ${w}`),count:(t,w)=>Number(q(`SELECT count(*) AS n FROM ${t} WHERE ${w}`)[0].n),check});
   if(['workflows','print'].includes(process.env.POS_QA_PHASE))await require('./verify-kitchen-print.cjs')({a,foreign,base,post,rows:(t,w)=>q(`SELECT * FROM ${t} WHERE ${w}`),count:(t,w)=>Number(q(`SELECT count(*) AS n FROM ${t} WHERE ${w}`)[0].n),check,out});
@@ -50,14 +51,14 @@ try{
  await Promise.race([requested,new Promise((_,reject)=>setTimeout(()=>reject(Error('Kitchen component navigation request was not observed')),10000))]);await page.waitForTimeout(1100);
  check('slow real qapps navigation hides old Kitchen content immediately',!await page.locator('.zk-display').isVisible()&&await page.locator('#zk-route-status').isVisible());
  check('existing global navigation remains visible during loading',await page.locator('#zq-subnav').isVisible());
- await page.screenshot({path:path.join(out,'slow-navigation.png')});release();await navigation;await page.locator('#kb-wrap').waitFor();await page.waitForFunction(()=>!document.documentElement.classList.contains('zk-route-pending'));
+ await page.screenshot({path:path.join(out,'slow-navigation.png')});release();await navigation;await page.locator('#kot-terminal-entry').waitFor();await page.waitForFunction(()=>!document.documentElement.classList.contains('zk-route-pending'));
  check('qapps replaces child content without retaining a loading mask',await page.locator('#kitchen-page-frame').count()===1&&await page.locator('#zk-route-status').count()===0);
  await page.unroute('**/Kitchen/KotBilling.qvt*');
  for(const [label,selector] of [['Tables','#tm-wrap'],['KOT History','#zk-history-toolbar'],['Waiters','#wf-search'],['KOT Dashboard','#kd-wrap'],['KOT Billing','#kb-wrap']]){
   await page.getByRole('tab',{name:label,exact:true}).click();await page.locator(selector).waitFor();await page.waitForFunction(()=>!document.documentElement.classList.contains('zk-route-pending'));
   check('qapps '+label+' navigation replaces the previous content',await page.locator(selector).isVisible()&&await page.locator('#kitchen-page-frame').count()===1);
  }
- await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling');await page.locator('#kb-wrap').waitFor();await page.waitForFunction(()=>!document.documentElement.classList.contains('zk-initial-loading'),undefined,{timeout:20000});
+ await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling');await page.locator('#kot-terminal-entry').waitFor();await page.waitForFunction(()=>!document.documentElement.classList.contains('zk-initial-loading'),undefined,{timeout:20000});
  check('KOT Billing direct entry waits for the existing shell',await page.locator('#z-sidebar').isVisible()&&await page.locator('#z-subnav').isVisible()&&await page.locator('#kb-wrap').isVisible());
  await page.screenshot({path:path.join(out,'kot-billing-current-shell.png')});
  const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(table,where)=>Number(q(`SELECT count(*) AS n FROM ${table} WHERE ${where}`)[0].n);
