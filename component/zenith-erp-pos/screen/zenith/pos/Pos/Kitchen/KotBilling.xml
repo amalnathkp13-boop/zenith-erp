@@ -41,37 +41,55 @@
         ]]></script></actions><default-response type="none"/>
     </transition>
 
+    <transition name="touchSession" method="post" begin-transaction="true">
+        <actions>
+            <service-call name="zenith.pos.KotServices.get#BillingSession" in-map="[sessionId:sessionId]" out-map="_billing"/>
+            <if condition="ec.message.hasError() || !_billing.terminal"><return/></if>
+            <service-call name="zenith.pos.PosServices.touch#PosSessionActivity" in-map="[sessionId:sessionId]"/>
+            <service-call name="zenith.pos.KotServices.get#KitchenDisplayPolicy" in-map="[facilityId:_billing.terminal.facilityId]" out-map="_display"/>
+            <script>ec.web.sendJsonResponse([success:!ec.message.hasError(),displayEnabled:_display.enabled])</script>
+        </actions>
+        <default-response type="none"/>
+    </transition>
+
     <transition name="createKot" method="post" begin-transaction="true">
         <actions>
             <script><![CDATA[
+                def reply = { Map result = [:] ->
+                    if (ec.context.wantJson == 'Y') {
+                        ec.web.sendJsonResponse(result + [success:!!result,error:ec.message.errorsString])
+                    } else if (result) {
+                        ec.message.addMessage('KOT #' + result.kotNumber + ' sent to the kitchen.')
+                    }
+                }
                 def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess')
                     .parameter('moduleId', ec.context.kitchenModuleId ?: 'pos').call()
                 def scope=ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess').call()
                 org=scope.organizationPartyId
-                if (access?.canWrite != true || !scope.allowed) { ec.message.addError('POS write access and an active shop are required.'); return }
+                if (access?.canWrite != true || !scope.allowed) { ec.message.addError('POS write access and an active shop are required.'); return reply() }
 
                 def billing=ec.service.sync().name('zenith.pos.KotServices.get#BillingSession').parameter('sessionId',ec.context.sessionId).call()
-                if(ec.message.hasError() || !billing.terminal) return
+                if(ec.message.hasError() || !billing.terminal) return reply()
                 def display=ec.service.sync().name('zenith.pos.KotServices.get#KitchenDisplayPolicy').parameter('facilityId',billing.terminal.facilityId).call()
-                if(!display.enabled) { ec.message.addError('Kitchen Display is disabled for this shop. Use KOT printing instead of sending to the kitchen.'); return }
+                if(!display.enabled) { ec.message.addError('Kitchen Display is disabled for this shop. Use KOT printing instead of sending to the kitchen.'); return reply() }
 
                 def selected = ec.service.sync().name('zenith.pos.KotServices.resolve#KotTable')
                     .parameters([tableId:ec.context.tableId,tableNumber:ec.context.tableNumber]).call()?.table
-                if (ec.message.hasError()) return
+                if (ec.message.hasError()) return reply()
                 if(ec.context.orderType=='Take Away') selected=null
                 if(selected) {
                     selected=ec.entity.find('zenith.erp.pos.RestaurantTable').condition('tableId',selected.tableId).forUpdate(true).one()
-                    if(!selected || !(selected.statusId in [null,'TblAvailable','TblOccupied'])) { ec.message.addError('Choose an available or occupied table.'); return }
+                    if(!selected || !(selected.statusId in [null,'TblAvailable','TblOccupied'])) { ec.message.addError('Choose an available or occupied table.'); return reply() }
                 }
                 def shop=ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call().activeShopId
-                if(shop && selected && selected.facilityId!=shop) { ec.message.addError('Choose a table in the selected shop.'); return }
-                if(selected && selected.facilityId!=billing.terminal.facilityId) { ec.message.addError('Choose a table at this terminal shop.'); return }
+                if(shop && selected && selected.facilityId!=shop) { ec.message.addError('Choose a table in the selected shop.'); return reply() }
+                if(selected && selected.facilityId!=billing.terminal.facilityId) { ec.message.addError('Choose a table at this terminal shop.'); return reply() }
                 def tableIdVal = ec.context.orderType == 'Take Away' ? null : selected?.tableId
                 def tableLabel = ec.context.orderType == 'Take Away' ? null : (selected?.tableNumber ?: ec.context.tableNumber)
 
                 def items = []
                 try { if (ec.context.itemsJson) items = new groovy.json.JsonSlurper().parseText(ec.context.itemsJson) } catch (e) { items = [] }
-                if (!(items instanceof List) || !items || items.size() > 100) { ec.message.addError('Choose 1 to 100 valid menu items.'); return }
+                if (!(items instanceof List) || !items || items.size() > 100) { ec.message.addError('Choose 1 to 100 valid menu items.'); return reply() }
                 def checkedItems = []
                 for (def submitted in items) {
                     def productId = submitted instanceof Map ? submitted.productId : null
@@ -79,7 +97,7 @@
                     BigDecimal quantity = null
                     try { quantity = new BigDecimal(String.valueOf(submitted instanceof Map ? submitted.quantity : null)) } catch (ignored) { }
                     if (!product || product.ownerPartyId != org || product.productTypeEnumId != 'PtAsset' || quantity == null || quantity <= 0) {
-                        ec.message.addError('The KOT contains an invalid item or quantity. Refresh the menu and try again.'); return
+                        ec.message.addError('The KOT contains an invalid item or quantity. Refresh the menu and try again.'); return reply()
                     }
                     checkedItems.add([productId:product.productId, productName:(product.productName ?: product.productId),
                                       quantity:quantity, specialInstructions:submitted.specialInstructions])
@@ -88,15 +106,15 @@
                 if (dId) {
                     def draft = ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('kotId', dId).forUpdate(true).one()
                     if (!draft || draft.statusId != 'KotDraft' || draft.organizationPartyId != org || (!draft.terminalId && scope.terminalRestricted) || (draft.terminalId && draft.terminalId!=billing.terminal.terminalId)) {
-                        ec.message.addError('This draft is no longer available in this shop.'); return
+                        ec.message.addError('This draft is no longer available in this shop.'); return reply()
                     }
                 }
 
                 def quote=ec.service.sync().name('zenith.pos.KitchenPrintServices.get#CartReceipt')
                     .parameters([sessionId:ec.context.sessionId,itemsJson:ec.context.itemsJson,tableId:tableIdVal,orderType:ec.context.orderType,taxOn:ec.context.taxOn ?: 'Y',salesModeId:ec.context.salesModeId,waiterId:ec.context.waiterId,notes:ec.context.notes]).call()?.receipt
-                if(ec.message.hasError()) return
+                if(ec.message.hasError()) return reply()
                 def nextNum = ec.service.sync().name('zenith.pos.KotServices.next#KotNumber').call()?.kotNumber
-                if (!nextNum) return
+                if (!nextNum) return reply()
                 quote.bill.number='KOT #'+nextNum
                 def orderReceipt=groovy.json.JsonOutput.toJson(quote)
 
@@ -124,9 +142,10 @@
                         d.delete()
                     }
                 }
-                ec.message.addMessage('KOT #' + nextNum + ' sent to the kitchen.')
+                reply(ec.message.hasError() ? [:] : [kotId:newKotId,kotNumber:nextNum])
             ]]></script>
         </actions>
+        <conditional-response type="none"><condition><expression>ec.context.wantJson == 'Y'</expression></condition></conditional-response>
         <default-response url="." parameter-map="[sessionId:sessionId]"/>
     </transition>
 
@@ -586,7 +605,7 @@
   <div id="kb-data" style="display:none" data-session="${billingSession.sessionId?html}" data-display-enabled="${kitchenDisplayEnabled?c}" data-kot-module="${(kitchenModuleId!'pos')?html}" data-stock-session="${((checkoutSessions?size == 1)?then(checkoutSessions[0].id,''))?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}"></div>
 
 
-  <div class="kb-head"><h1 class="kb-title">KOT Billing · ${(billingTerminal.terminalName!billingTerminal.terminalId)?html}</h1><p class="kb-sub"><#if kitchenDisplayEnabled>Build an order, send it to the kitchen, or take payment.<#else>Kitchen Display disabled. Use printed KOTs for takeaway, or bill dine-in customers after their meal.</#if></p><a class="kb-control" href="KotBilling">Back to terminals</a></div>
+  <div class="kb-head"><h1 class="kb-title">KOT Billing · ${(billingTerminal.terminalName!billingTerminal.terminalId)?html}</h1><p class="kb-sub" id="kb-display-message"><#if kitchenDisplayEnabled>Build an order, send it to the kitchen, or take payment.<#else>Kitchen Display disabled. Use printed KOTs for takeaway, or bill dine-in customers after their meal.</#if></p><a class="kb-control" href="KotBilling">Back to terminals</a></div>
   <div class="kb-toolbar">
     <div class="kb-otype" role="group" aria-label="Service type">
       <button type="button" class="kb-otbtn is-active" data-ot="Dine In"><@ic 'bag'/> Dine In</button>
@@ -657,7 +676,7 @@
   </dialog></#if>
 
   <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" style="display:none"
-       onload="(function(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=terminal-policy-1';document.head.appendChild(s);})()"/>
+       onload="(function(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=terminal-policy-2';document.head.appendChild(s);})()"/>
 </div>
 </#if>
         ]]></text></render-mode>

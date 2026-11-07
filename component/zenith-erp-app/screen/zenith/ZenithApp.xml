@@ -402,7 +402,7 @@
             html_stylesheets.add('/zenithstatic/css/barcode-reference.css?v=1')
             if (html_scripts == null) html_scripts = []
             html_scripts.add('/zenithstatic/js/qapps-shell-boot.js?v=1')
-            html_scripts.add('/zenithstatic/js/kitchen-display.js?v=3')
+            html_scripts.add('/zenithstatic/js/kitchen-display.js?v=4')
             html_scripts.add('/zenithstatic/js/pos-receipt-layout.js?v=3')
             html_scripts.add('/zenithstatic/js/kitchen-print.js?v=3')
             html_stylesheets.add('/zenithstatic/css/kitchen-display.css?v=5')
@@ -424,8 +424,7 @@
             html_scripts.add('/zenithstatic/js/cpe-tabs.js?v=16')
             footer_scripts.add('/zenithstatic/js/zenith-copilot.js?v=8')
             footer_scripts.add('/zenithstatic/js/pw-autofill-guard.js?v=2')
-            footer_scripts.add('/zenithstatic/js/idle-logout.js?v=3')
-            footer_scripts.add('/zenithstatic/js/pos-idle-lock.js?v=4')
+            footer_scripts.add('/zenithstatic/js/idle-logout.js?v=4')
             footer_scripts.add('/zenithstatic/js/nav-tabfix.js?v=2')
             footer_scripts.add('/zenithstatic/js/bfcache-guard.js?v=1')
             footer_scripts.add('/zenithstatic/js/sw-tenant-guard.js?v=1')

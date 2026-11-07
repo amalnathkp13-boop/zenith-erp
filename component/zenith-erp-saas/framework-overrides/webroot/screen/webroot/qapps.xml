@@ -26,7 +26,7 @@ along with this software (see the LICENSE.md file). If not, see
 
         html_scripts.add('/libs/moment.js/moment-with-locales.min.js')
         html_scripts.add('/libs/jquery/jquery.min.js')
-        html_scripts.add('/zenithstatic/js/kitchen-display.js?v=3')
+        html_scripts.add('/zenithstatic/js/kitchen-display.js?v=4')
         html_scripts.add('/zenithstatic/js/pos-receipt-layout.js?v=3')
         html_scripts.add('/zenithstatic/js/kitchen-print.js?v=3')
         html_stylesheets.add('/zenithstatic/css/kitchen-display.css?v=5')

@@ -52,10 +52,18 @@
   }
   function controls() {
     $('clear').disabled=busy||!cart.size;
-    for(const id of ['draft','send','bill']) if($(id)) $(id).disabled=busy||!cart.size||total===null;
-    if($('send') && cfg.displayEnabled==='false') {
-      $('send').disabled=true;$('send').title='Kitchen Display is disabled for this shop. Use KOT printing.';
+    for(const id of ['draft','bill']) if($(id)) $(id).disabled=busy||!cart.size||total===null;
+    if($('send')) {
+      const displayDisabled=cfg.displayEnabled==='false';
+      $('send').disabled=busy||!cart.size||displayDisabled;
+      $('send').title=displayDisabled?'Kitchen Display is disabled for this shop. Use KOT printing.':'Press Shift by itself';
     }
+  }
+  function resetOrder() {
+    cart.clear();
+    draftId='';savedFingerprint='';
+    $('badge').textContent='New KOT';$('instr').value='';
+    quote();
   }
   function rows() {
     $('cart').innerHTML=Array.from(cart.values(),(it,i)=>'<tr data-product="'+esc(it.id)+'"><td>'+(i+1)+'</td><td><strong>'+esc(it.name)+'</strong><small>'+esc(it.code)+'</small></td>'
@@ -241,7 +249,7 @@
       }
       const bill=await request('checkoutKot',{...payment,kotId:draftId});
       finalized=true;historyDirty=true;
-      $('payment').close();cart.clear();draftId='';savedFingerprint='';$('badge').textContent='New KOT';$('instr').value='';quote();
+      $('payment').close();resetOrder();
       $('order-status').textContent='Saved bill '+bill.billNumber+'.';
       const status=$('order-status');
       if(w)await printBill(bill.kotId,isTakeAway,w,kitchenWindow);
@@ -276,14 +284,24 @@
     }
     filterHistory();
   }
-  function sendOrHold(send) {
-    if(busy||!cart.size||total===null)return;
-    if(send && cfg.displayEnabled==='false')return;
+  async function sendToKitchen() {
+    if($('send').disabled)return;
     busy=true;controls();
-    post(send?'createKot':'saveDraft',{...orderData(),loadedDraftId:draftId,existingDraftId:draftId});
+    const status=$('order-status');
+    status.textContent='Sending to kitchen…';
+    try {
+      const ticket=await request('createKot',{...orderData(),loadedDraftId:draftId,wantJson:'Y'});
+      resetOrder();
+      historyDirty=true;
+      status.textContent='KOT #'+ticket.kotNumber+' sent to the kitchen.';
+    } catch(error) {
+      status.textContent=error.message;
+    } finally {
+      busy=false;controls();
+    }
   }
   root.addEventListener('click',e=>{
-    const button=e.target.closest('button');if(!button||button.disabled)return;
+    const button=e.target.closest('button');if(!button||button.disabled||busy)return;
     if(button.dataset.ot){setType(button.dataset.ot);quote();}
     else if(button.id==='kb-tax-toggle'){taxOn=taxOn==='Y'?'N':'Y';paintTax();quote();}
     else if(button.id==='kb-view-grid')setGridView();
@@ -291,7 +309,11 @@
     else if(button.id==='kb-clear'&&confirm('Clear the unsent items from this order?')){cart.clear();quote();}
     else if(button.id==='kb-history-open')showHistory();
     else if(button.id==='kb-bill')openPayment();
-    else if(button.id==='kb-draft'||button.id==='kb-send')sendOrHold(button.id==='kb-send');
+    else if(button.id==='kb-send')sendToKitchen();
+    else if(button.id==='kb-draft'){
+      busy=true;controls();
+      post('saveDraft',{...orderData(),existingDraftId:draftId});
+    }
     else if(button.id==='kb-payment-close')$('payment').close();
     else if(button.dataset.kotResume){
       if(!cart.size||confirm('Replace the current unsent items with this held order?'))location.href=base+'/?sessionId='+encodeURIComponent(cfg.session)+'&loadDraft='+encodeURIComponent(button.dataset.kotResume);
@@ -339,4 +361,24 @@
   }
   if(draftId){$('badge').textContent='Editing Held Order';$('instr').value=cfg.draftinstr||'';}
   setType(orderType);paintTax();quote();
+  if($('send')) {
+    const keepSessionOpen=()=>{
+      if(!root.isConnected) {
+        clearInterval(heartbeat);
+        window.removeEventListener('focus',keepSessionOpen);
+        return;
+      }
+      request('touchSession',{}).then(({displayEnabled})=>{
+        if(typeof displayEnabled!=='boolean'||String(displayEnabled)===cfg.displayEnabled)return;
+        cfg.displayEnabled=String(displayEnabled);
+        $('display-message').textContent=displayEnabled
+          ?'Build an order, send it to the kitchen, or take payment.'
+          :'Kitchen Display disabled. Use printed KOTs for takeaway, or bill dine-in customers after their meal.';
+        controls();
+      }).catch(()=>{});
+    };
+    const heartbeat=setInterval(keepSessionOpen,60000);
+    window.addEventListener('focus',keepSessionOpen);
+    keepSessionOpen();
+  }
 })();
