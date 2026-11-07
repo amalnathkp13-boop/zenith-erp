@@ -3679,7 +3679,7 @@ window.posToggleFullscreen = function() {
         try { if (dayBadge) dayFormatter = new Intl.DateTimeFormat('en-US', {timeZone:dayBadge.dataset.timeZone,
             year:'numeric',month:'2-digit',day:'2-digit'}); } catch (_) {}
         function sendSessionTouch() {
-            if (!SI || Date.now() - lastTouchSentAt < 60000) return;
+            if (!SI || Date.now() - lastTouchSentAt < 30000) return;
             lastTouchSentAt = Date.now();
             fetch('Terminal/touchSession', {method:'POST', credentials:'same-origin',
                 headers:{'Content-Type':'application/x-www-form-urlencoded'},
@@ -3687,7 +3687,7 @@ window.posToggleFullscreen = function() {
         }
         function maintainBillingScreen() {
             if (!af.isConnected) return;
-            sendSessionTouch();
+            if (Date.now() - lastTouchSentAt >= 60000) sendSessionTouch();
             checkAssetVersion();
             maybeAutoReload();
             if (dayFormatter && Date.now() - lastDayCheckAt >= 60000) {
