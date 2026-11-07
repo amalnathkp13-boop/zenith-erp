@@ -1,9 +1,36 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
+    <service verb="get" noun="KotCustomer" authenticate="true">
+        <in-parameters><parameter name="sessionId" required="true"/><parameter name="customerPartyId" required="true"/></in-parameters>
+        <out-parameters><parameter name="customer" type="Map"/></out-parameters>
+        <actions>
+            <service-call name="zenith.pos.KotServices.get#BillingSession" in-map="[sessionId:sessionId]" out-map="billing"/>
+            <if condition="!billing.terminal || ec.message.hasError()"><return/></if>
+            <script><![CDATA[
+                def party=ec.entity.find('mantle.party.PartyDetailAndRole')
+                    .condition('ownerPartyId',billing.terminal.organizationPartyId).condition('partyId',customerPartyId)
+                    .condition('roleTypeId','in',['Customer','CustomerBillTo']).limit(1).list().find { true }
+                if(!party) { ec.message.addError('Choose a customer in this organization.'); return }
+                def phone=''
+                for(def pcm in ec.entity.find('mantle.party.contact.PartyContactMech').condition('partyId',customerPartyId)
+                        .conditionDate('fromDate','thruDate',ec.user.nowTimestamp).list()) {
+                    def number=ec.entity.find('mantle.party.contact.TelecomNumber').condition('contactMechId',pcm.contactMechId).one()
+                    if(number) { phone=[number.countryCode ? '+'+number.countryCode : '',number.areaCode,number.contactNumber].findAll{it}.join(' '); break }
+                }
+                def last=ec.entity.find('zenith.erp.pos.PosTransaction').condition('sessionId',sessionId)
+                    .condition('organizationPartyId',billing.terminal.organizationPartyId).condition('customerPartyId',customerPartyId)
+                    .condition('statusId','PtCompleted').orderBy('-completedDate').limit(1).list()
+                def tax=ec.service.sync().name('zenith.tax.TaxServices.get#PartyTaxRegistration').parameter('partyId',customerPartyId).call()
+                customer=[id:customerPartyId,name:party.organizationName ?: [party.firstName,party.lastName].findAll{it}.join(' ') ?: customerPartyId,
+                    phone:phone,lastBill:last ? last[0].transactionNumber : '',lastAmount:last ? last[0].payableAmount : null,
+                    regionGeoId:tax?.regionGeoId,registrationNumber:tax?.registrationNumber]
+            ]]></script>
+        </actions>
+    </service>
     <!-- Read-only quote: uses canonical product prices and the installed tax dispatcher.
          An unsent order has no legal invoice number, payment or sale to reprint. -->
     <service verb="get" noun="CartReceipt">
-        <in-parameters><parameter name="sessionId"/><parameter name="itemsJson" required="true" allow-html="any"/><parameter name="tableId"/><parameter name="orderType"/><parameter name="taxOn" default-value="Y"/><parameter name="salesModeId"/><parameter name="waiterId"/><parameter name="notes" allow-html="any"/></in-parameters>
+        <in-parameters><parameter name="sessionId"/><parameter name="itemsJson" required="true" allow-html="any"/><parameter name="tableId"/><parameter name="orderType"/><parameter name="taxOn" default-value="Y"/><parameter name="salesModeId"/><parameter name="waiterId"/><parameter name="customerPartyId"/><parameter name="notes" allow-html="any"/></in-parameters>
         <out-parameters><parameter name="receipt" type="Map"/></out-parameters>
         <actions>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="scope"/>
@@ -19,6 +46,14 @@
                 if(salesModeId && (!mode || mode.isActive!='Y' || (mode.organizationPartyId && mode.organizationPartyId!=scope.organizationPartyId))) {
                     ec.message.addError('Choose an active sales mode.'); return
                 }
+                def billing=sessionId ? ec.service.sync().name('zenith.pos.KotServices.get#BillingSession').parameter('sessionId',sessionId).call() : null
+                if(ec.message.hasError()) return
+                def terminalModes=billing?.terminal ? ec.service.sync().name('zenith.pos.PosModeServices.get#TerminalModes')
+                    .parameter('terminalId',billing.terminal.terminalId).call().modes.collectEntries { [it.salesModeId,it] } : [:]
+                if(billing && salesModeId && !terminalModes[salesModeId]) { ec.message.addError('Choose a sales mode available on this terminal.'); return }
+                def customer=customerPartyId ? ec.service.sync().name('zenith.pos.KitchenPrintServices.get#KotCustomer')
+                    .parameters([sessionId:sessionId,customerPartyId:customerPartyId]).call().customer : null
+                if(ec.message.hasError()) return
                 def waiter=waiterId ? ec.entity.find('zenith.erp.pos.Waiter').condition('waiterId',waiterId)
                     .condition('organizationPartyId',scope.organizationPartyId).condition('isActive','Y').one() : null
                 if(waiterId && !waiter) { ec.message.addError('Choose an active waiter.'); return }
@@ -28,33 +63,42 @@
                     BigDecimal qty=null
                     try { qty=new BigDecimal(String.valueOf(item instanceof Map ? item.quantity : null)) } catch(Exception ignored) { }
                     if (!p || p.ownerPartyId!=scope.organizationPartyId || p.productTypeEnumId!='PtAsset' || qty==null || qty<=0 || qty>1000000) { ec.message.addError('The order contains an invalid product or quantity.'); return }
+                    def lineModeId=item.salesModeId ?: salesModeId
+                    def lineMode=billing ? terminalModes[lineModeId] : mode
+                    if(lineModeId && (!lineMode || lineMode.salesModeId!=lineModeId)) { ec.message.addError('Choose a sales mode available on this terminal.'); return }
                     def price=p.mrpAmount as BigDecimal
-                    def mp=mode ? ec.service.sync().name('zenith.pos.PosServices.resolve#PosModePrice')
-                        .parameters([productId:p.productId,salesModeId:salesModeId,product:p]).call() : [:]
+                    def mp=lineMode ? ec.service.sync().name('zenith.pos.PosServices.resolve#PosModePrice')
+                        .parameters([productId:p.productId,salesModeId:lineModeId,product:p]).call() : [:]
                     if(mp.blocked) { ec.message.addError(mp.blockReason); return }
                     if(mp.isFixed) price=mp.unitPrice
-                    else if(mode) {
+                    else if(lineMode || billing) {
                         def priced=ec.service.sync().name('zenith.pricing.PricingServices.calculate#Price')
-                            .parameters([productId:p.productId,quantity:qty,organizationPartyId:scope.organizationPartyId,salesChannelEnumId:'ScPos']).call()
+                            .parameters([productId:p.productId,quantity:qty,organizationPartyId:scope.organizationPartyId,regionGeoId:billing?.terminal?.regionGeoId,salesChannelEnumId:'ScPos']).call()
                         if(priced?.unitPrice>0) price=priced.unitPrice
                     }
-                    if(!mode && item.manualPrice=='Y') {
+                    if(item.manualPrice=='Y') {
+                        def access=ec.service.sync().name('zenith.pos.PosPriceServices.get#PriceOverrideAccess').call()
+                        if(!access.canOverride) { ec.message.addError('POS write permission is required to change a bill price.'); return }
                         try { price=new BigDecimal(String.valueOf(item.unitPrice)) } catch(Exception ignored) { price=null }
                     }
                     if(price==null || price<0 || price>10000000 || price.scale()>2) { ec.message.addError('Enter a valid item price before printing.'); return }
                     def discount=(price*qty*((mp.discountPercent ?: 0) as BigDecimal)/100).setScale(2,java.math.RoundingMode.HALF_UP)
-                    products.add([product:p,qty:qty,price:price,discount:discount])
-                    taxInputs.add([productId:p.productId,productTaxCode:p.productTaxCode,taxCategoryId:p.taxCategoryId,quantity:qty,unitAmount:price,discountAmount:discount,isTaxInclusive:mode?.isTaxInclusive ?: 'N'])
+                    products.add([product:p,qty:qty,price:price,discount:discount,salesModeId:lineModeId,manualPrice:item.manualPrice=='Y' ? 'Y' : 'N'])
+                    taxInputs.add([productId:p.productId,productTaxCode:p.productTaxCode,taxCategoryId:p.taxCategoryId,quantity:qty,unitAmount:price,discountAmount:discount,isTaxInclusive:lineMode?.isTaxInclusive ?: 'N'])
                 }
                 def templates=ec.entity.find('zenith.erp.pos.PosReceiptTemplate').condition('organizationPartyId',scope.organizationPartyId)
                     .condition('isActive','Y').orderBy('-isDefault,templateId').list()
-                def billing=sessionId ? ec.service.sync().name('zenith.pos.KotServices.get#BillingSession').parameter('sessionId',sessionId).call() : null
-                if(ec.message.hasError()) return
                 def facilityId=billing?.terminal?.facilityId ?: selected.table?.facilityId
                 if(billing && selected.table && selected.table.facilityId!=facilityId) { ec.message.addError('Choose a table at this terminal shop.'); return }
                 def tpl=templates.find { facilityId && it.facilityId==facilityId } ?: templates.find { !it.facilityId }
-                def state=tpl?.taxRegistrationNumber?.size()==15 ? tpl.taxRegistrationNumber.substring(0,2) : null
-                if(!state) {
+                def state
+                if(billing?.terminal) {
+                    state=billing.terminal.stateCode ?: billing.terminal.regionGeoId
+                    if(!state) state=ec.entity.find('zenith.erp.india.IndiaGstConfig')
+                        .condition('organizationPartyId',scope.organizationPartyId).limit(1).list().find { true }?.stateCode
+                } else if(tpl?.taxRegistrationNumber?.size()==15) {
+                    state=tpl.taxRegistrationNumber.substring(0,2)
+                } else {
                     def terminals=ec.entity.find('zenith.erp.pos.PosTerminal').condition('organizationPartyId',scope.organizationPartyId).condition('isActive','Y')
                     if(facilityId)terminals.condition('facilityId',facilityId)
                     def states=terminals.list().collect { it.stateCode ?: it.regionGeoId }.findAll { it }.unique()
@@ -62,13 +106,13 @@
                 }
                 if (!(taxOn in ['Y','N'])) { ec.message.addError('Choose a valid tax setting.'); return }
                 def tax=taxOn=='Y' ? ec.service.sync().name('zenith.tax.TaxServices.calculate#Tax').parameters([organizationPartyId:scope.organizationPartyId,
-                    items:taxInputs,originRegionGeoId:state,destinationRegionGeoId:state,transactionType:'SALE']).call() : null
+                    items:taxInputs,originRegionGeoId:state,destinationRegionGeoId:customer?.regionGeoId ?: state,transactionType:'SALE']).call() : null
                 if(ec.message.hasError()) return
                 def sumTax=[:], lines=[]
                 products.eachWithIndex { row,i ->
                     def ti=tax?.taxedItems?.getAt(i)
                     (ti?.taxBreakdowns ?: []).each { b -> sumTax[b.taxName]=(sumTax[b.taxName] ?: 0)+(b.taxAmount ?: 0) }
-                    lines.add([productId:row.product.productId,name:row.product.productName ?: row.product.productId,code:row.product.pseudoId ?: row.product.productId,qty:row.qty,rate:row.price,
+                    lines.add([productId:row.product.productId,name:row.product.productName ?: row.product.productId,code:row.product.pseudoId ?: row.product.productId,qty:row.qty,rate:row.price,salesModeId:row.salesModeId,manualPrice:row.manualPrice,
                         total:(ti?.taxableAmount != null ? ti.taxableAmount : row.price*row.qty-row.discount),tax:(ti?.totalTaxAmount ?: 0),discount:row.discount,
                         uom:['OTH_ea':'Nos','WT_kg':'kg','WT_g':'g','VLIQ_L':'L','VLIQ_ml':'ml'][row.product.amountUomId] ?: ''])
                 }
@@ -87,9 +131,9 @@
                     showLogo:tpl?.showLogo ?: 'N',logoUrl:tpl?.logoUrl ?: '',showTaxBreakdown:tpl?.showTaxBreakdown ?: 'Y',
                     showDiscount:tpl?.showDiscount ?: 'Y',showCustomerInfo:tpl?.showCustomerInfo ?: 'Y',showPaymentDetails:'N',showItemTax:tpl?.showItemTax ?: 'N'],
                     options:options,bill:[number:'UNPAID ORDER',date:ec.l10n.format(ec.user.nowTimestamp,'dd/MM/yyyy hh:mm a'),
-                    cashier:person ? [person.firstName,person.lastName].findAll{it}.join(' ') : '',customer:'Walk-In Customer',
+                    cashier:person ? [person.firstName,person.lastName].findAll{it}.join(' ') : '',customer:customer?.name ?: 'Walk-In Customer',customerPhone:customer?.phone ?: '',customerPartyId:customer?.id,
                     table:selected.table?.tableNumber ?: '',orderType:orderType ?: 'Dine In',taxOn:taxOn,salesModeId:salesModeId,waiterId:waiterId,waiter:waiter?.waiterName],items:lines,
-                    summary:[subtotal:subtotal,tax:(tax?.totalTaxAmount ?: 0),discount:0,roundOff:payable-grand,total:payable,
+                    summary:[subtotal:subtotal,tax:(tax?.totalTaxAmount ?: 0),discount:products.sum { it.discount } ?: 0,roundOff:payable-grand,total:payable,
                         totalQty:products.sum { it.qty },itemCount:lines.size(),taxBreakdown:sumTax.collect { n,v -> [name:n,amount:v] }],
                     payments:[],saving:0,change:0,notes:notes ?: '']
             ]]></script>

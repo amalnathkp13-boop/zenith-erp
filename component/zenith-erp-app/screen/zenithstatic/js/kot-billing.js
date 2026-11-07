@@ -17,6 +17,8 @@
   let salesModeId=$('mode').value, quoteVersion=0, quoteTimer, total=null, busy=false, savedFingerprint='';
   let searchVersion=0, searchTimer, searchAbort, results=[], selected=0, exactId, ambiguous=false, hasMore=false, offset=0;
   let historyDirty=false, grid=false, pickedMatch=false;
+  let customer=JSON.parse(cfg.draftCustomer||'{}'), lastAmount=Number(cfg.lastAmount)||0;
+  const modeOptions=Array.from($('mode').options,o=>[o.value,o.text]);
   if(cfg.draftmode && Array.from($('mode').options).some(o=>o.value===cfg.draftmode)) salesModeId=$('mode').value=cfg.draftmode;
   if(cfg.draftwaiter) $('waiter').value=cfg.draftwaiter;
   $('table').value=cfg.drafttable||cfg.selectedTable||'';
@@ -36,8 +38,28 @@
     }
     root.append(form);form.submit();
   }
-  const orderData=()=>({orderType,taxOn,salesModeId,tableId:$('table').value,waiterId:$('waiter').value,notes:$('instr').value,
-    itemsJson:JSON.stringify(Array.from(cart.values(),it=>({productId:it.id,quantity:it.qty})))});
+  const orderData=()=>({orderType,taxOn,salesModeId,tableId:$('table').value,waiterId:$('waiter').value,notes:$('instr').value,customerPartyId:customer.id||'',
+    itemsJson:JSON.stringify(Array.from(cart.values(),it=>({productId:it.id,quantity:it.qty,salesModeId:it.mode||salesModeId,
+      ...(it.manual==null?{}:{manualPrice:'Y',unitPrice:it.manual})})))});
+  function paintDetails() {
+    for(const el of root.querySelectorAll('[data-kb-customer-name]')) el.textContent=customer.name||'Walk-in Customer';
+    $('customer-phone').textContent=customer.phone||'—';
+    $('last-bill').textContent=customer.lastBill||'—';
+    $('customer-last').textContent=customer.lastAmount==null?'—':money.format(customer.lastAmount);
+    $('last-amount').textContent=lastAmount?money.format(lastAmount):'0';
+    $('detail-type').textContent=orderType;
+    $('detail-waiter').textContent=$('waiter').value?$('waiter').selectedOptions[0].text:'—';
+    $('detail-mode').textContent=$('mode').selectedOptions[0]?.text||'Standard';
+  }
+  function paintTotals(summary) {
+    for(const key of ['subtotal','tax','grand']) {
+      const value=summary?.[key==='grand'?'total':key];
+      $('list-'+key).textContent=value==null?'—':money.format(value);
+    }
+    $('stat-qty').textContent=Array.from(cart.values()).reduce((qty,it)=>qty+it.qty,0);
+    $('stat-tax').textContent=summary?.tax??'—';
+    $('stat-discount').textContent=summary?.discount??'—';
+  }
   function setType(value) {
     orderType=value;
     for(const button of root.querySelectorAll('[data-ot]')) {
@@ -52,25 +74,41 @@
   }
   function controls() {
     $('clear').disabled=busy||!cart.size;
-    for(const id of ['draft','send','bill']) if($(id)) $(id).disabled=busy||!cart.size||total===null;
-    if($('send') && cfg.displayEnabled==='false') {
-      $('send').disabled=true;$('send').title='Kitchen Display is disabled for this shop. Use KOT printing.';
+    for(const id of ['draft','bill']) if($(id)) $(id).disabled=busy||!cart.size||total===null;
+    for(const button of root.querySelectorAll('[data-kb-payment],[data-kb-hold]')) button.disabled=busy||!cart.size||total===null;
+    if($('send')) {
+      const displayDisabled=cfg.displayEnabled==='false';
+      $('send').disabled=busy||!cart.size||total===null||displayDisabled;
+      $('send').title=displayDisabled?'Kitchen Display is disabled for this shop. Use KOT printing.':'Press Shift by itself';
     }
   }
+  function resetOrder() {
+    cart.clear();
+    draftId='';savedFingerprint='';customer={};
+    $('badge').textContent='New KOT';$('instr').value='';
+    quote();
+  }
   function rows() {
-    $('cart').innerHTML=Array.from(cart.values(),(it,i)=>'<tr data-product="'+esc(it.id)+'"><td>'+(i+1)+'</td><td><strong>'+esc(it.name)+'</strong><small>'+esc(it.code)+'</small></td>'
+    const number=(value,digits)=>Number.isFinite(value)?value.toFixed(digits):'—';
+    $('cart').innerHTML=Array.from(cart.values(),(it,i)=>'<tr data-product="'+esc(it.id)+'"><td>'+(i+1)+'</td><td><strong>'+esc(it.name)+'</strong>'+(grid?'<small>'+esc(it.code)+'</small>':'')+'</td>'
+      +(grid?'':'<td><select class="kb-line-mode" data-kb-line-mode aria-label="Sales mode for '+esc(it.name)+'"'+(search.disabled?' disabled':'')+'>'
+        +modeOptions.map(([value,name])=>'<option value="'+esc(value)+'"'+(value===(it.mode||salesModeId)?' selected':'')+'>'+esc(name)+'</option>').join('')
+        +'</select></td><td><input class="kb-price-input" type="number" data-kb-rate min="0" max="10000000" step="0.01" inputmode="decimal" required aria-label="Rate for '+esc(it.name)+'" value="'+esc(it.manual??it.price??'')+'"'+(cfg.canOverride==='true'?'':' readonly')+'></td>')
       +'<td><span class="kb-ostep"><button type="button" data-qty="-1" aria-label="Decrease quantity" '+(it.qty<=1?'disabled':'')+'>−</button><span>'+it.qty+'</span><button type="button" data-qty="1" aria-label="Increase quantity">+</button></span></td>'
-      +'<td class="r">'+money.format(it.price)+'</td><td class="r kb-oamt">'+money.format(it.amount??it.qty*it.price)+'</td>'
-      +'<td class="r"><button type="button" class="kb-orm" data-remove="true" aria-label="Remove '+esc(it.name)+'">×</button></td></tr>').join('');
+      +(grid?'<td class="r">'+money.format(it.price)+'</td>':'<td>'+number(it.tax,3)+'</td>')
+      +'<td class="r kb-oamt">'+(grid?money.format(it.amount??it.qty*it.price):number(it.amount==null?null:it.amount+(it.tax||0),2))+'</td>'
+      +'<td class="r"><button type="button" class="kb-orm" data-remove="true" aria-label="Remove '+esc(it.name)+'">'+(grid?'×':'<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></svg>')+'</button></td></tr>').join('');
     $('cartempty').hidden=cart.size>0;
     $('item-count').textContent=cart.size;
+    $('list-count').textContent=$('summary-count').textContent=cart.size;
   }
   function quote() {
     clearTimeout(quoteTimer); const version=++quoteVersion;
-    total=null;controls();rows();
+    total=null;controls();rows();paintDetails();
     $('quote-error').textContent='';
     $('tax-rows').replaceChildren();
     $('grand').textContent=cart.size?'Calculating…':money.format(0);
+    paintTotals(cart.size?null:{subtotal:0,tax:0,total:0,discount:0});
     if(!cart.size){$('subtotal').textContent=money.format(0);return;}
     quoteTimer=setTimeout(async()=>{
       try{
@@ -78,11 +116,12 @@
         if(version!==quoteVersion||!root.isConnected)return;
         for(const line of receipt.items){
           const it=cart.get(line.productId);
-          if(it){it.price=Number(line.rate);it.amount=Number(line.total);it.code=line.code;it.name=line.name;}
+          if(it){it.price=Number(line.rate);it.amount=Number(line.total);it.tax=Number(line.tax);it.code=line.code;it.name=line.name;}
         }
         rows();total=Number(receipt.summary.total);controls();
         $('subtotal').textContent=money.format(receipt.summary.subtotal);
         $('grand').textContent=money.format(total);
+        paintTotals(receipt.summary);
         $('tax-rows').innerHTML=(receipt.summary.taxBreakdown||[]).map(t=>'<div class="kb-sum__row"><span>'+esc(t.name)+'</span><span>'+money.format(t.amount)+'</span></div>').join('');
       }catch(e){if(version===quoteVersion&&root.isConnected)$('quote-error').textContent=e.message;}
     },100);
@@ -126,7 +165,10 @@
   function setGridView() {
     grid=!grid;
     const panel=$('product-grid'),button=$('view-grid');
-    button.textContent=grid?'List View':'Grid View';
+    $('view-label').textContent=grid?'List View':'Grid View';
+    root.classList.toggle('kb-grid-view',grid);
+    search.placeholder=grid?'Search product by name, code or barcode...':'Scan barcode, or type product name or code...   ( press / )';
+    rows();
     button.setAttribute('aria-expanded',String(grid));
     panel.hidden=!grid;
     (grid?panel:search.parentElement).append(suggestions);
@@ -140,7 +182,9 @@
     return document.fullscreenElement||document.webkitFullscreenElement;
   }
   function syncFullscreen() {
-    $('fullscreen-label').textContent=fullscreenElement()===root?'Exit fullscreen':'Fullscreen';
+    const active=fullscreenElement()===root;
+    $('fullscreen-label').textContent=active?'Exit fullscreen':'Fullscreen';
+    $('fullscreen').setAttribute('aria-pressed',String(active));
   }
   async function toggleFullscreen() {
     const status=$('fullscreen-status');
@@ -194,10 +238,10 @@
     const match=e.target.closest('[data-result]');if(match)choose(Number(match.dataset.result));
   });
 
-  function openPayment() {
+  function openPayment(method='Cash') {
     if(!$('bill')||$('bill').disabled||$('payment').open)return;
     $('payment-total').textContent='Order total: '+money.format(total);
-    if($('payment-method')){$('payment-method').value='Cash';tenderFields();}
+    if($('payment-method')){$('payment-method').value=method;tenderFields();}
     if($('payment-error'))$('payment-error').textContent='';
     $('payment').showModal();
   }
@@ -208,6 +252,10 @@
       label.querySelector('input').disabled=!shown;
     }
     $('cash').value=method==='Cash'?total.toFixed(2):'';
+    if(method==='Credit') {
+      $('payment-form').elements.customerName.value=customer.name||'';
+      $('payment-form').elements.customerPhone.value=customer.phone||'';
+    }
   }
   async function printBill(kotId,isTakeAway,w,kitchenWindow) {
     let error;
@@ -241,7 +289,7 @@
       }
       const bill=await request('checkoutKot',{...payment,kotId:draftId});
       finalized=true;historyDirty=true;
-      $('payment').close();cart.clear();draftId='';savedFingerprint='';$('badge').textContent='New KOT';$('instr').value='';quote();
+      lastAmount=total;$('payment').close();resetOrder();
       $('order-status').textContent='Saved bill '+bill.billNumber+'.';
       const status=$('order-status');
       if(w)await printBill(bill.kotId,isTakeAway,w,kitchenWindow);
@@ -276,22 +324,49 @@
     }
     filterHistory();
   }
-  function sendOrHold(send) {
-    if(busy||!cart.size||total===null)return;
-    if(send && cfg.displayEnabled==='false')return;
+  async function sendToKitchen() {
+    if($('send').disabled)return;
     busy=true;controls();
-    post(send?'createKot':'saveDraft',{...orderData(),loadedDraftId:draftId,existingDraftId:draftId});
+    const status=$('order-status');
+    status.textContent='Sending to kitchen…';
+    try {
+      const ticket=await request('createKot',{...orderData(),loadedDraftId:draftId,wantJson:'Y'});
+      resetOrder();
+      historyDirty=true;
+      status.textContent='KOT #'+ticket.kotNumber+' sent to the kitchen.';
+    } catch(error) {
+      status.textContent=error.message;
+    } finally {
+      busy=false;controls();
+    }
   }
   root.addEventListener('click',e=>{
-    const button=e.target.closest('button');if(!button||button.disabled)return;
-    if(button.dataset.ot){setType(button.dataset.ot);quote();}
+    const button=e.target.closest('button');if(!button||button.disabled||busy)return;
+    if(button.hasAttribute('data-kb-customer-open')) {
+      $('customer-results').replaceChildren();$('customer-search').value='';$('customer-dialog').showModal();
+    }else if(button.hasAttribute('data-kb-walk-in')) {
+      customer={};$('customer-dialog').close();quote();
+    }else if(button.dataset.kbCustomer) {
+      button.disabled=true;
+      request('findKotCustomer',{customerPartyId:button.dataset.kbCustomer}).then(result=>{
+        if(!$('customer-dialog').open)return;
+        customer=result.customer;$('customer-dialog').close();quote();
+      }).catch(error=>{$('customer-results').textContent=error.message;});
+    }else if(button.dataset.kbMode) {
+      $('mode').value=button.dataset.kbMode;$('mode').dispatchEvent(new Event('change'));button.closest('details').open=false;
+    }else if(button.dataset.ot){setType(button.dataset.ot);quote();}
     else if(button.id==='kb-tax-toggle'){taxOn=taxOn==='Y'?'N':'Y';paintTax();quote();}
     else if(button.id==='kb-view-grid')setGridView();
     else if(button.id==='kb-fullscreen')toggleFullscreen();
     else if(button.id==='kb-clear'&&confirm('Clear the unsent items from this order?')){cart.clear();quote();}
     else if(button.id==='kb-history-open')showHistory();
     else if(button.id==='kb-bill')openPayment();
-    else if(button.id==='kb-draft'||button.id==='kb-send')sendOrHold(button.id==='kb-send');
+    else if(button.dataset.kbPayment)openPayment(button.dataset.kbPayment);
+    else if(button.id==='kb-send')sendToKitchen();
+    else if(button.id==='kb-draft'||button.hasAttribute('data-kb-hold')){
+      busy=true;controls();
+      post('saveDraft',{...orderData(),existingDraftId:draftId});
+    }
     else if(button.id==='kb-payment-close')$('payment').close();
     else if(button.dataset.kotResume){
       if(!cart.size||confirm('Replace the current unsent items with this held order?'))location.href=base+'/?sessionId='+encodeURIComponent(cfg.session)+'&loadDraft='+encodeURIComponent(button.dataset.kotResume);
@@ -305,8 +380,30 @@
     }
   });
   $('mode').addEventListener('change',()=>{
+    if($('mode').value===salesModeId)return;
     if(cart.size&&!confirm('Update the cart? Existing items will be repriced for the selected sales mode.')){$('mode').value=salesModeId;return;}
-    salesModeId=$('mode').value;quote();lookup();
+    salesModeId=$('mode').value;
+    for(const item of cart.values()){item.mode='';item.manual=null;item.amount=null;}
+    quote();lookup();
+  });
+  $('cart').addEventListener('change',e=>{
+    const input=e.target, item=cart.get(input.closest('tr')?.dataset.product);
+    if(!item||busy)return;
+    if(input.hasAttribute('data-kb-line-mode')){item.mode=input.value;item.manual=null;item.amount=null;quote();}
+    if(input.hasAttribute('data-kb-rate')){
+      if(!input.reportValidity()){total=null;controls();return;}
+      item.manual=String(Number(input.value));item.amount=null;quote();
+    }
+  });
+  $('customer-search-form')?.addEventListener('submit',async e=>{
+    e.preventDefault();
+    const button=e.currentTarget.querySelector('button'), output=$('customer-results');
+    button.disabled=true;output.textContent='Searching…';
+    try{
+      const {customers}=await request('findKotCustomer',{term:$('customer-search').value});
+      output.innerHTML=customers.map(c=>'<button class="kb-control" type="button" data-kb-customer="'+esc(c.id)+'">'+esc(c.name)+'</button>').join('')||'No customers found.';
+    }catch(error){output.textContent=error.message;}
+    finally{button.disabled=false;}
   });
   $('table').addEventListener('change',quote);
   $('waiter').addEventListener('change',quote);
@@ -328,6 +425,7 @@
     if(e.key!=='Shift')shiftAlone=false;
     if(e.repeat||e.isComposing||e.ctrlKey||e.metaKey||e.altKey||editable(e)||root.querySelector('dialog[open]'))return;
     if(e.key==='Shift')shiftAlone=true;
+    if(e.key==='/'){e.preventDefault();search.focus();}
     if(e.key==='F7'&&!$('draft')?.disabled){e.preventDefault();$('draft')?.click();}
     if(e.key===' '&&!e.shiftKey&&!$('bill')?.disabled){e.preventDefault();$('bill')?.click();}
   }
@@ -335,8 +433,26 @@
   const snapshot=JSON.parse(cfg.draftreceipt||'[]');
   for(const item of JSON.parse(cfg.draftload||'[]')){
     const saved=snapshot.find(row=>row.productId===item.productId);
-    cart.set(item.productId,{id:item.productId,name:item.productName,code:saved?.code||item.productId,price:Number(saved?.rate)||0,qty:Number(item.quantity)});
+    cart.set(item.productId,{id:item.productId,name:item.productName,code:saved?.code||item.productId,price:Number(saved?.rate)||0,qty:Number(item.quantity),
+      mode:saved?.salesModeId||'',manual:saved?.manualPrice==='Y'?saved.rate:null});
   }
   if(draftId){$('badge').textContent='Editing Held Order';$('instr').value=cfg.draftinstr||'';}
   setType(orderType);paintTax();quote();
+  const localDate=new Intl.DateTimeFormat('en-GB'), localTime=new Intl.DateTimeFormat('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true});
+  function clock(){
+    const now=new Date(), online=navigator.onLine;
+    $('date').textContent=localDate.format(now).replaceAll('/','-');
+    $('time').textContent=localTime.format(now).toUpperCase();
+    $('online').textContent=online?'Online':'Offline';$('online').classList.toggle('is-offline',!online);
+  }
+  clock();
+  const ticker=setInterval(()=>root.isConnected?clock():clearInterval(ticker),1000);
+  if($('send')) {
+    const keepSessionOpen=()=>{
+      if(!root.isConnected)clearInterval(heartbeat);
+      else request('touchSession',{}).catch(()=>{});
+    };
+    const heartbeat=setInterval(keepSessionOpen,60000);
+    keepSessionOpen();
+  }
 })();
