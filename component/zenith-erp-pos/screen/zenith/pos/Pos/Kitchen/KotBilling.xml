@@ -277,9 +277,18 @@
                     found=ec.service.sync().name('zenith.pos.PosCheckoutServices.search#PosProducts')
                         .parameters([term:term,offset:offset,pageSize:41]).call()?.products ?: []
                 } else {
-                    found=ec.entity.find('mantle.product.Product')
+                    def products=ec.entity.find('mantle.product.Product')
                         .condition([ownerPartyId:scope.organizationPartyId,productTypeEnumId:'PtAsset'])
-                        .orderBy('productName,productId').offset(offset).limit(41).list()
+                    def categoryId=ec.context.categoryId
+                    if(categoryId) {
+                        def category=ec.entity.find('mantle.product.category.ProductCategory')
+                            .condition([productCategoryId:categoryId,ownerPartyId:scope.organizationPartyId]).one()
+                        def members=category ? ec.entity.find('mantle.product.category.ProductCategoryMember')
+                            .condition('productCategoryId',categoryId).conditionDate('fromDate','thruDate',ec.user.nowTimestamp)
+                            .selectField('productId').list()*.productId : []
+                        found=members ? products.condition('productId',org.moqui.entity.EntityCondition.IN,members)
+                            .orderBy('productName,productId').offset(offset).limit(41).list() : []
+                    } else found=products.orderBy('productName,productId').offset(offset).limit(41).list()
                 }
                 if(scan?.found && !found.any { it.productId==scan.productId }) {
                     def p=ec.entity.find('mantle.product.Product').condition('productId',scan.productId)
@@ -417,6 +426,8 @@
                 }
             }
             if(!billingSession) return
+            gridCategories=org ? ec.entity.find('mantle.product.category.ProductCategory').condition('ownerPartyId',org)
+                .orderBy('categoryName,productCategoryId').limit(60).list() : []
             def sf=ec.entity.find('zenith.erp.pos.PosSession').condition('organizationPartyId',org ?: '__NO_ORGANIZATION__')
                 .condition('operatorPartyId',ec.user.userAccount?.partyId).condition('statusId','PsOpen')
             checkoutSessions=checkoutTerminals ? sf.condition('terminalId',IN,checkoutTerminals*.terminalId).orderBy('-openDate').list().collect { ss ->
@@ -542,6 +553,13 @@
 <#elseif name=='save'><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/>
 <#elseif name=='printer'><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/>
 <#elseif name=='fullscreen'><path d="M8 3H3v5m13-5h5v5m0 8v5h-5M3 16v5h5"/>
+<#elseif name=='grid'><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+<#elseif name=='chef'><path d="M6 13a4 4 0 1 1 2-7 4 4 0 0 1 8 0 4 4 0 1 1 2 7v7H6zm0 4h12m-9-5v2m6-2v2"/>
+<#elseif name=='cash'><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 12h.01M18 12h.01"/>
+<#elseif name=='card'><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h5"/>
+<#elseif name=='credit'><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M7 15h4m5 0h2"/>
+<#elseif name=='upi'><path d="M3 3h6v6H3zm12 0h6v6h-6zM3 15h6v6H3zm9-3h3v3h-3zm6 0h3v3h-3zm-6 6h3v3h-3zm6-3v6h3"/>
+<#elseif name=='split'><path d="M3 12h18M8 7l-5 5 5 5m8-10 5 5-5 5"/>
 <#elseif name=='arrow'><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
 </#if>
 </svg></#macro>
@@ -582,6 +600,7 @@
 </section>
 <#else>
 <div class="kb-wrap" id="kb-wrap">
+  <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=1"/>
   <input type="hidden" id="kb-token" value="${(ec.web.sessionToken)!''}"/>
   <div id="kb-data" style="display:none" data-session="${billingSession.sessionId?html}" data-display-enabled="${kitchenDisplayEnabled?c}" data-kot-module="${(kitchenModuleId!'pos')?html}" data-stock-session="${((checkoutSessions?size == 1)?then(checkoutSessions[0].id,''))?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}"></div>
 
@@ -597,19 +616,40 @@
     </select></label>
     <label class="kb-fld">Waiter<select id="kb-waiter"><option value="">Choose waiter</option><#list waiters as w><option value="${w.waiterId?html}">${w.waiterName?html}</option></#list></select></label>
     <label class="kb-fld">Sales Mode<select id="kb-mode"><#if !modes?has_content><option value="">Standard</option></#if><#list modes as m><option value="${m.salesModeId?html}">${m.modeName?html}</option></#list></select></label>
-    <button type="button" class="kb-control" id="kb-history-open"><@ic 'clock'/> History</button>
-    <button type="button" class="kb-control" id="kb-view-grid" aria-expanded="false" aria-controls="kb-product-grid">Grid View</button>
+    <button type="button" class="kb-control" id="kb-history-open"><@ic 'clock'/> History <kbd class="kg-only">F10</kbd></button>
+    <button type="button" class="kb-control" id="kb-view-grid" aria-expanded="false" aria-controls="kb-product-grid" title="Switch billing view"><span class="kg-only"><@ic 'grid'/></span>Grid View <kbd class="kg-only">F11</kbd></button>
     <button type="button" class="kb-control" id="kb-fullscreen"><@ic 'fullscreen'/> <span id="kb-fullscreen-label">Fullscreen</span></button>
     <button type="button" class="kb-control kb-tax-toggle is-on" id="kb-tax-toggle" role="switch" aria-label="Tax" aria-checked="true">Tax: ON</button>
   </div>
 
+  <header class="kg-header" hidden>
+    <img src="/zenithstatic/img/zetaerp-logo.svg?v=2" alt="ZetaERP"/>
+    <a class="kg-chip" href="KotBilling" aria-label="Change KOT terminal">KOT Billing · ${(billingTerminal.terminalName!billingTerminal.terminalId)?html} ⌄</a>
+    <span class="kg-online" id="kb-online"></span>
+    <span class="kg-meta">${ec.l10n.format(ec.user.nowTimestamp, 'dd-MM-yyyy')?html}</span>
+    <span class="kg-meta"><@ic 'clock'/> <time id="kb-clock"></time></span>
+    <span class="kg-chip">KOT Mode</span>
+  </header>
+  <div class="kg-toolbar-extras" hidden>
+    <a class="kb-control" href="KotBilling">← Back to Terminals</a>
+    <details class="kg-modes">
+      <summary class="kb-control">Modes ⌄</summary>
+      <div class="kg-menu">
+        <button type="button" data-kb-view="grid">Grid View</button>
+        <button type="button" data-kb-view="normal">Normal Billing</button>
+      </div>
+    </details>
+  </div>
   <p id="kb-fullscreen-status" role="status"></p>
   <section id="kb-product-grid" aria-label="Product catalogue" hidden>
-    <h2>Products</h2>
+    <div class="kg-categories" role="group" aria-label="Product categories">
+      <button type="button" data-kb-category="" aria-pressed="true">All Items</button>
+      <#list gridCategories as c><button type="button" data-kb-category="${c.productCategoryId?html}" aria-pressed="false">${(c.categoryName!c.productCategoryId)?html}</button></#list>
+    </div>
   </section>
 
   <aside class="kb-panel">
-    <div class="kb-panel__head"><h2 class="kb-panel__title">Current Order</h2><span class="kb-panel__badge" id="kb-badge">New KOT</span><button type="button" class="kb-clear" id="kb-clear" disabled>Clear Cart</button></div>
+    <div class="kb-panel__head"><h2 class="kb-panel__title"><span class="kg-normal">Current Order</span><span class="kg-only"><@ic 'chef' 24/> KOT Items (<span id="kb-grid-count">0</span>)</span></h2><span class="kb-panel__badge" id="kb-badge">New KOT</span><button type="button" class="kb-clear" id="kb-clear" disabled>Clear Cart</button></div>
     <div class="kb-order-scroll"><table class="kb-otable" aria-label="Current Order"><thead><tr><th>#</th><th>Product</th><th>Quantity</th><th class="r">Unit Price</th><th class="r">Amount</th><th>Remove</th></tr></thead><tbody id="kb-cart"></tbody></table>
       <p class="kb-cartempty" id="kb-cartempty">Search or scan a product to start the order.</p>
     </div>
@@ -620,11 +660,14 @@
   </aside>
 
   <div class="kb-bottom">
-    <div class="kb-total-row"><span>Total Amount</span><strong id="kb-grand">&#8377;0.00</strong></div>
+    <div class="kb-total-row"><span class="kg-normal">Total Amount</span><span class="kg-only">KOT TOTAL</span><strong id="kb-grand">&#8377;0.00</strong></div>
     <#if modCanWrite><div class="kb-checkout-actions">
       <button type="button" id="kb-draft" class="kb-action-hold" disabled><span aria-hidden="true">Ⅱ</span> Hold <kbd>F7</kbd></button>
       <button type="button" id="kb-send" class="kb-action-send" title="Press Shift by itself" disabled><@ic 'printer'/> Send to KOT <kbd>Shift</kbd></button>
       <button type="button" id="kb-bill" class="kb-action-bill" disabled><@ic 'box'/> Bill Out <kbd>Space</kbd></button>
+      <#list ['Cash','Card','Credit','UPI','Split'] as tender>
+      <button type="button" class="kg-tender" data-kb-payment="${tender}" disabled><@ic tender?lower_case 24/> ${(tender == 'Split')?then('Split Payment',tender)} <kbd>F${tender?index + 2}</kbd></button>
+      </#list>
     </div></#if>
     <div class="kb-search"><@ic 'search'/>
       <input type="search" id="kb-search" placeholder="Search product by name, code or barcode..." autocomplete="off" aria-label="Search products" aria-controls="kb-suggestions" <#if !modCanWrite>disabled</#if>>
@@ -657,7 +700,7 @@
   </dialog></#if>
 
   <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" style="display:none"
-       onload="(function(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=terminal-policy-1';document.head.appendChild(s);})()"/>
+       onload="(function(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=grid-1';document.head.appendChild(s);})()"/>
 </div>
 </#if>
         ]]></text></render-mode>

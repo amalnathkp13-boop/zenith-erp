@@ -6,6 +6,9 @@
   root.dataset.ready='true';
   const $=id=>root.querySelector('#kb-'+id);
   const search=$('search'), suggestions=$('suggestions'), cart=new Map();
+  const gridHeader=root.querySelector('.kg-header'), gridTools=root.querySelector('.kg-toolbar-extras');
+  const modesMenu=gridTools.querySelector('details'), paymentButtons=root.querySelectorAll('[data-kb-payment]');
+  root.querySelector('.kb-toolbar').prepend(gridTools);
   const cfg=$('data').dataset;
   const shell=location.pathname.startsWith('/qapps/')?'/qapps':'/apps';
   const billingPath='/zenith'+(cfg.kotModule==='kot'?'/kot':'/pos/Kitchen')+'/KotBilling';
@@ -16,7 +19,7 @@
   let orderType=cfg.drafttype||'Dine In', taxOn=cfg.drafttax||'Y', draftId=cfg.draftid||'';
   let salesModeId=$('mode').value, quoteVersion=0, quoteTimer, total=null, busy=false, savedFingerprint='';
   let searchVersion=0, searchTimer, searchAbort, results=[], selected=0, exactId, ambiguous=false, hasMore=false, offset=0;
-  let historyDirty=false, grid=false, pickedMatch=false;
+  let historyDirty=false, grid=false, pickedMatch=false, categoryId='';
   if(cfg.draftmode && Array.from($('mode').options).some(o=>o.value===cfg.draftmode)) salesModeId=$('mode').value=cfg.draftmode;
   if(cfg.draftwaiter) $('waiter').value=cfg.draftwaiter;
   $('table').value=cfg.drafttable||cfg.selectedTable||'';
@@ -51,6 +54,7 @@
     b.textContent=on?'Tax: ON':'Tax: OFF';b.classList.toggle('is-on',on);b.setAttribute('aria-checked',on);
   }
   function controls() {
+    for(const button of paymentButtons) button.disabled=busy||!cart.size||total===null;
     $('clear').disabled=busy||!cart.size;
     for(const id of ['draft','send','bill']) if($(id)) $(id).disabled=busy||!cart.size||total===null;
     if($('send') && cfg.displayEnabled==='false') {
@@ -64,6 +68,7 @@
       +'<td class="r"><button type="button" class="kb-orm" data-remove="true" aria-label="Remove '+esc(it.name)+'">×</button></td></tr>').join('');
     $('cartempty').hidden=cart.size>0;
     $('item-count').textContent=cart.size;
+    $('grid-count').textContent=cart.size;
   }
   function quote() {
     clearTimeout(quoteTimer); const version=++quoteVersion;
@@ -95,7 +100,7 @@
     suggestions.classList.toggle('kb-results-grid',grid);
     if(!showResults){suggestions.replaceChildren();return;}
     suggestions.innerHTML=(message?'<p class="kb-search-message" role="status">'+esc(message)+'</p>':'')+
-      results.map((p,i)=>'<button type="button" class="kb-suggestion'+(i===selected?' is-active':'')+'" data-result="'+i+'"'+(search.disabled?' disabled':'')+'><span><strong>'+esc(p.name)+'</strong><small>'+esc(p.code)+(p.stock==null?'':' · Stock: '+esc(p.stock))+'</small></span><span>'+esc(p.price==null?(p.reason||'No price for this mode'):money.format(p.price))+'</span></button>').join('')
+      results.map((p,i)=>'<button type="button" class="kb-suggestion'+(i===selected&&(!grid||term||pickedMatch)?' is-active':'')+'" data-result="'+i+'"'+(search.disabled?' disabled':'')+'><span><strong>'+esc(p.name)+'</strong><small>'+esc(p.code)+(p.stock==null?'':' · Stock: '+esc(p.stock))+'</small></span><span>'+esc(p.price==null?(p.reason||'No price for this mode'):money.format(p.price))+'</span></button>').join('')
       +(hasMore?'<button type="button" class="kb-control" id="kb-more">More matches</button>':'');
   }
   async function lookup(append=false) {
@@ -105,7 +110,7 @@
     if(!grid&&!value.trim()){renderMatches();return false;}
     if(!append)renderMatches(value.trim()?'Searching…':'Loading products…');
     try{
-      const data=await request('searchMenu',{term:value,salesModeId,offset,stockSessionId:cfg.stockSession||''},searchAbort.signal);
+      const data=await request('searchMenu',{term:value,salesModeId,offset,categoryId:grid?categoryId:'',stockSessionId:cfg.stockSession||''},searchAbort.signal);
       if(version!==searchVersion||!root.isConnected)return false;
       results=append?results.concat(data.products.filter(p=>!results.some(x=>x.id===p.id))):data.products;
       offset+=40;hasMore=data.hasMore;exactId=data.exactId;ambiguous=data.ambiguous;
@@ -123,12 +128,20 @@
     search.value='';
     lookup();
   }
-  function setGridView() {
-    grid=!grid;
+  function setGridView(next=!grid) {
+    modesMenu.open=false;
+    if(grid===next)return;
+    grid=next;
     const panel=$('product-grid'),button=$('view-grid');
-    button.textContent=grid?'List View':'Grid View';
+    root.classList.toggle('kg-grid',grid);
     button.setAttribute('aria-expanded',String(grid));
-    panel.hidden=!grid;
+    panel.hidden=gridHeader.hidden=gridTools.hidden=!grid;
+    const hold=$('draft');
+    if(hold) {
+      if(grid) gridHeader.append(hold);
+      else $('send').before(hold);
+    }
+    if(grid) updateHeader();
     (grid?panel:search.parentElement).append(suggestions);
     if(search.value.trim())renderMatches();
     else {
@@ -136,6 +149,21 @@
       lookup();
     }
   }
+  function updateHeader() {
+    $('online').textContent=navigator.onLine?'Online':'Offline';
+    $('online').classList.toggle('is-offline',!navigator.onLine);
+    const now=new Date();
+    $('clock').dateTime=now.toISOString();
+    $('clock').textContent=now.toLocaleTimeString('en-IN');
+  }
+  let headerTimer=setInterval(()=>{
+    if(!root.isConnected)clearInterval(headerTimer);
+    else if(grid)updateHeader();
+  },1000);
+  document.addEventListener('click',function dismissModes(e){
+    if(!root.isConnected){document.removeEventListener('click',dismissModes);return;}
+    if(!modesMenu.contains(e.target))modesMenu.open=false;
+  });
   function fullscreenElement() {
     return document.fullscreenElement||document.webkitFullscreenElement;
   }
@@ -194,10 +222,10 @@
     const match=e.target.closest('[data-result]');if(match)choose(Number(match.dataset.result));
   });
 
-  function openPayment() {
+  function openPayment(method='Cash') {
     if(!$('bill')||$('bill').disabled||$('payment').open)return;
     $('payment-total').textContent='Order total: '+money.format(total);
-    if($('payment-method')){$('payment-method').value='Cash';tenderFields();}
+    if($('payment-method')){$('payment-method').value=method;tenderFields();}
     if($('payment-error'))$('payment-error').textContent='';
     $('payment').showModal();
   }
@@ -287,6 +315,16 @@
     if(button.dataset.ot){setType(button.dataset.ot);quote();}
     else if(button.id==='kb-tax-toggle'){taxOn=taxOn==='Y'?'N':'Y';paintTax();quote();}
     else if(button.id==='kb-view-grid')setGridView();
+    else if(button.dataset.kbView){
+      setGridView(button.dataset.kbView==='grid');
+      $('view-grid').focus({preventScroll:true});
+    }
+    else if(button.hasAttribute('data-kb-category')){
+      categoryId=button.dataset.kbCategory;
+      for(const category of button.parentElement.children) category.setAttribute('aria-pressed',String(category===button));
+      clearTimeout(searchTimer);search.value='';lookup();
+    }
+    else if(button.dataset.kbPayment)openPayment(button.dataset.kbPayment);
     else if(button.id==='kb-fullscreen')toggleFullscreen();
     else if(button.id==='kb-clear'&&confirm('Clear the unsent items from this order?')){cart.clear();quote();}
     else if(button.id==='kb-history-open')showHistory();
@@ -326,6 +364,17 @@
       return;
     }
     if(e.key!=='Shift')shiftAlone=false;
+    if(e.key==='Escape'&&modesMenu.open){
+      modesMenu.open=false;modesMenu.querySelector('summary').focus();return;
+    }
+    if(!e.repeat&&!e.isComposing&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.shiftKey&&!root.querySelector('dialog[open]')){
+      if(e.key==='F11'){e.preventDefault();setGridView();return;}
+      if(grid&&e.key==='F10'){e.preventDefault();showHistory();return;}
+      if(grid&&paymentButtons.length&&/^F[2-6]$/.test(e.key)){
+        e.preventDefault();paymentButtons[Number(e.key.slice(1))-2].click();return;
+      }
+      if(grid&&e.key==='/'&&!editable(e)){e.preventDefault();search.focus();return;}
+    }
     if(e.repeat||e.isComposing||e.ctrlKey||e.metaKey||e.altKey||editable(e)||root.querySelector('dialog[open]'))return;
     if(e.key==='Shift')shiftAlone=true;
     if(e.key==='F7'&&!$('draft')?.disabled){e.preventDefault();$('draft')?.click();}

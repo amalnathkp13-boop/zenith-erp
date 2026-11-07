@@ -37,6 +37,13 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await card.waitFor();
   check('Grid View shows a product catalogue with empty search',await search.inputValue()===''&&
    await page.locator('#kb-product-grid .kb-results-grid').isVisible());
+  const modes=page.locator('.kg-modes');
+  await modes.locator('summary').click();
+  check('Modes contains only Grid View and Normal Billing',
+   (await modes.getByRole('button').allTextContents()).join('|')==='Grid View|Normal Billing');
+  await page.locator('.kg-categories button').first().click();
+  check('Clicking outside Modes dismisses it',!(await modes.evaluate(el=>el.open)));
+  await card.waitFor();
   await fullscreen.click();
   await page.waitForFunction(()=>document.fullscreenElement?.id==='kb-wrap');
   check('Grid View can enter native fullscreen',await fullscreen.innerText()==='Exit fullscreen'&&await card.isVisible());
@@ -51,8 +58,13 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   check('Spaces within product names stay in search',await search.inputValue()==='Disposable POS A P18'&&!await page.locator('#kb-payment').isVisible());
   await card.click();
   await page.locator('#kb-grand').getByText('₹100.00').waitFor();
-  await view.click();
-  check('Switching to List View keeps the current order',await view.innerText()==='Grid View'&&
+  await page.getByRole('button',{name:/^UPI F5$/}).click();
+  check('Grid payment buttons open the existing checkout with the selected tender',await page.locator('#kb-payment-method').inputValue()==='UPI');
+  await page.locator('#kb-payment-close').click();
+  check('The active grid button keeps its Grid View label',/^Grid View\s*F11$/.test(await view.innerText()));
+  await modes.locator('summary').click();
+  await modes.getByRole('button',{name:'Normal Billing'}).click();
+  check('Switching to Normal Billing keeps the current order',await view.innerText()==='Grid View'&&
    !await page.locator('#kb-product-grid').isVisible()&&await page.getByRole('table',{name:'Current Order'}).isVisible());
   await fullscreen.click();
   await page.waitForFunction(()=>document.fullscreenElement?.id==='kb-wrap');
