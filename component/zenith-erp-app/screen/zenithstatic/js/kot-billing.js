@@ -6,6 +6,7 @@
   root.dataset.ready='true';
   const $=id=>root.querySelector('#kb-'+id);
   const search=$('search'), suggestions=$('suggestions'), cart=new Map();
+  const modesMenu=$('modes-menu');
   const cfg=$('data').dataset;
   const shell=location.pathname.startsWith('/qapps/')?'/qapps':'/apps';
   const billingPath='/zenith'+(cfg.kotModule==='kot'?'/kot':'/pos/Kitchen')+'/KotBilling';
@@ -162,11 +163,15 @@
     search.value='';
     lookup();
   }
-  function setGridView() {
-    grid=!grid;
+  function setGridView(showGrid) {
+    if(grid===showGrid)return;
+    grid=showGrid;
     const panel=$('product-grid'),button=$('view-grid');
     $('view-label').textContent=grid?'List View':'Grid View';
     root.classList.toggle('kb-grid-view',grid);
+    for(const option of modesMenu.querySelectorAll('[data-kb-layout]')) {
+      option.setAttribute('aria-pressed',String((option.dataset.kbLayout==='grid')===grid));
+    }
     search.placeholder=grid?'Search product by name, code or barcode...':'Scan barcode, or type product name or code...   ( press / )';
     rows();
     button.setAttribute('aria-expanded',String(grid));
@@ -340,6 +345,11 @@
       busy=false;controls();
     }
   }
+  function dismissModes(event) {
+    if(!root.isConnected){document.removeEventListener('pointerdown',dismissModes,true);return;}
+    if(modesMenu.open&&!modesMenu.contains(event.target))modesMenu.open=false;
+  }
+  document.addEventListener('pointerdown',dismissModes,true);
   root.addEventListener('click',e=>{
     const button=e.target.closest('button');if(!button||button.disabled||busy)return;
     if(button.hasAttribute('data-kb-customer-open')) {
@@ -352,11 +362,13 @@
         if(!$('customer-dialog').open)return;
         customer=result.customer;$('customer-dialog').close();quote();
       }).catch(error=>{$('customer-results').textContent=error.message;});
-    }else if(button.dataset.kbMode) {
-      $('mode').value=button.dataset.kbMode;$('mode').dispatchEvent(new Event('change'));button.closest('details').open=false;
+    }else if(button.dataset.kbLayout) {
+      modesMenu.open=false;
+      setGridView(button.dataset.kbLayout==='grid');
+      modesMenu.querySelector('summary').focus();
     }else if(button.dataset.ot){setType(button.dataset.ot);quote();}
     else if(button.id==='kb-tax-toggle'){taxOn=taxOn==='Y'?'N':'Y';paintTax();quote();}
-    else if(button.id==='kb-view-grid')setGridView();
+    else if(button.id==='kb-view-grid')setGridView(!grid);
     else if(button.id==='kb-fullscreen')toggleFullscreen();
     else if(button.id==='kb-clear'&&confirm('Clear the unsent items from this order?')){cart.clear();quote();}
     else if(button.id==='kb-history-open')showHistory();
@@ -420,6 +432,12 @@
     if(e.type==='keyup'){
       if(e.key==='Shift'&&shiftAlone&&!editable(e)&&!root.querySelector('dialog[open]'))$('send')?.click();
       if(e.key==='Shift')shiftAlone=false;
+      return;
+    }
+    if(e.key==='Escape'&&modesMenu.open){
+      e.preventDefault();
+      modesMenu.open=false;
+      modesMenu.querySelector('summary').focus();
       return;
     }
     if(e.key!=='Shift')shiftAlone=false;

@@ -669,7 +669,13 @@
   <div class="kb-head kb-grid-only"><h1 class="kb-title">KOT Billing · ${(billingTerminal.terminalName!billingTerminal.terminalId)?html}</h1><p class="kb-sub"><#if kitchenDisplayEnabled>Build an order, send it to the kitchen, or take payment.<#else>Kitchen Display disabled. Use printed KOTs for takeaway, or bill dine-in customers after their meal.</#if></p><a class="kb-control" href="KotBilling">Back to terminals</a></div>
   <div class="kb-toolbar">
     <a class="kb-control kb-back kb-list-only" href="KotBilling"><@ic 'back' 19/> Back to terminals</a>
-    <details class="kb-pop kb-list-only"><summary class="kb-control">Modes <@ic 'chevron' 18/></summary><div class="kb-pop-menu"><#list modes as m><button class="kb-control" type="button" data-kb-mode="${m.salesModeId?html}">${m.modeName?html}</button></#list><#if modCanWrite><button type="button" class="kb-control" data-kb-hold disabled>Hold order <kbd>F7</kbd></button></#if></div></details>
+    <details id="kb-modes-menu" class="kb-pop">
+      <summary class="kb-control">Modes <@ic 'chevron' 18/></summary>
+      <div class="kb-pop-menu">
+        <button type="button" class="kb-control" data-kb-layout="grid" aria-pressed="false">Grid View</button>
+        <button type="button" class="kb-control" data-kb-layout="normal" aria-pressed="true">Normal Billing</button>
+      </div>
+    </details>
     <div class="kb-otype" role="group" aria-label="Service type">
       <button type="button" class="kb-otbtn is-active" data-ot="Dine In"><@ic 'bag'/> Dine In</button>
       <button type="button" class="kb-otbtn" data-ot="Take Away"><@ic 'box'/> Take Away</button>
@@ -744,7 +750,11 @@
       <#list draftKots as d><div data-kot-group="draft" data-order-date="${d.isoDate}"><@ordercard d/><#if modCanWrite><button type="button" class="kb-control" data-kot-resume="${d.id?html}">Resume</button><button type="button" class="kb-control" data-kot-discard="${d.id?html}">Discard</button></#if></div></#list>
       <#list activeKots as k><div data-kot-group="active" data-order-date="${k.isoDate}"><@ordercard k/></div></#list>
       <#list completedKots as k><div data-kot-group="completed" data-order-date="${k.isoDate}"><@ordercard k/></div></#list>
-    </div><p id="kb-history-empty" hidden>No matching orders.</p><form method="dialog"><button class="kb-control">Close</button></form>
+    </div><p id="kb-history-empty" hidden>No matching orders.</p>
+    <form method="dialog">
+      <#if modCanWrite><button type="button" class="kb-control kb-list-only" data-kb-hold disabled>Hold order <kbd>F7</kbd></button></#if>
+      <button class="kb-control">Close</button>
+    </form>
   </dialog>
   <#if modCanWrite><dialog id="kb-customer-dialog" class="zk-history-view" aria-labelledby="kb-customer-title">
     <h2 id="kb-customer-title">Choose Customer</h2>
@@ -768,7 +778,7 @@
   </dialog></#if>
 
   <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" style="display:none"
-       onload="(function(){if(!document.getElementById('kot-list-reference-css')){var l=document.createElement('link');l.id='kot-list-reference-css';l.rel='stylesheet';l.href='/zenithstatic/css/kot-list-reference.css?v=2';document.head.appendChild(l);}var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=list-reference-2';document.head.appendChild(s);})()"/>
+       onload="(function(){if(!document.getElementById('kot-list-reference-css')){var l=document.createElement('link');l.id='kot-list-reference-css';l.rel='stylesheet';l.href='/zenithstatic/css/kot-list-reference.css?v=5';document.head.appendChild(l);}var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=list-reference-3';document.head.appendChild(s);})()"/>
 </div>
 </#if>
         ]]></text></render-mode>
