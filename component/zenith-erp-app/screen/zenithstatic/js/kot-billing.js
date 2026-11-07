@@ -14,6 +14,7 @@
   const billingPath='/zenith'+(cfg.kotModule==='kot'?'/kot':'/pos/Kitchen')+'/KotBilling';
   const base=shell+billingPath;
   const money=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR'});
+  const cardMoney=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',minimumFractionDigits:0});
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const token=()=>window.moqui?.webrootVue?.moquiSessionToken||$('token').value;
   let orderType=cfg.drafttype||'Dine In', taxOn=cfg.drafttax||'Y', draftId=cfg.draftid||'';
@@ -100,7 +101,10 @@
     suggestions.classList.toggle('kb-results-grid',grid);
     if(!showResults){suggestions.replaceChildren();return;}
     suggestions.innerHTML=(message?'<p class="kb-search-message" role="status">'+esc(message)+'</p>':'')+
-      results.map((p,i)=>'<button type="button" class="kb-suggestion'+(i===selected&&(!grid||term||pickedMatch)?' is-active':'')+'" data-result="'+i+'"'+(search.disabled?' disabled':'')+'><span><strong>'+esc(p.name)+'</strong><small>'+esc(p.code)+(p.stock==null?'':' · Stock: '+esc(p.stock))+'</small></span><span>'+esc(p.price==null?(p.reason||'No price for this mode'):money.format(p.price))+'</span></button>').join('')
+      results.map((p,i)=>{
+        const price=p.price==null?(p.reason||'No price for this mode'):(grid?cardMoney:money).format(p.price);
+        return '<button type="button" class="kb-suggestion'+(i===selected&&(!grid||term||pickedMatch)?' is-active':'')+'" data-result="'+i+'"'+(search.disabled?' disabled':'')+'><span><strong>'+esc(p.name)+'</strong><small>'+esc(p.code)+(p.stock==null?'':' · Stock: '+esc(p.stock))+'</small></span><span'+(p.price==null?' class="kg-unpriced" title="'+esc(price)+'"':'')+'>'+esc(price)+'</span></button>';
+      }).join('')
       +(hasMore?'<button type="button" class="kb-control" id="kb-more">More matches</button>':'');
   }
   async function lookup(append=false) {
