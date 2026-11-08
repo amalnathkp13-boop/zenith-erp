@@ -51,7 +51,10 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await page.locator('#kb-search').fill('POS_QA_A_P18');
   await page.locator('#kb-suggestions [data-result]').first().click();
   await page.locator('#kb-grand').getByText('₹118.00').waitFor();
-  check('disabled shop keeps Bill Out and Hold available but disables Send to KOT',await page.locator('#kb-send').isDisabled()&&await page.locator('#kb-bill').isEnabled()&&await page.locator('#kb-draft').isEnabled());
+  await page.getByRole('button',{name:'History',exact:true}).click();
+  const history=page.getByRole('dialog',{name:'Order History'});
+  check('disabled shop keeps Bill Out and Hold available but disables Send to KOT',await page.locator('#kb-send').isDisabled()&&await page.locator('#kb-bill').isEnabled()&&await history.getByRole('button',{name:/^Hold order/}).isEnabled());
+  await history.getByRole('button',{name:'Close',exact:true}).click();
   await page.screenshot({path:require('node:path').join(out,'kot-disabled-billing.png')});
   const saved=await (await request('saveDraft',{itemsJson,orderType:'Take Away',taxOn:'N',salesModeId:'RETAIL',wantJson:'Y'})).json();
   check('printed-ticket workflow can hold an order',saved.success&&!!saved.kotId,saved);
