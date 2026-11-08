@@ -1,9 +1,38 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
+    <!-- Org-scoped lookup of a billing customer for the KOT screen. Resolves the org from the
+         open billing session (never a request-supplied org) and refuses a party outside it. -->
+    <service verb="get" noun="KotCustomer" authenticate="true">
+        <in-parameters><parameter name="sessionId" required="true"/><parameter name="customerPartyId" required="true"/></in-parameters>
+        <out-parameters><parameter name="customer" type="Map"/></out-parameters>
+        <actions>
+            <service-call name="zenith.pos.KotServices.get#BillingSession" in-map="[sessionId:sessionId]" out-map="billing"/>
+            <if condition="!billing.terminal || ec.message.hasError()"><return/></if>
+            <script><![CDATA[
+                def party=ec.entity.find('mantle.party.PartyDetailAndRole')
+                    .condition('ownerPartyId',billing.terminal.organizationPartyId).condition('partyId',customerPartyId)
+                    .condition('roleTypeId','in',['Customer','CustomerBillTo']).limit(1).list().find { true }
+                if(!party) { ec.message.addError('Choose a customer in this organization.'); return }
+                def phone=''
+                for(def pcm in ec.entity.find('mantle.party.contact.PartyContactMech').condition('partyId',customerPartyId)
+                        .conditionDate('fromDate','thruDate',ec.user.nowTimestamp).list()) {
+                    def number=ec.entity.find('mantle.party.contact.TelecomNumber').condition('contactMechId',pcm.contactMechId).one()
+                    if(number) { phone=[number.countryCode ? '+'+number.countryCode : '',number.areaCode,number.contactNumber].findAll{it}.join(' '); break }
+                }
+                def last=ec.entity.find('zenith.erp.pos.PosTransaction').condition('sessionId',sessionId)
+                    .condition('organizationPartyId',billing.terminal.organizationPartyId).condition('customerPartyId',customerPartyId)
+                    .condition('statusId','PtCompleted').orderBy('-completedDate').limit(1).list()
+                def tax=ec.service.sync().name('zenith.tax.TaxServices.get#PartyTaxRegistration').parameter('partyId',customerPartyId).call()
+                customer=[id:customerPartyId,name:party.organizationName ?: [party.firstName,party.lastName].findAll{it}.join(' ') ?: customerPartyId,
+                    phone:phone,lastBill:last ? last[0].transactionNumber : '',lastAmount:last ? last[0].payableAmount : null,
+                    regionGeoId:tax?.regionGeoId,registrationNumber:tax?.registrationNumber]
+            ]]></script>
+        </actions>
+    </service>
     <!-- Read-only quote: uses canonical product prices and the installed tax dispatcher.
          An unsent order has no legal invoice number, payment or sale to reprint. -->
     <service verb="get" noun="CartReceipt">
-        <in-parameters><parameter name="sessionId"/><parameter name="itemsJson" required="true" allow-html="any"/><parameter name="tableId"/><parameter name="orderType"/><parameter name="taxOn" default-value="Y"/><parameter name="salesModeId"/><parameter name="waiterId"/><parameter name="notes" allow-html="any"/></in-parameters>
+        <in-parameters><parameter name="sessionId"/><parameter name="itemsJson" required="true" allow-html="any"/><parameter name="tableId"/><parameter name="orderType"/><parameter name="taxOn" default-value="Y"/><parameter name="salesModeId"/><parameter name="waiterId"/><parameter name="customerPartyId"/><parameter name="notes" allow-html="any"/></in-parameters>
         <out-parameters><parameter name="receipt" type="Map"/></out-parameters>
         <actions>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="scope"/>
@@ -50,6 +79,9 @@
                     .condition('isActive','Y').orderBy('-isDefault,templateId').list()
                 def billing=sessionId ? ec.service.sync().name('zenith.pos.KotServices.get#BillingSession').parameter('sessionId',sessionId).call() : null
                 if(ec.message.hasError()) return
+                def customer=customerPartyId ? ec.service.sync().name('zenith.pos.KitchenPrintServices.get#KotCustomer')
+                    .parameters([sessionId:sessionId,customerPartyId:customerPartyId]).call().customer : null
+                if(ec.message.hasError()) return
                 def facilityId=billing?.terminal?.facilityId ?: selected.table?.facilityId
                 if(billing && selected.table && selected.table.facilityId!=facilityId) { ec.message.addError('Choose a table at this terminal shop.'); return }
                 def tpl=templates.find { facilityId && it.facilityId==facilityId } ?: templates.find { !it.facilityId }
@@ -87,7 +119,7 @@
                     showLogo:tpl?.showLogo ?: 'N',logoUrl:tpl?.logoUrl ?: '',showTaxBreakdown:tpl?.showTaxBreakdown ?: 'Y',
                     showDiscount:tpl?.showDiscount ?: 'Y',showCustomerInfo:tpl?.showCustomerInfo ?: 'Y',showPaymentDetails:'N',showItemTax:tpl?.showItemTax ?: 'N'],
                     options:options,bill:[number:'UNPAID ORDER',date:ec.l10n.format(ec.user.nowTimestamp,'dd/MM/yyyy hh:mm a'),
-                    cashier:person ? [person.firstName,person.lastName].findAll{it}.join(' ') : '',customer:'Walk-In Customer',
+                    cashier:person ? [person.firstName,person.lastName].findAll{it}.join(' ') : '',customer:customer?.name ?: 'Walk-In Customer',customerPhone:customer?.phone ?: '',customerPartyId:customer?.id,customerTaxRegNumber:customer?.registrationNumber,
                     table:selected.table?.tableNumber ?: '',orderType:orderType ?: 'Dine In',taxOn:taxOn,salesModeId:salesModeId,waiterId:waiterId,waiter:waiter?.waiterName],items:lines,
                     summary:[subtotal:subtotal,tax:(tax?.totalTaxAmount ?: 0),discount:0,roundOff:payable-grand,total:payable,
                         totalQty:products.sum { it.qty },itemCount:lines.size(),taxBreakdown:sumTax.collect { n,v -> [name:n,amount:v] }],

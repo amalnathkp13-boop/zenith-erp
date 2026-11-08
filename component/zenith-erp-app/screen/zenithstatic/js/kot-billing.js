@@ -21,6 +21,7 @@
   let salesModeId=$('mode').value, quoteVersion=0, quoteTimer, total=null, busy=false, savedFingerprint='';
   let searchVersion=0, searchTimer, searchAbort, results=[], selected=0, exactId, ambiguous=false, hasMore=false, offset=0;
   let historyDirty=false, grid=false, pickedMatch=false, categoryId='';
+  let customer={}, custVersion=0, custTimer, custAbort;
   if(cfg.draftmode && Array.from($('mode').options).some(o=>o.value===cfg.draftmode)) salesModeId=$('mode').value=cfg.draftmode;
   if(cfg.draftwaiter) $('waiter').value=cfg.draftwaiter;
   $('table').value=cfg.drafttable||cfg.selectedTable||'';
@@ -40,7 +41,7 @@
     }
     root.append(form);form.submit();
   }
-  const orderData=()=>({orderType,taxOn,salesModeId,tableId:$('table').value,waiterId:$('waiter').value,notes:$('instr').value,
+  const orderData=()=>({orderType,taxOn,salesModeId,tableId:$('table').value,waiterId:$('waiter').value,notes:$('instr').value,customerPartyId:customer.id||'',
     itemsJson:JSON.stringify(Array.from(cart.values(),it=>({productId:it.id,quantity:it.qty})))});
   function setType(value) {
     orderType=value;
@@ -66,9 +67,43 @@
   }
   function resetOrder() {
     cart.clear();
-    draftId='';savedFingerprint='';
+    draftId='';savedFingerprint='';customer={};
     $('badge').textContent='New KOT';$('instr').value='';
+    renderCustomer();
     quote();
+  }
+  function renderCustomer() {
+    const label=$('customer-name');
+    if(label)label.textContent=customer.name||'Walk-in Customer';
+    $('customer-open')?.classList.toggle('is-active',!!customer.id);
+  }
+  function openCustomerDialog() {
+    const dlg=$('customer-dialog');if(!dlg)return;
+    $('customer-error').textContent='';$('customer-search').value='';
+    renderCustomerResults([]);dlg.showModal();
+    searchCustomers('');$('customer-search').focus();
+  }
+  async function searchCustomers(term) {
+    const version=++custVersion;
+    custAbort?.abort();custAbort=new AbortController();
+    $('customer-error').textContent='';
+    try{
+      const data=await request('searchKotCustomers',{term},custAbort.signal);
+      if(version!==custVersion||!root.isConnected)return;
+      renderCustomerResults(data.customers||[]);
+    }catch(e){if(e.name!=='AbortError'&&version===custVersion)$('customer-error').textContent=e.message;}
+  }
+  function renderCustomerResults(list) {
+    const box=$('customer-results');if(!box)return;
+    if(!list.length){box.innerHTML='<p class="kb-search-message" role="status">No matching customers. Billing stays as Walk-in.</p>';return;}
+    box.innerHTML=list.map(c=>'<button type="button" class="kb-suggestion" data-cust-id="'+esc(c.id)+'" data-cust-name="'+esc(c.name)+'" data-cust-phone="'+esc(c.phone||'')+'"><span><strong>'+esc(c.name)+'</strong><small>'+esc(c.phone||c.id)+'</small></span></button>').join('');
+  }
+  function selectCustomer(el) {
+    customer={id:el.dataset.custId,name:el.dataset.custName,phone:el.dataset.custPhone||''};
+    $('customer-dialog')?.close();renderCustomer();quote();
+  }
+  function walkInCustomer() {
+    customer={};$('customer-dialog')?.close();renderCustomer();quote();
   }
   function rows() {
     $('cart').innerHTML=Array.from(cart.values(),(it,i)=>'<tr data-product="'+esc(it.id)+'"><td>'+(i+1)+'</td><td><strong>'+esc(it.name)+'</strong><small>'+esc(it.code)+'</small></td>'
@@ -357,6 +392,10 @@
       post('saveDraft',{...orderData(),existingDraftId:draftId});
     }
     else if(button.id==='kb-payment-close')$('payment').close();
+    else if(button.id==='kb-customer-open')openCustomerDialog();
+    else if(button.id==='kb-customer-walkin')walkInCustomer();
+    else if(button.id==='kb-customer-close')$('customer-dialog')?.close();
+    else if(button.dataset.custId)selectCustomer(button);
     else if(button.dataset.kotResume){
       if(!cart.size||confirm('Replace the current unsent items with this held order?'))location.href=base+'/?sessionId='+encodeURIComponent(cfg.session)+'&loadDraft='+encodeURIComponent(button.dataset.kotResume);
     }else if(button.dataset.kotDiscard){
@@ -377,6 +416,7 @@
   $('history-search').addEventListener('input',filterHistory);
   $('history-status').addEventListener('change',filterHistory);
   $('history-date').addEventListener('change',filterHistory);
+  $('customer-search')?.addEventListener('input',e=>{clearTimeout(custTimer);const v=e.target.value.trim();custTimer=setTimeout(()=>searchCustomers(v),150);});
   $('payment-method')?.addEventListener('change',tenderFields);
   $('payment-form')?.addEventListener('submit',pay);
   $('payment')?.addEventListener('cancel',e=>{if(busy)e.preventDefault();});
@@ -413,7 +453,7 @@
     cart.set(item.productId,{id:item.productId,name:item.productName,code:saved?.code||item.productId,price:Number(saved?.rate)||0,qty:Number(item.quantity)});
   }
   if(draftId){$('badge').textContent='Editing Held Order';$('instr').value=cfg.draftinstr||'';}
-  setType(orderType);paintTax();quote();
+  setType(orderType);paintTax();renderCustomer();quote();
   if($('send')) {
     const keepSessionOpen=()=>{
       if(!root.isConnected) {

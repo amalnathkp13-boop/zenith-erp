@@ -111,7 +111,7 @@
                 }
 
                 def quote=ec.service.sync().name('zenith.pos.KitchenPrintServices.get#CartReceipt')
-                    .parameters([sessionId:ec.context.sessionId,itemsJson:ec.context.itemsJson,tableId:tableIdVal,orderType:ec.context.orderType,taxOn:ec.context.taxOn ?: 'Y',salesModeId:ec.context.salesModeId,waiterId:ec.context.waiterId,notes:ec.context.notes]).call()?.receipt
+                    .parameters([sessionId:ec.context.sessionId,itemsJson:ec.context.itemsJson,tableId:tableIdVal,orderType:ec.context.orderType,taxOn:ec.context.taxOn ?: 'Y',salesModeId:ec.context.salesModeId,waiterId:ec.context.waiterId,customerPartyId:ec.context.customerPartyId,notes:ec.context.notes]).call()?.receipt
                 if(ec.message.hasError()) return reply()
                 def nextNum = ec.service.sync().name('zenith.pos.KotServices.next#KotNumber').call()?.kotNumber
                 if (!nextNum) return reply()
@@ -195,7 +195,7 @@
                 // replacing a resumed draft => delete the old one first
                 def draftReceipt=ec.service.sync().name('zenith.pos.KitchenPrintServices.get#CartReceipt')
                     .parameters([sessionId:ec.context.sessionId,itemsJson:ec.context.itemsJson,tableId:tableIdVal,orderType:ec.context.orderType,
-                                 taxOn:ec.context.taxOn ?: 'Y',salesModeId:ec.context.salesModeId,waiterId:ec.context.waiterId,notes:ec.context.notes]).call()?.receipt
+                                 taxOn:ec.context.taxOn ?: 'Y',salesModeId:ec.context.salesModeId,waiterId:ec.context.waiterId,customerPartyId:ec.context.customerPartyId,notes:ec.context.notes]).call()?.receipt
                 if(ec.message.hasError()) return
                 def exId = ec.context.existingDraftId
                 if (exId) {
@@ -276,9 +276,53 @@
 
     <transition name="cartReceipt" method="post">
         <actions><script><![CDATA[
-            def result=ec.service.sync().name('zenith.pos.KitchenPrintServices.get#CartReceipt').parameters([sessionId:ec.context.sessionId,itemsJson:ec.context.itemsJson,tableId:ec.context.tableId,orderType:ec.context.orderType,taxOn:ec.context.taxOn ?: 'Y',salesModeId:ec.context.salesModeId,waiterId:ec.context.waiterId,notes:ec.context.notes]).call()
+            def result=ec.service.sync().name('zenith.pos.KitchenPrintServices.get#CartReceipt').parameters([sessionId:ec.context.sessionId,itemsJson:ec.context.itemsJson,tableId:ec.context.tableId,orderType:ec.context.orderType,taxOn:ec.context.taxOn ?: 'Y',salesModeId:ec.context.salesModeId,waiterId:ec.context.waiterId,customerPartyId:ec.context.customerPartyId,notes:ec.context.notes]).call()
             ec.web.sendJsonResponse([success:!ec.message.hasError(),receipt:result?.receipt,error:ec.message.errorsString])
         ]]></script></actions><default-response type="none"/>
+    </transition>
+
+    <!-- Org-scoped customer search for the KOT picker. Org is taken from the billing session's
+         terminal (ZE-SEC-JSON: transitions run outside the active-org filter, so scope explicitly). -->
+    <transition name="searchKotCustomers" method="post" begin-transaction="true">
+        <actions><script><![CDATA[
+            def billing=ec.service.sync().name('zenith.pos.KotServices.get#BillingSession').parameter('sessionId',ec.context.sessionId).call()
+            if(!billing.terminal || ec.message.hasError()) { ec.web.sendJsonResponse([success:false,customers:[]]); return }
+            def orgId=billing.terminal.organizationPartyId
+            def term=(ec.context.term ?: '').toString().trim(), termL=term.toLowerCase()
+            def out=[]
+            try {
+                def rows=ec.entity.find('mantle.party.PartyDetailAndRole')
+                    .condition('roleTypeId','in',['Customer','CustomerBillTo']).condition('ownerPartyId',orgId)
+                    .orderBy('organizationName,firstName,lastName').limit(1000).list()
+                def nameOf={ r -> (r.organizationName ?: (((r.firstName ?: '')+' '+(r.lastName ?: '')).trim())) ?: r.partyId }
+                def custIds=rows.collect { it.partyId }.unique()
+                def pid2phone=[:]
+                if(custIds) {
+                    def pcms=ec.entity.find('mantle.party.contact.PartyContactMech').condition('partyId','in',custIds)
+                        .conditionDate('fromDate','thruDate',ec.user.nowTimestamp).list()
+                    def cmIds=pcms.collect { it.contactMechId }.unique()
+                    def cm2num=[:]
+                    if(cmIds) ec.entity.find('mantle.party.contact.TelecomNumber').condition('contactMechId','in',cmIds).list().each { tn ->
+                        cm2num[tn.contactMechId]=((tn.countryCode ? ('+'+tn.countryCode+' ') : '')+(tn.areaCode ?: '')+' '+(tn.contactNumber ?: '')).replaceAll('\\s+',' ').trim()
+                    }
+                    pcms.each { pcm -> def n=cm2num[pcm.contactMechId]; if(n && !pid2phone[pcm.partyId]) pid2phone[pcm.partyId]=n }
+                }
+                def digits=term.replaceAll('[^0-9]','')
+                def seen=[:]
+                for(r in rows) {
+                    if(seen[r.partyId]) continue
+                    def nm=nameOf(r), phone=pid2phone[r.partyId] ?: ''
+                    def phoneDigits=phone.replaceAll('[^0-9]','')
+                    def match=!term || nm.toLowerCase().contains(termL) || (r.partyId ?: '').toLowerCase().contains(termL) || (digits.length()>=3 && phoneDigits.contains(digits))
+                    if(!match) continue
+                    seen[r.partyId]=true
+                    out.add([id:r.partyId,name:nm,phone:phone])
+                    if(out.size()>=30) break
+                }
+                ec.web.sendJsonResponse([success:true,customers:out])
+            } catch(Exception e) { ec.web.sendJsonResponse([success:false,customers:[]]) }
+        ]]></script></actions>
+        <default-response type="none"/>
     </transition>
 
     <transition name="searchMenu" method="post" begin-transaction="false">
@@ -372,10 +416,17 @@
                 if((current.payableAmount as BigDecimal).compareTo(quote.summary.total as BigDecimal)!=0) {
                     reject('The terminal total changed. Reopen the order to review its prices and tax before taking payment.'); return
                 }
+                // Attach the customer recorded on the validated order snapshot (never request-supplied here).
+                def custPid=quote.bill?.customerPartyId
+                if(custPid) ec.service.sync().name('update#zenith.erp.pos.PosTransaction')
+                    .parameters([transactionId:tx,customerPartyId:custPid,customerName:quote.bill.customer,
+                        customerPhone:quote.bill.customerPhone,customerTaxRegNumber:quote.bill.customerTaxRegNumber]).call()
                 def method=ec.context.paymentMethod
                 if(method=='Credit') {
                     ec.service.sync().name('zenith.pos.PosServices.complete#PosTransactionCredit')
-                        .parameters([transactionId:tx,customerName:ec.context.customerName,customerPhone:ec.context.customerPhone]).call()
+                        .parameters([transactionId:tx,customerPartyId:custPid,
+                            customerName:(custPid && quote.bill.customer) ? quote.bill.customer : ec.context.customerName,
+                            customerPhone:(custPid && quote.bill.customerPhone) ? quote.bill.customerPhone : ec.context.customerPhone]).call()
                 } else {
                     if(!(method in ['Cash','UPI','Card','Split'])) { reject('Choose a valid payment method.'); return }
                     def payments=[]
@@ -580,6 +631,7 @@
 <#elseif name=='upi'><path d="M3 3h6v6H3zm12 0h6v6h-6zM3 15h6v6H3zm9-3h3v3h-3zm6 0h3v3h-3zm-6 6h3v3h-3zm6-3v6h3"/>
 <#elseif name=='split'><path d="M3 12h18M8 7l-5 5 5 5m8-10 5 5-5 5"/>
 <#elseif name=='arrow'><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+<#elseif name=='user'><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
 </#if>
 </svg></#macro>
 
@@ -635,6 +687,7 @@
     </select></label>
     <label class="kb-fld">Waiter<select id="kb-waiter"><option value="">Choose waiter</option><#list waiters as w><option value="${w.waiterId?html}">${w.waiterName?html}</option></#list></select></label>
     <label class="kb-fld">Sales Mode<select id="kb-mode"><#if !modes?has_content><option value="">Standard</option></#if><#list modes as m><option value="${m.salesModeId?html}">${m.modeName?html}</option></#list></select></label>
+    <#if modCanWrite><button type="button" class="kb-control" id="kb-customer-open" title="Attach a customer to this bill"><@ic 'user'/> <span id="kb-customer-name">Walk-in Customer</span></button></#if>
     <button type="button" class="kb-control" id="kb-history-open"><@ic 'clock'/> History <kbd class="kg-only">F10</kbd></button>
     <button type="button" class="kb-control" id="kb-view-grid" aria-expanded="false" aria-controls="kb-product-grid" title="Switch billing view"><span class="kg-only"><@ic 'grid'/></span>Grid View <kbd class="kg-only">F11</kbd></button>
     <button type="button" class="kb-control" id="kb-fullscreen"><@ic 'fullscreen'/> <span id="kb-fullscreen-label">Fullscreen</span></button>
@@ -717,9 +770,16 @@
       </div><p id="kb-payment-error" role="alert"></p><button class="kb-action-bill" type="submit">Confirm and print</button><button class="kb-control" type="button" id="kb-payment-close">Cancel</button>
     </form><#else><p>Open a POS session on your assigned terminal before taking payment. You can still hold your order.</p><form method="dialog"><button class="kb-control">Close</button></form></#if>
   </dialog></#if>
+  <#if modCanWrite><dialog id="kb-customer-dialog" class="zk-history-view" aria-labelledby="kb-customer-title">
+    <h2 id="kb-customer-title">Choose Customer</h2>
+    <div class="kb-dialog-fields"><label>Search customers<input id="kb-customer-search" type="search" placeholder="Name, phone, or customer ID" autocomplete="off"></label></div>
+    <div id="kb-customer-results" class="kb-suggestions" aria-label="Matching customers"></div>
+    <p id="kb-customer-error" role="alert"></p>
+    <div class="zk-history-actions"><button type="button" class="kb-control" id="kb-customer-walkin">Use Walk-in Customer</button><button type="button" class="kb-control" id="kb-customer-close">Close</button></div>
+  </dialog></#if>
 
   <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" style="display:none"
-       onload="(function(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=grid-2';document.head.appendChild(s);})()"/>
+       onload="(function(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=grid-customer-1';document.head.appendChild(s);})()"/>
 </div>
 </#if>
         ]]></text></render-mode>
