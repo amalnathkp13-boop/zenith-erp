@@ -15,9 +15,8 @@
  * (the /qapps SPA strips <style>/<script> from screen content, but this loads in
  * the page footer, not screen content).
  *
- * Deliberately EXCLUDES the POS billing terminal (/pos/…): cashiers work a live
- * till all day and a surprise logout mid-shift would disrupt MARUTHI. The 30-min
- * server timeout still governs POS server-side (unchanged behaviour there).
+ * Billing workspaces keep their authenticated session alive while open. Other
+ * POS screens keep their existing exemption from the client-side logout.
  * ==========================================================================*/
 (function () {
   'use strict';
@@ -25,10 +24,12 @@
   window.__zIdleLogout = 1;
 
   var path = (location.pathname || '');
-  // Only run inside the authenticated back-office app, and never on the POS terminal.
+  // Read the current route on each check because Quasar switches screens in place.
   var inApp = /\/(apps|qapps)\/zenith(\/|$)/.test(path);
-  var isPos = /\/pos\//i.test(path);
-  if (!inApp || isPos) return;
+  if (!inApp) return;
+  function isBilling() {
+    return /\/zenith\/(?:pos\/(?:Terminal|Kitchen\/KotBilling)|kot\/KotBilling)(?:\/|$)/i.test(location.pathname);
+  }
 
   var IDLE_MS   = 30 * 60 * 1000;  // must match the server session-config timeout (30 min)
   var WARN_MS   = 60 * 1000;       // show the "you're about to be signed out" warning this long before
@@ -129,6 +130,14 @@
 
   function tick() {
     if (loggingOut) return;
+    if (isBilling()) {
+      markActivity();
+      return;
+    }
+    if (/\/zenith\/pos(?:\/|$)/i.test(location.pathname)) {
+      if (warned) hideWarning();
+      return;
+    }
     var idle = now() - readLast();
     if (idle >= IDLE_MS) {
       doLogout();
@@ -144,5 +153,6 @@
     .forEach(function (ev) { window.addEventListener(ev, onActivity, { passive: true, capture: true }); });
 
   writeLast(now());          // seed activity on load
+  tick();
   setInterval(tick, CHECK_MS);
 })();

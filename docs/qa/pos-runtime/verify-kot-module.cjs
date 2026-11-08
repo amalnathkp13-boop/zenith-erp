@@ -27,10 +27,13 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
    await activeSidebar.waitFor();
    check(shell+' opens KOT as its own sidebar module',await activeSidebar.isVisible(),{url:page.url()});
    check(shell+' shows exactly the six KOT sections in order',(await links.allTextContents()).map(x=>x.trim()).join('|')===tabs.map(x=>x[1]).join('|'));
+   const shellSelector=shell==='apps'?'#z-sidebar':'#kitchen-page-frame';
+   await page.evaluate(selector=>{window.qaKotShell=document.querySelector(selector);},shellSelector);
    for (const [seg,name,content] of tabs.slice(1)) {
     await strip.getByRole('link',{name,exact:true}).click();
     await page.locator(content).waitFor();
     check(shell+' opens '+name+' from KOT navigation',new URL(page.url()).pathname.endsWith('/kot/'+seg)&&await page.locator('#kitchen-tabs').count()===0);
+    check(shell+' keeps its shell mounted on '+name,await page.evaluate(selector=>window.qaKotShell===document.querySelector(selector),shellSelector));
    }
    if(out) await page.screenshot({path:path.join(out,shell+'-standalone-kot.png')});
   }

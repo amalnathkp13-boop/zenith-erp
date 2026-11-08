@@ -78,6 +78,37 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await policy('Y');
   await request('createKot',{itemsJson,orderType:'Take Away',taxOn:'N'});
   check('enabling display restores sending to kitchen',q(`SELECT kot_id FROM kitchen_order_ticket WHERE terminal_id='${terminalId}' AND status_id='KotNew'`).length===1);
+  for (const [shell, grid] of [['apps',false],['qapps',true]]) {
+   const note='KOT UI '+randomUUID();
+   await page.goto(base+'/'+shell+'/zenith/kot/KotBilling?sessionId='+sessionId);
+   await page.locator('#kb-wrap[data-ready=true]').waitFor();
+   if(grid) await page.locator('#kb-view-grid').click();
+   await page.route('**/cartReceipt',route=>route.abort());
+   try {
+    await page.locator('#kb-search').fill('POS_QA_A_P18');
+    await page.locator('#kb-suggestions [data-result]').first().click();
+    await page.locator('#kb-quote-error').filter({hasText:/\S/}).waitFor();
+    await page.locator('#kb-instr').fill(note);
+    if(!grid) {
+     await policy('N');
+     await page.locator('#kb-send').click();
+     await page.locator('#kb-order-status').filter({hasText:'Kitchen Display is disabled'}).waitFor();
+     check('server rejection keeps the order available for retry',await page.locator('#kb-cart tr').count()===1);
+     await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+     await page.waitForFunction(()=>document.getElementById('kb-send').disabled);
+     await policy('Y');
+     await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+    }
+    await page.locator('#kb-send').click();
+    await page.locator('#kb-order-status').filter({hasText:'sent to the kitchen'}).waitFor();
+    check(shell+' sends from '+(grid?'grid':'list')+' when the preview request fails',
+     await page.locator('#kb-cart tr').count()===0 &&
+     q(`SELECT kot_id FROM kitchen_order_ticket WHERE terminal_id='${terminalId}' AND status_id='KotNew' AND notes LIKE '%${note}%'`).length===1);
+    check(shell+' keeps its billing view after sending',await page.locator('#kb-view-grid').getAttribute('aria-expanded')===String(grid));
+   } finally { await page.unroute('**/cartReceipt'); }
+   await page.goto(base+'/'+shell+'/zenith/kot/KitchenDisplay?facilityId=POS_QA_A_FAC');
+   await page.getByText(note,{exact:false}).waitFor();
+  }
   const posCart=await invoke('cart',{sessionId});
   await invoke('add',{transactionId:posCart.transactionId,productId:'POS_QA_A_P18',quantity:'1',taxOn:'N'});
   await invoke('kitchenSend',{posTransactionId:posCart.transactionId,items:JSON.stringify([{productId:'POS_QA_A_P18',quantity:1}])});

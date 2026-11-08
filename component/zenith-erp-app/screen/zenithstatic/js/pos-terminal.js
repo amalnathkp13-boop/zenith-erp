@@ -3667,13 +3667,11 @@ window.posToggleFullscreen = function() {
         var heldCount = 0;
         var catalogRevision = '', catalogCheck = null, catalogDirtyTx = '';
 
-        // A real cashier gesture or a completed bill resets the 60-minute idle clock.
-        // Polling and background rendering do not. The server sweep also handles closed tabs.
+        // Keep this till open while the billing workspace is mounted.
         if (window.__posIdleCleanup) window.__posIdleCleanup();
         var idleAbort = new AbortController();
         var lastGestureAt = Date.now();
         var lastTouchSentAt = 0;
-        var idleClosePending = false;
         var lastDayCheckAt = 0;
         var dayRefreshPending = false;
         var dayBadge = document.getElementById('pos-today-bills');
@@ -3687,8 +3685,9 @@ window.posToggleFullscreen = function() {
                 headers:{'Content-Type':'application/x-www-form-urlencoded'},
                 body:new URLSearchParams({sessionId:SI, moquiSessionToken:TK})}).catch(function(){});
         }
-        function checkSessionIdle() {
+        function maintainBillingScreen() {
             if (!af.isConnected) return;
+            if (Date.now() - lastTouchSentAt >= 60000) sendSessionTouch();
             checkAssetVersion();
             maybeAutoReload();
             if (dayFormatter && Date.now() - lastDayCheckAt >= 60000) {
@@ -3702,33 +3701,9 @@ window.posToggleFullscreen = function() {
                     fetchScreen({}).then(syncIssuedBillHeader).catch(function(){}).finally(function(){dayRefreshPending = false;});
                 }
             }
-            if (!af.isConnected || idleClosePending || Date.now() - lastGestureAt < 3600000) return;
-            idleClosePending = true;
-            fetch('Terminal/closeIdleSession', {method:'POST', credentials:'same-origin',
-                headers:{'Content-Type':'application/x-www-form-urlencoded'},
-                body:new URLSearchParams({sessionId:SI, moquiSessionToken:TK})})
-                .then(function(r){return r.json();})
-                .then(function(d){
-                    if (d.closed || d.reason === 'already_closed') {
-                        window.location.assign('/apps/zenith/pos/PosSessions?sessionId=' + encodeURIComponent(SI));
-                    } else if (d.reason === 'still_active') {
-                        // Another live tab or a completed bill refreshed server activity.
-                        lastGestureAt = Date.now();
-                        idleClosePending = false;
-                    } else if (['disabled','open_cart','held_bill'].includes(d.reason)) {
-                        lastGestureAt = Date.now();
-                        idleClosePending = false;
-                    } else {
-                        lastGestureAt = Date.now();
-                        idleClosePending = false;
-                        showToast('Session idle for an hour. Count the drawer and close it to finish reconciliation.', '#c62828');
-                        // Keep real input tracking alive while a held/unfinished sale needs review.
-                    }
-                }).catch(function(){ idleClosePending = false; });
         }
         function onCashierGesture(e) {
             if (!e.isTrusted || !af.isConnected) return;
-            if (Date.now() - lastGestureAt >= 3600000) { checkSessionIdle(); return; }
             lastGestureAt = Date.now();
             sendSessionTouch();
         }
@@ -3736,10 +3711,10 @@ window.posToggleFullscreen = function() {
             document.addEventListener(type,onCashierGesture,{capture:true,passive:true,signal:idleAbort.signal});
         });
         document.addEventListener('visibilitychange',function(){
-            if (!document.hidden) { checkSessionIdle(); pollCatalog(); }
+            if (!document.hidden) { maintainBillingScreen(); pollCatalog(); }
         },{signal:idleAbort.signal});
         window.addEventListener('focus', pollCatalog, {signal:idleAbort.signal});
-        var idleInterval = setInterval(function(){ checkSessionIdle(); pollCatalog(); },10000);
+        var idleInterval = setInterval(function(){ maintainBillingScreen(); pollCatalog(); },10000);
         window.__posIdleCleanup = function(){ idleAbort.abort(); clearInterval(idleInterval); };
         sendSessionTouch();
 
