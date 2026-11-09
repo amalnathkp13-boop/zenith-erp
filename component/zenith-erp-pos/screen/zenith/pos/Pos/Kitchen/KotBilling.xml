@@ -684,7 +684,7 @@
 
   <header class="kg-header">
     <img src="/zenithstatic/img/zetaerp-logo.svg?v=2" alt="ZetaERP"/>
-    <a class="kg-chip" href="KotBilling" aria-label="Change KOT terminal"><span class="kg-only">KOT Billing ·&nbsp;</span>${(billingTerminal.terminalName!billingTerminal.terminalId)?html} ⌄</a>
+    <a class="kg-chip kg-counter" href="KotBilling" aria-label="Change KOT terminal"><span class="kg-only">KOT Billing ·&nbsp;</span>${(billingTerminal.terminalName!billingTerminal.terminalId)?html}</a>
     <span class="kg-online" id="kb-online"></span>
     <span class="kg-meta"><span class="kg-normal"><@ic 'calendar'/></span> ${ec.l10n.format(ec.user.nowTimestamp, 'dd-MM-yyyy')?html}</span>
     <span class="kg-meta"><@ic 'clock'/> <time id="kb-clock"></time></span>
@@ -694,7 +694,7 @@
   <div class="kb-toolbar">
     <a class="kb-control kg-back" href="KotBilling">← Back to Terminals</a>
     <details class="kg-modes">
-      <summary class="kb-control">Modes ⌄</summary>
+      <summary class="kb-control">Modes</summary>
       <div class="kg-menu" aria-label="Billing views">
         <button type="button" data-kb-view="list" aria-pressed="true">List View</button>
         <button type="button" data-kb-view="grid" aria-pressed="false">Grid View</button>

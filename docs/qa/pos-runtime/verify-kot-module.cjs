@@ -63,10 +63,11 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   const clerkPage=await clerk.newPage();
   await clerkPage.goto(base+'/apps/zenith/kot/KotBilling');
   check('KOT clerk can only select the administrator-assigned terminal',await clerkPage.locator('#kot-terminal-entry select[name=terminalId] option').count()===1&&await clerkPage.locator('#kot-terminal-entry select[name=terminalId]').inputValue()===terminalId);
+  check('KOT-only clerk sees only their allowed tab at the terminal picker and no POS sidebar',await clerkPage.locator('#z-sidebar a[data-mod=pos]:visible').count()===0&&
+   (await clerkPage.locator('#z-subnav .zsub-grp.show a:visible').allTextContents()).join('|').trim()==='KOT Billing');
   await clerkPage.getByRole('button',{name:'Open / Resume Session'}).click();
   await clerkPage.locator('#kb-wrap').waitFor();
-  check('KOT-only clerk sees only their allowed tab and no POS sidebar',await clerkPage.locator('#z-sidebar a[data-mod=pos]:visible').count()===0&&
-   (await clerkPage.locator('#z-subnav .zsub-grp.show a:visible').allTextContents()).join('|').trim()==='KOT Billing');
+  check('Opening the assigned terminal hides the sidebar and navigation',await clerkPage.locator('#top:visible,#z-sidebar:visible,#z-subnav:visible').count()===0);
   for(const route of ['pos/Terminal','pos/Reports','kot/KotHistory','pos/Kitchen/KotHistory']){
    const denied=await clerk.request.get(base+'/apps/zenith/'+route,{maxRedirects:0});
    check('KOT-only grant does not allow '+route,[302,303,403].includes(denied.status()),{status:denied.status()});
