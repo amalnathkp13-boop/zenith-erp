@@ -677,7 +677,7 @@
 <#else>
 <div class="kb-wrap" id="kb-wrap">
   <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=3"/>
-  <link rel="stylesheet" href="/zenithstatic/css/kot-list.css?v=1"/>
+  <link rel="stylesheet" href="/zenithstatic/css/kot-list.css?v=2"/>
   <input type="hidden" id="kb-token" value="${(ec.web.sessionToken)!''}"/>
   <div id="kb-data" style="display:none" data-session="${billingSession.sessionId?html}" data-display-enabled="${kitchenDisplayEnabled?c}" data-kot-module="${(kitchenModuleId!'pos')?html}" data-stock-session="${((checkoutSessions?size == 1)?then(checkoutSessions[0].id,''))?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}"></div>
 
@@ -689,6 +689,7 @@
     <span class="kg-meta"><span class="kg-normal"><@ic 'calendar'/></span> ${ec.l10n.format(ec.user.nowTimestamp, 'dd-MM-yyyy')?html}</span>
     <span class="kg-meta"><@ic 'clock'/> <time id="kb-clock"></time></span>
     <span class="kg-chip"><span class="kg-normal"><@ic 'receipt'/></span> KOT Mode</span>
+    <#if modCanWrite><button type="button" id="kb-draft" class="kb-action-hold" disabled><span aria-hidden="true">Ⅱ</span> Hold <kbd>F7</kbd></button></#if>
   </header>
   <div class="kb-toolbar">
     <div class="kg-toolbar-extras">
@@ -771,7 +772,6 @@
     </div>
     <div class="kb-total-row"><span>KOT TOTAL</span><strong id="kb-grand">&#8377;0.00</strong></div>
     <#if modCanWrite><div class="kb-checkout-actions">
-      <button type="button" id="kb-draft" class="kb-action-hold" disabled><span aria-hidden="true">Ⅱ</span> Hold <kbd>F7</kbd></button>
       <button type="button" id="kb-send" class="kb-action-send" title="Press Shift by itself" disabled><@ic 'printer'/> Send to KOT <kbd>Shift</kbd></button>
       <button type="button" id="kb-bill" class="kb-action-bill" disabled><@ic 'box'/> Bill Out <kbd>Space</kbd></button>
       <#list ['Cash','Card','Credit','UPI','Split'] as tender>
@@ -790,7 +790,7 @@
       <#list draftKots as d><div data-kot-group="draft" data-order-date="${d.isoDate}"><@ordercard d/><#if modCanWrite><button type="button" class="kb-control" data-kot-resume="${d.id?html}">Resume</button><button type="button" class="kb-control" data-kot-discard="${d.id?html}">Discard</button></#if></div></#list>
       <#list activeKots as k><div data-kot-group="active" data-order-date="${k.isoDate}"><@ordercard k/></div></#list>
       <#list completedKots as k><div data-kot-group="completed" data-order-date="${k.isoDate}"><@ordercard k/></div></#list>
-    </div><p id="kb-history-empty" hidden>No matching orders.</p><form method="dialog" id="kb-history-actions"><button class="kb-control">Close</button></form>
+    </div><p id="kb-history-empty" hidden>No matching orders.</p><form method="dialog"><button class="kb-control">Close</button></form>
   </dialog>
   <#if modCanWrite><dialog id="kb-payment" class="zk-history-view" aria-labelledby="kb-payment-title">
     <h2 id="kb-payment-title">Bill Out</h2><p id="kb-payment-total"></p>
@@ -816,7 +816,7 @@
   </dialog></#if>
 
   <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" style="display:none"
-       onload="(function(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=list-grid-1';document.head.appendChild(s);})()"/>
+       onload="(function(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=list-grid-2';document.head.appendChild(s);})()"/>
 </div>
 </#if>
         ]]></text></render-mode>

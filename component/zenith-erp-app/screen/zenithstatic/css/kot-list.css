@@ -54,7 +54,6 @@
 #kb-wrap .kg-menu button{display:block;width:100%;padding:8px;border:0;border-radius:5px;background:#fff;color:#10152e;text-align:left;cursor:pointer}
 #kb-wrap .kg-menu button:is([aria-pressed=true],:hover,:focus-visible){background:#f0ebff;color:#5916c8}
 #kb-wrap #kb-display-message{color:#8c4320;margin:4px 0}
-#kb-wrap #kb-history-actions{display:flex;gap:8px}
 
 #kb-wrap:not(.kg-grid) .kl-workspace{
   display:grid;grid-template-columns:minmax(0,68fr) minmax(0,32fr);flex:1 0 auto;min-height:280px;gap:16px;

@@ -198,12 +198,8 @@
     search.value='';
     lookup();
   }
-  function positionViewControls() {
-    const hold=$('draft'), customerButton=$('customer-open');
-    if(hold) {
-      if(grid)header.append(hold);
-      else $('history-actions').prepend(hold);
-    }
+  function positionCustomerButton() {
+    const customerButton=$('customer-open');
     if(customerButton) {
       if(grid)$('history-open').before(customerButton);
       else header.append(customerButton);
@@ -218,7 +214,7 @@
     root.classList.toggle('kg-grid',grid);
     panel.hidden=!grid;
     for(const option of modeOptions)option.setAttribute('aria-pressed',String((option.dataset.kbView==='grid')===grid));
-    positionViewControls();
+    positionCustomerButton();
     (grid?panel:search.parentElement).append(suggestions);
     if(search.value.trim())renderMatches();
     else {
@@ -480,7 +476,7 @@
     cart.set(item.productId,{id:item.productId,name:item.productName,code:saved?.code||item.productId,price:Number(saved?.rate)||0,qty:Number(item.quantity)});
   }
   if(draftId){$('badge').textContent='Editing Held Order';$('instr').value=cfg.draftinstr||'';}
-  positionViewControls();updateHeader();setType(orderType);paintTax();renderCustomer();quote();
+  positionCustomerButton();updateHeader();setType(orderType);paintTax();renderCustomer();quote();
   if($('send')) {
     const keepSessionOpen=()=>{
       if(!root.isConnected) {
