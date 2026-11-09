@@ -6,7 +6,7 @@
   root.dataset.ready='true';
   const $=id=>root.querySelector('#kb-'+id);
   const search=$('search'), suggestions=$('suggestions'), cart=new Map();
-  const header=root.querySelector('.kg-header'), modesMenu=root.querySelector('.kg-modes');
+  const modesMenu=root.querySelector('.kg-modes');
   const modeOptions=modesMenu.querySelectorAll('[data-kb-view]');
   const paymentButtons=root.querySelectorAll('[data-kb-payment]');
   const cfg=$('data').dataset;
@@ -115,9 +115,9 @@
     $('list-waiter').textContent=$('waiter').value?$('waiter').selectedOptions[0]?.textContent:'—';
     $('cart').innerHTML=Array.from(cart.values(),(it,i)=>'<tr data-product="'+esc(it.id)+'"><td>'+(i+1)+'</td><td><strong>'+esc(it.name)+'</strong><small>'+esc(it.code)+'</small></td>'
       +'<td class="kg-normal"><span class="kl-line-mode">'+esc(modeName)+'</span></td>'
-      +'<td class="kg-normal"><span class="kl-line-rate">'+cardMoney.format(it.price).replace('₹','').trim()+'</span></td>'
+      +'<td class="r"><span class="kl-line-rate kg-normal">'+cardMoney.format(it.price).replace('₹','').trim()+'</span><span class="kg-only">'+money.format(it.price)+'</span></td>'
       +'<td><span class="kb-ostep"><button type="button" data-qty="-1" aria-label="Decrease quantity" '+(it.qty<=1?'disabled':'')+'>−</button><span>'+it.qty+'</span><button type="button" data-qty="1" aria-label="Increase quantity">+</button></span></td>'
-      +'<td class="r kg-only">'+money.format(it.price)+'</td><td class="kg-normal">'+(it.tax==null?'—':money.format(it.tax))+'</td>'
+      +'<td class="kg-normal">'+(it.tax==null?'—':money.format(it.tax))+'</td>'
       +'<td class="r kb-oamt">'+money.format(it.amount??it.qty*it.price)+'</td>'
       +'<td class="r"><button type="button" class="kb-orm" data-remove="true" aria-label="Remove '+esc(it.name)+'"><span class="kg-only">×</span><svg class="kg-normal" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18m-2 0-1 15H6L5 6m4 0V3h6v3m-5 4v7m4-7v7"/></svg></button></td></tr>').join('');
     $('cartempty').hidden=cart.size>0;
@@ -198,13 +198,6 @@
     search.value='';
     lookup();
   }
-  function positionCustomerButton() {
-    const customerButton=$('customer-open');
-    if(customerButton) {
-      if(grid)$('history-open').before(customerButton);
-      else header.append(customerButton);
-    }
-  }
   function setGridView(next) {
     modesMenu.open=false;
     modesMenu.querySelector('summary').focus({preventScroll:true});
@@ -214,7 +207,6 @@
     root.classList.toggle('kg-grid',grid);
     panel.hidden=!grid;
     for(const option of modeOptions)option.setAttribute('aria-pressed',String((option.dataset.kbView==='grid')===grid));
-    positionCustomerButton();
     (grid?panel:search.parentElement).append(suggestions);
     if(search.value.trim())renderMatches();
     else {
@@ -241,7 +233,10 @@
     return document.fullscreenElement||document.webkitFullscreenElement;
   }
   function syncFullscreen() {
-    $('fullscreen-label').textContent=fullscreenElement()===root?'Exit fullscreen':'Fullscreen';
+    const active=fullscreenElement()===root;
+    const label=active?'Exit fullscreen':'Enter fullscreen';
+    $('fullscreen-label').textContent=label;
+    $('fullscreen').title=label;
   }
   async function toggleFullscreen() {
     const status=$('fullscreen-status');
@@ -476,7 +471,7 @@
     cart.set(item.productId,{id:item.productId,name:item.productName,code:saved?.code||item.productId,price:Number(saved?.rate)||0,qty:Number(item.quantity)});
   }
   if(draftId){$('badge').textContent='Editing Held Order';$('instr').value=cfg.draftinstr||'';}
-  positionCustomerButton();updateHeader();setType(orderType);paintTax();renderCustomer();quote();
+  updateHeader();setType(orderType);paintTax();renderCustomer();quote();
   if($('send')) {
     const keepSessionOpen=()=>{
       if(!root.isConnected) {

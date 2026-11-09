@@ -24,6 +24,11 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
  try{
   await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling?sessionId='+session.sessionId);
   await page.locator('#kb-wrap[data-ready=true]').waitFor();
+  check('KOT Billing uses the full viewport without entering browser fullscreen',await page.locator('#kb-wrap').evaluate(root=>{
+   const bounds=root.getBoundingClientRect();
+   return !document.fullscreenElement&&bounds.left===0&&bounds.top===0&&bounds.width===innerWidth&&bounds.height===innerHeight
+    && Array.from(document.querySelectorAll('#top,#z-sidebar,#z-subnav,#ai-copilot-container')).every(el=>!el.getClientRects().length);
+  }));
   check('Default workspace has one search and tax toggle, no permanent catalogue',await page.locator('#kb-search').count()===1&&await page.getByRole('switch',{name:'Tax'}).count()===1&&await page.locator('.kb-catlist,.kb-menu').count()===0);
   await page.locator('#kb-mode').selectOption('RETAIL');
   await page.locator('#kb-waiter').selectOption({label:waiterName});
@@ -44,6 +49,9 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await card.waitFor();
   check('Grid View shows a product catalogue with empty search',await search.inputValue()===''&&
    await page.locator('#kb-product-grid .kb-results-grid').isVisible());
+  check('Grid keeps the customer in the header and gives the catalogue its own column',
+   await page.locator('.kg-header #kb-customer-open').isVisible()&&
+   await page.locator('#kb-product-grid').evaluate(panel=>panel.getBoundingClientRect().width>innerWidth*0.4));
   await modes.locator('summary').click();
   check('Grid View is selected in Modes',await gridMode.getAttribute('aria-pressed')==='true');
   await page.locator('.kg-categories button').first().click();
