@@ -82,7 +82,10 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    const note='KOT UI '+randomUUID();
    await page.goto(base+'/'+shell+'/zenith/kot/KotBilling?sessionId='+sessionId);
    await page.locator('#kb-wrap[data-ready=true]').waitFor();
-   if(grid) await page.locator('#kb-view-grid').click();
+   if(grid) {
+    await page.locator('.kg-modes summary').click();
+    await page.getByRole('button',{name:'Grid View',exact:true}).click();
+   }
    await page.route('**/cartReceipt',route=>route.abort());
    try {
     await page.locator('#kb-search').fill('POS_QA_A_P18');
@@ -104,7 +107,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
     check(shell+' sends from '+(grid?'grid':'list')+' when the preview request fails',
      await page.locator('#kb-cart tr').count()===0 &&
      q(`SELECT kot_id FROM kitchen_order_ticket WHERE terminal_id='${terminalId}' AND status_id='KotNew' AND notes LIKE '%${note}%'`).length===1);
-    check(shell+' keeps its billing view after sending',await page.locator('#kb-view-grid').getAttribute('aria-expanded')===String(grid));
+    check(shell+' keeps its billing view after sending',await page.locator('#kb-product-grid').isVisible()===grid);
    } finally { await page.unroute('**/cartReceipt'); }
    await page.goto(base+'/'+shell+'/zenith/kot/KitchenDisplay?facilityId=POS_QA_A_FAC');
    await page.getByText(note,{exact:false}).waitFor();

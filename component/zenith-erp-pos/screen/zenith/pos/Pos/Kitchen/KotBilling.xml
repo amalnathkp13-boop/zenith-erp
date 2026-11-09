@@ -496,6 +496,9 @@
                 }
             }
             if(!billingSession) return
+            lastCompleted=ec.entity.find('zenith.erp.pos.PosTransaction')
+                .condition([sessionId:billingSession.sessionId,organizationPartyId:org,statusId:'PtCompleted'])
+                .selectFields(['transactionNumber','payableAmount']).orderBy('-completedDate,-transactionId').limit(1).list().find { true }
             gridCategories=org ? ec.entity.find('mantle.product.category.ProductCategory').condition('ownerPartyId',org)
                 .orderBy('categoryName,productCategoryId').limit(60).list() : []
             def sf=ec.entity.find('zenith.erp.pos.PosSession').condition('organizationPartyId',org ?: '__NO_ORGANIZATION__')
@@ -623,7 +626,6 @@
 <#elseif name=='save'><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/>
 <#elseif name=='printer'><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/>
 <#elseif name=='fullscreen'><path d="M8 3H3v5m13-5h5v5m0 8v5h-5M3 16v5h5"/>
-<#elseif name=='grid'><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
 <#elseif name=='chef'><path d="M6 13a4 4 0 1 1 2-7 4 4 0 0 1 8 0 4 4 0 1 1 2 7v7H6zm0 4h12m-9-5v2m6-2v2"/>
 <#elseif name=='cash'><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 12h.01M18 12h.01"/>
 <#elseif name=='card'><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h5"/>
@@ -632,6 +634,9 @@
 <#elseif name=='split'><path d="M3 12h18M8 7l-5 5 5 5m8-10 5 5-5 5"/>
 <#elseif name=='arrow'><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
 <#elseif name=='user'><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+<#elseif name=='receipt'><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8m-8 4h8m-8 4h5"/>
+<#elseif name=='calendar'><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 10h18"/>
+<#elseif name=='cart'><path d="M2 4h3l3 13h11l3-10H6m3 14h.01m9 0h.01"/>
 </#if>
 </svg></#macro>
 
@@ -671,13 +676,31 @@
 </section>
 <#else>
 <div class="kb-wrap" id="kb-wrap">
-  <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=2"/>
+  <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=3"/>
+  <link rel="stylesheet" href="/zenithstatic/css/kot-list.css?v=1"/>
   <input type="hidden" id="kb-token" value="${(ec.web.sessionToken)!''}"/>
   <div id="kb-data" style="display:none" data-session="${billingSession.sessionId?html}" data-display-enabled="${kitchenDisplayEnabled?c}" data-kot-module="${(kitchenModuleId!'pos')?html}" data-stock-session="${((checkoutSessions?size == 1)?then(checkoutSessions[0].id,''))?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}"></div>
 
 
-  <div class="kb-head"><h1 class="kb-title">KOT Billing · ${(billingTerminal.terminalName!billingTerminal.terminalId)?html}</h1><p class="kb-sub" id="kb-display-message"><#if kitchenDisplayEnabled>Build an order, send it to the kitchen, or take payment.<#else>Kitchen Display disabled. Use printed KOTs for takeaway, or bill dine-in customers after their meal.</#if></p><a class="kb-control" href="KotBilling">Back to terminals</a></div>
+  <header class="kg-header">
+    <img src="/zenithstatic/img/zetaerp-logo.svg?v=2" alt="ZetaERP"/>
+    <a class="kg-chip" href="KotBilling" aria-label="Change KOT terminal"><span class="kg-only">KOT Billing · </span>${(billingTerminal.terminalName!billingTerminal.terminalId)?html} ⌄</a>
+    <span class="kg-online" id="kb-online"></span>
+    <span class="kg-meta"><span class="kg-normal"><@ic 'calendar'/></span> ${ec.l10n.format(ec.user.nowTimestamp, 'dd-MM-yyyy')?html}</span>
+    <span class="kg-meta"><@ic 'clock'/> <time id="kb-clock"></time></span>
+    <span class="kg-chip"><span class="kg-normal"><@ic 'receipt'/></span> KOT Mode</span>
+  </header>
   <div class="kb-toolbar">
+    <div class="kg-toolbar-extras">
+      <a class="kb-control" href="KotBilling">← Back to Terminals</a>
+      <details class="kg-modes">
+        <summary class="kb-control">Modes ⌄</summary>
+        <div class="kg-menu" aria-label="Billing views">
+          <button type="button" data-kb-view="list" aria-pressed="true">List View</button>
+          <button type="button" data-kb-view="grid" aria-pressed="false">Grid View</button>
+        </div>
+      </details>
+    </div>
     <div class="kb-otype" role="group" aria-label="Service type">
       <button type="button" class="kb-otbtn is-active" data-ot="Dine In"><@ic 'bag'/> Dine In</button>
       <button type="button" class="kb-otbtn" data-ot="Take Away"><@ic 'box'/> Take Away</button>
@@ -689,29 +712,10 @@
     <label class="kb-fld">Sales Mode<select id="kb-mode"><#if !modes?has_content><option value="">Standard</option></#if><#list modes as m><option value="${m.salesModeId?html}">${m.modeName?html}</option></#list></select></label>
     <#if modCanWrite><button type="button" class="kb-control" id="kb-customer-open" title="Attach a customer to this bill"><@ic 'user'/> <span id="kb-customer-name">Walk-in Customer</span></button></#if>
     <button type="button" class="kb-control" id="kb-history-open"><@ic 'clock'/> History <kbd class="kg-only">F10</kbd></button>
-    <button type="button" class="kb-control" id="kb-view-grid" aria-expanded="false" aria-controls="kb-product-grid" title="Switch billing view"><span class="kg-only"><@ic 'grid'/></span>Grid View <kbd class="kg-only">F11</kbd></button>
     <button type="button" class="kb-control" id="kb-fullscreen"><@ic 'fullscreen'/> <span id="kb-fullscreen-label">Fullscreen</span></button>
     <button type="button" class="kb-control kb-tax-toggle is-on" id="kb-tax-toggle" role="switch" aria-label="Tax" aria-checked="true">Tax: ON</button>
   </div>
 
-  <header class="kg-header" hidden>
-    <img src="/zenithstatic/img/zetaerp-logo.svg?v=2" alt="ZetaERP"/>
-    <a class="kg-chip" href="KotBilling" aria-label="Change KOT terminal">KOT Billing · ${(billingTerminal.terminalName!billingTerminal.terminalId)?html} ⌄</a>
-    <span class="kg-online" id="kb-online"></span>
-    <span class="kg-meta">${ec.l10n.format(ec.user.nowTimestamp, 'dd-MM-yyyy')?html}</span>
-    <span class="kg-meta"><@ic 'clock'/> <time id="kb-clock"></time></span>
-    <span class="kg-chip">KOT Mode</span>
-  </header>
-  <div class="kg-toolbar-extras" hidden>
-    <a class="kb-control" href="KotBilling">← Back to Terminals</a>
-    <details class="kg-modes">
-      <summary class="kb-control">Modes ⌄</summary>
-      <div class="kg-menu">
-        <button type="button" data-kb-view="grid">Grid View</button>
-        <button type="button" data-kb-view="normal">Normal Billing</button>
-      </div>
-    </details>
-  </div>
   <p id="kb-fullscreen-status" role="status"></p>
   <section id="kb-product-grid" aria-label="Product catalogue" hidden>
     <div class="kg-categories" role="group" aria-label="Product categories">
@@ -720,19 +724,52 @@
     </div>
   </section>
 
-  <aside class="kb-panel">
-    <div class="kb-panel__head"><h2 class="kb-panel__title"><span class="kg-normal">Current Order</span><span class="kg-only"><@ic 'chef' 24/> KOT Items (<span id="kb-grid-count">0</span>)</span></h2><span class="kb-panel__badge" id="kb-badge">New KOT</span><button type="button" class="kb-clear" id="kb-clear" disabled>Clear Cart</button></div>
-    <div class="kb-order-scroll"><table class="kb-otable" aria-label="Current Order"><thead><tr><th>#</th><th>Product</th><th>Quantity</th><th class="r">Unit Price</th><th class="r">Amount</th><th>Remove</th></tr></thead><tbody id="kb-cart"></tbody></table>
+  <div class="kl-workspace">
+  <section class="kb-panel">
+    <div class="kb-panel__head"><h2 class="kb-panel__title"><span class="kg-normal"><@ic 'cart' 24/> Bill Items (<span id="kb-list-count">0</span>)</span><span class="kg-only"><@ic 'chef' 24/> KOT Items (<span id="kb-grid-count">0</span>)</span></h2><span class="kb-panel__badge" id="kb-badge">New KOT</span><button type="button" class="kb-clear" id="kb-clear" disabled>Clear Cart</button></div>
+    <div class="kb-order-scroll"><table class="kb-otable" aria-label="Current Order"><thead><tr>
+      <th scope="col">#</th><th scope="col">Product</th><th scope="col" class="kg-normal">Mode</th><th scope="col" class="kg-normal">Rate (&#8377;)</th>
+      <th scope="col"><span class="kg-only">Quantity</span><span class="kg-normal">Qty</span></th>
+      <th scope="col" class="r kg-only">Unit Price</th><th scope="col" class="kg-normal">Tax (&#8377;)</th>
+      <th scope="col" class="r"><span class="kg-only">Amount</span><span class="kg-normal">Total (&#8377;)</span></th>
+      <th scope="col"><span class="kg-only">Remove</span><span class="kg-normal">Action</span></th>
+    </tr></thead><tbody id="kb-cart"></tbody></table>
       <p class="kb-cartempty" id="kb-cartempty">Search or scan a product to start the order.</p>
     </div>
     <div class="kb-instr"><label for="kb-instr">Add Note</label><textarea id="kb-instr" rows="1" maxlength="500" placeholder="e.g. No onion, less spicy"></textarea></div>
-    <div class="kb-sum"><div class="kb-sum__row"><span>Items</span><span id="kb-item-count">0</span></div><div class="kb-sum__row"><span>Subtotal</span><span id="kb-subtotal">&#8377;0.00</span></div><div id="kb-tax-rows"></div>
+    <div class="kb-sum kg-only"><div class="kb-sum__row"><span>Items</span><span id="kb-item-count">0</span></div><div class="kb-sum__row"><span>Subtotal</span><span id="kb-subtotal">&#8377;0.00</span></div><div id="kb-tax-rows"></div>
     </div>
     <p id="kb-quote-error" role="alert"></p><p id="kb-order-status" role="status"></p>
+    <p id="kb-display-message" <#if kitchenDisplayEnabled>hidden</#if>>Kitchen Display disabled. Use printed KOTs for takeaway, or bill dine-in customers after their meal.</p>
+  </section>
+  <aside class="kl-side kg-normal">
+    <section class="kl-card" aria-label="Customer details">
+      <div class="kl-card-title">
+        <span class="kl-icon"><@ic 'user' 23/></span>
+        <div><h2 id="kb-list-customer">Walk-in Customer</h2><p>Customer</p></div>
+        <#if modCanWrite><button type="button" class="kb-control" data-kb-customer-change>Change</button></#if>
+      </div>
+      <dl class="kl-details">
+        <div><dt>Phone</dt><dd id="kb-list-phone">—</dd><dt>Last Bill</dt><dd id="kb-list-last-bill">${((lastCompleted.transactionNumber)!'—')?html}</dd></div>
+        <div><dt>Order Type</dt><dd id="kb-list-type">Dine In</dd><dt>Last Amount</dt><dd id="kb-list-last-amount"><#if (lastCompleted.payableAmount)??>&#8377;${ec.l10n.format(lastCompleted.payableAmount,'#,##0.00')?html}<#else>—</#if></dd></div>
+        <div><dt>Waiter</dt><dd id="kb-list-waiter">—</dd><dt>Sales Mode</dt><dd id="kb-list-mode">—</dd></div>
+      </dl>
+    </section>
+    <section class="kl-card kl-summary">
+      <div class="kl-card-title"><span class="kl-icon"><@ic 'receipt' 23/></span><h2>Bill Summary</h2></div>
+      <div class="kl-sum-row"><span>Subtotal (<span id="kb-list-item-count">0</span>)</span><strong id="kb-list-subtotal">&#8377;0.00</strong></div>
+      <div class="kl-sum-row"><span>Tax</span><strong id="kb-list-tax">&#8377;0.00</strong></div>
+      <div class="kl-sum-row kl-grand"><span>Grand Total</span><strong id="kb-list-grand">&#8377;0.00</strong></div>
+    </section>
   </aside>
+  </div>
 
   <div class="kb-bottom">
-    <div class="kb-total-row"><span class="kg-normal">Total Amount</span><span class="kg-only">KOT TOTAL</span><strong id="kb-grand">&#8377;0.00</strong></div>
+    <div class="kl-stats kg-normal">
+      <span>Last amount: <b id="kb-list-last-stat">${((lastCompleted.payableAmount)!0)?c}</b></span>
+      <span>Qty: <b id="kb-list-qty">0</b></span><span>Tax: <b id="kb-list-tax-stat">0</b></span><span>Disc: <b>0</b></span>
+    </div>
+    <div class="kb-total-row"><span>KOT TOTAL</span><strong id="kb-grand">&#8377;0.00</strong></div>
     <#if modCanWrite><div class="kb-checkout-actions">
       <button type="button" id="kb-draft" class="kb-action-hold" disabled><span aria-hidden="true">Ⅱ</span> Hold <kbd>F7</kbd></button>
       <button type="button" id="kb-send" class="kb-action-send" title="Press Shift by itself" disabled><@ic 'printer'/> Send to KOT <kbd>Shift</kbd></button>
@@ -742,7 +779,7 @@
       </#list>
     </div></#if>
     <div class="kb-search"><@ic 'search'/>
-      <input type="search" id="kb-search" placeholder="Search product by name, code or barcode..." autocomplete="off" aria-label="Search products" aria-controls="kb-suggestions" <#if !modCanWrite>disabled</#if>>
+      <input type="search" id="kb-search" placeholder="Scan barcode, or type product name or code…   ( press / )" autocomplete="off" aria-label="Search products" aria-controls="kb-suggestions" <#if !modCanWrite>disabled</#if>>
       <div id="kb-suggestions" class="kb-suggestions" aria-label="Matching products" hidden></div>
     </div>
   </div>
@@ -753,7 +790,7 @@
       <#list draftKots as d><div data-kot-group="draft" data-order-date="${d.isoDate}"><@ordercard d/><#if modCanWrite><button type="button" class="kb-control" data-kot-resume="${d.id?html}">Resume</button><button type="button" class="kb-control" data-kot-discard="${d.id?html}">Discard</button></#if></div></#list>
       <#list activeKots as k><div data-kot-group="active" data-order-date="${k.isoDate}"><@ordercard k/></div></#list>
       <#list completedKots as k><div data-kot-group="completed" data-order-date="${k.isoDate}"><@ordercard k/></div></#list>
-    </div><p id="kb-history-empty" hidden>No matching orders.</p><form method="dialog"><button class="kb-control">Close</button></form>
+    </div><p id="kb-history-empty" hidden>No matching orders.</p><form method="dialog" id="kb-history-actions"><button class="kb-control">Close</button></form>
   </dialog>
   <#if modCanWrite><dialog id="kb-payment" class="zk-history-view" aria-labelledby="kb-payment-title">
     <h2 id="kb-payment-title">Bill Out</h2><p id="kb-payment-total"></p>
@@ -779,7 +816,7 @@
   </dialog></#if>
 
   <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" style="display:none"
-       onload="(function(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=grid-customer-1';document.head.appendChild(s);})()"/>
+       onload="(function(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=list-grid-1';document.head.appendChild(s);})()"/>
 </div>
 </#if>
         ]]></text></render-mode>

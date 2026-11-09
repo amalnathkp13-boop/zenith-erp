@@ -6,9 +6,9 @@
   root.dataset.ready='true';
   const $=id=>root.querySelector('#kb-'+id);
   const search=$('search'), suggestions=$('suggestions'), cart=new Map();
-  const gridHeader=root.querySelector('.kg-header'), gridTools=root.querySelector('.kg-toolbar-extras');
-  const modesMenu=gridTools.querySelector('details'), paymentButtons=root.querySelectorAll('[data-kb-payment]');
-  root.querySelector('.kb-toolbar').prepend(gridTools);
+  const header=root.querySelector('.kg-header'), modesMenu=root.querySelector('.kg-modes');
+  const modeOptions=modesMenu.querySelectorAll('[data-kb-view]');
+  const paymentButtons=root.querySelectorAll('[data-kb-payment]');
   const cfg=$('data').dataset;
   const shell=location.pathname.startsWith('/qapps/')?'/qapps':'/apps';
   const billingPath='/zenith'+(cfg.kotModule==='kot'?'/kot':'/pos/Kitchen')+'/KotBilling';
@@ -50,6 +50,7 @@
     }
     $('table-field').hidden=value==='Take Away'||$('table').options.length===1;
     if(value==='Take Away') $('table').value='';
+    $('list-type').textContent=orderType;
   }
   function paintTax() {
     const on=taxOn==='Y',b=$('tax-toggle');
@@ -74,7 +75,10 @@
   }
   function renderCustomer() {
     const label=$('customer-name');
-    if(label)label.textContent=customer.name||'Walk-in Customer';
+    const name=customer.name||'Walk-in Customer';
+    if(label)label.textContent=name;
+    $('list-customer').textContent=name;
+    $('list-phone').textContent=customer.phone||'—';
     $('customer-open')?.classList.toggle('is-active',!!customer.id);
   }
   function openCustomerDialog() {
@@ -106,17 +110,35 @@
     customer={};$('customer-dialog')?.close();renderCustomer();quote();
   }
   function rows() {
+    const modeName=$('mode').selectedOptions[0]?.textContent||'—';
+    $('list-mode').textContent=modeName;
+    $('list-waiter').textContent=$('waiter').value?$('waiter').selectedOptions[0]?.textContent:'—';
     $('cart').innerHTML=Array.from(cart.values(),(it,i)=>'<tr data-product="'+esc(it.id)+'"><td>'+(i+1)+'</td><td><strong>'+esc(it.name)+'</strong><small>'+esc(it.code)+'</small></td>'
+      +'<td class="kg-normal"><span class="kl-line-mode">'+esc(modeName)+'</span></td>'
+      +'<td class="kg-normal"><span class="kl-line-rate">'+cardMoney.format(it.price).replace('₹','').trim()+'</span></td>'
       +'<td><span class="kb-ostep"><button type="button" data-qty="-1" aria-label="Decrease quantity" '+(it.qty<=1?'disabled':'')+'>−</button><span>'+it.qty+'</span><button type="button" data-qty="1" aria-label="Increase quantity">+</button></span></td>'
-      +'<td class="r">'+money.format(it.price)+'</td><td class="r kb-oamt">'+money.format(it.amount??it.qty*it.price)+'</td>'
-      +'<td class="r"><button type="button" class="kb-orm" data-remove="true" aria-label="Remove '+esc(it.name)+'">×</button></td></tr>').join('');
+      +'<td class="r kg-only">'+money.format(it.price)+'</td><td class="kg-normal">'+(it.tax==null?'—':money.format(it.tax))+'</td>'
+      +'<td class="r kb-oamt">'+money.format(it.amount??it.qty*it.price)+'</td>'
+      +'<td class="r"><button type="button" class="kb-orm" data-remove="true" aria-label="Remove '+esc(it.name)+'"><span class="kg-only">×</span><svg class="kg-normal" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18m-2 0-1 15H6L5 6m4 0V3h6v3m-5 4v7m4-7v7"/></svg></button></td></tr>').join('');
     $('cartempty').hidden=cart.size>0;
     $('item-count').textContent=cart.size;
     $('grid-count').textContent=cart.size;
+    $('list-count').textContent=cart.size;
+    $('list-item-count').textContent=cart.size+' '+(cart.size===1?'item':'items');
+    $('list-qty').textContent=Array.from(cart.values()).reduce((qty,item)=>qty+item.qty,0);
+  }
+  function listTotals(summary) {
+    const display=value=>summary?money.format(value??0):'—';
+    $('list-subtotal').textContent=display(summary?.subtotal);
+    $('list-tax').textContent=display(summary?.tax);
+    $('list-grand').textContent=display(summary?.total);
+    $('list-tax-stat').textContent=display(summary?.tax);
   }
   function quote() {
     clearTimeout(quoteTimer); const version=++quoteVersion;
+    for(const item of cart.values())item.tax=null;
     total=null;controls();rows();
+    listTotals(cart.size?null:{});
     $('quote-error').textContent='';
     $('tax-rows').replaceChildren();
     $('grand').textContent=cart.size?'Calculating…':money.format(0);
@@ -127,11 +149,12 @@
         if(version!==quoteVersion||!root.isConnected)return;
         for(const line of receipt.items){
           const it=cart.get(line.productId);
-          if(it){it.price=Number(line.rate);it.amount=Number(line.total);it.code=line.code;it.name=line.name;}
+          if(it){it.price=Number(line.rate);it.amount=Number(line.total);it.tax=Number(line.tax??0);it.code=line.code;it.name=line.name;}
         }
         rows();total=Number(receipt.summary.total);controls();
         $('subtotal').textContent=money.format(receipt.summary.subtotal);
         $('grand').textContent=money.format(total);
+        listTotals(receipt.summary);
         $('tax-rows').innerHTML=(receipt.summary.taxBreakdown||[]).map(t=>'<div class="kb-sum__row"><span>'+esc(t.name)+'</span><span>'+money.format(t.amount)+'</span></div>').join('');
       }catch(e){if(version===quoteVersion&&root.isConnected)$('quote-error').textContent=e.message;}
     },100);
@@ -175,20 +198,27 @@
     search.value='';
     lookup();
   }
-  function setGridView(next=!grid) {
+  function positionViewControls() {
+    const hold=$('draft'), customerButton=$('customer-open');
+    if(hold) {
+      if(grid)header.append(hold);
+      else $('history-actions').prepend(hold);
+    }
+    if(customerButton) {
+      if(grid)$('history-open').before(customerButton);
+      else header.append(customerButton);
+    }
+  }
+  function setGridView(next) {
     modesMenu.open=false;
+    modesMenu.querySelector('summary').focus({preventScroll:true});
     if(grid===next)return;
     grid=next;
-    const panel=$('product-grid'),button=$('view-grid');
+    const panel=$('product-grid');
     root.classList.toggle('kg-grid',grid);
-    button.setAttribute('aria-expanded',String(grid));
-    panel.hidden=gridHeader.hidden=gridTools.hidden=!grid;
-    const hold=$('draft');
-    if(hold) {
-      if(grid) gridHeader.append(hold);
-      else $('send').before(hold);
-    }
-    if(grid) updateHeader();
+    panel.hidden=!grid;
+    for(const option of modeOptions)option.setAttribute('aria-pressed',String((option.dataset.kbView==='grid')===grid));
+    positionViewControls();
     (grid?panel:search.parentElement).append(suggestions);
     if(search.value.trim())renderMatches();
     else {
@@ -205,7 +235,7 @@
   }
   let headerTimer=setInterval(()=>{
     if(!root.isConnected)clearInterval(headerTimer);
-    else if(grid)updateHeader();
+    else updateHeader();
   },1000);
   document.addEventListener('click',function dismissModes(e){
     if(!root.isConnected){document.removeEventListener('click',dismissModes);return;}
@@ -316,6 +346,8 @@
       }
       const bill=await request('checkoutKot',{...payment,kotId:draftId});
       finalized=true;historyDirty=true;
+      $('list-last-bill').textContent=bill.billNumber;
+      $('list-last-amount').textContent=$('list-last-stat').textContent=money.format(total);
       $('payment').close();resetOrder();
       $('order-status').textContent='Saved bill '+bill.billNumber+'.';
       const status=$('order-status');
@@ -371,11 +403,7 @@
     const button=e.target.closest('button');if(!button||button.disabled||busy)return;
     if(button.dataset.ot){setType(button.dataset.ot);quote();}
     else if(button.id==='kb-tax-toggle'){taxOn=taxOn==='Y'?'N':'Y';paintTax();quote();}
-    else if(button.id==='kb-view-grid')setGridView();
-    else if(button.dataset.kbView){
-      setGridView(button.dataset.kbView==='grid');
-      $('view-grid').focus({preventScroll:true});
-    }
+    else if(button.dataset.kbView)setGridView(button.dataset.kbView==='grid');
     else if(button.hasAttribute('data-kb-category')){
       categoryId=button.dataset.kbCategory;
       for(const category of button.parentElement.children) category.setAttribute('aria-pressed',String(category===button));
@@ -392,7 +420,7 @@
       post('saveDraft',{...orderData(),existingDraftId:draftId});
     }
     else if(button.id==='kb-payment-close')$('payment').close();
-    else if(button.id==='kb-customer-open')openCustomerDialog();
+    else if(button.id==='kb-customer-open'||button.hasAttribute('data-kb-customer-change'))openCustomerDialog();
     else if(button.id==='kb-customer-walkin')walkInCustomer();
     else if(button.id==='kb-customer-close')$('customer-dialog')?.close();
     else if(button.dataset.custId)selectCustomer(button);
@@ -434,12 +462,11 @@
       modesMenu.open=false;modesMenu.querySelector('summary').focus();return;
     }
     if(!e.repeat&&!e.isComposing&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.shiftKey&&!root.querySelector('dialog[open]')){
-      if(e.key==='F11'){e.preventDefault();setGridView();return;}
       if(grid&&e.key==='F10'){e.preventDefault();showHistory();return;}
       if(grid&&paymentButtons.length&&/^F[2-6]$/.test(e.key)){
         e.preventDefault();paymentButtons[Number(e.key.slice(1))-2].click();return;
       }
-      if(grid&&e.key==='/'&&!editable(e)){e.preventDefault();search.focus();return;}
+      if(e.key==='/'&&!editable(e)){e.preventDefault();search.focus();return;}
     }
     if(e.repeat||e.isComposing||e.ctrlKey||e.metaKey||e.altKey||editable(e)||root.querySelector('dialog[open]'))return;
     if(e.key==='Shift')shiftAlone=true;
@@ -453,7 +480,7 @@
     cart.set(item.productId,{id:item.productId,name:item.productName,code:saved?.code||item.productId,price:Number(saved?.rate)||0,qty:Number(item.quantity)});
   }
   if(draftId){$('badge').textContent='Editing Held Order';$('instr').value=cfg.draftinstr||'';}
-  setType(orderType);paintTax();renderCustomer();quote();
+  positionViewControls();updateHeader();setType(orderType);paintTax();renderCustomer();quote();
   if($('send')) {
     const keepSessionOpen=()=>{
       if(!root.isConnected) {
@@ -464,9 +491,7 @@
       request('touchSession',{}).then(({displayEnabled})=>{
         if(typeof displayEnabled!=='boolean'||String(displayEnabled)===cfg.displayEnabled)return;
         cfg.displayEnabled=String(displayEnabled);
-        $('display-message').textContent=displayEnabled
-          ?'Build an order, send it to the kitchen, or take payment.'
-          :'Kitchen Display disabled. Use printed KOTs for takeaway, or bill dine-in customers after their meal.';
+        $('display-message').hidden=displayEnabled;
         controls();
       }).catch(()=>{});
     };

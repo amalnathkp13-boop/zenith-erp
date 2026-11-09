@@ -31,16 +31,21 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   check('Take Away hides table selection',!await page.locator('#kb-table').isVisible());
   await page.getByRole('switch',{name:'Tax'}).click();
   const search=page.locator('#kb-search');
-  const fullscreen=page.locator('#kb-fullscreen'), view=page.locator('#kb-view-grid');
-  await view.click();
+  const fullscreen=page.locator('#kb-fullscreen'), modes=page.locator('.kg-modes');
+  const listMode=modes.getByRole('button',{name:'List View',exact:true});
+  const gridMode=modes.getByRole('button',{name:'Grid View',exact:true});
+  await modes.locator('summary').click();
+  check('Modes is the only layout selector and starts in List View',
+   (await modes.getByRole('button').allTextContents()).join('|')==='List View|Grid View'&&
+   await listMode.getAttribute('aria-pressed')==='true'&&
+   await page.getByRole('button',{name:/^(Grid|List) View/}).count()===2);
+  await gridMode.click();
   const card=page.locator('#kb-suggestions [data-result]').filter({hasText:'Disposable POS A P18'});
   await card.waitFor();
   check('Grid View shows a product catalogue with empty search',await search.inputValue()===''&&
    await page.locator('#kb-product-grid .kb-results-grid').isVisible());
-  const modes=page.locator('.kg-modes');
   await modes.locator('summary').click();
-  check('Modes contains only Grid View and Normal Billing',
-   (await modes.getByRole('button').allTextContents()).join('|')==='Grid View|Normal Billing');
+  check('Grid View is selected in Modes',await gridMode.getAttribute('aria-pressed')==='true');
   await page.locator('.kg-categories button').first().click();
   check('Clicking outside Modes dismisses it',!(await modes.evaluate(el=>el.open)));
   await card.waitFor();
@@ -61,11 +66,19 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await page.getByRole('button',{name:/^UPI F5$/}).click();
   check('Grid payment buttons open the existing checkout with the selected tender',await page.locator('#kb-payment-method').inputValue()==='UPI');
   await page.locator('#kb-payment-close').click();
-  check('The active grid button keeps its Grid View label',/^Grid View\s*F11$/.test(await view.innerText()));
+  check('Grid has no standalone layout button',await page.getByRole('button',{name:/^(Grid|List) View/}).count()===0);
   await modes.locator('summary').click();
-  await modes.getByRole('button',{name:'Normal Billing'}).click();
-  check('Switching to Normal Billing keeps the current order',await view.innerText()==='Grid View'&&
-   !await page.locator('#kb-product-grid').isVisible()&&await page.getByRole('table',{name:'Current Order'}).isVisible());
+  await listMode.click();
+  check('List View shows the same cart and quote with a bill summary and no grid controls',
+   !await page.locator('#kb-product-grid').isVisible()&&
+   await page.getByRole('heading',{name:'Bill Items (1)'}).isVisible()&&
+   await page.locator('#kb-list-grand').innerText()==='₹100.00'&&
+   await page.locator('#kb-list-type').innerText()==='Take Away'&&
+   await page.locator('#kb-list-waiter').innerText()===waiterName&&
+   await page.getByRole('button',{name:/^(Grid|List) View/}).count()===0);
+  await page.getByRole('button',{name:'Change',exact:true}).click();
+  check('List View uses the existing customer picker',await page.locator('#kb-customer-dialog').isVisible());
+  await page.locator('#kb-customer-close').click();
   await fullscreen.click();
   await page.waitForFunction(()=>document.fullscreenElement?.id==='kb-wrap');
   check('List View can enter native fullscreen and keep the current order',await page.locator('#kb-cart tr').count()===1);
@@ -77,6 +90,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   check('Space in kitchen notes does not open checkout',!await page.locator('#kb-payment').isVisible());
   await page.getByRole('switch',{name:'Tax'}).click();
   await page.locator('#kb-grand').getByText('₹236.00').waitFor();
+  check('List View shows tax from the shared quote',await page.locator('#kb-list-tax').innerText()==='₹36.00');
   await page.getByRole('switch',{name:'Tax'}).click();
   await page.locator('#kb-grand').getByText('₹200.00').waitFor();
   await page.screenshot({path:path.join(out,'kot-compact-billing.png')});

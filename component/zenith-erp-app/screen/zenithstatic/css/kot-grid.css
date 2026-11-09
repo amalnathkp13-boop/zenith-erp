@@ -1,6 +1,7 @@
-/* Match the compact POS grid while keeping the normal KOT billing layout intact. */
-#kb-wrap:not(.kg-grid) :is(.kg-only,.kg-tender),
-#kb-wrap.kg-grid :is(.kg-normal,.kb-head,#kb-bill){display:none}
+/* Grid styling and visibility for the elements shared with List View. */
+#kb-wrap:not(.kg-grid) .kg-only,
+#kb-wrap.kg-grid :is(.kg-normal,#kb-bill){display:none}
+#kb-wrap.kg-grid .kl-workspace{display:contents}
 
 #kb-wrap.kg-grid{
   --kg-ink:#10112d;
@@ -45,21 +46,11 @@
 #kb-wrap.kg-grid .kb-otbtn.is-active{background:var(--kg-purple);color:#fff;border-color:transparent}
 #kb-wrap.kg-grid .kg-toolbar-extras > a,
 #kb-wrap.kg-grid .kg-modes summary{background:#f0f2f6;border-color:transparent;color:var(--kg-ink)}
-#kb-wrap.kg-grid .kg-modes{position:relative}
-#kb-wrap.kg-grid .kg-modes summary{list-style:none}
-#kb-wrap.kg-grid .kg-modes summary::-webkit-details-marker{display:none}
-#kb-wrap.kg-grid .kg-menu{
-  position:absolute;inset:calc(100% + 5px) auto auto 0;z-index:31;min-width:160px;padding:4px;
-  border:1px solid var(--kg-line);border-radius:9px;background:#fff;box-shadow:0 6px 18px #27245220;
-}
-#kb-wrap.kg-grid .kg-menu button{display:block;width:100%;padding:8px;border:0;border-radius:5px;background:#fff;color:var(--kg-ink);text-align:left;cursor:pointer}
-#kb-wrap.kg-grid .kg-menu button:is(:hover,:focus-visible){background:#f0ebff}
-#kb-wrap.kg-grid :is(#kb-history-open,#kb-view-grid){order:-1}
+#kb-wrap.kg-grid #kb-history-open{order:-1}
 #kb-wrap.kg-grid :is(.kg-toolbar-extras > a,.kg-modes){order:-3}
 #kb-wrap.kg-grid #kb-tax-toggle{order:-2;background:#fff;border-color:var(--kg-line);color:var(--kg-ink)}
 #kb-wrap.kg-grid #kb-tax-toggle::after{content:"";width:33px;height:19px;border-radius:20px;background:radial-gradient(circle at 9px 50%,white 6px,transparent 7px) #8a90a4}
 #kb-wrap.kg-grid #kb-tax-toggle.is-on::after{background:radial-gradient(circle at 24px 50%,white 6px,transparent 7px) var(--kg-purple)}
-#kb-wrap.kg-grid #kb-view-grid{background:#fff0e5;color:#b7440f;border-color:transparent}
 #kb-wrap.kg-grid #kb-history-open{background:#e1f0ff;color:#0e65be;border-color:transparent}
 #kb-wrap.kg-grid #kb-fullscreen{margin-inline-start:auto;background:#e1f0ff;color:#0e65be;border-color:#b5d7fc}
 #kb-wrap.kg-grid #kb-fullscreen-status:not(:empty){position:absolute;z-index:30;top:100px;right:16px;background:#fff;padding:8px}
