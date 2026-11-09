@@ -409,7 +409,8 @@
                 for(def item in quote.items) {
                     ec.service.sync().name('zenith.pos.PosServices.add#PosTransactionItem')
                         .parameters([transactionId:tx,productId:item.productId,quantity:item.qty,
-                            salesModeId:quote.bill.salesModeId,taxOn:quote.bill.taxOn]).call()
+                            salesModeId:quote.bill.salesModeId,taxOn:quote.bill.taxOn,
+                            unitPrice:item.manualPrice=='Y' ? item.rate : null,manualUnitPrice:item.manualPrice=='Y']).call()
                     if(ec.message.hasError()) { ec.web.sendJsonResponse([success:false,error:ec.message.errorsString]); return }
                 }
                 def current=ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',tx).one()
@@ -676,8 +677,8 @@
 </section>
 <#else>
 <div class="kb-wrap" id="kb-wrap">
-  <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=3"/>
-  <link rel="stylesheet" href="/zenithstatic/css/kot-list.css?v=3"/>
+  <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=4"/>
+  <link rel="stylesheet" href="/zenithstatic/css/kot-list.css?v=4"/>
   <input type="hidden" id="kb-token" value="${(ec.web.sessionToken)!''}"/>
   <div id="kb-data" style="display:none" data-session="${billingSession.sessionId?html}" data-display-enabled="${kitchenDisplayEnabled?c}" data-kot-module="${(kitchenModuleId!'pos')?html}" data-stock-session="${((checkoutSessions?size == 1)?then(checkoutSessions[0].id,''))?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}"></div>
 
@@ -729,9 +730,9 @@
   <section class="kb-panel">
     <div class="kb-panel__head"><h2 class="kb-panel__title"><span class="kg-normal"><@ic 'cart' 24/> Bill Items (<span id="kb-list-count">0</span>)</span><span class="kg-only"><@ic 'chef' 24/> KOT Items (<span id="kb-grid-count">0</span>)</span></h2><span class="kb-panel__badge" id="kb-badge">New KOT</span><button type="button" class="kb-clear" id="kb-clear" disabled>Clear Cart</button></div>
     <div class="kb-order-scroll"><table class="kb-otable" aria-label="Current Order"><thead><tr>
-      <th scope="col">#</th><th scope="col">Product</th><th scope="col" class="kg-normal">Mode</th><th scope="col" class="kg-normal">Rate (&#8377;)</th>
+      <th scope="col">#</th><th scope="col">Product</th><th scope="col" class="kg-normal">Mode</th><th scope="col">Rate (&#8377;)</th>
       <th scope="col"><span class="kg-only">Quantity</span><span class="kg-normal">Qty</span></th>
-      <th scope="col" class="r kg-only">Unit Price</th><th scope="col" class="kg-normal">Tax (&#8377;)</th>
+      <th scope="col" class="kg-normal">Tax (&#8377;)</th>
       <th scope="col" class="r"><span class="kg-only">Amount</span><span class="kg-normal">Total (&#8377;)</span></th>
       <th scope="col"><span class="kg-only">Remove</span><span class="kg-normal">Action</span></th>
     </tr></thead><tbody id="kb-cart"></tbody></table>
@@ -740,7 +741,7 @@
     <div class="kb-instr"><label for="kb-instr">Add Note</label><textarea id="kb-instr" rows="1" maxlength="500" placeholder="e.g. No onion, less spicy"></textarea></div>
     <div class="kb-sum kg-only"><div class="kb-sum__row"><span>Items</span><span id="kb-item-count">0</span></div><div class="kb-sum__row"><span>Subtotal</span><span id="kb-subtotal">&#8377;0.00</span></div><div id="kb-tax-rows"></div>
     </div>
-    <p id="kb-quote-error" role="alert"></p><p id="kb-order-status" role="status"></p>
+    <p id="kb-edit-error" role="alert" hidden></p><p id="kb-quote-error" role="alert"></p><p id="kb-order-status" role="status"></p>
     <p id="kb-display-message" <#if kitchenDisplayEnabled>hidden</#if>>Kitchen Display disabled. Use printed KOTs for takeaway, or bill dine-in customers after their meal.</p>
   </section>
   <aside class="kl-side kg-normal">
@@ -771,7 +772,7 @@
       <span>Qty: <b id="kb-list-qty">0</b></span><span>Tax: <b id="kb-list-tax-stat">0</b></span><span>Disc: <b>0</b></span>
     </div>
     <div class="kb-total-row"><span>KOT TOTAL</span><strong id="kb-grand">&#8377;0.00</strong></div>
-    <#if modCanWrite><div class="kb-checkout-actions">
+    <#if modCanWrite><div class="kb-checkout-actions" role="group" aria-label="Payment and kitchen actions">
       <button type="button" id="kb-send" class="kb-action-send" title="Press Shift by itself" disabled><@ic 'printer'/> Send to KOT <kbd>Shift</kbd></button>
       <button type="button" id="kb-bill" class="kb-action-bill" disabled><@ic 'box'/> Bill Out <kbd>Space</kbd></button>
       <#list ['Cash','Card','Credit','UPI','Split'] as tender>
@@ -779,7 +780,7 @@
       </#list>
     </div></#if>
     <div class="kb-search"><@ic 'search'/>
-      <input type="search" id="kb-search" placeholder="Scan barcode, or type product name or code…   ( press / )" autocomplete="off" aria-label="Search products" aria-controls="kb-suggestions" <#if !modCanWrite>disabled</#if>>
+      <input type="search" id="kb-search" placeholder="Scan barcode, or type product name or code…   ( press / )" autocomplete="off" aria-label="Search products" aria-keyshortcuts="/" aria-controls="kb-suggestions" <#if !modCanWrite>disabled</#if>>
       <div id="kb-suggestions" class="kb-suggestions" aria-label="Matching products" hidden></div>
     </div>
   </div>
@@ -816,7 +817,7 @@
   </dialog></#if>
 
   <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" style="display:none"
-       onload="(function(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=list-grid-2';document.head.appendChild(s);})()"/>
+       onload="(function(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=keypad-1';document.head.appendChild(s);})()"/>
 </div>
 </#if>
         ]]></text></render-mode>

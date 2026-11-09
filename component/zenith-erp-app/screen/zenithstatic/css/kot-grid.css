@@ -135,3 +135,15 @@
   #kb-wrap.kg-grid .kb-checkout-actions{grid-template-columns:repeat(3,minmax(0,1fr));order:2}
   #kb-wrap.kg-grid .kb-checkout-actions button{min-height:44px}
 }
+#kb-wrap [data-kb-edit]{
+  box-sizing:border-box;min-width:0;width:100%;padding:6px;border:1px solid #cdd5e4;
+  border-radius:6px;background:#fff;color:#101425;font:inherit;text-align:center;
+}
+#kb-wrap.kg-grid .kb-ostep [data-kb-edit]{width:4em}
+#kb-wrap.kg-grid [data-kb-edit="rate"]{min-width:5em}
+#kb-wrap [data-kb-edit][aria-invalid="true"]{box-shadow:inset 0 0 0 1px #b42318}
+#kb-wrap :is([data-kb-edit],[data-kb-payment]):focus-visible{
+  outline:2px solid #5030b9;outline-offset:-2px;
+}
+#kb-wrap [data-kb-payment][aria-disabled="true"]{opacity:.6;cursor:default}
+#kb-wrap #kb-edit-error{color:#b42318;margin:6px 0}

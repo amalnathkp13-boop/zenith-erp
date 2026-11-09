@@ -134,10 +134,49 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   const beforeFailure=txs();
   const short=await json('checkoutKot',{kotId:draft.data.kotId,sessionId:session.sessionId,paymentMethod:'Cash',cashAmount:'10'});
   check('An underpayment leaves no partial tender or completed sale',!short.data?.success&&JSON.stringify(txs())===JSON.stringify(beforeFailure),short);
-  await post(screen,'deleteDraft',{kotId:draft.data.kotId});
+  await post(screen,'deleteDraft',{sessionId:session.sessionId,kotId:draft.data.kotId});
   await page.locator('#kb-history-open').click();
   await page.locator('#kb-history').getByText(waiterName,{exact:false}).first().waitFor();
   check('Saved checkout is available in the in-page History',new URL(page.url()).pathname.endsWith('/KotBilling'));
+  await page.locator('#kb-history').getByRole('button',{name:'Close',exact:true}).click();
+  for(const [view,option] of [['List',listMode],['Grid',gridMode]]) {
+   await modes.locator('summary').click();
+   await option.click();
+   await page.keyboard.press('NumpadDivide');
+   check(view+' keypad divide focuses product search',await search.evaluate(el=>el===document.activeElement));
+   await page.keyboard.type('Disposable POS A P18');
+   await card.waitFor();
+   await page.keyboard.press('Enter');
+   const rate=page.locator('[data-kb-edit="rate"]'), quantity=page.locator('[data-kb-edit="qty"]');
+   const allSelected=el=>el===document.activeElement&&el.selectionStart===0&&el.selectionEnd===el.value.length;
+   check(view+' Enter selects the entire rate',await rate.evaluate(allSelected));
+   await page.keyboard.type('150');
+   await page.keyboard.press('ArrowRight');
+   check(view+' Right commits the rate and selects the entire quantity',await rate.inputValue()==='150'&&await quantity.evaluate(allSelected));
+   await page.keyboard.type('3');
+   await page.keyboard.press('ArrowDown');
+   check(view+' Down moves from quantity to Cash',await page.locator('[data-kb-payment=Cash]').evaluate(el=>el===document.activeElement));
+   await page.keyboard.press('ArrowRight');
+   await page.keyboard.press('Enter');
+   await page.locator('#kb-payment').waitFor();
+   await page.locator('#kb-grand').getByText('₹450.00').waitFor();
+   check(view+' Right and Enter select Card',await page.locator('#kb-payment-method').inputValue()==='Card');
+   await page.locator('#kb-payment-close').click();
+   if(view==='List'){
+    page.once('dialog',dialog=>dialog.accept());
+    await page.locator('#kb-clear').click();
+    continue;
+   }
+   await page.locator('[data-kb-payment=Card]').focus();
+   await page.keyboard.press('ArrowLeft');
+   await page.keyboard.press('Enter');
+   await page.locator('#kb-payment').waitFor();
+   await page.getByRole('button',{name:'Confirm and print'}).click();
+   await page.locator('#kb-payment').waitFor({state:'hidden'});
+   await page.locator('#kb-order-status').filter({hasText:'Saved bill'}).waitFor();
+   const lines=q("SELECT i.unit_price,i.quantity,i.manual_price,t.payable_amount FROM pos_transaction_item i JOIN pos_transaction t ON t.transaction_id=i.transaction_id WHERE t.session_id='"+session.sessionId+"' AND t.status_id='PtCompleted' AND i.manual_price='Y'");
+   check('Checkout persists the keypad rate and quantity',lines.length===1&&Number(lines[0].unit_price)===150&&Number(lines[0].quantity)===3&&Number(lines[0].payable_amount)===450,lines);
+  }
  }finally{
   await page.close();
   const paid=q("SELECT paid_amount FROM pos_transaction WHERE session_id='"+session.sessionId+"' AND status_id='PtCompleted'").reduce((sum,x)=>sum+Number(x.paid_amount),0);

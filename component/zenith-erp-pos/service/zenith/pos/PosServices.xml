@@ -444,6 +444,7 @@
             <parameter name="productId" required="true"/>
             <parameter name="quantity" type="BigDecimal" default-value="1"/>
             <parameter name="unitPrice" type="BigDecimal"/>
+            <parameter name="manualUnitPrice" type="Boolean" default-value="false"/>
             <parameter name="discountPercent" type="BigDecimal" default-value="0"/>
             <parameter name="salesModeId"/>
             <parameter name="taxOn" default-value="Y"/>
@@ -475,7 +476,7 @@
                  (a unitPrice that differs from the product MRP). Keeps POS, Inventory and Pricing in sync. -->
             <service-call name="zenith.pos.PosModeServices.assert#TerminalMode" in-map="[terminalId:terminal.terminalId,salesModeId:salesModeId]"/>
             <if condition="ec.message.hasError()"><return/></if>
-            <set field="isDefaultPrice" from="unitPrice == null || (product?.mrpAmount != null &amp;&amp; (unitPrice as BigDecimal).compareTo(product.mrpAmount as BigDecimal) == 0)"/>
+            <set field="isDefaultPrice" from="unitPrice == null || (!manualUnitPrice &amp;&amp; product?.mrpAmount != null &amp;&amp; (unitPrice as BigDecimal).compareTo(product.mrpAmount as BigDecimal) == 0)"/>
             <!-- An explicit mode price wins over MRP and price lists. The fixed-mode MRP
                  fallback is also exact. An intentional cashier override remains separate. -->
             <set field="modeIsFixed" from="false"/>

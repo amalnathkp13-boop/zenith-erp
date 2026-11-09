@@ -8,7 +8,8 @@
   const search=$('search'), suggestions=$('suggestions'), cart=new Map();
   const header=root.querySelector('.kg-header'), modesMenu=root.querySelector('.kg-modes');
   const modeOptions=modesMenu.querySelectorAll('[data-kb-view]');
-  const paymentButtons=root.querySelectorAll('[data-kb-payment]');
+  const paymentButtons=Array.from(root.querySelectorAll('[data-kb-payment]'));
+  const cartRows=$('cart'), editError=$('edit-error');
   const cfg=$('data').dataset;
   const shell=location.pathname.startsWith('/qapps/')?'/qapps':'/apps';
   const billingPath='/zenith'+(cfg.kotModule==='kot'?'/kot':'/pos/Kitchen')+'/KotBilling';
@@ -22,6 +23,7 @@
   let searchVersion=0, searchTimer, searchAbort, results=[], selected=0, exactId, ambiguous=false, hasMore=false, offset=0;
   let historyDirty=false, grid=false, pickedMatch=false, categoryId='';
   let customer={}, custVersion=0, custTimer, custAbort;
+  let invalidEdit, pendingTender;
   if(cfg.draftmode && Array.from($('mode').options).some(o=>o.value===cfg.draftmode)) salesModeId=$('mode').value=cfg.draftmode;
   if(cfg.draftwaiter) $('waiter').value=cfg.draftwaiter;
   $('table').value=cfg.drafttable||cfg.selectedTable||'';
@@ -42,7 +44,8 @@
     root.append(form);form.submit();
   }
   const orderData=()=>({orderType,taxOn,salesModeId,tableId:$('table').value,waiterId:$('waiter').value,notes:$('instr').value,customerPartyId:customer.id||'',
-    itemsJson:JSON.stringify(Array.from(cart.values(),it=>({productId:it.id,quantity:it.qty})))});
+    itemsJson:JSON.stringify(Array.from(cart.values(),it=>({productId:it.id,quantity:it.qty,
+      ...(it.manualRate==null?{}:{manualPrice:'Y',unitPrice:it.manualRate})})))});
   function setType(value) {
     orderType=value;
     for(const button of root.querySelectorAll('[data-ot]')) {
@@ -57,17 +60,22 @@
     b.textContent=on?'Tax: ON':'Tax: OFF';b.classList.toggle('is-on',on);b.setAttribute('aria-checked',on);
   }
   function controls() {
-    for(const button of paymentButtons) button.disabled=busy||!cart.size||total===null;
+    const canPay=!busy&&cart.size>0&&total!==null&&editError.hidden;
+    for(const button of paymentButtons) {
+      button.disabled=busy||!cart.size;
+      button.setAttribute('aria-disabled',String(!canPay));
+    }
     $('clear').disabled=busy||!cart.size;
-    for(const id of ['draft','bill']) if($(id)) $(id).disabled=busy||!cart.size||total===null;
+    for(const id of ['draft','bill']) if($(id)) $(id).disabled=!canPay;
     if($('send')) {
       const displayDisabled=cfg.displayEnabled==='false';
-      $('send').disabled=busy||!cart.size||displayDisabled;
+      $('send').disabled=busy||!cart.size||displayDisabled||!editError.hidden;
       $('send').title=displayDisabled?'Kitchen Display is disabled for this shop. Use KOT printing.':'Press Shift by itself';
     }
   }
   function resetOrder() {
     cart.clear();
+    setEditError('');
     draftId='';savedFingerprint='';customer={};
     $('badge').textContent='New KOT';$('instr').value='';
     renderCustomer();
@@ -109,17 +117,43 @@
   function walkInCustomer() {
     customer={};$('customer-dialog')?.close();renderCustomer();quote();
   }
+  function editorFor(id, field) {
+    return cartRows.querySelector('tr[data-product="'+CSS.escape(id)+'"] [data-kb-edit="'+field+'"]');
+  }
+  function focusEditor(input) {
+    if(!input || input.readOnly)return;
+    input.focus();
+    input.select();
+  }
   function rows() {
+    // A quote can finish while a cashier is typing. Keep the uncommitted text and selection.
+    const active=document.activeElement;
+    const editing=active?.dataset.kbEdit && cartRows.contains(active);
+    const cursor=editing && {id:active.closest('tr').dataset.product,field:active.dataset.kbEdit,
+      value:active.value,changed:active.value!==active.defaultValue,start:active.selectionStart,end:active.selectionEnd};
+    const readOnly=search.disabled?' readonly':'';
     const modeName=$('mode').selectedOptions[0]?.textContent||'—';
     $('list-mode').textContent=modeName;
     $('list-waiter').textContent=$('waiter').value?$('waiter').selectedOptions[0]?.textContent:'—';
-    $('cart').innerHTML=Array.from(cart.values(),(it,i)=>'<tr data-product="'+esc(it.id)+'"><td>'+(i+1)+'</td><td><strong>'+esc(it.name)+'</strong><small>'+esc(it.code)+'</small></td>'
+    cartRows.innerHTML=Array.from(cart.values(),(it,i)=>'<tr data-product="'+esc(it.id)+'"><td>'+(i+1)+'</td><td><strong>'+esc(it.name)+'</strong><small>'+esc(it.code)+'</small></td>'
       +'<td class="kg-normal"><span class="kl-line-mode">'+esc(modeName)+'</span></td>'
-      +'<td class="kg-normal"><span class="kl-line-rate">'+cardMoney.format(it.price).replace('₹','').trim()+'</span></td>'
-      +'<td><span class="kb-ostep"><button type="button" data-qty="-1" aria-label="Decrease quantity" '+(it.qty<=1?'disabled':'')+'>−</button><span>'+it.qty+'</span><button type="button" data-qty="1" aria-label="Increase quantity">+</button></span></td>'
-      +'<td class="r kg-only">'+money.format(it.price)+'</td><td class="kg-normal">'+(it.tax==null?'—':money.format(it.tax))+'</td>'
+      +'<td><input type="text" inputmode="decimal" class="kl-line-rate" data-kb-edit="rate" aria-label="Rate for '+esc(it.name)+'" value="'+esc(it.price)+'"'+readOnly+'></td>'
+      +'<td><span class="kb-ostep"><button type="button" data-qty="-1" aria-label="Decrease quantity" '+(it.qty<=1||search.disabled?'disabled':'')+'>−</button><input type="text" inputmode="decimal" data-kb-edit="qty" aria-label="Quantity for '+esc(it.name)+'" value="'+esc(it.qty)+'"'+readOnly+'><button type="button" data-qty="1" aria-label="Increase quantity" '+(search.disabled?'disabled':'')+'>+</button></span></td>'
+      +'<td class="kg-normal">'+(it.tax==null?'—':money.format(it.tax))+'</td>'
       +'<td class="r kb-oamt">'+money.format(it.amount??it.qty*it.price)+'</td>'
       +'<td class="r"><button type="button" class="kb-orm" data-remove="true" aria-label="Remove '+esc(it.name)+'"><span class="kg-only">×</span><svg class="kg-normal" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18m-2 0-1 15H6L5 6m4 0V3h6v3m-5 4v7m4-7v7"/></svg></button></td></tr>').join('');
+    const next=cursor && editorFor(cursor.id,cursor.field);
+    const invalid=invalidEdit && editorFor(invalidEdit.id,invalidEdit.field);
+    if(invalid) {
+      invalid.value=invalidEdit.value;
+      invalid.setAttribute('aria-invalid','true');
+    }
+    if(next) {
+      if(cursor.changed)next.value=cursor.value;
+      next.focus({preventScroll:true});
+      if(!cursor.changed && cursor.start===0 && cursor.end===cursor.value.length)next.select();
+      else next.setSelectionRange(cursor.start,cursor.end);
+    }
     $('cartempty').hidden=cart.size>0;
     $('item-count').textContent=cart.size;
     $('grid-count').textContent=cart.size;
@@ -134,10 +168,11 @@
     $('list-grand').textContent=display(summary?.total);
     $('list-tax-stat').textContent=display(summary?.tax);
   }
-  function quote() {
+  function quote(refreshRows=true) {
     clearTimeout(quoteTimer); const version=++quoteVersion;
+    pendingTender=null;
     for(const item of cart.values())item.tax=null;
-    total=null;controls();rows();
+    total=null;controls();if(refreshRows)rows();
     listTotals(cart.size?null:{});
     $('quote-error').textContent='';
     $('tax-rows').replaceChildren();
@@ -156,8 +191,78 @@
         $('grand').textContent=money.format(total);
         listTotals(receipt.summary);
         $('tax-rows').innerHTML=(receipt.summary.taxBreakdown||[]).map(t=>'<div class="kb-sum__row"><span>'+esc(t.name)+'</span><span>'+money.format(t.amount)+'</span></div>').join('');
+        if(pendingTender && pendingTender===document.activeElement)openPayment(pendingTender.dataset.kbPayment);
+        pendingTender=null;
       }catch(e){if(version===quoteVersion&&root.isConnected)$('quote-error').textContent=e.message;}
     },100);
+  }
+  function setEditError(message, input) {
+    invalidEdit=input && {id:input.closest('tr').dataset.product,field:input.dataset.kbEdit,value:input.value};
+    cartRows.querySelector('[aria-invalid="true"]')?.removeAttribute('aria-invalid');
+    if(input)input.setAttribute('aria-invalid','true');
+    editError.textContent=message;
+    editError.hidden=!message;
+  }
+  function commitEdit(input) {
+    if(input.readOnly||busy)return false;
+    if(input.value===input.defaultValue) {
+      if(input.hasAttribute('aria-invalid')){setEditError('');controls();}
+      return true;
+    }
+    const item=cart.get(input.closest('tr').dataset.product);
+    const rate=input.dataset.kbEdit==='rate';
+    const raw=input.value.trim(), value=Number(raw);
+    const decimal=rate?/^(?:\d+(?:\.\d{0,2})?|\.\d{1,2})$/:/^(?:\d+(?:\.\d{0,6})?|\.\d{1,6})$/;
+    if(!decimal.test(raw)||value>(rate?10000000:1000000)||(!rate&&value<=0)) {
+      setEditError(rate?'Enter a rate from 0 to 10,000,000 with up to two decimal places.':'Enter a positive quantity up to 1,000,000 with up to six decimal places.',input);
+      controls();
+      return false;
+    }
+    if(input.hasAttribute('aria-invalid'))setEditError('');
+    input.defaultValue=input.value=String(value);
+    if(rate){item.manualRate=value;item.price=value;}
+    else item.qty=value;
+    item.amount=null;
+    quote(false);
+    return true;
+  }
+  cartRows.addEventListener('change',e=>{
+    if(e.target.dataset.kbEdit)commitEdit(e.target);
+  });
+  cartRows.addEventListener('keydown',e=>{
+    const input=e.target, field=input.dataset.kbEdit;
+    if(!field||e.isComposing||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey)return;
+    const id=input.closest('tr').dataset.product;
+    if(e.key==='Escape' && (input.value!==input.defaultValue || input.hasAttribute('aria-invalid'))) {
+      e.preventDefault();
+      input.value=input.defaultValue;
+      if(input.hasAttribute('aria-invalid'))setEditError('');
+      controls();input.select();
+      return;
+    }
+    const toQty=field==='rate' && (e.key==='ArrowRight'||e.key==='Enter');
+    const toRate=field==='qty' && e.key==='ArrowLeft';
+    const toPayment=e.key==='ArrowDown'||(field==='qty'&&e.key==='Enter');
+    if(!toQty&&!toRate&&!toPayment)return;
+    e.preventDefault();
+    if(!commitEdit(input))return;
+    if(toPayment)paymentButtons[0]?.focus();
+    else focusEditor(editorFor(id,toQty?'qty':'rate'));
+  });
+  for(const [index,button] of paymentButtons.entries()) {
+    button.addEventListener('blur',()=>{if(pendingTender===button)pendingTender=null;});
+    button.addEventListener('keydown',e=>{
+      if(e.ctrlKey||e.metaKey||e.altKey||e.shiftKey)return;
+      if(e.key==='Enter'&&total===null&&!busy&&!invalidEdit&&!$('quote-error').textContent) {
+        // A fast cashier may pick the tender while the latest quote is still in flight.
+        e.preventDefault();
+        pendingTender=button;
+      } else if(e.key==='ArrowRight'||e.key==='ArrowLeft') {
+        e.preventDefault();
+        const step=e.key==='ArrowRight'?1:-1;
+        paymentButtons[(index+step+paymentButtons.length)%paymentButtons.length].focus();
+      }
+    });
   }
   function renderMatches(message) {
     const term=search.value.trim();
@@ -263,12 +368,14 @@
   }
   root.addEventListener('fullscreenchange',syncFullscreen);
   root.addEventListener('webkitfullscreenchange',syncFullscreen);
-  function choose(index) {
+  function choose(index, byKeyboard=false) {
     const item=results[index];if(!item||busy||search.disabled)return;
     if(item.price==null){renderMatches(item.reason||'No price for this sales mode.');return;}
     if(cart.has(item.id)){const row=cart.get(item.id);row.qty++;row.amount=null;}
     else cart.set(item.id,{...item,qty:1});
-    clearSearch();quote();search.focus({preventScroll:grid});
+    clearSearch();quote();
+    if(byKeyboard)focusEditor(editorFor(item.id,'rate'));
+    else search.focus({preventScroll:grid});
   }
   search.addEventListener('input',()=>{
     clearTimeout(searchTimer);++searchVersion;searchAbort?.abort();results=[];selected=0;pickedMatch=false;exactId=null;ambiguous=false;hasMore=false;
@@ -288,7 +395,7 @@
     if(!results.length&&!(await lookup()))return;
     if(ambiguous&&!pickedMatch){renderMatches('Choose a match with the mouse or arrow keys before adding.');return;}
     if(!pickedMatch&&!exactId&&/^\d{8,}$/.test(search.value.trim())){renderMatches('Barcode not found. Check the code or choose a matching product.');return;}
-    if(results.length)choose(selected);
+    if(results.length)choose(selected,true);
   });
   suggestions.addEventListener('click',e=>{
     if(e.target.closest('#kb-more')){lookup(true);return;}
@@ -407,7 +514,7 @@
     }
     else if(button.dataset.kbPayment)openPayment(button.dataset.kbPayment);
     else if(button.id==='kb-fullscreen')toggleFullscreen();
-    else if(button.id==='kb-clear'&&confirm('Clear the unsent items from this order?')){cart.clear();quote();}
+    else if(button.id==='kb-clear'&&confirm('Clear the unsent items from this order?')){cart.clear();setEditError('');quote();}
     else if(button.id==='kb-history-open')showHistory();
     else if(button.id==='kb-bill')openPayment();
     else if(button.id==='kb-send')sendToKitchen();
@@ -426,13 +533,14 @@
       if(confirm('Discard this held order?'))post('deleteDraft',{kotId:button.dataset.kotDiscard});
     }else if(button.dataset.remove||button.dataset.qty){
       const id=button.closest('tr').dataset.product,it=cart.get(id);
-      if(button.dataset.remove)cart.delete(id);
+      if(button.dataset.remove){cart.delete(id);if(invalidEdit?.id===id)setEditError('');}
       else{it.qty=Math.max(1,it.qty+Number(button.dataset.qty));it.amount=null;}
       quote();
     }
   });
   $('mode').addEventListener('change',()=>{
     if(cart.size&&!confirm('Update the cart? Existing items will be repriced for the selected sales mode.')){$('mode').value=salesModeId;return;}
+    for(const item of cart.values())delete item.manualRate;
     salesModeId=$('mode').value;quote();lookup();
   });
   $('table').addEventListener('change',quote);
@@ -462,7 +570,14 @@
       if(grid&&paymentButtons.length&&/^F[2-6]$/.test(e.key)){
         e.preventDefault();paymentButtons[Number(e.key.slice(1))-2].click();return;
       }
-      if(e.key==='/'&&!editable(e)){e.preventDefault();search.focus();return;}
+      if(e.key==='/'&&!e.defaultPrevented&&!search.disabled) {
+        const editor=e.target?.dataset.kbEdit;
+        if(editor || !e.target?.closest?.('input,textarea,select,[contenteditable]')) {
+          e.preventDefault();
+          if(!editor||commitEdit(e.target))search.focus();
+          return;
+        }
+      }
     }
     if(e.repeat||e.isComposing||e.ctrlKey||e.metaKey||e.altKey||editable(e)||root.querySelector('dialog[open]'))return;
     if(e.key==='Shift')shiftAlone=true;
@@ -473,7 +588,8 @@
   const snapshot=JSON.parse(cfg.draftreceipt||'[]');
   for(const item of JSON.parse(cfg.draftload||'[]')){
     const saved=snapshot.find(row=>row.productId===item.productId);
-    cart.set(item.productId,{id:item.productId,name:item.productName,code:saved?.code||item.productId,price:Number(saved?.rate)||0,qty:Number(item.quantity)});
+    cart.set(item.productId,{id:item.productId,name:item.productName,code:saved?.code||item.productId,price:Number(saved?.rate)||0,qty:Number(item.quantity),
+      manualRate:saved?.manualPrice==='Y'?Number(saved.rate):undefined});
   }
   if(draftId){$('badge').textContent='Editing Held Order';$('instr').value=cfg.draftinstr||'';}
   positionCustomerButton();updateHeader();setType(orderType);paintTax();renderCustomer();quote();
