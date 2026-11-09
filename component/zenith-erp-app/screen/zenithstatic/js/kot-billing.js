@@ -59,6 +59,7 @@
   function controls() {
     for(const button of paymentButtons) button.disabled=busy||!cart.size||total===null;
     $('clear').disabled=busy||!cart.size;
+    if($('close-session')) $('close-session').disabled=busy;
     for(const id of ['draft','bill']) if($(id)) $(id).disabled=busy||!cart.size||total===null;
     if($('send')) {
       const displayDisabled=cfg.displayEnabled==='false';
@@ -296,14 +297,36 @@
     if($('payment-method')){$('payment-method').value=method;tenderFields();}
     if($('payment-error'))$('payment-error').textContent='';
     $('payment').showModal();
+    $('cash')?.focus();
   }
   function tenderFields() {
-    const method=$('payment-method').value;
-    for(const label of $('payment').querySelectorAll('[data-kb-tender]')){
+    const method=$('payment-method').value, cash=method==='Cash', slot=$('cash-slot'), dialog=$('payment');
+    dialog.classList.toggle('kb-cash-dialog',cash);
+    dialog.setAttribute('aria-labelledby',cash?'pos-cash-title':'kb-payment-title');
+    $('payment-heading').hidden=$('other-payment').hidden=cash;
+    $('other-payment').querySelector('[type=submit]').disabled=cash;
+    for(const label of dialog.querySelectorAll('[data-kb-tender]')){
       const shown=label.dataset.kbTender.split(' ').includes(method);label.hidden=!shown;
       label.querySelector('input').disabled=!shown;
     }
-    $('cash').value=method==='Cash'?total.toFixed(2):'';
+    slot.innerHTML=cash?PosTillDialogs.cashMarkup(total,true):'';
+    if(cash){
+      const input=slot.querySelector('.pos-cash-input');
+      input.id='kb-cash';slot.querySelector('label').htmlFor=input.id;
+      input.addEventListener('input',()=>PosTillDialogs.updateCash(slot,total));
+    }
+  }
+  async function openSessionClose() {
+    if(!$('close-session')||busy||document.getElementById('posCloseSessionOverlay'))return;
+    busy=true;controls();
+    try {
+      const {summary}=await request('sessionDrawer',{});
+      PosTillDialogs.openClose({sessionId:cfg.session,summary,
+        warning:cart.size && (!draftId||savedFingerprint!==JSON.stringify(orderData())) ? 'Unsent items will be discarded when this session closes. Cancel to hold the order first.' : '',
+        close:closingCash=>request('sessionDrawer',{drawerAction:'close',closingCash}),
+        onClosed:()=>location.assign(base)});
+    } catch(error){ $('order-status').textContent=error.message; }
+    finally{busy=false;controls();}
   }
   async function printBill(kotId,isTakeAway,w,kitchenWindow) {
     let error;
@@ -322,25 +345,32 @@
   async function pay(e) {
     e.preventDefault();if(busy||total===null)return;
     let w,kitchenWindow,finalized=false;
-    const form=e.currentTarget, submit=form.querySelector('[type=submit]');
+    const form=e.currentTarget, cash=$('payment-method').value==='Cash';
+    const submit=cash?$('cash-slot').querySelector('[type=submit]'):$('other-payment').querySelector('[type=submit]');
+    const cancel=cash?$('cash-slot').querySelector('.pos-cash-cancel'):$('payment-close');
+    if(cash&&!PosTillDialogs.updateCash($('cash-slot'),total))return;
     const payment=Object.fromEntries(new FormData(form)), data=orderData(), fingerprint=JSON.stringify(data);
     const isTakeAway=orderType==='Take Away';
     try{
       // A blocked popup never prevents a sale from saving; history remains the print fallback.
       try{w=KitchenPrint.open();}catch(_){}
       if(w&&isTakeAway){try{kitchenWindow=KitchenPrint.open();}catch(_){}}
-      busy=true;controls();submit.disabled=true;$('payment-close').disabled=true;$('payment-error').textContent='';
+      busy=true;controls();submit.disabled=true;cancel.disabled=true;$('payment-error').textContent='';
       if(!draftId||fingerprint!==savedFingerprint){
         const saved=await request('saveDraft',{...data,existingDraftId:draftId,wantJson:'Y'});
-        draftId=saved.kotId;savedFingerprint=fingerprint;
-        if(Number(saved.total)!==total)throw Error('The order total changed. Close checkout and review the total before confirming again.');
+        draftId=saved.kotId;
+        if(Number(saved.total)!==total){
+          $('payment').close();quote();
+          $('order-status').textContent='The order total changed. Review it before taking payment.';return;
+        }
+        savedFingerprint=fingerprint;
       }
       const bill=await request('checkoutKot',{...payment,kotId:draftId});
       finalized=true;historyDirty=true;
       $('list-last-bill').textContent=bill.billNumber;
       $('list-last-amount').textContent=$('list-last-stat').textContent=money.format(total);
       $('payment').close();resetOrder();
-      $('order-status').textContent='Saved bill '+bill.billNumber+'.';
+      $('order-status').textContent='Saved bill '+bill.billNumber+'.'+(Number(bill.changeAmount)>0?' Change given: '+money.format(bill.changeAmount)+'.':'');
       const status=$('order-status');
       if(w)await printBill(bill.kotId,isTakeAway,w,kitchenWindow);
       else status.textContent+=' Allow pop-ups and reprint from History.';
@@ -349,7 +379,8 @@
       else $('payment-error').textContent=error.message;
     }finally{
       if(w&&!w.closed)w.close();if(kitchenWindow&&!kitchenWindow.closed)kitchenWindow.close();
-      busy=false;controls();submit.disabled=false;$('payment-close').disabled=false;
+      busy=false;controls();cancel.disabled=false;
+      if(cash)PosTillDialogs.updateCash($('cash-slot'),total);else submit.disabled=false;
     }
   }
   function filterHistory(){
@@ -402,6 +433,7 @@
     }
     else if(button.dataset.kbPayment)openPayment(button.dataset.kbPayment);
     else if(button.id==='kb-fullscreen')toggleFullscreen();
+    else if(button.id==='kb-close-session')openSessionClose();
     else if(button.id==='kb-clear'&&confirm('Clear the unsent items from this order?')){cart.clear();quote();}
     else if(button.id==='kb-history-open')showHistory();
     else if(button.id==='kb-bill')openPayment();
@@ -410,7 +442,10 @@
       busy=true;controls();
       post('saveDraft',{...orderData(),existingDraftId:draftId});
     }
-    else if(button.id==='kb-payment-close')$('payment').close();
+    else if(button.classList.contains('pos-cash-quick')&&!busy){
+      $('cash').value=button.dataset.amt;PosTillDialogs.updateCash($('cash-slot'),total);
+    }
+    else if(button.id==='kb-payment-close'||button.classList.contains('pos-cash-cancel'))$('payment').close();
     else if(button.id==='kb-customer-open'||button.hasAttribute('data-kb-customer-change'))openCustomerDialog();
     else if(button.id==='kb-customer-walkin')walkInCustomer();
     else if(button.id==='kb-customer-close')$('customer-dialog')?.close();
@@ -452,7 +487,9 @@
     if(e.key==='Escape'&&modesMenu.open){
       modesMenu.open=false;modesMenu.querySelector('summary').focus();return;
     }
+    if(document.getElementById('posCloseSessionOverlay'))return;
     if(!e.repeat&&!e.isComposing&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.shiftKey&&!root.querySelector('dialog[open]')){
+      if(e.key.toLowerCase()==='c'&&$('close-session')&&!e.target?.closest?.('input,textarea,select,[contenteditable]')){e.preventDefault();openSessionClose();return;}
       if(grid&&e.key==='F10'){e.preventDefault();showHistory();return;}
       if(grid&&paymentButtons.length&&/^F[2-6]$/.test(e.key)){
         e.preventDefault();paymentButtons[Number(e.key.slice(1))-2].click();return;

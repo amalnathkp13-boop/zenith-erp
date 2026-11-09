@@ -7,8 +7,7 @@ const source=fs.readFileSync(path.join(root,'component/zenith-erp-app/screen/zen
 const start=source.indexOf('function submitPosPaymentForm(form)'),end=source.indexOf('window.posPayDigital = function(form)',start);
 if(start<0||end<start)throw Error('Production modal function not found');
 const css=['zenith-theme-v4.css','pos-checkout.css'].map(n=>fs.readFileSync(path.join(root,'component/zenith-erp-app/screen/zenithstatic/css',n),'utf8')).join('\n');
-const panel=source.match(/'<input type="number" class="pos-cash-input"[^\n]+?\/>/);
-if(!panel)throw Error('Production panel input not found');
+const shared=fs.readFileSync(path.join(root,'component/zenith-erp-app/screen/zenithstatic/js/pos-till-dialogs.js'),'utf8');
 const results=[];
 async function run(){for(const engine of (process.env.POS_CASH_BROWSERS||'chrome,edge,webkit').split(',')){
  if(!['chrome','edge','webkit'].includes(engine))throw Error('Unknown browser');
@@ -16,8 +15,10 @@ async function run(){for(const engine of (process.env.POS_CASH_BROWSERS||'chrome
  try{for(const dark of [false,true])for(const due of [247,118]){
   const p=await browser.newPage({viewport:{width:800,height:900}}),name=`${engine} ${dark?'dark':'light'} due ${due}`;
   try{
-   await p.setContent('<body><form id="cash"><input name="amount" type="hidden" value="'+due+'"></form><div class="pos-cash-panel">'+panel[0].slice(1)+'</div></body>');
+   await p.setContent('<body><form id="cash"><input name="amount" type="hidden" value="'+due+'"></form></body>');
    await p.addStyleTag({content:css});await p.evaluate(d=>document.body.classList.toggle('body--dark',d),dark);
+   await p.addScriptTag({content:shared});
+   await p.evaluate(d=>document.body.insertAdjacentHTML('beforeend',window.PosTillDialogs.cashMarkup(d)),due);
    await p.addScriptTag({content:source.slice(start,end)});
    await p.evaluate(()=>{const f=document.getElementById('cash');f.addEventListener('submit',e=>{e.preventDefault();window.submits=(window.submits||0)+1;});window.posPayCash(f);});
    for(const selector of ['#posCashRecv','.pos-cash-input'])for(const state of ['default','focused','filled','blurred']){

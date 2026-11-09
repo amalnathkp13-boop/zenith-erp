@@ -52,6 +52,37 @@
         <default-response type="none"/>
     </transition>
 
+    <transition name="sessionDrawer" method="post" begin-transaction="true">
+        <actions><script><![CDATA[
+            def fail={ String reason -> ec.message.addError(reason); ec.web.sendJsonResponse([success:false,error:reason]) }
+            def sid=ec.context.sessionId
+            def access=ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess')
+                .parameter('moduleId',ec.context.kitchenModuleId ?: 'pos').call()
+            if(!sid || access.canWrite!=true) { fail('KOT write access and an open session are required.'); return }
+            def billing=ec.service.sync().name('zenith.pos.KotServices.get#BillingSession').parameter('sessionId',sid).call()
+            if(ec.message.hasError() || !billing?.terminal) {
+                ec.web.sendJsonResponse([success:false,error:ec.message.errorsString ?: 'Choose your open terminal session.']); return
+            }
+            if(ec.context.drawerAction=='close') {
+                BigDecimal amount
+                try { amount=new BigDecimal(ec.context.closingCash?.toString() ?: '') }
+                catch(NumberFormatException ignored) { fail('Enter a valid closing cash amount.'); return }
+                if(amount<0 || amount.scale()>2) { fail('Enter a non-negative closing cash amount with at most two decimals.'); return }
+                try {
+                    ec.service.sync().name('zenith.pos.PosServices.close#PosSession').parameters([sessionId:sid,closingCash:amount]).call()
+                } catch(Exception failure) {
+                    ec.transaction.setRollbackOnly('KOT session close failed',failure)
+                    if(!ec.message.hasError()) ec.message.addError('Session could not be closed. No changes were saved.')
+                }
+                ec.web.sendJsonResponse([success:!ec.message.hasError(),error:ec.message.errorsString]); return
+            }
+            def drawer=ec.service.sync().name('zenith.pos.PosServices.get#PosSessionCashSummary')
+                .parameters([sessionId:sid,includeCheckoutSummary:true]).call()
+            ec.web.sendJsonResponse([success:!ec.message.hasError() && drawer?.checkoutSummary!=null,
+                summary:drawer?.checkoutSummary,error:ec.message.errorsString])
+        ]]></script></actions><default-response type="none"/>
+    </transition>
+
     <transition name="createKot" method="post" begin-transaction="true">
         <actions>
             <script><![CDATA[
@@ -463,7 +494,7 @@
             def bill=billScope.allowed ? ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',kot.transactionId)
                 .condition('sessionId',sid).condition('statusId','PtCompleted').one() : null
             if(!bill) { reject('This order was already billed on another session.'); return }
-            ec.web.sendJsonResponse([success:true,kotId:kid,billNumber:bill.transactionNumber])
+            ec.web.sendJsonResponse([success:true,kotId:kid,billNumber:bill.transactionNumber,changeAmount:bill.changeAmount ?: 0G])
         ]]></script></actions><default-response type="none"/>
     </transition>
 
@@ -625,6 +656,7 @@
 <#elseif name=='clock'><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
 <#elseif name=='save'><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/>
 <#elseif name=='printer'><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/>
+<#elseif name=='close-session'><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h7"/>
 <#elseif name=='fullscreen'><path d="M8 3H3v5m13-5h5v5m0 8v5h-5M3 16v5h5"/>
 <#elseif name=='chef'><path d="M6 13a4 4 0 1 1 2-7 4 4 0 0 1 8 0 4 4 0 1 1 2 7v7H6zm0 4h12m-9-5v2m6-2v2"/>
 <#elseif name=='cash'><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 12h.01M18 12h.01"/>
@@ -676,7 +708,8 @@
 </section>
 <#else>
 <div class="kb-wrap" id="kb-wrap">
-  <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=4"/>
+  <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=6"/>
+  <link rel="stylesheet" href="/zenithstatic/css/pos-checkout.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/pos-checkout.css').getLastModified()?c}"/>
   <link rel="stylesheet" href="/zenithstatic/css/kot-list.css?v=4"/>
   <input type="hidden" id="kb-token" value="${(ec.web.sessionToken)!''}"/>
   <div id="kb-data" style="display:none" data-session="${billingSession.sessionId?html}" data-display-enabled="${kitchenDisplayEnabled?c}" data-kot-module="${(kitchenModuleId!'pos')?html}" data-stock-session="${((checkoutSessions?size == 1)?then(checkoutSessions[0].id,''))?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}"></div>
@@ -711,7 +744,10 @@
     </select></label>
     <label class="kb-fld">Waiter<select id="kb-waiter"><option value="">Choose waiter</option><#list waiters as w><option value="${w.waiterId?html}">${w.waiterName?html}</option></#list></select></label>
     <label class="kb-fld">Sales Mode<select id="kb-mode"><#if !modes?has_content><option value="">Standard</option></#if><#list modes as m><option value="${m.salesModeId?html}">${m.modeName?html}</option></#list></select></label>
-    <button type="button" class="kb-control" id="kb-fullscreen" title="Enter fullscreen"><@ic 'fullscreen'/><span id="kb-fullscreen-label">Enter fullscreen</span></button>
+    <div class="kb-toolbar-end">
+      <#if modCanWrite><button type="button" class="kb-control" id="kb-close-session" aria-label="Close session" aria-keyshortcuts="C" title="Review cash and close this POS session"><@ic 'close-session' 22/> Close session <kbd aria-hidden="true">C</kbd></button></#if>
+      <button type="button" class="kb-control" id="kb-fullscreen" title="Enter fullscreen"><@ic 'fullscreen'/><span id="kb-fullscreen-label">Enter fullscreen</span></button>
+    </div>
   </div>
 
   <p id="kb-fullscreen-status" role="status"></p>
@@ -791,18 +827,22 @@
     </div><p id="kb-history-empty" hidden>No matching orders.</p><form method="dialog"><button class="kb-control">Close</button></form>
   </dialog>
   <#if modCanWrite><dialog id="kb-payment" class="zk-history-view" aria-labelledby="kb-payment-title">
-    <h2 id="kb-payment-title">Bill Out</h2><p id="kb-payment-total"></p>
+    <div id="kb-payment-heading"><h2 id="kb-payment-title">Bill Out</h2><p id="kb-payment-total"></p></div>
     <#if checkoutSessions?has_content><form id="kb-payment-form">
+      <input type="hidden" name="sessionId" value="${billingSession.sessionId?html}"/>
+      <div id="kb-cash-slot"></div>
+      <div id="kb-other-payment">
       <div class="kb-dialog-fields">
-        <input type="hidden" name="sessionId" value="${billingSession.sessionId?html}"/><p>Terminal: ${(billingTerminal.terminalName!billingTerminal.terminalId)?html}</p>
+        <p>Terminal: ${(billingTerminal.terminalName!billingTerminal.terminalId)?html}</p>
         <label>Payment method<select name="paymentMethod" id="kb-payment-method"><option>Cash</option><option>Card</option><option>UPI</option><option>Split</option><option>Credit</option></select></label>
-        <label data-kb-tender="Cash Split">Cash received<input name="cashAmount" id="kb-cash" type="number" min="0" step="0.01" inputmode="decimal"></label>
+        <label data-kb-tender="Split" hidden>Cash received<input name="cashAmount" type="number" min="0" step="0.01" inputmode="decimal"></label>
         <label data-kb-tender="Split" hidden>Card amount<input name="cardAmount" type="number" min="0" step="0.01"></label>
         <label data-kb-tender="Split" hidden>UPI amount<input name="upiAmount" type="number" min="0" step="0.01"></label>
         <label data-kb-tender="Card UPI Split" hidden>Payment reference<input name="referenceNumber" maxlength="80"></label>
         <label data-kb-tender="Credit" hidden>Customer name<input name="customerName" maxlength="80"></label>
         <label data-kb-tender="Credit" hidden>Customer phone<input name="customerPhone" type="tel" maxlength="20"></label>
-      </div><p id="kb-payment-error" role="alert"></p><button class="kb-action-bill" type="submit">Confirm and print</button><button class="kb-control" type="button" id="kb-payment-close">Cancel</button>
+      </div><button class="kb-action-bill" type="submit">Confirm and print</button><button class="kb-control" type="button" id="kb-payment-close">Cancel</button></div>
+      <p id="kb-payment-error" role="alert"></p>
     </form><#else><p>Open a POS session on your assigned terminal before taking payment. You can still hold your order.</p><form method="dialog"><button class="kb-control">Close</button></form></#if>
   </dialog></#if>
   <#if modCanWrite><dialog id="kb-customer-dialog" class="zk-history-view" aria-labelledby="kb-customer-title">
@@ -814,7 +854,7 @@
   </dialog></#if>
 
   <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" style="display:none"
-       onload="(function(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=pos-layout-1';document.head.appendChild(s);})()"/>
+       onload="(function(){function boot(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=pos-layout-2';document.head.appendChild(s);}if(window.PosTillDialogs){boot();return;}var shared=document.createElement('script');shared.src='/zenithstatic/js/pos-till-dialogs.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-till-dialogs.js').getLastModified()?c}';shared.onload=boot;document.head.appendChild(shared);})()"/>
 </div>
 </#if>
         ]]></text></render-mode>
