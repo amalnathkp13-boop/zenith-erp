@@ -44,6 +44,20 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await card.waitFor();
   check('Grid View shows a product catalogue with empty search',await search.inputValue()===''&&
    await page.locator('#kb-product-grid .kb-results-grid').isVisible());
+  await search.fill('Disposable');
+  const gridResults=page.locator('#kb-suggestions');
+  await page.waitForFunction(()=>document.querySelectorAll('#kb-suggestions [data-result]').length>=5);
+  const columns=await gridResults.evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length);
+  const resultCount=await gridResults.locator('[data-result]').count();
+  const activeResult=()=>gridResults.locator('.is-active').getAttribute('data-result');
+  for(const [key,index] of [['ArrowRight',1],['ArrowDown',Math.min(columns+1,resultCount-1)],['ArrowLeft',columns],['ArrowUp',0]]) {
+   await search.press(key);
+   check('Grid '+key+' selects the spatial neighbor',Number(await activeResult())===index);
+  }
+  await gridResults.locator('[data-result="0"]').focus();
+  await page.keyboard.press('ArrowRight');
+  check('Grid arrows also move focus between cards',await gridResults.locator('[data-result="1"]').evaluate(el=>el===document.activeElement));
+  await search.press('Escape');
   await modes.locator('summary').click();
   check('Grid View is selected in Modes',await gridMode.getAttribute('aria-pressed')==='true');
   await page.locator('.kg-categories button').first().click();
@@ -142,6 +156,9 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   for(const [view,option] of [['List',listMode],['Grid',gridMode]]) {
    await modes.locator('summary').click();
    await option.click();
+   const headers=await page.locator('.kb-otable th:visible').allInnerTexts();
+   const rateIndex=headers.findIndex(t=>/^Rate/i.test(t));
+   check(view+' puts Rate immediately before Quantity',rateIndex>=0&&rateIndex+1===headers.findIndex(t=>/^(Qty|Quantity)$/i.test(t)),headers);
    await page.keyboard.press('NumpadDivide');
    check(view+' keypad divide focuses product search',await search.evaluate(el=>el===document.activeElement));
    await page.keyboard.type('Disposable POS A P18');

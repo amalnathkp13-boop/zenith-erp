@@ -677,10 +677,10 @@
 </section>
 <#else>
 <div class="kb-wrap" id="kb-wrap">
-  <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=4"/>
+  <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=5"/>
   <link rel="stylesheet" href="/zenithstatic/css/kot-list.css?v=4"/>
   <input type="hidden" id="kb-token" value="${(ec.web.sessionToken)!''}"/>
-  <div id="kb-data" style="display:none" data-session="${billingSession.sessionId?html}" data-display-enabled="${kitchenDisplayEnabled?c}" data-kot-module="${(kitchenModuleId!'pos')?html}" data-stock-session="${((checkoutSessions?size == 1)?then(checkoutSessions[0].id,''))?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}"></div>
+  <div id="kb-data" style="display:none" data-session="${billingSession.sessionId?html}" data-user="${(ec.user.userId!'')?html}" data-display-enabled="${kitchenDisplayEnabled?c}" data-kot-module="${(kitchenModuleId!'pos')?html}" data-stock-session="${((checkoutSessions?size == 1)?then(checkoutSessions[0].id,''))?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}"></div>
 
 
   <header class="kg-header">
@@ -729,8 +729,15 @@
   <div class="kl-workspace">
   <section class="kb-panel">
     <div class="kb-panel__head"><h2 class="kb-panel__title"><span class="kg-normal"><@ic 'cart' 24/> Bill Items (<span id="kb-list-count">0</span>)</span><span class="kg-only"><@ic 'chef' 24/> KOT Items (<span id="kb-grid-count">0</span>)</span></h2><span class="kb-panel__badge" id="kb-badge">New KOT</span><button type="button" class="kb-clear" id="kb-clear" disabled>Clear Cart</button></div>
+    <div id="kb-session-notice" hidden>
+      <p id="kb-session-message" role="alert"></p>
+      <a class="kb-control" href="/Login" target="_blank" rel="noopener">Sign in again</a>
+      <button class="kb-control" id="kb-resume" type="button">Resume billing</button>
+    </div>
+    <#if modCanWrite><p id="kb-key-help"><span><kbd>/</kbd> Search</span> <span><kbd><span class="kg-only">←</span>↑↓<span class="kg-only">→</span></kbd> Choose item</span> <span><kbd>Enter</kbd> Add and edit rate</span> <span><kbd>→</kbd> Quantity</span> <span><kbd>↓</kbd> Payment</span> <span><kbd>←→</kbd> Choose method</span></p></#if>
     <div class="kb-order-scroll"><table class="kb-otable" aria-label="Current Order"><thead><tr>
-      <th scope="col">#</th><th scope="col">Product</th><th scope="col" class="kg-normal">Mode</th><th scope="col">Rate (&#8377;)</th>
+      <th scope="col">#</th><th scope="col">Product</th><th scope="col" class="kg-normal">Mode</th>
+      <th scope="col">Rate (&#8377;)</th>
       <th scope="col"><span class="kg-only">Quantity</span><span class="kg-normal">Qty</span></th>
       <th scope="col" class="kg-normal">Tax (&#8377;)</th>
       <th scope="col" class="r"><span class="kg-only">Amount</span><span class="kg-normal">Total (&#8377;)</span></th>
@@ -780,7 +787,8 @@
       </#list>
     </div></#if>
     <div class="kb-search"><@ic 'search'/>
-      <input type="search" id="kb-search" placeholder="Scan barcode, or type product name or code…   ( press / )" autocomplete="off" aria-label="Search products" aria-keyshortcuts="/" aria-controls="kb-suggestions" <#if !modCanWrite>disabled</#if>>
+      <input type="search" id="kb-search" placeholder="Scan barcode, or type product name or code… ( / )" autocomplete="off" aria-label="Search products" aria-keyshortcuts="/" aria-controls="kb-suggestions" <#if modCanWrite>aria-describedby="kb-key-help"<#else>disabled</#if>>
+      <span id="kb-match-status" role="status"></span>
       <div id="kb-suggestions" class="kb-suggestions" aria-label="Matching products" hidden></div>
     </div>
   </div>
@@ -817,7 +825,7 @@
   </dialog></#if>
 
   <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" style="display:none"
-       onload="(function(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=keypad-1';document.head.appendChild(s);})()"/>
+       onload="(function(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=keypad-2';document.head.appendChild(s);})()"/>
 </div>
 </#if>
         ]]></text></render-mode>

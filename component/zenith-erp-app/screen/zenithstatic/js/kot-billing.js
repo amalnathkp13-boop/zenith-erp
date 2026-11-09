@@ -17,25 +17,61 @@
   const money=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR'});
   const cardMoney=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',minimumFractionDigits:0});
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const token=()=>window.moqui?.webrootVue?.moquiSessionToken||$('token').value;
+  const token=()=>$('token').value||window.moqui?.webrootVue?.moquiSessionToken;
   let orderType=cfg.drafttype||'Dine In', taxOn=cfg.drafttax||'Y', draftId=cfg.draftid||'';
   let salesModeId=$('mode').value, quoteVersion=0, quoteTimer, total=null, busy=false, savedFingerprint='';
   let searchVersion=0, searchTimer, searchAbort, results=[], selected=0, exactId, ambiguous=false, hasMore=false, offset=0;
   let historyDirty=false, grid=false, pickedMatch=false, categoryId='';
   let customer={}, custVersion=0, custTimer, custAbort;
-  let invalidEdit, pendingTender;
+  let invalidEdit, pendingTender, sessionLost=false;
+  const signInMessage='Sign in again to continue billing.';
   if(cfg.draftmode && Array.from($('mode').options).some(o=>o.value===cfg.draftmode)) salesModeId=$('mode').value=cfg.draftmode;
   if(cfg.draftwaiter) $('waiter').value=cfg.draftwaiter;
   $('table').value=cfg.drafttable||cfg.selectedTable||'';
 
   async function request(action,data,signal) {
+    if(sessionLost)throw Error(signInMessage);
     const response=await fetch(base+'/'+action,{method:'POST',credentials:'same-origin',signal,
       body:new URLSearchParams({...data,sessionId:cfg.session,moquiSessionToken:token()})});
+    if(response.status===401||/\/Login\/?$/i.test(new URL(response.url,location.href).pathname)) {
+      if(root.isConnected&&!sessionLost) {
+        sessionLost=true;
+        $('session-message').textContent='Your sign-in ended. The unsent order is still here.';
+        $('session-notice').hidden=false;
+        quote(false);
+      }
+      throw Error(signInMessage);
+    }
     const result=await response.json().catch(()=>null);
     if(!response.ok||!result?.success) throw Error(result?.error||'The request could not be completed. Check your connection and try again.');
     return result;
   }
+  async function resumeBilling() {
+    const button=$('resume');
+    button.disabled=true;
+    try {
+      const response=await fetch('/apps'+billingPath+'?sessionId='+encodeURIComponent(cfg.session),{cache:'no-store'});
+      const page=new DOMParser().parseFromString(await response.text(),'text/html');
+      const fresh=page.getElementById('kb-data')?.dataset, freshToken=page.getElementById('kb-token')?.value;
+      if(!response.ok||!freshToken||fresh?.session!==cfg.session||fresh.user!==cfg.user||
+          page.getElementById('kb-search')?.disabled!==search.disabled) {
+        $('session-message').textContent='Sign in with the same account and shop, then try Resume billing again.';
+        return;
+      }
+      $('token').value=freshToken;
+      cfg.displayEnabled=fresh.displayEnabled;
+      $('display-message').hidden=fresh.displayEnabled==='true';
+      sessionLost=false;
+      $('session-notice').hidden=true;
+      search.focus();lookup();quote();
+    } catch {
+      $('session-message').textContent='Billing could not reconnect. Check your connection and try again.';
+    } finally {
+      button.disabled=false;
+    }
+  }
   function post(action,data) {
+    if(sessionLost)return;
     const form=document.createElement('form');
     form.method='POST';form.action=base+'/'+action;
     for(const [name,value] of Object.entries({...data,sessionId:cfg.session,moquiSessionToken:token()})) {
@@ -60,16 +96,16 @@
     b.textContent=on?'Tax: ON':'Tax: OFF';b.classList.toggle('is-on',on);b.setAttribute('aria-checked',on);
   }
   function controls() {
-    const canPay=!busy&&cart.size>0&&total!==null&&editError.hidden;
+    const canPay=!busy&&!sessionLost&&cart.size>0&&total!==null&&editError.hidden;
     for(const button of paymentButtons) {
-      button.disabled=busy||!cart.size;
+      button.disabled=busy||sessionLost||!cart.size;
       button.setAttribute('aria-disabled',String(!canPay));
     }
     $('clear').disabled=busy||!cart.size;
     for(const id of ['draft','bill']) if($(id)) $(id).disabled=!canPay;
     if($('send')) {
       const displayDisabled=cfg.displayEnabled==='false';
-      $('send').disabled=busy||!cart.size||displayDisabled||!editError.hidden;
+      $('send').disabled=busy||sessionLost||!cart.size||displayDisabled||!editError.hidden;
       $('send').title=displayDisabled?'Kitchen Display is disabled for this shop. Use KOT printing.':'Press Shift by itself';
     }
   }
@@ -176,8 +212,10 @@
     listTotals(cart.size?null:{});
     $('quote-error').textContent='';
     $('tax-rows').replaceChildren();
-    $('grand').textContent=cart.size?'Calculating…':money.format(0);
+    $('grand').textContent=cart.size?(sessionLost?'Sign in to price':'Calculating…'):money.format(0);
     if(!cart.size){$('subtotal').textContent=money.format(0);return;}
+    $('subtotal').textContent='—';
+    if(sessionLost)return;
     quoteTimer=setTimeout(async()=>{
       try{
         const {receipt}=await request('cartReceipt',orderData());
@@ -193,7 +231,12 @@
         $('tax-rows').innerHTML=(receipt.summary.taxBreakdown||[]).map(t=>'<div class="kb-sum__row"><span>'+esc(t.name)+'</span><span>'+money.format(t.amount)+'</span></div>').join('');
         if(pendingTender && pendingTender===document.activeElement)openPayment(pendingTender.dataset.kbPayment);
         pendingTender=null;
-      }catch(e){if(version===quoteVersion&&root.isConnected)$('quote-error').textContent=e.message;}
+      }catch(e){
+        if(version!==quoteVersion||!root.isConnected)return;
+        pendingTender=null;
+        $('grand').textContent='Unavailable';
+        $('quote-error').textContent=e.message;
+      }
     },100);
   }
   function setEditError(message, input) {
@@ -278,6 +321,30 @@
       }).join('')
       +(hasMore?'<button type="button" class="kb-control" id="kb-more">More matches</button>':'');
   }
+  function moveMatch(key, fromCard) {
+    if(!results.length||!/^Arrow(Left|Right|Up|Down)$/.test(key))return false;
+    const horizontal=key==='ArrowLeft'||key==='ArrowRight';
+    if(horizontal&&!grid)return false;
+    const step=key==='ArrowLeft'||key==='ArrowUp'?-1:1;
+    if(!grid)selected=(selected+step+results.length)%results.length;
+    else if(fromCard||pickedMatch||search.value.trim()) {
+      const columns=getComputedStyle(suggestions).gridTemplateColumns.split(' ').length;
+      const rowStart=selected-selected%columns;
+      if(horizontal||results.length<=columns) {
+        selected=Math.max(rowStart,Math.min(rowStart+columns-1,results.length-1,selected+step));
+      } else if(step<0 ? rowStart>0 : rowStart+columns<results.length) {
+        selected=Math.min(results.length-1,selected+step*columns);
+      }
+    }
+    pickedMatch=true;
+    suggestions.querySelector('.is-active')?.classList.remove('is-active');
+    const active=suggestions.querySelector('[data-result="'+selected+'"]');
+    active?.classList.add('is-active');
+    if(fromCard)active?.focus({preventScroll:true});
+    active?.scrollIntoView({block:'nearest',inline:'nearest'});
+    $('match-status').textContent=results[selected].name;
+    return true;
+  }
   async function lookup(append=false) {
     const value=search.value, version=++searchVersion;
     searchAbort?.abort(); searchAbort=new AbortController();
@@ -297,6 +364,7 @@
   }
   function clearSearch() {
     clearTimeout(searchTimer);
+    $('match-status').textContent='';
     if(grid&&!search.value){
       selected=0;pickedMatch=false;renderMatches();return;
     }
@@ -379,17 +447,16 @@
   }
   search.addEventListener('input',()=>{
     clearTimeout(searchTimer);++searchVersion;searchAbort?.abort();results=[];selected=0;pickedMatch=false;exactId=null;ambiguous=false;hasMore=false;
+    $('match-status').textContent='';
     renderMatches(search.value.trim()?'Searching…':'Loading products…');
     if(grid||search.value.trim())searchTimer=setTimeout(()=>lookup(),85);
   });
   search.addEventListener('keydown',async e=>{
-    if(e.isComposing||e.repeat)return;
+    if(e.isComposing||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey)return;
+    if(moveMatch(e.key,false)){e.preventDefault();return;}
+    if(e.repeat)return;
     if(e.key==='Escape'){clearSearch();return;}
     if(e.key===' '&&!search.value&&!$('bill')?.disabled&&!e.ctrlKey&&!e.altKey&&!e.metaKey&&!e.shiftKey){e.preventDefault();openPayment();return;}
-    if((e.key==='ArrowUp'||e.key==='ArrowDown')&&results.length){
-      e.preventDefault();selected=(selected+(e.key==='ArrowDown'?1:results.length-1))%results.length;pickedMatch=true;renderMatches();
-      suggestions.querySelector('.is-active')?.scrollIntoView({block:'nearest'});return;
-    }
     if(e.key!=='Enter'||(!search.value.trim()&&!(grid&&pickedMatch)))return;
     e.preventDefault();clearTimeout(searchTimer);
     if(!results.length&&!(await lookup()))return;
@@ -397,9 +464,16 @@
     if(!pickedMatch&&!exactId&&/^\d{8,}$/.test(search.value.trim())){renderMatches('Barcode not found. Check the code or choose a matching product.');return;}
     if(results.length)choose(selected,true);
   });
+  suggestions.addEventListener('keydown',e=>{
+    const match=e.target.closest('[data-result]');
+    if(!grid||!match||e.isComposing||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey)return;
+    if(e.key==='Enter'&&e.repeat){e.preventDefault();return;}
+    selected=Number(match.dataset.result);
+    if(moveMatch(e.key,true))e.preventDefault();
+  });
   suggestions.addEventListener('click',e=>{
     if(e.target.closest('#kb-more')){lookup(true);return;}
-    const match=e.target.closest('[data-result]');if(match)choose(Number(match.dataset.result));
+    const match=e.target.closest('[data-result]');if(match)choose(Number(match.dataset.result),e.detail===0);
   });
 
   function openPayment(method='Cash') {
@@ -516,6 +590,7 @@
     else if(button.id==='kb-fullscreen')toggleFullscreen();
     else if(button.id==='kb-clear'&&confirm('Clear the unsent items from this order?')){cart.clear();setEditError('');quote();}
     else if(button.id==='kb-history-open')showHistory();
+    else if(button.id==='kb-resume')resumeBilling();
     else if(button.id==='kb-bill')openPayment();
     else if(button.id==='kb-send')sendToKitchen();
     else if(button.id==='kb-draft'){
@@ -600,6 +675,7 @@
         window.removeEventListener('focus',keepSessionOpen);
         return;
       }
+      if(sessionLost)return;
       request('touchSession',{}).then(({displayEnabled})=>{
         if(typeof displayEnabled!=='boolean'||String(displayEnabled)===cfg.displayEnabled)return;
         cfg.displayEnabled=String(displayEnabled);
