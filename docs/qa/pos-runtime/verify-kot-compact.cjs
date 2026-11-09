@@ -191,8 +191,10 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await page.keyboard.press('ArrowLeft');
    await page.keyboard.press('Enter');
    await page.locator('#kb-payment').waitFor();
-   await page.getByRole('button',{name:'Confirm and print'}).click();
+   await page.getByRole('button',{name:'Confirm payment'}).click();
    await page.locator('#kb-payment').waitFor({state:'hidden'});
+   await page.locator('#kb-print-choice').waitFor();
+   await page.locator('#kb-print-close').click();
    await page.locator('#kb-order-status').filter({hasText:'Saved bill'}).waitFor();
    const lines=q("SELECT i.unit_price,i.quantity,i.manual_price,t.payable_amount FROM pos_transaction_item i JOIN pos_transaction t ON t.transaction_id=i.transaction_id WHERE t.session_id='"+session.sessionId+"' AND t.status_id='PtCompleted' AND i.manual_price='Y'");
    check('Checkout persists the keypad rate and quantity',lines.length===1&&Number(lines[0].unit_price)===150&&Number(lines[0].quantity)===3&&Number(lines[0].payable_amount)===450,lines);
