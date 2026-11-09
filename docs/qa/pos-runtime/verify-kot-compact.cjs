@@ -77,8 +77,14 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await page.locator('#kb-list-waiter').innerText()===waiterName&&
    await page.getByRole('button',{name:/^(Grid|List) View/}).count()===0);
   await page.getByRole('button',{name:'Change',exact:true}).click();
-  check('List View uses the existing customer picker',await page.locator('#kb-customer-dialog').isVisible());
-  await page.locator('#kb-customer-close').click();
+  await page.locator('#kb-customer-search').fill('POS_QA_A_CUST_SAME');
+  const customer=page.locator('[data-cust-id="POS_QA_A_CUST_SAME"]');
+  await customer.waitFor();
+  const customerName=await customer.getAttribute('data-cust-name');
+  await customer.click();
+  check('List View can select a customer from the existing picker',await page.locator('#kb-list-customer').innerText()===customerName);
+  await page.getByRole('button',{name:'Change',exact:true}).click();
+  await page.locator('#kb-customer-walkin').click();
   await fullscreen.click();
   await page.waitForFunction(()=>document.fullscreenElement?.id==='kb-wrap');
   check('List View can enter native fullscreen and keep the current order',await page.locator('#kb-cart tr').count()===1);
