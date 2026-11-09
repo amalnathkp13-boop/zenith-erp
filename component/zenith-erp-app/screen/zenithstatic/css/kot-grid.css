@@ -16,13 +16,15 @@ body:has(#kb-wrap) :is(#top,#footer,#z-sidebar,#z-side-burger,#z-subnav,#pos-mod
 #kb-wrap .kg-header #kb-customer-open svg{width:20px;height:20px;flex:none}
 #kb-wrap #kb-customer-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #kb-wrap #kb-fullscreen-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+#kb-wrap .kg-counter{gap:6px}
 #kb-wrap :is(.kg-counter,.kg-modes summary)::after{
   content:"";flex:none;width:16px;height:16px;background:var(--kb-chevron) center / contain no-repeat;
 }
 #kb-wrap .kb-toolbar{flex-wrap:wrap}
 #kb-wrap.kb-wrap .kb-toolbar>.kb-fld{flex:0 1 clamp(112px,9.3vw,142px);min-width:0}
-#kb-wrap.kb-wrap .kb-toolbar .kb-fld>select{
-  appearance:none;width:100%;min-width:0;padding:0 26px 0 10px;text-overflow:ellipsis;
+#kb-wrap.kb-wrap .kb-toolbar .kb-fld>select:not([multiple]){
+  appearance:none;width:100%;min-width:0;padding:0 24px 0 10px;
+  font-size:13px;font-weight:500;text-overflow:ellipsis;
   background-image:var(--kb-chevron);background-position:right 8px center;background-size:16px;background-repeat:no-repeat;
 }
 @media(min-width:1280px){
@@ -32,7 +34,7 @@ body:has(#kb-wrap) :is(#top,#footer,#z-sidebar,#z-side-burger,#z-subnav,#pos-mod
   #kb-wrap.kb-wrap .kb-toolbar :is(.kb-control,.kb-otbtn):not(#kb-fullscreen){padding-inline:8px;gap:6px;font-size:13px}
   #kb-wrap.kb-wrap .kb-toolbar .kg-back{min-width:0}
   #kb-wrap.kb-wrap .kb-toolbar .kb-otype{gap:5px;padding-inline-start:6px}
-  #kb-wrap.kb-wrap .kb-toolbar .kb-fld>select:not([multiple]){padding-inline:8px 24px;font-size:13px}
+  #kb-wrap.kb-wrap .kb-toolbar .kb-fld>select:not([multiple]){padding-inline-start:8px}
 }
 
 #kb-wrap:not(.kg-grid) .kg-only,
@@ -82,7 +84,7 @@ body:has(#kb-wrap) :is(#top,#footer,#z-sidebar,#z-side-burger,#z-subnav,#pos-mod
 }
 #kb-wrap.kg-grid .kg-back{min-width:160px}
 #kb-wrap.kg-grid .kb-toolbar .kb-fld{gap:0;min-width:0;font-size:0}
-#kb-wrap.kg-grid .kb-toolbar select{font-size:13px;border-color:var(--kg-line)}
+#kb-wrap.kg-grid .kb-toolbar select{border-color:var(--kg-line)}
 #kb-wrap.kg-grid .kb-otype{display:flex;gap:6px;padding-inline-start:8px;border-inline-start:1px solid var(--kg-line)}
 #kb-wrap.kg-grid .kb-toolbar .kb-otbtn.is-active{background:var(--kg-purple);color:#fff;border-color:transparent}
 #kb-wrap.kg-grid .kg-back,

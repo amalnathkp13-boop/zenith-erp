@@ -32,7 +32,6 @@
 }
 #kb-wrap:not(.kg-grid) .kb-toolbar :is(.kb-control,.kb-otbtn){padding:5px clamp(8px,.8vw,13px)}
 #kb-wrap:not(.kg-grid) .kb-toolbar .kb-fld{font-size:13px;font-weight:550;gap:3px}
-#kb-wrap:not(.kg-grid) .kb-toolbar .kb-fld select{font-weight:500}
 #kb-wrap:not(.kg-grid) .kb-toolbar :is(.kg-back,.kg-modes summary){background:#f0f2f9;border-color:transparent}
 #kb-wrap:not(.kg-grid) #kb-tax-toggle::after{content:"";width:40px;height:22px;border-radius:14px;background:radial-gradient(circle at 10px 50%,#fff 7px,transparent 8px) #8e94ab}
 #kb-wrap:not(.kg-grid) #kb-tax-toggle.is-on::after{background:radial-gradient(circle at 30px 50%,#fff 7px,transparent 8px) #7821f5}
