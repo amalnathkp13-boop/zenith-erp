@@ -143,6 +143,11 @@
 #kb-wrap:not(.kg-grid) #kb-send{order:1}
 #kb-wrap .kb-print-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin:16px 0}
 #kb-wrap .kb-print-options button{min-height:44px}
+#kb-wrap .kb-print-options [data-kb-print=bill]{background:#eee3fc;color:#5d17cb;border-color:#dcc9f5}
+#kb-wrap .kb-print-options [data-kb-print=kot]{background:#e2f5d6;color:#08695e;border-color:#c5e9c5}
+#kb-wrap .kb-print-options [data-kb-print=both]{background:#e0edfd;color:#0e65be;border-color:#c5dbf8}
+#kb-wrap #kb-print-close{background:#f5f0ff;color:#5d17cb}
+#kb-wrap .kb-print-options button:hover:enabled{border-color:currentColor}
 #kb-wrap:not(.kg-grid) [data-kb-payment=Cash]{background:#e1f4f0;color:#007d69}
 #kb-wrap:not(.kg-grid) :is([data-kb-payment=Card],[data-kb-payment=Split]){background:#e0edfd;color:#0062c9}
 #kb-wrap:not(.kg-grid) [data-kb-payment=Credit]{background:#fff0e1;color:#ad3900}
