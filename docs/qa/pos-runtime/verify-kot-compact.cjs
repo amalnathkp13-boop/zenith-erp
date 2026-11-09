@@ -133,11 +133,14 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    };
   });
   await page.locator('#kb-cash').press('Enter');
+  await page.locator('#kb-print-choice').waitFor();
+  check('Payment waits for the selected print option',await page.evaluate(()=>window.kotPrints.length===0));
+  await page.locator('[data-kb-print="both"]').click();
   await page.waitForFunction(()=>window.kotPrints.length===2);
   const kot=q("SELECT kot_id,transaction_id,waiter_name,table_id,notes FROM kitchen_order_ticket WHERE waiter_name='"+waiterName+"' AND transaction_id IS NOT NULL ORDER BY kot_id DESC")[0];
   const tx=q("SELECT transaction_number,payable_amount,status_id FROM pos_transaction WHERE transaction_id='"+kot.transaction_id+"'")[0];
   const printed=await page.evaluate(()=>window.kotPrints);
-  check('Take Away creates one completed bill and prints both saved documents',tx.status_id==='PtCompleted'&&Number(tx.payable_amount)===200&&!kot.table_id&&kot.notes.includes('Take Away')&&printed[0].includes('KOT #')&&printed[0].includes('No onion')&&printed[1].includes(tx.transaction_number),{kot,tx});
+  check('Take Away saves the bill and Print both opens a name-and-quantity KOT plus the bill',tx.status_id==='PtCompleted'&&Number(tx.payable_amount)===200&&!kot.table_id&&kot.notes.includes('Take Away')&&printed[0].includes('Disposable POS A P18')&&printed[0].includes('class="q">2</td>')&&!printed[0].includes('No onion')&&!printed[0].includes('KOT #')&&printed[1].includes(tx.transaction_number),{kot,tx});
   const replay=await json('checkoutKot',{kotId:kot.kot_id,sessionId:session.sessionId,paymentMethod:'Cash',cashAmount:'200'});
   check('Retry returns the same paid bill without another tender',replay.data?.billNumber===tx.transaction_number&&q("SELECT amount FROM pos_payment WHERE transaction_id='"+kot.transaction_id+"'").length===1,replay);
   const denied=await json('checkoutKot',{kotId:kot.kot_id,sessionId:session.sessionId,paymentMethod:'Cash',cashAmount:'200'},foreign);
