@@ -25,7 +25,13 @@ module.exports=async function({a,foreign,base,post,rows,count,check,out}){
  check('saved draft preserves the configured price and tax OFF in its receipt snapshot',!!draft&&Number(JSON.parse(draft.order_receipt_json).items[0].rate)===100&&JSON.parse(draft.order_receipt_json).bill.taxOn==='N');
  await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling?sessionId='+kotSessionId+'&loadDraft='+encodeURIComponent(draft.kot_id));await page.locator('#kb-wrap[data-ready=true]').waitFor();
  await page.waitForFunction(()=>document.getElementById('kb-grand').textContent.includes('200.00'));
- check('resuming a draft restores its price, tax choice and order type',(await page.locator('#kb-cart').innerText()).includes('₹100.00')&&await page.locator('#kb-tax-toggle').getAttribute('aria-checked')==='false'&&!await page.locator('#kb-table').isVisible());
+ const restoredRate=Number(await page.locator('#kb-cart [data-product="POS_QA_A_P18"] .kl-line-rate').innerText());
+ const restoredTax=await page.locator('#kb-tax-toggle').getAttribute('aria-checked');
+ const restoredType=await page.getByRole('button',{name:'Take Away',exact:true}).getAttribute('aria-pressed');
+ const tableVisible=await page.locator('#kb-table').isVisible();
+ check('resuming a draft restores its price, tax choice and order type',
+  restoredRate===100&&restoredTax==='false'&&restoredType==='true'&&!tableVisible,
+  {restoredRate,restoredTax,restoredType,tableVisible});
  await post('Kitchen/KotBilling','deleteDraft',{kotId:draft.kot_id});
  check('draft round trip leaves no sale or payment',moneyState()===before);
  const existing=rows('kitchen_order_ticket',"organization_party_id='POS_QA_A' AND status_id='KotNew'");
