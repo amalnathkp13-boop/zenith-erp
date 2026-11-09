@@ -34,6 +34,7 @@
   border-radius:9px;background:#fcfdff;color:var(--kl-ink);font-size:15px;white-space:nowrap;
 }
 #kb-wrap:not(.kg-grid) .kb-toolbar .kb-fld{order:2;flex:0 1 146px;min-width:120px;font-size:13px;font-weight:550;gap:3px}
+#kb-wrap:not(.kg-grid) .kb-toolbar .kb-fld:has(#kb-waiter){flex-basis:162px}
 #kb-wrap:not(.kg-grid) .kb-toolbar .kb-fld select{min-width:0;width:100%;font-weight:500}
 #kb-wrap:not(.kg-grid) .kb-toolbar :is(.kg-toolbar-extras>a,.kg-modes summary){background:#f0f2f9;border-color:transparent}
 #kb-wrap:not(.kg-grid) #kb-tax-toggle{order:0}
