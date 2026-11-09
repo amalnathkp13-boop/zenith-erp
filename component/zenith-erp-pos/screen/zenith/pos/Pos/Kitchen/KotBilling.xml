@@ -676,9 +676,9 @@
   </form><#else><p>Your administrator must assign an active terminal and shop before you can bill.</p></#if>
 </section>
 <#else>
-<div class="kb-wrap" id="kb-wrap">
-  <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=5"/>
-  <link rel="stylesheet" href="/zenithstatic/css/kot-list.css?v=4"/>
+<div class="kb-wrap<#if !kitchenDisplayEnabled> kb-display-disabled</#if>" id="kb-wrap">
+  <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=6"/>
+  <link rel="stylesheet" href="/zenithstatic/css/kot-list.css?v=5"/>
   <input type="hidden" id="kb-token" value="${(ec.web.sessionToken)!''}"/>
   <div id="kb-data" style="display:none" data-session="${billingSession.sessionId?html}" data-user="${(ec.user.userId!'')?html}" data-display-enabled="${kitchenDisplayEnabled?c}" data-kot-module="${(kitchenModuleId!'pos')?html}" data-stock-session="${((checkoutSessions?size == 1)?then(checkoutSessions[0].id,''))?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}"></div>
 
@@ -780,7 +780,7 @@
     </div>
     <div class="kb-total-row"><span>KOT TOTAL</span><strong id="kb-grand">&#8377;0.00</strong></div>
     <#if modCanWrite><div class="kb-checkout-actions" role="group" aria-label="Payment and kitchen actions">
-      <button type="button" id="kb-send" class="kb-action-send" title="Press Shift by itself" disabled><@ic 'printer'/> Send to KOT <kbd>Shift</kbd></button>
+      <button type="button" id="kb-send" class="kb-action-send" title="Press Shift by itself" <#if !kitchenDisplayEnabled>style="display:none"</#if> disabled><@ic 'printer'/> Send to KOT <kbd>Shift</kbd></button>
       <button type="button" id="kb-bill" class="kb-action-bill" disabled><@ic 'box'/> Bill Out <kbd>Space</kbd></button>
       <#list ['Cash','Card','Credit','UPI','Split'] as tender>
       <button type="button" class="kg-tender" data-kb-payment="${tender}" disabled><@ic tender?lower_case 24/> ${(tender == 'Split')?then('Split Payment',tender)} <kbd>F${tender?index + 2}</kbd></button>
@@ -813,8 +813,17 @@
         <label data-kb-tender="Card UPI Split" hidden>Payment reference<input name="referenceNumber" maxlength="80"></label>
         <label data-kb-tender="Credit" hidden>Customer name<input name="customerName" maxlength="80"></label>
         <label data-kb-tender="Credit" hidden>Customer phone<input name="customerPhone" type="tel" maxlength="20"></label>
-      </div><p id="kb-payment-error" role="alert"></p><button class="kb-action-bill" type="submit">Confirm and print</button><button class="kb-control" type="button" id="kb-payment-close">Cancel</button>
+      </div><p id="kb-payment-error" role="alert"></p><button class="kb-action-bill" type="submit">Confirm payment</button><button class="kb-control" type="button" id="kb-payment-close">Cancel</button>
     </form><#else><p>Open a POS session on your assigned terminal before taking payment. You can still hold your order.</p><form method="dialog"><button class="kb-control">Close</button></form></#if>
+  </dialog></#if>
+  <#if modCanWrite><dialog id="kb-print-choice" class="zk-history-view" aria-labelledby="kb-print-title">
+    <h2 id="kb-print-title">Payment complete</h2><p id="kb-print-summary"></p>
+    <div class="zk-history-actions kb-print-options" role="group" aria-label="Print options">
+      <button type="button" class="kb-control" data-kb-print="bill">Print Bill</button>
+      <button type="button" class="kb-control" data-kb-print="kot">KOT print</button>
+      <button type="button" class="kb-control" data-kb-print="both">Print both</button>
+    </div>
+    <p id="kb-print-error" role="alert"></p><button type="button" class="kb-control" id="kb-print-close">Done</button>
   </dialog></#if>
   <#if modCanWrite><dialog id="kb-customer-dialog" class="zk-history-view" aria-labelledby="kb-customer-title">
     <h2 id="kb-customer-title">Choose Customer</h2>
@@ -825,7 +834,7 @@
   </dialog></#if>
 
   <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" style="display:none"
-       onload="(function(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=keypad-2';document.head.appendChild(s);})()"/>
+       onload="(function(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=keypad-3';document.head.appendChild(s);})()"/>
 </div>
 </#if>
         ]]></text></render-mode>

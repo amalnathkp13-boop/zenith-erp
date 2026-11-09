@@ -107,8 +107,9 @@
   clip-path:polygon(22px 0,100% 0,100% 100%,0 100%);background:#5030b9;color:#fff;font-size:32px;
 }
 #kb-wrap.kg-grid .kb-checkout-actions{
-  grid-row:6;grid-template-columns:repeat(4,minmax(0,1fr)) repeat(2,minmax(0,1.35fr));margin:0;
+  grid-row:6;grid-template-columns:repeat(5,minmax(0,1fr)) repeat(2,minmax(0,1.35fr));margin:0;
 }
+#kb-wrap.kg-grid.kb-display-disabled .kb-checkout-actions{grid-template-columns:repeat(4,minmax(0,1fr)) repeat(2,minmax(0,1.35fr))}
 #kb-wrap.kg-grid .kb-checkout-actions button{
   min-width:0;min-height:0;padding:6px;border:1px solid transparent;border-radius:9px;
   font:inherit;font-weight:650;cursor:pointer;
@@ -133,6 +134,7 @@
   #kb-wrap.kg-grid .kb-order-scroll{max-height:240px}
   #kb-wrap.kg-grid .kb-total-row{min-height:var(--kg-total);order:1}
   #kb-wrap.kg-grid .kb-checkout-actions{grid-template-columns:repeat(3,minmax(0,1fr));order:2}
+  #kb-wrap.kg-grid.kb-display-disabled .kb-checkout-actions{grid-template-columns:repeat(3,minmax(0,1fr))}
   #kb-wrap.kg-grid .kb-checkout-actions button{min-height:44px}
 }
 #kb-wrap [data-kb-edit]{

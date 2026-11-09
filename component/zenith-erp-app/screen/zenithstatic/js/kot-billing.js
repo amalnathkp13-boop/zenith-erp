@@ -23,7 +23,7 @@
   let searchVersion=0, searchTimer, searchAbort, results=[], selected=0, exactId, ambiguous=false, hasMore=false, offset=0;
   let historyDirty=false, grid=false, pickedMatch=false, categoryId='';
   let customer={}, custVersion=0, custTimer, custAbort;
-  let invalidEdit, pendingTender, sessionLost=false;
+  let invalidEdit, pendingTender, sessionLost=false, completedKotId='';
   const signInMessage='Sign in again to continue billing.';
   if(cfg.draftmode && Array.from($('mode').options).some(o=>o.value===cfg.draftmode)) salesModeId=$('mode').value=cfg.draftmode;
   if(cfg.draftwaiter) $('waiter').value=cfg.draftwaiter;
@@ -105,6 +105,8 @@
     for(const id of ['draft','bill']) if($(id)) $(id).disabled=!canPay;
     if($('send')) {
       const displayDisabled=cfg.displayEnabled==='false';
+      root.classList.toggle('kb-display-disabled',displayDisabled);
+      $('send').style.display=displayDisabled?'none':'';
       $('send').disabled=busy||sessionLost||!cart.size||displayDisabled||!editError.hidden;
       $('send').title=displayDisabled?'Kitchen Display is disabled for this shop. Use KOT printing.':'Press Shift by itself';
     }
@@ -491,30 +493,41 @@
     }
     $('cash').value=method==='Cash'?total.toFixed(2):'';
   }
-  async function printBill(kotId,isTakeAway,w,kitchenWindow) {
-    let error;
-    if(isTakeAway){
-      try{
-        if(!kitchenWindow)throw Error('Allow a second print window for the kitchen ticket.');
-        const {record}=await request('printRecord',{kotId,kind:'kot'});
-        await KitchenPrint.browserPrint(kitchenWindow,KitchenPrint.kotHtml(record));
-        await request('ackKotPrint',{kotId});
-      }catch(e){error=e;}
+  async function printChoice(kind) {
+    if(busy||!completedKotId)return;
+    let billWindow,kotWindow;
+    try {
+      // Open windows from the click itself so the browser does not block them after fetching.
+      if(kind==='bill'||kind==='both')billWindow=KitchenPrint.open();
+      if(kind==='kot'||kind==='both')kotWindow=KitchenPrint.open();
+      busy=true;controls();
+      for(const button of root.querySelectorAll('[data-kb-print]'))button.disabled=true;
+      $('print-error').textContent='';
+      if(kotWindow) {
+        const {record}=await request('printRecord',{kotId:completedKotId,kind:'kot'});
+        await KitchenPrint.browserPrint(kotWindow,KitchenPrint.kotHtml(record));
+        await request('ackKotPrint',{kotId:completedKotId});
+      }
+      if(billWindow) {
+        const {record}=await request('printRecord',{kotId:completedKotId,kind:'bill'});
+        await KitchenPrint.customer(billWindow,record);
+      }
+      $('order-status').textContent='Print request opened. The completed bill is also in History.';
+      $('print-choice').close();
+    } catch(error) {
+      $('print-error').textContent=error.message+' You can retry here or print from History.';
+    } finally {
+      if(billWindow&&!billWindow.closed)billWindow.close();
+      if(kotWindow&&!kotWindow.closed)kotWindow.close();
+      busy=false;controls();
+      for(const button of root.querySelectorAll('[data-kb-print]'))button.disabled=false;
     }
-    const {record}=await request('printRecord',{kotId,kind:'bill'});
-    await KitchenPrint.customer(w,record);
-    if(error)throw error;
   }
   async function pay(e) {
     e.preventDefault();if(busy||total===null)return;
-    let w,kitchenWindow,finalized=false;
     const form=e.currentTarget, submit=form.querySelector('[type=submit]');
     const payment=Object.fromEntries(new FormData(form)), data=orderData(), fingerprint=JSON.stringify(data);
-    const isTakeAway=orderType==='Take Away';
     try{
-      // A blocked popup never prevents a sale from saving; history remains the print fallback.
-      try{w=KitchenPrint.open();}catch(_){}
-      if(w&&isTakeAway){try{kitchenWindow=KitchenPrint.open();}catch(_){}}
       busy=true;controls();submit.disabled=true;$('payment-close').disabled=true;$('payment-error').textContent='';
       if(!draftId||fingerprint!==savedFingerprint){
         const saved=await request('saveDraft',{...data,existingDraftId:draftId,wantJson:'Y'});
@@ -522,19 +535,17 @@
         if(Number(saved.total)!==total)throw Error('The order total changed. Close checkout and review the total before confirming again.');
       }
       const bill=await request('checkoutKot',{...payment,kotId:draftId});
-      finalized=true;historyDirty=true;
+      completedKotId=bill.kotId;historyDirty=true;
       $('list-last-bill').textContent=bill.billNumber;
       $('list-last-amount').textContent=$('list-last-stat').textContent=money.format(total);
       $('payment').close();resetOrder();
       $('order-status').textContent='Saved bill '+bill.billNumber+'.';
-      const status=$('order-status');
-      if(w)await printBill(bill.kotId,isTakeAway,w,kitchenWindow);
-      else status.textContent+=' Allow pop-ups and reprint from History.';
+      $('print-summary').textContent='Bill '+bill.billNumber+' is saved. Choose a print option.';
+      $('print-error').textContent='';
+      $('print-choice').showModal();
     }catch(error){
-      if(finalized)$('order-status').textContent+=' Printing needs attention. Reprint from History. '+error.message;
-      else $('payment-error').textContent=error.message;
+      $('payment-error').textContent=error.message;
     }finally{
-      if(w&&!w.closed)w.close();if(kitchenWindow&&!kitchenWindow.closed)kitchenWindow.close();
       busy=false;controls();submit.disabled=false;$('payment-close').disabled=false;
     }
   }
@@ -598,6 +609,8 @@
       post('saveDraft',{...orderData(),existingDraftId:draftId});
     }
     else if(button.id==='kb-payment-close')$('payment').close();
+    else if(button.dataset.kbPrint)printChoice(button.dataset.kbPrint);
+    else if(button.id==='kb-print-close')$('print-choice').close();
     else if(button.id==='kb-customer-open'||button.hasAttribute('data-kb-customer-change'))openCustomerDialog();
     else if(button.id==='kb-customer-walkin')walkInCustomer();
     else if(button.id==='kb-customer-close')$('customer-dialog')?.close();
