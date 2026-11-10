@@ -173,4 +173,7 @@
   #kb-wrap:not(.kg-grid).kb-display-disabled .kb-checkout-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
   #kb-wrap:not(.kg-grid) .kb-total-row{padding-inline-start:12px;font-size:19px}
   #kb-wrap:not(.kg-grid) #kb-grand{min-width:0;padding-inline:28px 12px;font-size:24px}
+  #kb-wrap:not(.kg-grid) .kb-panel{overflow:visible}
+  #kb-wrap:not(.kg-grid) .kb-panel__head{margin-bottom:10px;padding-inline-start:0}
+  #kb-wrap:not(.kg-grid) .kb-panel__title{font-size:18px}
 }

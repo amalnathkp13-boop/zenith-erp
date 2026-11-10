@@ -209,13 +209,18 @@
                     return
                 }
                 kot.set('statusId', statusId).update()
-                // Serving food does not settle a table. Only cancelling its last active order
-                // releases it automatically; an unpaid POS transaction still owns the table.
-                if (statusId == 'KotCancelled' && kot.tableId) {
+                // A served order can release the table only after its bill is completed.
+                if (kot.tableId && statusId in ['KotCancelled','KotServed']) {
+                    def billed = statusId=='KotServed' && kot.transactionId &&
+                        ec.entity.find('zenith.erp.pos.PosTransaction').condition([transactionId:kot.transactionId,
+                            organizationPartyId:org,statusId:'PtCompleted']).count()
+                    if (statusId=='KotServed' && !billed) return
                     def table=ec.entity.find('zenith.erp.pos.RestaurantTable').condition('tableId',kot.tableId).forUpdate(true).one()
                     def facility=table ? ec.entity.find('mantle.facility.Facility').condition('facilityId',table.facilityId).one() : null
                     def active=ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('organizationPartyId',org)
                         .condition('tableId',kot.tableId).condition('statusId','in',['KotNew','KotPreparing','KotReady']).count()
+                    if (billed && !active) active=ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('organizationPartyId',org)
+                        .condition('tableId',kot.tableId).condition('transactionId',null).condition('statusId','in',['KotDraft','KotServed']).count()
                     if (facility?.ownerPartyId==org && !active && !table.currentTransactionId && table.statusId=='TblOccupied') table.set('statusId','TblAvailable').update()
                 }
             ]]></script>

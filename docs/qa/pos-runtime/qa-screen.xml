@@ -39,6 +39,10 @@
     names.eachWithIndex { name,i -> ec.entity.makeValue('mantle.product.Product').setAll([
         productId:'POS_QA_SEARCH_'+i,pseudoId:'SYN_SEARCH_'+i,productName:name,productTypeEnumId:'PtAsset',ownerPartyId:'POS_QA_A',mrpAmount:10,inventoryTracked:'N']).createOrUpdate() }
     ec.entity.makeValue('mantle.product.Product').setAll([productId:'POS_QA_SEARCH_FOREIGN',pseudoId:'SYN_SEARCH_FOREIGN',productName:'PP 05 foreign',productTypeEnumId:'PtAsset',ownerPartyId:'POS_QA_B',mrpAmount:20,inventoryTracked:'N']).createOrUpdate()
+    if(ec.web.parameters.kotExactBarcode=='Y') {
+        ec.entity.makeValue('zenith.erp.barcode.ProductBarcode').setAll([barcodeId:'POS_QA_SEARCH_EXACT',
+            organizationPartyId:'POS_QA_A',productId:'POS_QA_SEARCH_64',barcodeTypeEnumId:'BctCode128',barcodeValue:'PP',isActive:'Y']).createOrUpdate()
+    }
     ec.web.sendJsonResponse([seeded:true])
 ]]></script></actions><default-response type="none"/></transition>
 <transition name="cleanWorkspace" method="post"><actions><script><![CDATA[
