@@ -11,6 +11,37 @@ await test('loading survives slow responses without exposing old content',async 
 await test('ready swaps the loader for one kitchen content frame',async p=>{await p.evaluate(()=>moqui.webrootVue.setUrl('/apps/zenith/pos/Kitchen/KitchenDisplay'));await p.evaluate(markup=>__pending[0].callback(markup),frame('/apps/zenith/pos/Kitchen/KitchenDisplay'));await p.waitForTimeout(60);assert.equal(await p.locator('#old-screen').count(),0);assert.equal(await p.locator('#kitchen-page-frame').isVisible(),true);assert.equal(await p.locator('#zk-route-status').count(),0);});
 await test('a late response cannot overwrite a newer kitchen route',async p=>{await p.evaluate(()=>{moqui.webrootVue.setUrl('/apps/zenith/pos/Kitchen/KitchenDisplay');moqui.webrootVue.setUrl('/apps/zenith/pos/Kitchen/Tables');});await p.evaluate(markup=>__pending[1].callback(markup),frame('/apps/zenith/pos/Kitchen/Tables'));await p.evaluate(markup=>__pending[0].callback(markup),frame('/apps/zenith/pos/Kitchen/KitchenDisplay'));await p.waitForTimeout(60);assert.equal(await p.locator('#kitchen-page-frame').getAttribute('data-kitchen-route'),'/apps/zenith/pos/Kitchen/Tables');});
 await test('failure retains a Kitchen error and retry while old screen stays hidden',async p=>{await p.evaluate(()=>{moqui.webrootVue.setUrl('/apps/zenith/pos/Kitchen/KitchenDisplay');moqui.handleAjaxError({status:503});});await p.waitForTimeout(30);assert.equal(await p.locator('#old-screen').isVisible(),false);assert.match(await p.locator('#zk-route-status').innerText(),/Retry/);});
+await test('leaving KOT Billing cancels a pending tab and keeps the gateway usable',async p=>{
+    const base='http://127.0.0.1:18084';
+    const billing='/apps/zenith/kot/KotBilling', tables='/apps/zenith/kot/Tables';
+    await p.goto(base+billing);
+    await p.setContent(html(frame(billing)));
+    await p.evaluate(({tables})=>{
+        document.querySelector('#z-subnav').innerHTML='<a href="'+tables+'">Tables</a>';
+        document.querySelector('#z-sidebar').innerHTML='<a href="/apps/zenith/Inventory">Inventory</a>';
+        document.querySelector('#z-sidebar a').addEventListener('click',event=>event.preventDefault(),{once:true});
+    },{tables});
+    await p.addScriptTag({content:source});
+    await p.locator('#zk-route-status').waitFor({state:'hidden'});
+    let releaseTab;
+    const waitForRelease=new Promise(resolve=>{releaseTab=resolve;});
+    await p.route(base+tables,async route=>{
+        await waitForRelease;
+        await route.fulfill({contentType:'text/html',body:html(frame(tables))}).catch(()=>{});
+    });
+    const requested=p.waitForRequest(base+tables);
+    try {
+        await p.getByRole('link',{name:'Tables'}).click();
+        await requested;
+        assert.equal(await p.locator('#zk-route-status').isVisible(),true);
+        await p.getByRole('link',{name:'Inventory'}).click();
+        assert.equal(await p.locator('#zk-route-status').count(),0);
+        assert.equal(await p.locator('#kb-wrap').isVisible(),true);
+        releaseTab();
+        await p.getByRole('link',{name:'Inventory'}).click();
+        await p.waitForURL(base+'/apps/zenith/Inventory');
+    } finally {releaseTab();}
+});
 await test('direct entry never reveals the framework header before the current shell is ready',async p=>{await p.goto('http://127.0.0.1:18084/apps/zenith/pos/Kitchen/KotBilling');await p.setContent(html(frame('/apps/zenith/pos/Kitchen/KotBilling'),false));await p.addScriptTag({content:source});await p.waitForTimeout(30);assert.equal(await p.locator('#top').isVisible(),false);await p.evaluate(()=>{document.body.insertAdjacentHTML('beforeend','<aside id="z-sidebar"></aside><nav id="z-subnav" class="show"></nav>');});await p.waitForTimeout(80);assert.equal(await p.locator('#top').isVisible(),true);});
 await browser.close();console.log(JSON.stringify(results,null,2));if(results.some(r=>!r.passed))process.exitCode=1;
 })().catch(e=>{console.error(e);process.exitCode=1;});

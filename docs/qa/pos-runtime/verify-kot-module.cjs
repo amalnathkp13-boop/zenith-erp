@@ -15,18 +15,23 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
  const post = (actor, route, values) => actor.c.request.post(base+'/apps/zenith/'+route,{
   maxRedirects:0,form:{ moquiSessionToken:actor.t,...values }
  });
+ const completedOrders = page.locator('.kd-stat').filter({hasText:'Completed Orders'}).locator('.kd-stat__value');
  try {
   for (const shell of ['apps','qapps']) {
    const sidebar = page.locator(shell==='apps'?'#z-sidebar a[data-match="/kot"]':'#zq-sidebar a[data-match="/kot"]');
    const strip = page.locator(shell==='apps'?'#z-subnav .zsub-grp.show':'#zq-subnav.show');
    const links = strip.locator('a:visible');
    await page.goto(base+'/'+shell+'/zenith/pos/Dashboard');
+   await strip.locator('a[data-match="/pos/Dashboard"]').waitFor();
+   const posLinks = await links.evaluateAll(anchors=>anchors.map(a=>a.getAttribute('data-match')));
    await sidebar.click();
    await page.locator('#kd-wrap').waitFor();
    const activeSidebar = sidebar.and(page.locator('.on'));
    await activeSidebar.waitFor();
    check(shell+' opens KOT as its own sidebar module',await activeSidebar.isVisible(),{url:page.url()});
-   check(shell+' shows exactly the six KOT sections in order',(await links.allTextContents()).map(x=>x.trim()).join('|')===tabs.map(x=>x[1]).join('|'));
+   const kotLinks = await links.evaluateAll(anchors=>anchors.map(a=>a.getAttribute('data-match')));
+   check(shell+' keeps the six KOT tabs and adds every visible POS tab in order',
+    kotLinks.join('|')===[...tabs.map(([seg])=>'/kot/'+seg),...posLinks].join('|'),{kotLinks});
    const shellSelector=shell==='apps'?'#z-sidebar':'#kitchen-page-frame';
    await page.evaluate(selector=>{window.qaKotShell=document.querySelector(selector);},shellSelector);
    for (const [seg,name,content] of tabs.slice(1)) {
@@ -36,7 +41,27 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
     check(shell+' keeps its shell mounted on '+name,await page.evaluate(selector=>window.qaKotShell===document.querySelector(selector),shellSelector));
    }
    if(out) await page.screenshot({path:path.join(out,shell+'-standalone-kot.png')});
+   await strip.getByRole('link',{name:'KOT Billing',exact:true}).click();
+   await page.locator('#kot-terminal-entry').waitFor();
+   await strip.locator('a[data-match="/pos/Dashboard"]').click();
+   await page.waitForURL('**/'+shell+'/zenith/pos/Dashboard');
+   await strip.locator('a[data-match="/pos/Dashboard"]').waitFor();
+   check(shell+' can leave the KOT terminal gateway using a POS submodule',await page.locator('#zk-route-status').count()===0);
+   await sidebar.click();
+   await page.locator('#kd-wrap').waitFor();
+   await strip.getByRole('link',{name:'KOT Billing',exact:true}).click();
+   await page.locator('#kot-terminal-entry').waitFor();
+   await page.locator((shell==='apps'?'#z-sidebar':'#zq-sidebar')+' a[data-match="/pos"]').click();
+   await page.waitForURL('**/'+shell+'/zenith/pos/Dashboard');
+   await strip.locator('a[data-match="/pos/Dashboard"]').waitFor();
+   check(shell+' can leave the KOT terminal gateway using the sidebar',await page.locator('#zk-route-status').count()===0);
   }
+  const preference = JSON.stringify({version:1,order:['/kot/KotBilling','/pos/Reports'],hidden:[]});
+  const saved = await post(a,'saveSubnavConfiguration',{module:'kot',payload:preference});
+  check('KOT preferences accept both KOT and POS tabs',saved.ok()&&JSON.parse((await saved.json()).preference).order[1]==='/pos/Reports');
+  await post(a,'saveSubnavConfiguration',{module:'kot',payload:JSON.stringify({version:1,order:[],hidden:[]})});
+  await page.goto(base+'/apps/zenith/kot/KotDashboard');
+  const before = Number(await completedOrders.innerText());
   await page.goto(base+'/apps/zenith/pos/Kitchen');
   await page.locator('.zk-display').waitFor();
   check('old Kitchen bookmark still opens the shared Kitchen Display',
@@ -88,6 +113,8 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   const draft=await draftResponse.json();
   const paid=await post(kit,'kot/KotBilling/checkoutKot',{sessionId,kotId:draft.kotId,paymentMethod:'Cash',cashAmount:'100'});
   check('KOT-only clerk can complete a bill on the assigned terminal',draft.success&&(await paid.json()).success===true);
+  await page.reload();
+  check('standalone KOT dashboard counts the newly completed KOT sale once',Number(await completedOrders.innerText())===before+1);
   const unchanged=q("SELECT setting_value FROM company_settings WHERE organization_party_id='POS_QA_A' AND setting_key='KITCHEN_DISPLAY_POS_QA_A_FAC'");
   await post(kit,'kot/KitchenDisplay/saveDisplayPolicy',{facilityId:'POS_QA_A_FAC',enabled:'N'});
   check('KOT clerk cannot change the administrator kitchen policy',JSON.stringify(q("SELECT setting_value FROM company_settings WHERE organization_party_id='POS_QA_A' AND setting_key='KITCHEN_DISPLAY_POS_QA_A_FAC'"))===JSON.stringify(unchanged));

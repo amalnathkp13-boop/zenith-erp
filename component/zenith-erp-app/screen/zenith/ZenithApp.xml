@@ -375,7 +375,7 @@
             html_stylesheets.add('https://fonts.googleapis.com/icon?family=Material+Icons')
             if (footer_scripts == null) footer_scripts = []
             footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=14')
-            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=51')
+            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=52')
             footer_scripts.add('/zenithstatic/js/profile-menu.js?v=1')
             footer_scripts.add('/zenithstatic/js/sidebar-manager.js?v=3')
             footer_scripts.add('/zenithstatic/js/subnav-manager.js?v=4')
@@ -402,7 +402,7 @@
             html_stylesheets.add('/zenithstatic/css/barcode-reference.css?v=1')
             if (html_scripts == null) html_scripts = []
             html_scripts.add('/zenithstatic/js/qapps-shell-boot.js?v=1')
-            html_scripts.add('/zenithstatic/js/kitchen-display.js?v=4')
+            html_scripts.add('/zenithstatic/js/kitchen-display.js?v=5')
             html_scripts.add('/zenithstatic/js/pos-receipt-layout.js?v=3')
             html_scripts.add('/zenithstatic/js/kitchen-print.js?v=3')
             html_stylesheets.add('/zenithstatic/css/kitchen-display.css?v=5')
@@ -970,31 +970,40 @@
             <a class="zsub-tab" data-match="/Crm/Activities" href="/apps/zenith/Crm/Activities">Activities</a>
             <a class="zsub-tab" data-match="/Crm/Segments" href="/apps/zenith/Crm/Segments">Segments</a>
           </div>
+]]></text></render-mode>
+        <render-mode><text type="html" template="true"><![CDATA[
+          <#macro posSubnavTabs>
+            <#list [
+              ["Dashboard", "Dashboard"],
+              ["Terminal", "Billing Terminal"],
+              ["PosTransactions", "Transactions"],
+              ["DailySummary", "Daily Summary"],
+              ["PosSessions", "Sessions"],
+              ["PosTerminals", "Terminals"],
+              ["CreditBills", "Credit Bills"],
+              ["CashEntry", "Cash Entry"],
+              ["Expenses", "Expenses"],
+              ["Wastage", "Wastage"],
+              ["Stock", "Stock"],
+              ["Reports", "Reports"],
+              ["BillAuditReport", "Audit Report"],
+              ["ProductPricing", "Product Prices"],
+              ["PriceOverrides", "Price Overrides"],
+              ["DiscountSettings", "Discount"],
+              ["SalesMode", "Sales Mode"],
+              ["Barcodes", "Barcodes"],
+              ["BarcodeLabels", "Barcode Labels"],
+              ["ProductImport", "Import"],
+              ["ReceiptConfig", "Receipts"],
+              ["PrinterConfig", "Printers"],
+              ["BillNumberRegister", "Bill Register"],
+              ["OfflineMode", "Offline Mode"]
+            ] as tab>
+              <a class="zsub-tab" data-match="/pos/${tab[0]}" href="/apps/zenith/pos/${tab[0]}">${tab[1]}</a>
+            </#list>
+          </#macro>
           <div class="zsub-grp" data-match="/pos"><span class="zsub-title">POS</span>
-            <a class="zsub-tab" data-match="/pos/Dashboard" href="/apps/zenith/pos/Dashboard">Dashboard</a>
-            <a class="zsub-tab" data-match="/pos/Terminal" href="/apps/zenith/pos/Terminal">Billing Terminal</a>
-            <a class="zsub-tab" data-match="/pos/PosTransactions" href="/apps/zenith/pos/PosTransactions">Transactions</a>
-            <a class="zsub-tab" data-match="/pos/DailySummary" href="/apps/zenith/pos/DailySummary">Daily Summary</a>
-            <a class="zsub-tab" data-match="/pos/PosSessions" href="/apps/zenith/pos/PosSessions">Sessions</a>
-            <a class="zsub-tab" data-match="/pos/PosTerminals" href="/apps/zenith/pos/PosTerminals">Terminals</a>
-            <a class="zsub-tab" data-match="/pos/CreditBills" href="/apps/zenith/pos/CreditBills">Credit Bills</a>
-            <a class="zsub-tab" data-match="/pos/CashEntry" href="/apps/zenith/pos/CashEntry">Cash Entry</a>
-            <a class="zsub-tab" data-match="/pos/Expenses" href="/apps/zenith/pos/Expenses">Expenses</a>
-            <a class="zsub-tab" data-match="/pos/Wastage" href="/apps/zenith/pos/Wastage">Wastage</a>
-            <a class="zsub-tab" data-match="/pos/Stock" href="/apps/zenith/pos/Stock">Stock</a>
-            <a class="zsub-tab" data-match="/pos/Reports" href="/apps/zenith/pos/Reports">Reports</a>
-            <a class="zsub-tab" data-match="/pos/BillAuditReport" href="/apps/zenith/pos/BillAuditReport">Audit Report</a>
-            <a class="zsub-tab" data-match="/pos/ProductPricing" href="/apps/zenith/pos/ProductPricing">Product Prices</a>
-            <a class="zsub-tab" data-match="/pos/PriceOverrides" href="/apps/zenith/pos/PriceOverrides">Price Overrides</a>
-            <a class="zsub-tab" data-match="/pos/DiscountSettings" href="/apps/zenith/pos/DiscountSettings">Discount</a>
-            <a class="zsub-tab" data-match="/pos/SalesMode" href="/apps/zenith/pos/SalesMode">Sales Mode</a>
-            <a class="zsub-tab" data-match="/pos/Barcodes" href="/apps/zenith/pos/Barcodes">Barcodes</a>
-            <a class="zsub-tab" data-match="/pos/BarcodeLabels" href="/apps/zenith/pos/BarcodeLabels">Barcode Labels</a>
-            <a class="zsub-tab" data-match="/pos/ProductImport" href="/apps/zenith/pos/ProductImport">Import</a>
-            <a class="zsub-tab" data-match="/pos/ReceiptConfig" href="/apps/zenith/pos/ReceiptConfig">Receipts</a>
-            <a class="zsub-tab" data-match="/pos/PrinterConfig" href="/apps/zenith/pos/PrinterConfig">Printers</a>
-            <a class="zsub-tab" data-match="/pos/BillNumberRegister" href="/apps/zenith/pos/BillNumberRegister">Bill Register</a>
-            <a class="zsub-tab" data-match="/pos/OfflineMode" href="/apps/zenith/pos/OfflineMode">Offline Mode</a>
+            <@posSubnavTabs/>
           </div>
           <div class="zsub-grp" data-match="/kot"><span class="zsub-title">KOT</span>
             <a class="zsub-tab" data-match="/kot/KotDashboard" href="/apps/zenith/kot/KotDashboard">KOT Dashboard</a>
@@ -1003,7 +1012,10 @@
             <a class="zsub-tab" data-match="/kot/Tables" href="/apps/zenith/kot/Tables">Tables</a>
             <a class="zsub-tab" data-match="/kot/KotHistory" href="/apps/zenith/kot/KotHistory">KOT History</a>
             <a class="zsub-tab" data-match="/kot/WaiterManagement" href="/apps/zenith/kot/WaiterManagement">Waiters</a>
+            <#if (navShow["pos"])!false><@posSubnavTabs/></#if>
           </div>
+]]></text></render-mode>
+        <render-mode><text type="html"><![CDATA[
           <div class="zsub-grp" data-match="/Inventory"><span class="zsub-title">Inventory</span>
             <a class="zsub-tab" data-match="/Inventory/InventoryDashboard" href="/apps/zenith/Inventory/InventoryDashboard">Dashboard</a>
             <a class="zsub-tab" data-match="/Inventory/FindProduct" href="/apps/zenith/Inventory/FindProduct">Products</a>
@@ -1134,7 +1146,7 @@
               try{var _pc=document.getElementById('zenith-saas-cfg');
                 if(_pc&&_pc.getAttribute('data-pos-only')==='true'){
                   var _posCash={'/pos/Dashboard':1,'/pos/Terminal':1,'/pos/PosTransactions':1,'/pos/DailySummary':1,'/pos/PosSessions':1,'/pos/CreditBills':1,'/pos/CashEntry':1};
-                  [].slice.call(sub.querySelectorAll('.zsub-grp[data-match="/pos"] .zsub-tab')).forEach(function(a){var m=a.getAttribute('data-match')||'';if(m&&!_posCash[m])a.style.display='none';});
+                  [].slice.call(sub.querySelectorAll('.zsub-tab[data-match^="/pos/"]')).forEach(function(a){var m=a.getAttribute('data-match')||'';if(m&&!_posCash[m])a.style.display='none';});
                 }}catch(_e){}
               var _roleCfg=document.getElementById('zenith-saas-cfg');
               var _roleScope=JSON.parse((_roleCfg&&_roleCfg.getAttribute('data-role-scope'))||'{}');

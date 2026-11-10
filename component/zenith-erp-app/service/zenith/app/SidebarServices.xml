@@ -117,9 +117,10 @@
                     || !(parsed.hidden instanceof List) || parsed.order.size() > 80 || parsed.hidden.size() > 80) {
                 error = 'Invalid navigation settings.'; return
             }
+            def sectionModule = module == 'kot' ? '(kot|pos)' : module
             def valid = { id -> id instanceof String && id.length() <= 100 &&
                 (module == '__dash' ? id == '/' || id ==~ /\/[A-Za-z][A-Za-z0-9\/-]*/ :
-                    id ==~ ('/' + module + '/[A-Za-z][A-Za-z0-9-]*')) }
+                    id ==~ ('/' + sectionModule + '/[A-Za-z][A-Za-z0-9-]*')) }
             if (parsed.order.any { !valid(it) } || parsed.hidden.any { !valid(it) }
                     || parsed.order.size() != (parsed.order as Set).size()
                     || parsed.hidden.size() != (parsed.hidden as Set).size()) {

@@ -612,6 +612,21 @@
     </entity>
 
     <!-- ========== Views ========== -->
+    <view-entity entity-name="KotTransactionView" package="zenith.erp.pos">
+        <member-entity entity-alias="PX" entity-name="zenith.erp.pos.PosTransaction"/>
+        <member-entity entity-alias="KOT" entity-name="zenith.erp.pos.KitchenOrderTicket" join-from-alias="PX">
+            <key-map field-name="transactionId"/>
+            <key-map field-name="organizationPartyId"/>
+        </member-entity>
+        <alias entity-alias="PX" name="transactionId"/>
+        <alias entity-alias="PX" name="organizationPartyId"/>
+        <alias entity-alias="PX" name="entryDate"/>
+        <alias entity-alias="PX" name="statusId"/>
+        <alias entity-alias="PX" name="customerPartyId"/>
+        <alias entity-alias="PX" name="payableAmount"/>
+        <alias entity-alias="PX" name="grandTotal"/>
+    </view-entity>
+
     <view-entity entity-name="KotView" package="zenith.erp.pos">
         <member-entity entity-alias="KOT" entity-name="zenith.erp.pos.KitchenOrderTicket"/>
         <member-entity entity-alias="PT" entity-name="zenith.erp.pos.PosTerminal" join-from-alias="KOT" join-optional="true">
