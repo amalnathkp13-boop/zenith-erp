@@ -52,6 +52,20 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   check('Grid keeps the customer in the header and gives the catalogue its own column',
    await page.locator('.kg-header #kb-customer-open').isVisible()&&
    await page.locator('#kb-product-grid').evaluate(panel=>panel.getBoundingClientRect().width>innerWidth*0.4));
+  await search.fill('Disposable');
+  const gridResults=page.locator('#kb-suggestions');
+  await page.waitForFunction(()=>document.querySelectorAll('#kb-suggestions [data-result]').length>=5);
+  const columns=await gridResults.evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length);
+  const resultCount=await gridResults.locator('[data-result]').count();
+  const activeResult=()=>gridResults.locator('.is-active').getAttribute('data-result');
+  for(const [key,index] of [['ArrowRight',1],['ArrowDown',Math.min(columns+1,resultCount-1)],['ArrowLeft',columns],['ArrowUp',0]]) {
+   await search.press(key);
+   check('Grid '+key+' selects the spatial neighbor',Number(await activeResult())===index);
+  }
+  await gridResults.locator('[data-result="0"]').focus();
+  await page.keyboard.press('ArrowRight');
+  check('Grid arrows also move focus between cards',await gridResults.locator('[data-result="1"]').evaluate(el=>el===document.activeElement));
+  await search.press('Escape');
   await modes.locator('summary').click();
   check('Grid View is selected in Modes',await gridMode.getAttribute('aria-pressed')==='true');
   await page.locator('.kg-categories button').first().click();
@@ -138,6 +152,10 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await page.locator('.pos-cash-cancel').click();
   await fullscreen.click();
   await page.waitForFunction(()=>!document.fullscreenElement);
+  await page.getByRole('button',{name:'Change',exact:true}).click();
+  await page.locator('#kb-customer-search').fill('POS_QA_A_CUST_SAME');
+  await customer.click();
+  await page.locator('#kb-grand').getByText('₹200.00').waitFor();
   await search.press('Space');
   await page.locator('#kb-payment').waitFor();
   check('Checkout keeps the selected entry terminal',await page.locator('input[name=sessionId]').inputValue()===session.sessionId);
@@ -153,15 +171,21 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   check('List Cash computes change before confirmation',(await page.locator('.pos-cash-change').innerText()).includes('₹50'));
   await page.screenshot({path:path.join(out,'kot-list-cash-payment.png')});
   await cash.press('Enter');
+  await page.locator('#kb-print-choice').waitFor();
+  check('Payment waits for the selected print option',await page.evaluate(()=>window.kotPrints.length===0));
+  check('The print choice shows the confirmed cash change',await page.locator('#kb-print-summary').getByText('Change given: ₹50.00.',{exact:false}).isVisible());
+  await page.locator('[data-kb-print="both"]').click();
   await page.waitForFunction(()=>window.kotPrints.length===2);
+  await page.locator('#kb-print-choice').waitFor({state:'hidden'});
   const kot=q("SELECT kot_id,transaction_id,waiter_name,table_id,notes FROM kitchen_order_ticket WHERE waiter_name='"+waiterName+"' AND transaction_id IS NOT NULL ORDER BY kot_id DESC")[0];
-  const tx=q("SELECT transaction_number,payable_amount,change_amount,status_id FROM pos_transaction WHERE transaction_id='"+kot.transaction_id+"'")[0];
+  const tx=q("SELECT transaction_number,payable_amount,change_amount,status_id,customer_party_id FROM pos_transaction WHERE transaction_id='"+kot.transaction_id+"'")[0];
   const printed=await page.evaluate(()=>window.kotPrints);
-  check('Take Away creates one completed bill and prints both saved documents',tx.status_id==='PtCompleted'&&Number(tx.payable_amount)===200&&!kot.table_id&&kot.notes.includes('Take Away')&&printed[0].includes('KOT #')&&printed[0].includes('No onion')&&printed[1].includes(tx.transaction_number),{kot,tx});
+  check('Take Away saves the bill and Print both opens a name-and-quantity KOT plus the bill',tx.status_id==='PtCompleted'&&Number(tx.payable_amount)===200&&!kot.table_id&&kot.notes.includes('Take Away')&&printed[0].includes('Disposable POS A P18')&&printed[0].includes('class="q">2</td>')&&!printed[0].includes('No onion')&&!printed[0].includes('KOT #')&&printed[1].includes(tx.transaction_number),{kot,tx});
+  check('The cash bill and customer receipt retain the selected customer',tx.customer_party_id==='POS_QA_A_CUST_SAME'&&printed[1].includes(customerName));
   check('The shared drawer records tender received and change separately',Number(tx.change_amount)===50&&
    Number(q("SELECT amount FROM pos_payment WHERE transaction_id='"+kot.transaction_id+"'")[0].amount)===250);
   const replay=await json('checkoutKot',{kotId:kot.kot_id,sessionId:session.sessionId,paymentMethod:'Cash',cashAmount:'200'});
-  check('Retry returns the same paid bill without another tender',replay.data?.billNumber===tx.transaction_number&&q("SELECT amount FROM pos_payment WHERE transaction_id='"+kot.transaction_id+"'").length===1,replay);
+  check('Retry returns the same paid bill and change without another tender',replay.data?.billNumber===tx.transaction_number&&Number(replay.data.changeAmount)===50&&q("SELECT amount FROM pos_payment WHERE transaction_id='"+kot.transaction_id+"'").length===1,replay);
   const denied=await json('checkoutKot',{kotId:kot.kot_id,sessionId:session.sessionId,paymentMethod:'Cash',cashAmount:'200'},foreign);
   check('Another organization cannot bill or retry the order',!denied.data?.success,denied);
   const draft=await json('saveDraft',{itemsJson:JSON.stringify([{productId:'POS_QA_A_P18',quantity:1}]),
@@ -170,19 +194,60 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   const beforeFailure=txs();
   const short=await json('checkoutKot',{kotId:draft.data.kotId,sessionId:session.sessionId,paymentMethod:'Cash',cashAmount:'10'});
   check('An underpayment leaves no partial tender or completed sale',!short.data?.success&&JSON.stringify(txs())===JSON.stringify(beforeFailure),short);
-  await post(screen,'deleteDraft',{kotId:draft.data.kotId});
+  await post(screen,'deleteDraft',{sessionId:session.sessionId,kotId:draft.data.kotId});
   await page.locator('#kb-history-open').click();
   await page.locator('#kb-history').getByText(waiterName,{exact:false}).first().waitFor();
   check('Saved checkout is available in the in-page History',new URL(page.url()).pathname.endsWith('/KotBilling'));
   await page.locator('#kb-history').getByRole('button',{name:'Close',exact:true}).click();
+  for(const [view,option] of [['List',listMode],['Grid',gridMode]]) {
+   await modes.locator('summary').click();
+   await option.click();
+   const headers=await page.locator('.kb-otable th:visible').allInnerTexts();
+   const rateIndex=headers.findIndex(t=>/^Rate/i.test(t));
+   check(view+' puts Rate immediately before Quantity',rateIndex>=0&&rateIndex+1===headers.findIndex(t=>/^(Qty|Quantity)$/i.test(t)),headers);
+   await page.keyboard.press('NumpadDivide');
+   check(view+' keypad divide focuses product search',await search.evaluate(el=>el===document.activeElement));
+   await page.keyboard.type('Disposable POS A P18');
+   await card.waitFor();
+   await page.keyboard.press('Enter');
+   const rate=page.locator('[data-kb-edit="rate"]'), quantity=page.locator('[data-kb-edit="qty"]');
+   const allSelected=el=>el===document.activeElement&&el.selectionStart===0&&el.selectionEnd===el.value.length;
+   check(view+' Enter selects the entire rate',await rate.evaluate(allSelected));
+   await page.keyboard.type('150');
+   await page.keyboard.press('ArrowRight');
+   check(view+' Right commits the rate and selects the entire quantity',await rate.inputValue()==='150'&&await quantity.evaluate(allSelected));
+   await page.keyboard.type('3');
+   await page.keyboard.press('ArrowDown');
+   check(view+' Down moves from quantity to Cash',await page.locator('[data-kb-payment=Cash]').evaluate(el=>el===document.activeElement));
+   await page.keyboard.press('ArrowRight');
+   await page.keyboard.press('Enter');
+   await page.locator('#kb-payment').waitFor();
+   await page.locator('#kb-grand').getByText('₹450.00').waitFor();
+   check(view+' Right and Enter select Card',await page.locator('#kb-payment-method').inputValue()==='Card');
+   if(view==='List'){
+    await page.locator('#kb-payment-close').click();
+    page.once('dialog',dialog=>dialog.accept());
+    await page.locator('#kb-clear').click();
+    continue;
+   }
+   await page.locator('#kb-other-payment').getByRole('button',{name:'Confirm payment'}).click();
+   await page.locator('#kb-payment').waitFor({state:'hidden'});
+   await page.locator('#kb-print-choice').waitFor();
+   await page.locator('#kb-print-close').click();
+   await page.locator('#kb-order-status').filter({hasText:'Saved bill'}).waitFor();
+   const lines=q("SELECT i.unit_price,i.quantity,i.manual_price,t.payable_amount,p.payment_method FROM pos_transaction_item i JOIN pos_transaction t ON t.transaction_id=i.transaction_id JOIN pos_payment p ON p.transaction_id=t.transaction_id WHERE t.session_id='"+session.sessionId+"' AND t.status_id='PtCompleted' AND i.manual_price='Y'");
+   check('Card checkout persists the keypad rate and quantity',lines.length===1&&lines[0].payment_method==='Card'&&Number(lines[0].unit_price)===150&&Number(lines[0].quantity)===3&&Number(lines[0].payable_amount)===450,lines);
+  }
+  await modes.locator('summary').click();
+  await listMode.click();
   const foreignClose=await json('sessionDrawer',{drawerAction:'close',closingCash:'300'},foreign);
   check('A foreign organization cannot close the KOT drawer',!foreignClose.data?.success&&
    q("SELECT status_id FROM pos_session WHERE session_id='"+session.sessionId+"'")[0].status_id==='PsOpen');
   await page.locator('#kb-close-session').click();
   await closeDialog.waitFor();
   const review=await closeDialog.innerText();
-  check('List drawer review reconciles one bill: ₹100 + ₹250 − ₹50 = ₹300',
-   ['Bills Completed','₹200.00','₹100.00','₹250.00','₹50.00','₹300.00','Exact match'].every(text=>review.includes(text))&&
+  check('List drawer review reconciles cash separately from the Card bill: ₹100 + ₹250 − ₹50 = ₹300',
+   ['Bills Completed','₹100.00','₹250.00','₹50.00','₹300.00','Exact match'].every(text=>review.includes(text))&&
    await page.locator('.pos-close-cash').inputValue()==='300.00');
   await page.screenshot({path:path.join(out,'kot-list-close-session.png')});
   await page.locator('.pos-close-cash').fill('295');

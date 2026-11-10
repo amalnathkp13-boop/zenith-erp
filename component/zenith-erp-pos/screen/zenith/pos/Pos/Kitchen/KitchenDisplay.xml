@@ -74,7 +74,7 @@
         <label>Kitchen Display<select name="enabled"><option value="Y"<#if kitchenDisplayEnabled> selected</#if>>Enable</option><option value="N"<#if !kitchenDisplayEnabled> selected</#if>>Disable</option></select></label>
         <button type="submit">Save Kitchen Display setting</button>
     </form></#if>
-    <#if policyShopId?has_content && !kitchenDisplayEnabled><p role="status">Kitchen Display is disabled for this shop. Send to Kitchen is unavailable. Takeaway bills still print a KOT and customer receipt; dine-in bills can be settled after the meal.</p></#if>
+    <#if policyShopId?has_content && !kitchenDisplayEnabled><p role="status">Kitchen Display is disabled for this shop. Send to KOT is unavailable. After payment, choose Print Bill, KOT print, or Print both.</p></#if>
     <header class="zk-heading"><span class="zk-heading-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 9a4 4 0 0 1 2-7 5 5 0 0 1 8 0 4 4 0 0 1 2 7v10H6Z"/><path d="M6 15h12"/></svg></span><div><h1 id="zk-title">Kitchen Display</h1><p>Track and manage food orders in the kitchen by order status.</p></div></header>
     <section class="zk-overview" aria-label="Kitchen order summary">
         <article class="zk-metric zk-metric-new"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 3h14v18l-3-2-4 2-4-2-3 2Z"/><path d="M8 7h8M8 11h8M8 15h4"/></svg><div><h2>New Orders</h2><strong data-kitchen-count="KotNew">${newCount}</strong></div></article>

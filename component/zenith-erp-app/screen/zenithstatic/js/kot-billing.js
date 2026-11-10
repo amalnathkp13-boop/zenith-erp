@@ -8,7 +8,8 @@
   const search=$('search'), suggestions=$('suggestions'), cart=new Map();
   const modesMenu=root.querySelector('.kg-modes');
   const modeOptions=modesMenu.querySelectorAll('[data-kb-view]');
-  const paymentButtons=root.querySelectorAll('[data-kb-payment]');
+  const paymentButtons=Array.from(root.querySelectorAll('[data-kb-payment]'));
+  const cartRows=$('cart'), editError=$('edit-error');
   const cfg=$('data').dataset;
   const shell=location.pathname.startsWith('/qapps/')?'/qapps':'/apps';
   const billingPath='/zenith'+(cfg.kotModule==='kot'?'/kot':'/pos/Kitchen')+'/KotBilling';
@@ -16,24 +17,61 @@
   const money=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR'});
   const cardMoney=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',minimumFractionDigits:0});
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const token=()=>window.moqui?.webrootVue?.moquiSessionToken||$('token').value;
+  const token=()=>$('token').value||window.moqui?.webrootVue?.moquiSessionToken;
   let orderType=cfg.drafttype||'Dine In', taxOn=cfg.drafttax||'Y', draftId=cfg.draftid||'';
   let salesModeId=$('mode').value, quoteVersion=0, quoteTimer, total=null, busy=false, savedFingerprint='';
   let searchVersion=0, searchTimer, searchAbort, results=[], selected=0, exactId, ambiguous=false, hasMore=false, offset=0;
   let historyDirty=false, grid=false, pickedMatch=false, categoryId='';
   let customer={}, custVersion=0, custTimer, custAbort;
+  let invalidEdit, pendingTender, sessionLost=false, completedKotId='';
+  const signInMessage='Sign in again to continue billing.';
   if(cfg.draftmode && Array.from($('mode').options).some(o=>o.value===cfg.draftmode)) salesModeId=$('mode').value=cfg.draftmode;
   if(cfg.draftwaiter) $('waiter').value=cfg.draftwaiter;
   $('table').value=cfg.drafttable||cfg.selectedTable||'';
 
   async function request(action,data,signal) {
+    if(sessionLost)throw Error(signInMessage);
     const response=await fetch(base+'/'+action,{method:'POST',credentials:'same-origin',signal,
       body:new URLSearchParams({...data,sessionId:cfg.session,moquiSessionToken:token()})});
+    if(response.status===401||/\/Login\/?$/i.test(new URL(response.url,location.href).pathname)) {
+      if(root.isConnected&&!sessionLost) {
+        sessionLost=true;
+        $('session-message').textContent='Your sign-in ended. The unsent order is still here.';
+        $('session-notice').hidden=false;
+        quote(false);
+      }
+      throw Error(signInMessage);
+    }
     const result=await response.json().catch(()=>null);
     if(!response.ok||!result?.success) throw Error(result?.error||'The request could not be completed. Check your connection and try again.');
     return result;
   }
+  async function resumeBilling() {
+    const button=$('resume');
+    button.disabled=true;
+    try {
+      const response=await fetch('/apps'+billingPath+'?sessionId='+encodeURIComponent(cfg.session),{cache:'no-store'});
+      const page=new DOMParser().parseFromString(await response.text(),'text/html');
+      const fresh=page.getElementById('kb-data')?.dataset, freshToken=page.getElementById('kb-token')?.value;
+      if(!response.ok||!freshToken||fresh?.session!==cfg.session||fresh.user!==cfg.user||
+          page.getElementById('kb-search')?.disabled!==search.disabled) {
+        $('session-message').textContent='Sign in with the same account and shop, then try Resume billing again.';
+        return;
+      }
+      $('token').value=freshToken;
+      cfg.displayEnabled=fresh.displayEnabled;
+      $('display-message').hidden=fresh.displayEnabled==='true';
+      sessionLost=false;
+      $('session-notice').hidden=true;
+      search.focus();lookup();quote();
+    } catch {
+      $('session-message').textContent='Billing could not reconnect. Check your connection and try again.';
+    } finally {
+      button.disabled=false;
+    }
+  }
   function post(action,data) {
+    if(sessionLost)return;
     const form=document.createElement('form');
     form.method='POST';form.action=base+'/'+action;
     for(const [name,value] of Object.entries({...data,sessionId:cfg.session,moquiSessionToken:token()})) {
@@ -42,7 +80,8 @@
     root.append(form);form.submit();
   }
   const orderData=()=>({orderType,taxOn,salesModeId,tableId:$('table').value,waiterId:$('waiter').value,notes:$('instr').value,customerPartyId:customer.id||'',
-    itemsJson:JSON.stringify(Array.from(cart.values(),it=>({productId:it.id,quantity:it.qty})))});
+    itemsJson:JSON.stringify(Array.from(cart.values(),it=>({productId:it.id,quantity:it.qty,
+      ...(it.manualRate==null?{}:{manualPrice:'Y',unitPrice:it.manualRate})})))});
   function setType(value) {
     orderType=value;
     for(const button of root.querySelectorAll('[data-ot]')) {
@@ -57,18 +96,25 @@
     b.textContent=on?'Tax: ON':'Tax: OFF';b.classList.toggle('is-on',on);b.setAttribute('aria-checked',on);
   }
   function controls() {
-    for(const button of paymentButtons) button.disabled=busy||!cart.size||total===null;
+    const canPay=!busy&&!sessionLost&&cart.size>0&&total!==null&&editError.hidden;
+    for(const button of paymentButtons) {
+      button.disabled=busy||sessionLost||!cart.size;
+      button.setAttribute('aria-disabled',String(!canPay));
+    }
     $('clear').disabled=busy||!cart.size;
-    if($('close-session')) $('close-session').disabled=busy;
-    for(const id of ['draft','bill']) if($(id)) $(id).disabled=busy||!cart.size||total===null;
+    if($('close-session')) $('close-session').disabled=busy||sessionLost;
+    for(const id of ['draft','bill']) if($(id)) $(id).disabled=!canPay;
     if($('send')) {
       const displayDisabled=cfg.displayEnabled==='false';
-      $('send').disabled=busy||!cart.size||displayDisabled;
+      root.classList.toggle('kb-display-disabled',displayDisabled);
+      $('send').style.display=displayDisabled?'none':'';
+      $('send').disabled=busy||sessionLost||!cart.size||displayDisabled||!editError.hidden;
       $('send').title=displayDisabled?'Kitchen Display is disabled for this shop. Use KOT printing.':'Press Shift by itself';
     }
   }
   function resetOrder() {
     cart.clear();
+    setEditError('');
     draftId='';savedFingerprint='';customer={};
     $('badge').textContent='New KOT';$('instr').value='';
     renderCustomer();
@@ -110,17 +156,43 @@
   function walkInCustomer() {
     customer={};$('customer-dialog')?.close();renderCustomer();quote();
   }
+  function editorFor(id, field) {
+    return cartRows.querySelector('tr[data-product="'+CSS.escape(id)+'"] [data-kb-edit="'+field+'"]');
+  }
+  function focusEditor(input) {
+    if(!input || input.readOnly)return;
+    input.focus();
+    input.select();
+  }
   function rows() {
+    // A quote can finish while a cashier is typing. Keep the uncommitted text and selection.
+    const active=document.activeElement;
+    const editing=active?.dataset.kbEdit && cartRows.contains(active);
+    const cursor=editing && {id:active.closest('tr').dataset.product,field:active.dataset.kbEdit,
+      value:active.value,changed:active.value!==active.defaultValue,start:active.selectionStart,end:active.selectionEnd};
+    const readOnly=search.disabled?' readonly':'';
     const modeName=$('mode').selectedOptions[0]?.textContent||'—';
     $('list-mode').textContent=modeName;
     $('list-waiter').textContent=$('waiter').value?$('waiter').selectedOptions[0]?.textContent:'—';
-    $('cart').innerHTML=Array.from(cart.values(),(it,i)=>'<tr data-product="'+esc(it.id)+'"><td>'+(i+1)+'</td><td><strong>'+esc(it.name)+'</strong><small>'+esc(it.code)+'</small></td>'
+    cartRows.innerHTML=Array.from(cart.values(),(it,i)=>'<tr data-product="'+esc(it.id)+'"><td>'+(i+1)+'</td><td><strong>'+esc(it.name)+'</strong><small>'+esc(it.code)+'</small></td>'
       +'<td class="kg-normal"><span class="kl-line-mode">'+esc(modeName)+'</span></td>'
-      +'<td class="r"><span class="kl-line-rate kg-normal">'+cardMoney.format(it.price).replace('₹','').trim()+'</span><span class="kg-only">'+money.format(it.price)+'</span></td>'
-      +'<td><span class="kb-ostep"><button type="button" data-qty="-1" aria-label="Decrease quantity" '+(it.qty<=1?'disabled':'')+'>−</button><span>'+it.qty+'</span><button type="button" data-qty="1" aria-label="Increase quantity">+</button></span></td>'
+      +'<td><input type="text" inputmode="decimal" class="kl-line-rate" data-kb-edit="rate" aria-label="Rate for '+esc(it.name)+'" value="'+esc(it.price)+'"'+readOnly+'></td>'
+      +'<td><span class="kb-ostep"><button type="button" data-qty="-1" aria-label="Decrease quantity" '+(it.qty<=1||search.disabled?'disabled':'')+'>−</button><input type="text" inputmode="decimal" data-kb-edit="qty" aria-label="Quantity for '+esc(it.name)+'" value="'+esc(it.qty)+'"'+readOnly+'><button type="button" data-qty="1" aria-label="Increase quantity" '+(search.disabled?'disabled':'')+'>+</button></span></td>'
       +'<td class="kg-normal">'+(it.tax==null?'—':money.format(it.tax))+'</td>'
       +'<td class="r kb-oamt">'+money.format(it.amount??it.qty*it.price)+'</td>'
       +'<td class="r"><button type="button" class="kb-orm" data-remove="true" aria-label="Remove '+esc(it.name)+'"><span class="kg-only">×</span><svg class="kg-normal" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18m-2 0-1 15H6L5 6m4 0V3h6v3m-5 4v7m4-7v7"/></svg></button></td></tr>').join('');
+    const next=cursor && editorFor(cursor.id,cursor.field);
+    const invalid=invalidEdit && editorFor(invalidEdit.id,invalidEdit.field);
+    if(invalid) {
+      invalid.value=invalidEdit.value;
+      invalid.setAttribute('aria-invalid','true');
+    }
+    if(next) {
+      if(cursor.changed)next.value=cursor.value;
+      next.focus({preventScroll:true});
+      if(!cursor.changed && cursor.start===0 && cursor.end===cursor.value.length)next.select();
+      else next.setSelectionRange(cursor.start,cursor.end);
+    }
     $('cartempty').hidden=cart.size>0;
     $('item-count').textContent=cart.size;
     $('grid-count').textContent=cart.size;
@@ -135,15 +207,18 @@
     $('list-grand').textContent=display(summary?.total);
     $('list-tax-stat').textContent=display(summary?.tax);
   }
-  function quote() {
+  function quote(refreshRows=true) {
     clearTimeout(quoteTimer); const version=++quoteVersion;
+    pendingTender=null;
     for(const item of cart.values())item.tax=null;
-    total=null;controls();rows();
+    total=null;controls();if(refreshRows)rows();
     listTotals(cart.size?null:{});
     $('quote-error').textContent='';
     $('tax-rows').replaceChildren();
-    $('grand').textContent=cart.size?'Calculating…':money.format(0);
+    $('grand').textContent=cart.size?(sessionLost?'Sign in to price':'Calculating…'):money.format(0);
     if(!cart.size){$('subtotal').textContent=money.format(0);return;}
+    $('subtotal').textContent='—';
+    if(sessionLost)return;
     quoteTimer=setTimeout(async()=>{
       try{
         const {receipt}=await request('cartReceipt',orderData());
@@ -157,8 +232,83 @@
         $('grand').textContent=money.format(total);
         listTotals(receipt.summary);
         $('tax-rows').innerHTML=(receipt.summary.taxBreakdown||[]).map(t=>'<div class="kb-sum__row"><span>'+esc(t.name)+'</span><span>'+money.format(t.amount)+'</span></div>').join('');
-      }catch(e){if(version===quoteVersion&&root.isConnected)$('quote-error').textContent=e.message;}
+        if(pendingTender && pendingTender===document.activeElement)openPayment(pendingTender.dataset.kbPayment);
+        pendingTender=null;
+      }catch(e){
+        if(version!==quoteVersion||!root.isConnected)return;
+        pendingTender=null;
+        $('grand').textContent='Unavailable';
+        $('quote-error').textContent=e.message;
+      }
     },100);
+  }
+  function setEditError(message, input) {
+    invalidEdit=input && {id:input.closest('tr').dataset.product,field:input.dataset.kbEdit,value:input.value};
+    cartRows.querySelector('[aria-invalid="true"]')?.removeAttribute('aria-invalid');
+    if(input)input.setAttribute('aria-invalid','true');
+    editError.textContent=message;
+    editError.hidden=!message;
+  }
+  function commitEdit(input) {
+    if(input.readOnly||busy)return false;
+    if(input.value===input.defaultValue) {
+      if(input.hasAttribute('aria-invalid')){setEditError('');controls();}
+      return true;
+    }
+    const item=cart.get(input.closest('tr').dataset.product);
+    const rate=input.dataset.kbEdit==='rate';
+    const raw=input.value.trim(), value=Number(raw);
+    const decimal=rate?/^(?:\d+(?:\.\d{0,2})?|\.\d{1,2})$/:/^(?:\d+(?:\.\d{0,6})?|\.\d{1,6})$/;
+    if(!decimal.test(raw)||value>(rate?10000000:1000000)||(!rate&&value<=0)) {
+      setEditError(rate?'Enter a rate from 0 to 10,000,000 with up to two decimal places.':'Enter a positive quantity up to 1,000,000 with up to six decimal places.',input);
+      controls();
+      return false;
+    }
+    if(input.hasAttribute('aria-invalid'))setEditError('');
+    input.defaultValue=input.value=String(value);
+    if(rate){item.manualRate=value;item.price=value;}
+    else item.qty=value;
+    item.amount=null;
+    quote(false);
+    return true;
+  }
+  cartRows.addEventListener('change',e=>{
+    if(e.target.dataset.kbEdit)commitEdit(e.target);
+  });
+  cartRows.addEventListener('keydown',e=>{
+    const input=e.target, field=input.dataset.kbEdit;
+    if(!field||e.isComposing||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey)return;
+    const id=input.closest('tr').dataset.product;
+    if(e.key==='Escape' && (input.value!==input.defaultValue || input.hasAttribute('aria-invalid'))) {
+      e.preventDefault();
+      input.value=input.defaultValue;
+      if(input.hasAttribute('aria-invalid'))setEditError('');
+      controls();input.select();
+      return;
+    }
+    const toQty=field==='rate' && (e.key==='ArrowRight'||e.key==='Enter');
+    const toRate=field==='qty' && e.key==='ArrowLeft';
+    const toPayment=e.key==='ArrowDown'||(field==='qty'&&e.key==='Enter');
+    if(!toQty&&!toRate&&!toPayment)return;
+    e.preventDefault();
+    if(!commitEdit(input))return;
+    if(toPayment)paymentButtons[0]?.focus();
+    else focusEditor(editorFor(id,toQty?'qty':'rate'));
+  });
+  for(const [index,button] of paymentButtons.entries()) {
+    button.addEventListener('blur',()=>{if(pendingTender===button)pendingTender=null;});
+    button.addEventListener('keydown',e=>{
+      if(e.ctrlKey||e.metaKey||e.altKey||e.shiftKey)return;
+      if(e.key==='Enter'&&total===null&&!busy&&!invalidEdit&&!$('quote-error').textContent) {
+        // A fast cashier may pick the tender while the latest quote is still in flight.
+        e.preventDefault();
+        pendingTender=button;
+      } else if(e.key==='ArrowRight'||e.key==='ArrowLeft') {
+        e.preventDefault();
+        const step=e.key==='ArrowRight'?1:-1;
+        paymentButtons[(index+step+paymentButtons.length)%paymentButtons.length].focus();
+      }
+    });
   }
   function renderMatches(message) {
     const term=search.value.trim();
@@ -173,6 +323,30 @@
         return '<button type="button" class="kb-suggestion'+(i===selected&&(!grid||term||pickedMatch)?' is-active':'')+'" data-result="'+i+'"'+(search.disabled?' disabled':'')+'><span><strong>'+esc(p.name)+'</strong><small>'+esc(p.code)+(p.stock==null?'':' · Stock: '+esc(p.stock))+'</small></span><span'+(p.price==null?' class="kg-unpriced" title="'+esc(price)+'"':'')+'>'+esc(price)+'</span></button>';
       }).join('')
       +(hasMore?'<button type="button" class="kb-control" id="kb-more">More matches</button>':'');
+  }
+  function moveMatch(key, fromCard) {
+    if(!results.length||!/^Arrow(Left|Right|Up|Down)$/.test(key))return false;
+    const horizontal=key==='ArrowLeft'||key==='ArrowRight';
+    if(horizontal&&!grid)return false;
+    const step=key==='ArrowLeft'||key==='ArrowUp'?-1:1;
+    if(!grid)selected=(selected+step+results.length)%results.length;
+    else if(fromCard||pickedMatch||search.value.trim()) {
+      const columns=getComputedStyle(suggestions).gridTemplateColumns.split(' ').length;
+      const rowStart=selected-selected%columns;
+      if(horizontal||results.length<=columns) {
+        selected=Math.max(rowStart,Math.min(rowStart+columns-1,results.length-1,selected+step));
+      } else if(step<0 ? rowStart>0 : rowStart+columns<results.length) {
+        selected=Math.min(results.length-1,selected+step*columns);
+      }
+    }
+    pickedMatch=true;
+    suggestions.querySelector('.is-active')?.classList.remove('is-active');
+    const active=suggestions.querySelector('[data-result="'+selected+'"]');
+    active?.classList.add('is-active');
+    if(fromCard)active?.focus({preventScroll:true});
+    active?.scrollIntoView({block:'nearest',inline:'nearest'});
+    $('match-status').textContent=results[selected].name;
+    return true;
   }
   async function lookup(append=false) {
     const value=search.value, version=++searchVersion;
@@ -193,6 +367,7 @@
   }
   function clearSearch() {
     clearTimeout(searchTimer);
+    $('match-status').textContent='';
     if(grid&&!search.value){
       selected=0;pickedMatch=false;renderMatches();return;
     }
@@ -259,36 +434,44 @@
   }
   root.addEventListener('fullscreenchange',syncFullscreen);
   root.addEventListener('webkitfullscreenchange',syncFullscreen);
-  function choose(index) {
+  function choose(index, byKeyboard=false) {
     const item=results[index];if(!item||busy||search.disabled)return;
     if(item.price==null){renderMatches(item.reason||'No price for this sales mode.');return;}
     if(cart.has(item.id)){const row=cart.get(item.id);row.qty++;row.amount=null;}
     else cart.set(item.id,{...item,qty:1});
-    clearSearch();quote();search.focus({preventScroll:grid});
+    clearSearch();quote();
+    if(byKeyboard)focusEditor(editorFor(item.id,'rate'));
+    else search.focus({preventScroll:grid});
   }
   search.addEventListener('input',()=>{
     clearTimeout(searchTimer);++searchVersion;searchAbort?.abort();results=[];selected=0;pickedMatch=false;exactId=null;ambiguous=false;hasMore=false;
+    $('match-status').textContent='';
     renderMatches(search.value.trim()?'Searching…':'Loading products…');
     if(grid||search.value.trim())searchTimer=setTimeout(()=>lookup(),85);
   });
   search.addEventListener('keydown',async e=>{
-    if(e.isComposing||e.repeat)return;
+    if(e.isComposing||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey)return;
+    if(moveMatch(e.key,false)){e.preventDefault();return;}
+    if(e.repeat)return;
     if(e.key==='Escape'){clearSearch();return;}
     if(e.key===' '&&!search.value&&!$('bill')?.disabled&&!e.ctrlKey&&!e.altKey&&!e.metaKey&&!e.shiftKey){e.preventDefault();openPayment();return;}
-    if((e.key==='ArrowUp'||e.key==='ArrowDown')&&results.length){
-      e.preventDefault();selected=(selected+(e.key==='ArrowDown'?1:results.length-1))%results.length;pickedMatch=true;renderMatches();
-      suggestions.querySelector('.is-active')?.scrollIntoView({block:'nearest'});return;
-    }
     if(e.key!=='Enter'||(!search.value.trim()&&!(grid&&pickedMatch)))return;
     e.preventDefault();clearTimeout(searchTimer);
     if(!results.length&&!(await lookup()))return;
     if(ambiguous&&!pickedMatch){renderMatches('Choose a match with the mouse or arrow keys before adding.');return;}
     if(!pickedMatch&&!exactId&&/^\d{8,}$/.test(search.value.trim())){renderMatches('Barcode not found. Check the code or choose a matching product.');return;}
-    if(results.length)choose(selected);
+    if(results.length)choose(selected,true);
+  });
+  suggestions.addEventListener('keydown',e=>{
+    const match=e.target.closest('[data-result]');
+    if(!grid||!match||e.isComposing||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey)return;
+    if(e.key==='Enter'&&e.repeat){e.preventDefault();return;}
+    selected=Number(match.dataset.result);
+    if(moveMatch(e.key,true))e.preventDefault();
   });
   suggestions.addEventListener('click',e=>{
     if(e.target.closest('#kb-more')){lookup(true);return;}
-    const match=e.target.closest('[data-result]');if(match)choose(Number(match.dataset.result));
+    const match=e.target.closest('[data-result]');if(match)choose(Number(match.dataset.result),e.detail===0);
   });
 
   function openPayment(method='Cash') {
@@ -317,7 +500,7 @@
     }
   }
   async function openSessionClose() {
-    if(!$('close-session')||busy||document.getElementById('posCloseSessionOverlay'))return;
+    if(!$('close-session')||busy||sessionLost||document.getElementById('posCloseSessionOverlay'))return;
     busy=true;controls();
     try {
       const {summary}=await request('sessionDrawer',{});
@@ -328,60 +511,78 @@
     } catch(error){ $('order-status').textContent=error.message; }
     finally{busy=false;controls();}
   }
-  async function printBill(kotId,isTakeAway,w,kitchenWindow) {
-    let error;
-    if(isTakeAway){
-      try{
-        if(!kitchenWindow)throw Error('Allow a second print window for the kitchen ticket.');
-        const {record}=await request('printRecord',{kotId,kind:'kot'});
-        await KitchenPrint.browserPrint(kitchenWindow,KitchenPrint.kotHtml(record));
-        await request('ackKotPrint',{kotId});
-      }catch(e){error=e;}
+  async function printChoice(kind) {
+    if(busy||!completedKotId)return;
+    let billWindow,kotWindow;
+    try {
+      // Open windows from the click itself so the browser does not block them after fetching.
+      if(kind==='bill'||kind==='both')billWindow=KitchenPrint.open();
+      if(kind==='kot'||kind==='both')kotWindow=KitchenPrint.open();
+      busy=true;controls();
+      for(const button of root.querySelectorAll('[data-kb-print]'))button.disabled=true;
+      $('print-error').textContent='';
+      if(kotWindow) {
+        const {record}=await request('printRecord',{kotId:completedKotId,kind:'kot'});
+        await KitchenPrint.browserPrint(kotWindow,KitchenPrint.kotHtml(record));
+        await request('ackKotPrint',{kotId:completedKotId});
+      }
+      if(billWindow) {
+        const {record}=await request('printRecord',{kotId:completedKotId,kind:'bill'});
+        await KitchenPrint.customer(billWindow,record);
+      }
+      $('order-status').textContent+=' Print request opened. The completed bill is also in History.';
+      $('print-choice').close();
+    } catch(error) {
+      $('print-error').textContent=error.message+' You can retry here or print from History.';
+    } finally {
+      if(billWindow&&!billWindow.closed)billWindow.close();
+      if(kotWindow&&!kotWindow.closed)kotWindow.close();
+      busy=false;controls();
+      for(const button of root.querySelectorAll('[data-kb-print]'))button.disabled=false;
     }
-    const {record}=await request('printRecord',{kotId,kind:'bill'});
-    await KitchenPrint.customer(w,record);
-    if(error)throw error;
   }
   async function pay(e) {
-    e.preventDefault();if(busy||total===null)return;
-    let w,kitchenWindow,finalized=false;
+    e.preventDefault();
+    if(busy||sessionLost||total===null)return;
+    const confirmedTotal=total;
     const form=e.currentTarget, cash=$('payment-method').value==='Cash';
     const submit=cash?$('cash-slot').querySelector('[type=submit]'):$('other-payment').querySelector('[type=submit]');
     const cancel=cash?$('cash-slot').querySelector('.pos-cash-cancel'):$('payment-close');
-    if(cash&&!PosTillDialogs.updateCash($('cash-slot'),total))return;
+    if(cash&&!PosTillDialogs.updateCash($('cash-slot'),confirmedTotal))return;
     const payment=Object.fromEntries(new FormData(form)), data=orderData(), fingerprint=JSON.stringify(data);
-    const isTakeAway=orderType==='Take Away';
+    let bill;
+    busy=true;controls();submit.disabled=true;cancel.disabled=true;$('payment-error').textContent='';
     try{
-      // A blocked popup never prevents a sale from saving; history remains the print fallback.
-      try{w=KitchenPrint.open();}catch(_){}
-      if(w&&isTakeAway){try{kitchenWindow=KitchenPrint.open();}catch(_){}}
-      busy=true;controls();submit.disabled=true;cancel.disabled=true;$('payment-error').textContent='';
       if(!draftId||fingerprint!==savedFingerprint){
         const saved=await request('saveDraft',{...data,existingDraftId:draftId,wantJson:'Y'});
         draftId=saved.kotId;
-        if(Number(saved.total)!==total){
+        if(Number(saved.total)!==confirmedTotal){
+          savedFingerprint='';
           $('payment').close();quote();
           $('order-status').textContent='The order total changed. Review it before taking payment.';return;
         }
         savedFingerprint=fingerprint;
       }
-      const bill=await request('checkoutKot',{...payment,kotId:draftId});
-      finalized=true;historyDirty=true;
-      $('list-last-bill').textContent=bill.billNumber;
-      $('list-last-amount').textContent=$('list-last-stat').textContent=money.format(total);
-      $('payment').close();resetOrder();
-      $('order-status').textContent='Saved bill '+bill.billNumber+'.'+(Number(bill.changeAmount)>0?' Change given: '+money.format(bill.changeAmount)+'.':'');
-      const status=$('order-status');
-      if(w)await printBill(bill.kotId,isTakeAway,w,kitchenWindow);
-      else status.textContent+=' Allow pop-ups and reprint from History.';
+      bill=await request('checkoutKot',{...payment,kotId:draftId});
     }catch(error){
-      if(finalized)$('order-status').textContent+=' Printing needs attention. Reprint from History. '+error.message;
-      else $('payment-error').textContent=error.message;
+      $('payment-error').textContent=error.message;
     }finally{
-      if(w&&!w.closed)w.close();if(kitchenWindow&&!kitchenWindow.closed)kitchenWindow.close();
       busy=false;controls();cancel.disabled=false;
-      if(cash)PosTillDialogs.updateCash($('cash-slot'),total);else submit.disabled=false;
+      if(!bill&&$('payment').open&&!sessionLost){
+        if(cash)PosTillDialogs.updateCash($('cash-slot'),confirmedTotal);
+        else submit.disabled=false;
+      }
     }
+    if(!bill)return;
+    completedKotId=bill.kotId;historyDirty=true;
+    $('list-last-bill').textContent=bill.billNumber;
+    $('list-last-amount').textContent=$('list-last-stat').textContent=money.format(confirmedTotal);
+    $('payment').close();resetOrder();
+    const change=Number(bill.changeAmount)>0?' Change given: '+money.format(bill.changeAmount)+'.':'';
+    $('order-status').textContent='Saved bill '+bill.billNumber+'.'+change;
+    $('print-summary').textContent='Bill '+bill.billNumber+' is saved.'+change+' Choose a print option.';
+    $('print-error').textContent='';
+    $('print-choice').showModal();
   }
   function filterHistory(){
     const term=$('history-search').value.trim().toLowerCase(),status=$('history-status').value,date=$('history-date').value;let visible=0;
@@ -434,18 +635,21 @@
     else if(button.dataset.kbPayment)openPayment(button.dataset.kbPayment);
     else if(button.id==='kb-fullscreen')toggleFullscreen();
     else if(button.id==='kb-close-session')openSessionClose();
-    else if(button.id==='kb-clear'&&confirm('Clear the unsent items from this order?')){cart.clear();quote();}
+    else if(button.id==='kb-clear'&&confirm('Clear the unsent items from this order?')){cart.clear();setEditError('');quote();}
     else if(button.id==='kb-history-open')showHistory();
+    else if(button.id==='kb-resume')resumeBilling();
     else if(button.id==='kb-bill')openPayment();
     else if(button.id==='kb-send')sendToKitchen();
     else if(button.id==='kb-draft'){
       busy=true;controls();
       post('saveDraft',{...orderData(),existingDraftId:draftId});
     }
-    else if(button.classList.contains('pos-cash-quick')&&!busy){
+    else if(button.classList.contains('pos-cash-quick')){
       $('cash').value=button.dataset.amt;PosTillDialogs.updateCash($('cash-slot'),total);
     }
     else if(button.id==='kb-payment-close'||button.classList.contains('pos-cash-cancel'))$('payment').close();
+    else if(button.dataset.kbPrint)printChoice(button.dataset.kbPrint);
+    else if(button.id==='kb-print-close')$('print-choice').close();
     else if(button.id==='kb-customer-open'||button.hasAttribute('data-kb-customer-change'))openCustomerDialog();
     else if(button.id==='kb-customer-walkin')walkInCustomer();
     else if(button.id==='kb-customer-close')$('customer-dialog')?.close();
@@ -456,13 +660,14 @@
       if(confirm('Discard this held order?'))post('deleteDraft',{kotId:button.dataset.kotDiscard});
     }else if(button.dataset.remove||button.dataset.qty){
       const id=button.closest('tr').dataset.product,it=cart.get(id);
-      if(button.dataset.remove)cart.delete(id);
+      if(button.dataset.remove){cart.delete(id);if(invalidEdit?.id===id)setEditError('');}
       else{it.qty=Math.max(1,it.qty+Number(button.dataset.qty));it.amount=null;}
       quote();
     }
   });
   $('mode').addEventListener('change',()=>{
     if(cart.size&&!confirm('Update the cart? Existing items will be repriced for the selected sales mode.')){$('mode').value=salesModeId;return;}
+    for(const item of cart.values())delete item.manualRate;
     salesModeId=$('mode').value;quote();lookup();
   });
   $('table').addEventListener('change',quote);
@@ -478,6 +683,7 @@
   const editable=e=>e.target?.closest?.('input,textarea,select,button,a,[contenteditable],dialog');
   function shortcut(e) {
     if(!root.isConnected){document.removeEventListener('keydown',shortcut);document.removeEventListener('keyup',shortcut);return;}
+    if(document.getElementById('posCloseSessionOverlay')){shiftAlone=false;return;}
     if(e.type==='keyup'){
       if(e.key==='Shift'&&shiftAlone&&!editable(e)&&!root.querySelector('dialog[open]'))$('send')?.click();
       if(e.key==='Shift')shiftAlone=false;
@@ -487,14 +693,20 @@
     if(e.key==='Escape'&&modesMenu.open){
       modesMenu.open=false;modesMenu.querySelector('summary').focus();return;
     }
-    if(document.getElementById('posCloseSessionOverlay'))return;
     if(!e.repeat&&!e.isComposing&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.shiftKey&&!root.querySelector('dialog[open]')){
       if(e.key.toLowerCase()==='c'&&$('close-session')&&!e.target?.closest?.('input,textarea,select,[contenteditable]')){e.preventDefault();openSessionClose();return;}
       if(grid&&e.key==='F10'){e.preventDefault();showHistory();return;}
       if(grid&&paymentButtons.length&&/^F[2-6]$/.test(e.key)){
         e.preventDefault();paymentButtons[Number(e.key.slice(1))-2].click();return;
       }
-      if(e.key==='/'&&!editable(e)){e.preventDefault();search.focus();return;}
+      if(e.key==='/'&&!e.defaultPrevented&&!search.disabled) {
+        const editor=e.target?.dataset.kbEdit;
+        if(editor || !e.target?.closest?.('input,textarea,select,[contenteditable]')) {
+          e.preventDefault();
+          if(!editor||commitEdit(e.target))search.focus();
+          return;
+        }
+      }
     }
     if(e.repeat||e.isComposing||e.ctrlKey||e.metaKey||e.altKey||editable(e)||root.querySelector('dialog[open]'))return;
     if(e.key==='Shift')shiftAlone=true;
@@ -505,7 +717,8 @@
   const snapshot=JSON.parse(cfg.draftreceipt||'[]');
   for(const item of JSON.parse(cfg.draftload||'[]')){
     const saved=snapshot.find(row=>row.productId===item.productId);
-    cart.set(item.productId,{id:item.productId,name:item.productName,code:saved?.code||item.productId,price:Number(saved?.rate)||0,qty:Number(item.quantity)});
+    cart.set(item.productId,{id:item.productId,name:item.productName,code:saved?.code||item.productId,price:Number(saved?.rate)||0,qty:Number(item.quantity),
+      manualRate:saved?.manualPrice==='Y'?Number(saved.rate):undefined});
   }
   if(draftId){$('badge').textContent='Editing Held Order';$('instr').value=cfg.draftinstr||'';}
   updateHeader();setType(orderType);paintTax();renderCustomer();quote();
@@ -516,6 +729,7 @@
         window.removeEventListener('focus',keepSessionOpen);
         return;
       }
+      if(sessionLost)return;
       request('touchSession',{}).then(({displayEnabled})=>{
         if(typeof displayEnabled!=='boolean'||String(displayEnabled)===cfg.displayEnabled)return;
         cfg.displayEnabled=String(displayEnabled);
