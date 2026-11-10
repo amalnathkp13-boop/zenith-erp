@@ -61,7 +61,6 @@ body:has(#kb-wrap) :is(#top,#footer,#z-sidebar,#z-side-burger,#z-subnav,#pos-mod
 #kb-wrap.kg-grid .kb-toolbar :is(.kb-control,.kb-otbtn,select){
   box-sizing:border-box;min-height:var(--kg-control);padding:0 10px;border-radius:10px;font-size:15px;white-space:nowrap;
 }
-#kb-wrap.kg-grid .kg-back{min-width:160px}
 #kb-wrap.kg-grid .kb-toolbar .kb-fld{gap:0;min-width:0;font-size:0}
 #kb-wrap.kg-grid .kb-toolbar select{max-width:140px;padding:0 8px;font-size:13px;border-color:var(--kg-line)}
 #kb-wrap.kg-grid #kb-waiter{max-width:155px}
@@ -159,7 +158,6 @@ body:has(#kb-wrap) :is(#top,#footer,#z-sidebar,#z-side-burger,#z-subnav,#pos-mod
 }
 @media(max-width:1150px){
   #kb-wrap.kg-grid #kb-product-grid .kb-results-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
-  #kb-wrap.kg-grid .kg-back{min-width:0}
   #kb-wrap.kg-grid .kb-toolbar .kb-control{padding-inline:7px}
 }
 @media(max-width:800px){
