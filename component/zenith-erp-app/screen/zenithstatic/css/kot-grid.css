@@ -59,11 +59,12 @@ body:has(#kb-wrap) :is(#top,#footer,#z-sidebar,#z-side-burger,#z-subnav,#pos-mod
   margin:-10px -24px 0;padding:8px 24px;background:#fff;border-bottom:1px solid var(--kg-line);
 }
 #kb-wrap.kg-grid .kb-toolbar :is(.kb-control,.kb-otbtn,select){
-  box-sizing:border-box;min-height:var(--kg-control);padding:0 16px;border-radius:10px;font-size:15px;white-space:nowrap;
+  box-sizing:border-box;min-height:var(--kg-control);padding:0 10px;border-radius:10px;font-size:15px;white-space:nowrap;
 }
 #kb-wrap.kg-grid .kg-back{min-width:160px}
 #kb-wrap.kg-grid .kb-toolbar .kb-fld{gap:0;min-width:0;font-size:0}
-#kb-wrap.kg-grid .kb-toolbar select{max-width:162px;padding:0 8px;font-size:13px;border-color:var(--kg-line)}
+#kb-wrap.kg-grid .kb-toolbar select{max-width:140px;padding:0 8px;font-size:13px;border-color:var(--kg-line)}
+#kb-wrap.kg-grid #kb-waiter{max-width:155px}
 #kb-wrap.kg-grid .kb-otype{display:flex;gap:6px;padding-inline-start:8px;border-inline-start:1px solid var(--kg-line)}
 #kb-wrap.kg-grid .kb-toolbar .kb-otbtn.is-active{background:var(--kg-purple);color:#fff;border-color:transparent}
 #kb-wrap.kg-grid .kg-back,

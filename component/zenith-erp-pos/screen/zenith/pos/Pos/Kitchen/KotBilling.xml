@@ -725,7 +725,7 @@
 </section>
 <#else>
 <div class="kb-wrap<#if !kitchenDisplayEnabled> kb-display-disabled</#if>" id="kb-wrap">
-  <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=8"/>
+  <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=9"/>
   <link rel="stylesheet" href="/zenithstatic/css/pos-checkout.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/pos-checkout.css').getLastModified()?c}"/>
   <link rel="stylesheet" href="/zenithstatic/css/kot-list.css?v=9"/>
   <input type="hidden" id="kb-token" value="${(ec.web.sessionToken)!''}"/>
