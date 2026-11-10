@@ -44,9 +44,15 @@
                 def input
                 try { input=new groovy.json.JsonSlurper().parseText(itemsJson) } catch(Exception ignored) { input=null }
                 if (!(input instanceof List) || !input || input.size()>100) { ec.message.addError('Add 1 to 100 valid items before printing a bill.'); return }
-                def mode=salesModeId ? ec.entity.find('zenith.erp.pos.PosSalesMode').condition('salesModeId',salesModeId).one() : null
-                if(salesModeId && (!mode || mode.isActive!='Y' || (mode.organizationPartyId && mode.organizationPartyId!=scope.organizationPartyId))) {
-                    ec.message.addError('Choose an active sales mode.'); return
+                def billing=sessionId ? ec.service.sync().name('zenith.pos.KotServices.get#BillingSession').parameter('sessionId',sessionId).call() : null
+                if(ec.message.hasError()) return
+                def mode=null
+                if(salesModeId) {
+                    def offered=billing?.terminal
+                        ? ec.service.sync().name('zenith.pos.PosModeServices.get#TerminalModes').parameter('terminalId',billing.terminal.terminalId).call().modes
+                        : ec.service.sync().name('zenith.pos.PosModeServices.get#OrganizationModes').parameter('organizationPartyId',scope.organizationPartyId).call().modes
+                    mode=offered?.find { it.salesModeId==salesModeId }
+                    if(!mode) { ec.message.addError('Choose an available sales mode before continuing.'); return }
                 }
                 def waiter=waiterId ? ec.entity.find('zenith.erp.pos.Waiter').condition('waiterId',waiterId)
                     .condition('organizationPartyId',scope.organizationPartyId).condition('isActive','Y').one() : null
@@ -57,6 +63,9 @@
                     BigDecimal qty=null
                     try { qty=new BigDecimal(String.valueOf(item instanceof Map ? item.quantity : null)) } catch(Exception ignored) { }
                     if (!p || p.ownerPartyId!=scope.organizationPartyId || p.productTypeEnumId!='PtAsset' || qty==null || qty<=0 || qty>1000000) { ec.message.addError('The order contains an invalid product or quantity.'); return }
+                    if (p.salesDiscontinuationDate && p.salesDiscontinuationDate <= ec.user.nowTimestamp) {
+                        ec.message.addError('A product was removed from the active catalogue. Refresh the menu and try again.'); return
+                    }
                     def price=p.mrpAmount as BigDecimal
                     def mp=mode ? ec.service.sync().name('zenith.pos.PosServices.resolve#PosModePrice')
                         .parameters([productId:p.productId,salesModeId:salesModeId,product:p]).call() : [:]
@@ -78,8 +87,6 @@
                 }
                 def templates=ec.entity.find('zenith.erp.pos.PosReceiptTemplate').condition('organizationPartyId',scope.organizationPartyId)
                     .condition('isActive','Y').orderBy('-isDefault,templateId').list()
-                def billing=sessionId ? ec.service.sync().name('zenith.pos.KotServices.get#BillingSession').parameter('sessionId',sessionId).call() : null
-                if(ec.message.hasError()) return
                 def customer=customerPartyId ? ec.service.sync().name('zenith.pos.KitchenPrintServices.get#KotCustomer')
                     .parameters([sessionId:sessionId,customerPartyId:customerPartyId]).call().customer : null
                 if(ec.message.hasError()) return

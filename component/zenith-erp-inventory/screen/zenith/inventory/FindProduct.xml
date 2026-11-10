@@ -116,57 +116,41 @@
         </default-response>
     </transition>
 
+    <transition name="catalogQuery" method="get" read-only="true">
+        <actions>
+            <script><![CDATA[
+                ec.web.response.setHeader('Cache-Control', 'no-store')
+                context.catalogExport = false
+                context.catalogIncludeFilters = false
+                ec.resource.script('component://zenith-erp-inventory/script/ProductCatalog.groovy', null)
+                if (catalogReadError) {
+                    ec.web.response.setStatus(403)
+                    ec.web.response.setContentType('application/json; charset=UTF-8')
+                    ec.web.response.writer.write(groovy.json.JsonOutput.toJson([error: catalogReadError]))
+                    return
+                }
+                ec.web.sendJsonResponse(catalogData)
+            ]]></script>
+        </actions>
+        <default-response type="none"/>
+    </transition>
+
     <actions>
         <script><![CDATA[
-            catalogOrgId = ec.user.getPreference('ACTIVE_ORGANIZATION')
-            if (!catalogOrgId || catalogOrgId=='_NA_') catalogOrgId = '__NO_ORGANIZATION__'
-            def _currency = companyCurrency ?: ec.entity.find('zenith.erp.base.CompanySettings').condition('organizationPartyId',catalogOrgId)
-                .condition('settingKey','CURRENCY_UOM_ID').disableAuthz().one()?.settingValue ?: 'INR'
-            catalogCurrencySymbol = [INR:'₹',USD:'$',GBP:'£',AED:'AED',EUR:'€',JPY:'¥'][_currency] ?: _currency
-            catalogSearch = (catalogSearch ?: '').toString().trim()
-            catalogSearchCondition = null
-            if (catalogSearch && catalogOrgId!='__NO_ORGANIZATION__') {
-                def _cf=ec.entity.conditionFactory; def _EC=org.moqui.entity.EntityCondition
-                def _like='%'+catalogSearch.replace('\\','\\\\').replace('%','\\%').replace('_','\\_')+'%'
-                def _barcodeIds=ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('organizationPartyId',catalogOrgId)
-                    .condition('isActive','Y').condition(_cf.makeCondition('barcodeValue',_EC.LIKE,_like).ignoreCase()).selectField('productId').disableAuthz().list()*.productId
-                def _parts=['pseudoId','productName','productId'].collect { _cf.makeCondition(it,_EC.LIKE,_like).ignoreCase() }
-                if (_barcodeIds) _parts.add(_cf.makeCondition('productId',_EC.IN,_barcodeIds))
-                catalogSearchCondition=_cf.makeCondition(_parts,_EC.OR)
+            context.catalogExport = ec.web?.parameters?.renderMode == 'csv'
+            context.catalogIncludeFilters = !catalogExport
+            ec.resource.script('component://zenith-erp-inventory/script/ProductCatalog.groovy', null)
+            if (catalogReadError) throw new org.moqui.context.ArtifactAuthorizationException(catalogReadError)
+            if (catalogExport) {
+                ec.web.response.setHeader('Cache-Control', 'no-store')
+                context.productList = catalogData.rows
             }
-            catalogInputs = new HashMap(context)
-            catalogFilterCondition = null
-            def _badFilter = false
-            [mrpAmount:'MRP',totalQoh:'In Stock',reorderPoint:'Reorder Point',gstRate:'GST',totalAtp:'Available Stock'].each { field, title ->
-                ['', '_from', '_thru'].each { suffix ->
-                    def key=field+suffix; def raw=catalogInputs[key]
-                    if (raw!=null && raw.toString().trim()) {
-                        // Keep a string: the framework treats a BigDecimal zero as an absent search value.
-                        try { catalogInputs[key]=new BigDecimal(raw.toString().trim()).toPlainString() }
-                        catch (Exception ignored) { catalogInputs.remove(key); _badFilter=true; ec.message.addError(title+' must contain valid numbers.') }
-                    } else catalogInputs.remove(key)
-                }
-                if (catalogInputs[field+'_from']!=null && catalogInputs[field+'_thru']!=null && (catalogInputs[field+'_from'] as BigDecimal)>(catalogInputs[field+'_thru'] as BigDecimal)) {
-                    _badFilter=true; ec.message.addError(title+' From must be less than or equal to Thru.')
-                }
-            }
-            if (_badFilter) catalogFilterCondition=ec.entity.conditionFactory.makeCondition('productId',org.moqui.entity.EntityCondition.EQUALS,null)
-            def _sorts=['pseudoId','productName','productId','description','catalogTaxCode','gstRate','uqcEnumId','isGstExempt','mrpAmount','totalQoh','reorderPoint','enableBatchTracking','productTypeEnumId'] as Set
-            if (orderByField) {
-                def _requestedSorts=(orderByField instanceof Collection ? orderByField : orderByField.toString().split(',').toList()).collect { it.toString().trim() }
-                if (_requestedSorts.every { _sorts.contains(it.replaceFirst('^-','')) }) {
-                    if (!_requestedSorts.any { it.replaceFirst('^-','')=='productId' }) _requestedSorts.add('productId')
-                    catalogInputs.orderByField=_requestedSorts.join(',')
-                } else catalogInputs.orderByField='productName,pseudoId,productId'
-            }
-            ['pageIndex':0,'pageSize':20].each { key, fallback ->
-                try { def raw=ec.web?.parameters?.get(key); def number=raw ? Integer.parseInt(raw.toString()) : fallback
-                    catalogInputs[key]=(key=='pageSize' ? (number>0 && number<=200 ? number : fallback) : Math.max(0,number)) }
-                catch (Exception ignored) { catalogInputs[key]=fallback }
-            }
-            if (ec.web?.parameters?.renderMode=='csv') { catalogInputs.pageIndex=null; catalogInputs.pageSize=null; catalogInputs.pageNoLimit=true }
+            def currency = companyCurrency ?: ec.entity.find('zenith.erp.base.CompanySettings')
+                .condition('organizationPartyId', catalogOrgId).condition('settingKey', 'CURRENCY_UOM_ID')
+                .disableAuthz().one()?.settingValue ?: 'INR'
+            catalogCurrencySymbol = [INR:'₹',USD:'$',GBP:'£',AED:'AED',EUR:'€',JPY:'¥'][currency] ?: currency
         ]]></script>
-        <if condition="invCanWrite &amp;&amp; ec.web?.parameters?.renderMode != 'csv'">
+        <if condition="invCanWrite &amp;&amp; !catalogExport">
             <service-call name="zenith.pos.ProductModePricingServices.get#ProductModePrices" out-map="productModePricing" disable-authz="true"/>
             <entity-find entity-name="zenith.erp.india.IndiaGstSlab" list="gstSlabs"><order-by field-name="gstRate"/></entity-find>
         </if>
@@ -177,197 +161,42 @@
     </actions>
 
     <widgets>
-        <container id="productCatalog" style="product-catalog">
         <section name="CatalogInteractive" condition="ec.web?.parameters?.renderMode != 'csv'"><widgets>
-        <!-- ZE-INV-UIv2: page header per the v2 mockup — plain near-black title + grey subtitle +
-             violet New Product CTA on the right (was a dark indigo banner). -->
-        <container style="zc-page-head">
-            <container style="zc-page-head__titles">
-                <label text="Product Catalog" type="h4" style="prod-title text-weight-bolder q-my-none"/>
-                <label text="Your full product list. Search for an item, add a new one, and see how many you have in stock." type="p" style="text-grey-7 q-mt-xs q-mb-none"/>
+            <container id="productCatalog" style="product-catalog">
+                <container style="catalog-header">
+                    <render-mode><text type="html,qvt"><![CDATA[
+                        <div class="catalog-heading">
+                            <span class="catalog-heading-icon material-icons" aria-hidden="true">inventory_2</span>
+                            <div><h1>Product Catalog</h1><p>Manage and view your product catalog.</p></div>
+                        </div>
+                    ]]></text></render-mode>
+                    <section name="FindProductNewBtn" condition="invCanWrite"><widgets>
+                        <container-dialog id="CreateProductDialog" button-text="New Product" icon="fa fa-plus" button-style="catalog-create z-solid">
+                            <render-mode><text type="html,qvt" location="component://zenith-erp-inventory/template/product/CreateProduct.html.ftl"/></render-mode>
+                        </container-dialog>
+                    </widgets></section>
+                </container>
+                <render-mode><text type="html,qvt" location="component://zenith-erp-inventory/template/product/ProductCatalog.html.ftl"/></render-mode>
             </container>
-            <container style="zc-page-head__actions">
-
-            <section name="FindProductNewBtn"><condition><expression>invCanWrite</expression></condition><widgets>
-            <container-dialog id="CreateProductDialog" button-text="New Product">
-                <render-mode><text type="html,qvt" location="component://zenith-erp-inventory/template/product/CreateProduct.html.ftl"/></render-mode>
-            </container-dialog>
-            </widgets></section>
-            </container>
-        </container>
-
-        <!-- ZE-INV-UIv2: FAST SCAN bar per the v2 mockup — white card with a violet border
-             (was bg-indigo-1); same form, same behavior. -->
-        <container style="prod-fastscan">
-            <label text="FAST SCAN" type="strong" style="prod-fastscan-label"/>
-            <container style="col-grow">
-                <form-single name="BarcodeScannerForm" transition="." focus-field="catalogSearch">
-                    <field-layout>
-                        <field-row>
-                            <field-ref name="catalogSearch"/>
-                            <field-ref name="submitButton"/>
-                        </field-row>
-                    </field-layout>
-                    <field name="catalogSearch">
-                        <default-field title="">
-                            <text-line size="40" placeholder="Search by item code, product name, barcode..."/>
-                        </default-field>
-                    </field>
-                    <field name="submitButton"><default-field title="Search"><submit/></default-field></field>
-                </form-single>
-
-            </container>
-        </container>
-
-
-
         </widgets></section>
-        <container style="catalog-list">
-            <form-list name="FindProductList" list="productList" skip-form="true" header-dialog="true" show-csv-button="true">
-                <entity-find entity-name="zenith.erp.inventory.ProductCatalogStockView" list="productList">
-                    <search-form-inputs skip-fields="ownerPartyId" input-fields-map="catalogInputs" default-order-by="productName,pseudoId,productId"/>
-                    <!-- ZE-SALES-014 f/u: org-isolate CSV/XLSX export (standalone render bypasses the MANTLE_ACTIVE_ORG authz filter) -->
-                    <econdition field-name="ownerPartyId" from="catalogOrgId"/>
-                    <econdition-object field="catalogSearchCondition"/>
-                    <econdition-object field="catalogFilterCondition"/>
-                </entity-find>
-
-                <field name="productId"><default-field><hidden/></default-field></field>
-                <field name="catalogSearch"><header-field><hidden/></header-field><default-field><hidden/></default-field></field>
-
-                <field name="pseudoId">
-                    <header-field title="Item Code" show-order-by="true"><text-find/></header-field>
-                    <conditional-field condition="ec.web.parameters.renderMode == 'csv'">
-                        <display text="${pseudoId ?: productId}"/>
-                    </conditional-field>
-                    <default-field>
-                        <!-- ZE-INV-UIv2: link-type="anchor" (was a Bootstrap btn-primary pill whose text-indigo-8
-                             remap made it violet-on-violet = invisible since the rebrand); plain violet code link
-                             per the mockup. -->
-                        <link url="editProduct" text="${pseudoId ?: productId}" parameter-map="[productId:productId]" link-type="anchor" style="prod-code"/>
-                    </default-field>
-                </field>
-
-                <field name="productName">
-                    <header-field title="Product Name" show-order-by="true"><text-find/></header-field>
-                    <conditional-field condition="ec.web.parameters.renderMode == 'csv'">
-                        <display text="${productName}"/>
-                    </conditional-field>
-                    <default-field><label text="${productName}" type="span"/></default-field>
-                </field>
-
-                <field name="description">
-                    <!-- ZE-INV-IV-013: was <ignored/> on screen (CSV-only) so the saved description never showed
-                         in the catalog even though it's stored on the product. Display it on screen too. -->
-                    <header-field title="Description" show-order-by="true"><text-find/></header-field>
-                    <conditional-field condition="ec.web.parameters.renderMode == 'csv'">
-                        <display text="${description ?: ''}"/>
-                    </conditional-field>
-                    <default-field><label text="${description ?: '-'}" type="span" style="text-grey-8"/></default-field>
-                </field>
-
-                <field name="catalogTaxCode">
-                    <header-field title="Tax Code" show-order-by="true"><text-find/></header-field>
-                    <conditional-field condition="ec.web.parameters.renderMode == 'csv'">
-                        <display text="${catalogTaxCode ?: ''}"/>
-                    </conditional-field>
-                    <!-- products-list §7: Tax Code is plain secondary text (not a badge — the mockup reserves the
-                         only row badge for Batch Tracking). -->
-                    <default-field><label text="${catalogTaxCode ?: '-'}" type="span" style="text-grey-7"/></default-field>
-                </field>
-
-                <field name="gstRate">
-                    <!-- ZE-INV-IV-013 f/u: show the friendly GST rate (from the joined slab) instead of the raw
-                         slab id, matching how EditProduct shows it ("slabName (gstRate%)"). -->
-                    <header-field title="GST" show-order-by="true"/>
-                    <conditional-field condition="ec.web.parameters.renderMode == 'csv'">
-                        <display text="${gstRate != null ? ec.l10n.format(gstRate,'#0.##') + '%' : ''}"/>
-                    </conditional-field>
-                    <!-- products-list §7: GST % is plain secondary text (not a badge). -->
-                    <default-field><label text="${gstRate != null ? ec.l10n.format(gstRate,'#0.##') + '%' : '-'}" type="span" style="text-grey-7"/></default-field>
-                </field>
-
-                <field name="uqcEnumId">
-                    <header-field title="UQC">
-                        <drop-down allow-empty="true">
-                            <option key="NOS" text="NOS"/><option key="KGS" text="KGS"/><option key="MTR" text="MTR"/><option key="PCS" text="PCS"/><option key="LTR" text="LTR"/>
-                        </drop-down>
-                    </header-field>
-                    <default-field><display text="${uqcEnumId ?: '-'}"/></default-field>
-                </field>
-
-                <field name="isGstExempt">
-                    <header-field title="Tax-free" show-order-by="true">
-                        <drop-down allow-empty="true"><option key="N" text="No"/><option key="Y" text="Yes"/></drop-down>
-                    </header-field>
-                    <conditional-field condition="ec.web.parameters.renderMode == 'csv'">
-                        <display text="${isGstExempt == 'Y' ? 'Yes' : 'No'}"/>
-                    </conditional-field>
-                    <default-field>
-                        <label text="${isGstExempt == 'Y' ? 'Exempt' : '-'}" type="span" style="${isGstExempt == 'Y' ? 'text-success text-weight-bold' : 'text-grey'}"/>
-                    </default-field>
-                </field>
-
-                <field name="mrpAmount">
-                    <header-field title="MRP (${catalogCurrencySymbol})" show-order-by="true"><range-find/></header-field>
-                    <conditional-field condition="ec.web.parameters.renderMode == 'csv'">
-                        <display text="${mrpAmount != null ? mrpAmount : ''}"/>
-                    </conditional-field>
-                    <default-field><label text="${mrpAmount != null ? zinr.inr(ec.l10n.format(mrpAmount, '#,##0.00')) : '-'}" type="span"/></default-field>
-                </field>
-
-                <field name="totalQoh">
-                    <header-field title="In Stock" show-order-by="true"><range-find/></header-field>
-                    <conditional-field condition="ec.web.parameters.renderMode == 'csv'">
-                        <display text="${totalQoh ?: 0}"/>
-                    </conditional-field>
-                    <default-field>
-                        <label text="${totalQoh ?: 0}" type="span" style="text-weight-bold ${((totalQoh ?: 0) &lt;= 0) ? 'text-danger' : 'text-success'}"/>
-                    </default-field>
-                </field>
-
-                <!-- Read-only stock settings; colors follow the supplied catalog reference. -->
-                <field name="reorderPoint">
-                    <header-field title="Reorder Point" show-order-by="true"><range-find/></header-field>
-                    <conditional-field condition="ec.web.parameters.renderMode == 'csv'">
-                        <display text="${reorderPoint ?: 0}"/>
-                    </conditional-field>
-                    <default-field><label text="${reorderPoint != null ? reorderPoint : '-'}" type="span" style="text-grey-7"/></default-field>
-                </field>
-
-                <field name="enableBatchTracking">
-                    <header-field title="Enable Batch Tracking"><drop-down allow-empty="true"><option key="Y" text="Yes"/><option key="N" text="No"/></drop-down></header-field>
-                    <conditional-field condition="ec.web.parameters.renderMode == 'csv'">
-                        <display text="${enableBatchTracking == 'Y' ? 'Yes' : 'No'}"/>
-                    </conditional-field>
-                    <default-field>
-                        <label text="${enableBatchTracking == 'Y' ? 'Yes' : 'No'}" type="span" style="sup-badge ${enableBatchTracking == 'Y' ? 'sup-b-green' : 'sup-b-red'}"/>
-                    </default-field>
-                </field>
-
-                <!-- ZE-INV-0XX: the Type column only distinguished PtService; EVERY other type (incl.
-                     PtDigitalAsset, PtVirtual, PtPickAssembly) fell through to "Physical" — so a Digital
-                     product was mislabeled "Physical" in the catalog, disagreeing with Edit Product (which
-                     offers Physical/Service/Digital). Map all real types; the filter offers Digital too.
-                     Display-only — the saved product_type_enum_id is unchanged. -->
+        <section name="CatalogCsv" condition="ec.web?.parameters?.renderMode == 'csv'"><widgets>
+            <form-list name="FindProductList" list="productList" skip-form="true">
+                <field name="pseudoId"><header-field title="Item Code"/><default-field><display text="${pseudoId ?: productId}"/></default-field></field>
+                <field name="productName"><header-field title="Product Name"/><default-field><display text="${productName}"/></default-field></field>
+                <field name="description"><header-field title="Description"/><default-field><display text="${description ?: ''}"/></default-field></field>
+                <field name="catalogTaxCode"><header-field title="Tax Code"/><default-field><display text="${catalogTaxCode ?: ''}"/></default-field></field>
+                <field name="gstRate"><header-field title="GST"/><default-field><display text="${gstRate != null ? ec.l10n.format(gstRate,'#0.##') + '%' : ''}"/></default-field></field>
+                <field name="uqcEnumId"><header-field title="UQC"/><default-field><display text="${uqcEnumId ?: '-'}"/></default-field></field>
+                <field name="isGstExempt"><header-field title="Tax-free"/><default-field><display text="${isGstExempt == 'Y' ? 'Yes' : 'No'}"/></default-field></field>
+                <field name="mrpAmount"><header-field title="MRP (${catalogCurrencySymbol})"/><default-field><display text="${mrpAmount != null ? mrpAmount : ''}"/></default-field></field>
+                <field name="totalQoh"><header-field title="In Stock"/><default-field><display text="${totalQoh ?: 0}"/></default-field></field>
+                <field name="reorderPoint"><header-field title="Reorder Point"/><default-field><display text="${reorderPoint ?: 0}"/></default-field></field>
+                <field name="enableBatchTracking"><header-field title="Enable Batch Tracking"/><default-field><display text="${enableBatchTracking == 'Y' ? 'Yes' : 'No'}"/></default-field></field>
                 <field name="productTypeEnumId">
-                    <header-field title="Type" show-order-by="true">
-                        <drop-down allow-empty="true">
-                            <option key="PtAsset" text="Physical"/><option key="PtService" text="Service"/><option key="PtDigitalAsset" text="Digital"/>
-                            <option key="PtVirtual" text="Virtual"/><option key="PtPickAssembly" text="Kit / Assembly"/>
-                        </drop-down>
-                    </header-field>
-                    <conditional-field condition="ec.web.parameters.renderMode == 'csv'">
-                        <display text="${productTypeEnumId == 'PtService' ? 'Service' : (productTypeEnumId == 'PtDigitalAsset' ? 'Digital' : (productTypeEnumId == 'PtVirtual' ? 'Virtual' : (productTypeEnumId == 'PtPickAssembly' ? 'Kit / Assembly' : 'Physical')))}"/>
-                    </conditional-field>
-                    <default-field>
-                        <label text="${productTypeEnumId == 'PtService' ? 'Service' : (productTypeEnumId == 'PtDigitalAsset' ? 'Digital' : (productTypeEnumId == 'PtVirtual' ? 'Virtual' : (productTypeEnumId == 'PtPickAssembly' ? 'Kit / Assembly' : 'Physical')))}" type="span" style="text-grey-7"/>
-                    </default-field>
+                    <header-field title="Type"/>
+                    <default-field><display text="${[PtService:'Service',PtDigitalAsset:'Digital',PtVirtual:'Virtual',PtPickAssembly:'Kit / Assembly'][productTypeEnumId] ?: 'Physical'}"/></default-field>
                 </field>
-
-                <field name="findButton"><header-field title="Find"><submit/></header-field></field>
             </form-list>
-        </container>
-        </container>
+        </widgets></section>
     </widgets>
 </screen>

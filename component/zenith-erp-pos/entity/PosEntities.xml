@@ -806,7 +806,7 @@
             <moqui.basic.Enumeration enumId="PpsFixedProduct" enumTypeId="PosPriceSource" description="Fixed per-product price for this mode" sequenceNum="6"/>
 
             <!-- isTaxInclusive=N: the entered price is the base; GST is added on top (tax-exclusive),
-                 matching how the tenant bills. All three modes are exclusive so a per-line mode or a
+                 matching how the tenant bills. Both default modes are exclusive so a per-line mode or a
                  quantity-break auto-switch never silently flips a line to inclusive. -->
             <zenith.erp.pos.PosSalesMode salesModeId="RETAIL" modeName="Retail" modeCode="RTL"
                 priceSource="PpsMrp" isTaxInclusive="N" requireCustomer="N"
@@ -816,10 +816,6 @@
                 priceSource="PpsFixedProduct" discountPercent="0" isTaxInclusive="N" requireCustomer="Y"
                 minOrderAmount="500" invoicePrefix="WSL" colorCode="#388E3C" isDefault="N" isActive="Y"
                 description="Wholesale sales at an explicit per-product price"/>
-            <zenith.erp.pos.PosSalesMode salesModeId="EMPLOYEE" modeName="Employee" modeCode="EMP"
-                priceSource="PpsFixedProduct" discountPercent="0" isTaxInclusive="N" requireCustomer="Y"
-                invoicePrefix="EMP" colorCode="#7B1FA2" isDefault="N" isActive="Y"
-                description="Employee purchase at an explicit per-product price (price + GST)"/>
         </seed-data>
     </entity>
 

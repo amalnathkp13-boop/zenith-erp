@@ -373,6 +373,7 @@
                 } else {
                     def products=ec.entity.find('mantle.product.Product')
                         .condition([ownerPartyId:scope.organizationPartyId,productTypeEnumId:'PtAsset'])
+                        .conditionDate('salesIntroductionDate','salesDiscontinuationDate',ec.user.nowTimestamp)
                     def categoryId=ec.context.categoryId
                     if(categoryId) {
                         def category=ec.entity.find('mantle.product.category.ProductCategory')
@@ -523,9 +524,7 @@
             }
             def shop=billingTerminal.facilityId
             kitchenDisplayEnabled=ec.service.sync().name('zenith.pos.KotServices.get#KitchenDisplayPolicy').parameter('facilityId',shop).call().enabled
-            modes=org ? ec.entity.find('zenith.erp.pos.PosSalesMode').condition('isActive','Y')
-                .condition(cf.makeCondition([cf.makeCondition('organizationPartyId',EntityCondition.ComparisonOperator.EQUALS,org),cf.makeCondition('organizationPartyId',EntityCondition.ComparisonOperator.EQUALS,null)],EntityCondition.JoinOperator.OR))
-                .orderBy('-isDefault,modeName').list() : []
+            modes=ec.service.sync().name('zenith.pos.PosModeServices.get#TerminalModes').parameter('terminalId',billingTerminal.terminalId).call().modes ?: []
             waiters=org ? ec.entity.find('zenith.erp.pos.Waiter').condition('organizationPartyId',org).condition('isActive','Y').orderBy('waiterName').list() : []
             lastCompleted=ec.entity.find('zenith.erp.pos.PosTransaction')
                 .condition([sessionId:billingSession.sessionId,organizationPartyId:org,statusId:'PtCompleted'])
@@ -633,6 +632,7 @@
 
             draftLoadJson = JsonOutput.toJson(draftLoadItems)
             draftReceiptLinesJson = JsonOutput.toJson(draftReceiptLines)
+            draftModeUnavailable = draftLoadMode && !modes.any { it.salesModeId == draftLoadMode }
         ]]></script>
     </actions>
 
@@ -737,7 +737,7 @@
       <#list tables as t><option value="${t.tableId?html}" <#if t.statusId?has_content && t.statusId != 'TblAvailable' && t.statusId != 'TblOccupied'>disabled</#if>>Table ${((t.tableNumber)!t.tableId)?html} · ${(t.statusId!'TblAvailable')?remove_beginning('Tbl')?html}</option></#list>
     </select></label>
     <label class="kb-fld">Waiter<select id="kb-waiter"><option value="">Choose waiter</option><#list waiters as w><option value="${w.waiterId?html}">${w.waiterName?html}</option></#list></select></label>
-    <label class="kb-fld">Sales Mode<select id="kb-mode"><#if !modes?has_content><option value="">Standard</option></#if><#list modes as m><option value="${m.salesModeId?html}">${m.modeName?html}</option></#list></select></label>
+    <label class="kb-fld">Sales Mode<select id="kb-mode"><#if draftModeUnavailable><option value="${draftLoadMode?html}" disabled selected>Previous mode unavailable</option></#if><#if !modes?has_content><option value="">Standard</option></#if><#list modes as m><option value="${m.salesModeId?html}">${m.modeName?html}</option></#list></select></label>
     <div class="kb-toolbar-end">
       <#if modCanWrite><button type="button" class="kb-control" id="kb-close-session" aria-label="Close session" aria-keyshortcuts="C" title="Review cash and close this POS session"><@ic 'close-session' 22/> Close session <kbd aria-hidden="true">C</kbd></button></#if>
       <button type="button" class="kb-control" id="kb-fullscreen" title="Enter fullscreen"><@ic 'fullscreen'/><span id="kb-fullscreen-label">Enter fullscreen</span></button>

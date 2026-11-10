@@ -3838,6 +3838,12 @@
 
 
 
+                if (changingMode && !currentMode) {
+                    changingMode = false
+                    modeSwitchError = 'Choose a sales mode available on this terminal. The cart was not changed.'
+                    currentMode = allModes.find { it.salesModeId == _txm?.salesModeId }
+                }
+
                 if (!currentMode) {
 
 
