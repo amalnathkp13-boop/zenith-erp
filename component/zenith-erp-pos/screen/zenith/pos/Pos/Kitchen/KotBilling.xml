@@ -725,16 +725,16 @@
 </section>
 <#else>
 <div class="kb-wrap<#if !kitchenDisplayEnabled> kb-display-disabled</#if>" id="kb-wrap">
-  <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=10"/>
+  <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/kot-grid.css').getLastModified()?c}"/>
   <link rel="stylesheet" href="/zenithstatic/css/pos-checkout.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/pos-checkout.css').getLastModified()?c}"/>
-  <link rel="stylesheet" href="/zenithstatic/css/kot-list.css?v=10"/>
+  <link rel="stylesheet" href="/zenithstatic/css/kot-list.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/kot-list.css').getLastModified()?c}"/>
   <input type="hidden" id="kb-token" value="${(ec.web.sessionToken)!''}"/>
   <div id="kb-data" style="display:none" data-session="${billingSession.sessionId?html}" data-user="${(ec.user.userId!'')?html}" data-display-enabled="${kitchenDisplayEnabled?c}" data-kot-module="${(kitchenModuleId!'pos')?html}" data-stock-session="${((checkoutSessions?size == 1)?then(checkoutSessions[0].id,''))?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}"></div>
 
 
   <header class="kg-header">
     <img src="/zenithstatic/img/zetaerp-logo.svg?v=2" alt="ZetaERP"/>
-    <button type="button" class="kg-chip" title="Current terminal"><span class="kg-only">KOT Billing ·&nbsp;</span>${(billingTerminal.terminalName!billingTerminal.terminalId)?html}</button>
+    <button type="button" class="kg-chip" title="Current terminal">${(billingTerminal.terminalName!billingTerminal.terminalId)?html}</button>
     <span class="kg-online" id="kb-online"></span>
     <span class="kg-meta"><span class="kg-normal"><@ic 'calendar'/></span> ${ec.l10n.format(ec.user.nowTimestamp, 'dd-MM-yyyy')?html}</span>
     <span class="kg-meta"><@ic 'clock'/> <time id="kb-clock"></time></span>
@@ -763,9 +763,7 @@
       <button type="button" class="kb-otbtn is-active" data-ot="Dine In"><@ic 'bag'/> Dine In</button>
       <button type="button" class="kb-otbtn" data-ot="Take Away"><@ic 'box'/> Take Away</button>
     </div>
-    <label class="kb-fld" id="kb-table-field">Table<select id="kb-table"><option value="">Choose table</option>
-      <#list tables as t><option value="${t.tableId?html}" <#if t.statusId?has_content && t.statusId != 'TblAvailable' && t.statusId != 'TblOccupied'>disabled</#if>>Table ${((t.tableNumber)!t.tableId)?html} · ${(t.statusId!'TblAvailable')?remove_beginning('Tbl')?html}</option></#list>
-    </select></label>
+    <input type="hidden" id="kb-table" value=""/>
     <label class="kb-fld"><select id="kb-waiter" aria-label="Waiter"><option value="">Choose waiter</option><#list waiters as w><option value="${w.waiterId?html}">${w.waiterName?html}</option></#list></select></label>
     <div class="kb-toolbar-end">
       <#if modCanWrite><button type="button" class="kb-control" id="kb-close-session" aria-label="Close session" aria-keyshortcuts="C" title="Review cash and close this POS session"><@ic 'close-session' 22/> Close session <kbd aria-hidden="true">C</kbd></button></#if>
@@ -893,7 +891,7 @@
   </dialog></#if>
 
   <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" style="display:none"
-       onload="(function(){function boot(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=keypad-6';document.head.appendChild(s);}if(window.PosTillDialogs){boot();return;}var shared=document.createElement('script');shared.src='/zenithstatic/js/pos-till-dialogs.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-till-dialogs.js').getLastModified()?c}';shared.onload=boot;document.head.appendChild(shared);})()"/>
+       onload="(function(){function boot(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/kot-billing.js').getLastModified()?c}';document.head.appendChild(s);}if(window.PosTillDialogs){boot();return;}var shared=document.createElement('script');shared.src='/zenithstatic/js/pos-till-dialogs.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-till-dialogs.js').getLastModified()?c}';shared.onload=boot;document.head.appendChild(shared);})()"/>
 </div>
 </#if>
         ]]></text></render-mode>

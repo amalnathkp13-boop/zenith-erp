@@ -54,7 +54,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   check('Retail can be restored in Modes',await page.locator('#kb-mode').inputValue()==='RETAIL');
   await page.locator('#kb-waiter').selectOption({label:waiterName});
   await page.locator('[data-ot="Take Away"]').click();
-  check('Take Away hides table selection',!await page.locator('#kb-table').isVisible());
+  check('List View has no table picker',await page.locator('#kb-table-field').count()===0&&await page.locator('#kb-table').isHidden());
   await page.getByRole('switch',{name:'Tax'}).click();
   const search=page.locator('#kb-search');
   const fullscreen=page.locator('#kb-fullscreen');
@@ -66,6 +66,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await listMode.getAttribute('aria-pressed')==='true'&&
    await page.getByRole('button',{name:/^(Grid|List) View/}).count()===2);
   await gridMode.click();
+  check('Grid View has no table picker',await page.locator('#kb-table-field').count()===0&&await page.locator('#kb-table').isHidden());
   const card=page.locator('#kb-suggestions [data-result]').filter({hasText:'Disposable POS A P18'});
   await card.waitFor();
   check('Grid View shows a product catalogue with empty search',await search.inputValue()===''&&
