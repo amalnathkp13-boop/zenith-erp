@@ -79,7 +79,8 @@
 #kb-wrap:not(.kg-grid) .kb-otable :is(th,td):last-child{width:7%}
 #kb-wrap:not(.kg-grid) .kb-otable tbody tr:nth-child(even){background:#f4f6fc}
 #kb-wrap:not(.kg-grid) .kb-otable tbody tr{border-bottom:1px solid #edf0f6}
-#kb-wrap:not(.kg-grid) .kb-otable :is(small,.kg-only){display:none}
+#kb-wrap:not(.kg-grid) .kb-otable .kg-only{display:none}
+#kb-wrap .kb-otable td:nth-child(2) small{display:block;margin-top:2px;color:#667196;font-size:12px;font-weight:400;line-height:1.25}
 #kb-wrap:not(.kg-grid) .kb-oamt{color:#101425;font-weight:750}
 #kb-wrap:not(.kg-grid) :is(.kl-line-mode,.kl-line-rate){
   display:block;min-width:0;padding:9px 10px;border:1px solid var(--kl-line);border-radius:7px;text-align:left;overflow-wrap:anywhere;
