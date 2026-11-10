@@ -51,10 +51,19 @@ module.exports = async function ({a, foreign, base, check, q, invoke, post}) {
  check('sale reached zero stock with saved bill, invoice and stock history', onHand(id) === 0 &&
   Boolean(receiptBefore?.items?.length) && history.every(rows => rows.length > 0));
 
- const lookup = async () => (await a.c.request.get(base+'/apps/zenith/pos/Terminal/lookupProducts?'+new URLSearchParams({term:code}))).json();
- const menu = async () => (await post('Kitchen/KotBilling','searchMenu',{term:code, stockSessionId:sessionId})).json();
+ const lookup = async term => {
+  const response = await post('Terminal','lookupProducts',{term, sessionId, salesModeId:'RETAIL'});
+  check('POS product lookup responds successfully', response.ok(), {status:response.status()});
+  return response.json();
+ };
+ const menu = async term => {
+  const response = await post('Kitchen/KotBilling','searchMenu',{term, stockSessionId:sessionId, salesModeId:'RETAIL'});
+  const result = await response.json().catch(() => null);
+  check('KOT menu lookup responds successfully', response.ok() && result?.success, {status:response.status()});
+  return result;
+ };
  check('active product is selectable by code on both tills',
-  (await lookup()).some(p => p.productId === id) && (await menu()).products.some(p => p.id === id));
+  (await lookup(code)).some(p => p.productId === id) && (await menu(code)).products.some(p => p.id === id));
  const deleteFromScreen = async (productId, shell) => {
   await a.p.goto(inventoryUrl(shell) + '/EditProduct?productId=' + productId);
   await a.p.locator('#productEditor[data-bound="true"]').waitFor();
@@ -79,9 +88,11 @@ module.exports = async function ({a, foreign, base, check, q, invoke, post}) {
  const receiptAfter = (await invoke('receipt',{transactionId})).receipt;
  check('receipt, invoice lines and stock history are preserved',
   JSON.stringify(receiptBefore) === JSON.stringify(receiptAfter) && JSON.stringify(history) === JSON.stringify(issuedRows()));
- const kotMenu = await menu();
- check('retired product cannot be found by name or barcode at either till',
-  !(await lookup()).some(p => p.productId === id) && kotMenu.exactId !== id && !kotMenu.products.some(p => p.id === id));
+ for (const term of [productName, code]) {
+  const kotMenu = await menu(term);
+  check('retired product cannot be found by name or code at either till',
+   !(await lookup(term)).some(p => p.productId === id) && kotMenu.exactId !== id && !kotMenu.products.some(p => p.id === id), {term});
+ }
  const next = await invoke('cart',{sessionId});
  await invoke('add',{transactionId:next.transactionId, productId:unused, quantity:'1', taxOn:'N', salesModeId:'RETAIL'},true);
  check('a stale product ID cannot add a line to a new bill',
