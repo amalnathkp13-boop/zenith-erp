@@ -21,7 +21,8 @@
   let orderType=cfg.drafttype||'Dine In', taxOn=cfg.drafttax||'Y', draftId=cfg.draftid||'';
   let salesModeId=$('mode').value, quoteVersion=0, quoteTimer, total=null, busy=false, savedFingerprint='';
   let searchVersion=0, searchTimer, searchAbort, results=[], selected=0, exactId, ambiguous=false, hasMore=false, offset=0;
-  let historyDirty=false, grid=false, pickedMatch=false, categoryId='';
+  let historyVersion=0, loadedHistoryVersion=$('history-rows').hasAttribute('data-kb-history-loaded')?0:-1, historyLoading=false;
+  let grid=false, pickedMatch=false, categoryId='';
   let customer={}, custVersion=0, custTimer, custAbort;
   let invalidEdit, pendingTender, sessionLost=false, completedKotId='', historyPrintRow=null;
   const signInMessage='Sign in again to continue billing.';
@@ -579,7 +580,8 @@
       }
     }
     if(!bill)return;
-    completedKotId=bill.kotId;historyDirty=true;
+    completedKotId=bill.kotId;
+    refreshOpenHistory();
     $('list-last-bill').textContent=bill.billNumber;
     $('list-last-amount').textContent=$('list-last-stat').textContent=money.format(confirmedTotal);
     $('payment').close();resetOrder();
@@ -594,7 +596,7 @@
   }
 
   const history=$('history'), historyDetail=$('history-detail'), historyEdit=$('history-edit');
-  let activeHistoryRow, editingBill, editSearchTimer, editSearchVersion=0, historyLoading=false, savingBill=false;
+  let activeHistoryRow, editingBill, editSearchTimer, editSearchVersion=0, savingBill=false;
   const historyRows=()=>Array.from($('history-rows').children).filter(row=>!row.hidden);
   function selectHistoryRow(row, focus=false){
     activeHistoryRow?.classList.remove('is-current');
@@ -606,6 +608,12 @@
     }
   }
   function filterHistory(focus=false){
+    const host=$('history-rows');
+    host.hidden=loadedHistoryVersion!==historyVersion;
+    if(host.hidden){
+      $('history-count').textContent='';
+      return;
+    }
     const term=$('history-search').value.trim().toLowerCase();
     const status=$('history-status').value, date=$('history-date').value;
     for(const order of $('history-rows').children){
@@ -618,31 +626,51 @@
     if(billed.length)counts.push(billed.length+' bill'+(billed.length===1?'':'s'));
     if(rows.length>billed.length)counts.push((rows.length-billed.length)+' KOT'+(rows.length-billed.length===1?'':'s'));
     $('history-count').textContent=counts.length?counts.join(' · ')+' found':'No matching bills or KOTs.';
-    selectHistoryRow(focus?(billed[0]||rows[0]):(rows.includes(activeHistoryRow)?activeHistoryRow:billed[0]||rows[0]),focus);
+    selectHistoryRow(rows.includes(activeHistoryRow)?activeHistoryRow:rows[0],focus);
   }
-  async function refreshHistory(){
-    if(historyLoading)return;
+  function refreshOpenHistory(){
+    historyVersion++;
+    if(history.open)showHistory();
+  }
+  async function showHistory(){
+    const opened=!history.open;
+    if(opened){
+      history.showModal();
+      selectHistoryRow(null);
+      $('history-print-status').textContent='';
+    }
+    filterHistory(opened);
+    if(historyLoading||loadedHistoryVersion===historyVersion)return;
+    const version=historyVersion, status=$('history-load-status'), retry=$('history-retry');
     historyLoading=true;
     $('history-error').textContent='';
+    retry.hidden=true;
+    status.hidden=false;
+    status.textContent='Loading bill history…';
     try{
-      const response=await fetch('/apps'+billingPath+'?sessionId='+encodeURIComponent(cfg.session),{cache:'no-store'});
+      const response=await fetch('/apps'+billingPath+'?'+new URLSearchParams({sessionId:cfg.session,loadHistory:'Y'}),{cache:'no-store'});
+      if(!response.ok||response.redirected)throw Error('History request failed');
       const page=new DOMParser().parseFromString(await response.text(),'text/html');
-      const rows=page.getElementById('kb-history-rows');
-      if(!response.ok||!rows)throw Error('History could not be refreshed. Sign in again if your session ended.');
+      const rows=page.querySelector('#kb-history-rows[data-kb-history-loaded]'), billing=page.getElementById('kb-data')?.dataset;
+      if(!rows||billing?.session!==cfg.session||billing?.user!==cfg.user)throw Error('History response did not match this session');
+      if(!root.isConnected||version!==historyVersion)return;
+      const focused=document.activeElement;
+      const focusRow=history.open&&(!history.contains(focused)||focused===history||focused===$('history-close')||
+        focused===retry||$('history-rows').contains(focused));
       const previous=activeHistoryRow?.dataset.kotId;
       $('history-rows').replaceChildren(...rows.children);
       activeHistoryRow=historyRows().find(row=>row.dataset.kotId===previous);
-      historyDirty=false;
-    }catch(error){$('history-error').textContent=error.message;}
-    finally{historyLoading=false;}
-  }
-  async function showHistory(){
-    history.showModal();
-    $('history-print-status').textContent='';
-    filterHistory(true);
-    if(historyDirty){
-      await refreshHistory();
-      if(history.open)filterHistory(!history.contains(document.activeElement)||document.activeElement===history);
+      loadedHistoryVersion=version;
+      status.hidden=true;
+      filterHistory(focusRow);
+    }catch{
+      if(root.isConnected&&version===historyVersion){
+        status.textContent='Bill history could not be loaded. Please try again.';
+        retry.hidden=false;
+      }
+    }finally{
+      historyLoading=false;
+      if(root.isConnected&&history.open&&version!==historyVersion)showHistory();
     }
   }
   function updatePrintOptions(){
@@ -801,7 +829,7 @@
       const adjustment=Number(bill.refundDue)>0?' Refund '+money.format(bill.refundDue)+'.':
         Number(bill.balanceDue)>0?' Collect '+money.format(bill.balanceDue)+'.':'';
       $('history-detail-message').textContent='Bill revision saved.'+adjustment;
-      historyDirty=true;
+      historyVersion++;
     }catch(failure){error.textContent=failure.message;}
     finally{savingBill=false;$('history-save').disabled=false;}
   }
@@ -846,7 +874,7 @@
     try {
       const ticket=await request('createKot',{...orderData(),loadedDraftId:draftId,wantJson:'Y'});
       resetOrder();
-      historyDirty=true;
+      refreshOpenHistory();
       status.textContent='KOT #'+ticket.kotNumber+' sent to the kitchen.';
     } catch(error) {
       status.textContent=error.message;
@@ -868,7 +896,7 @@
     else if(button.id==='kb-fullscreen')toggleFullscreen();
     else if(button.id==='kb-close-session')openSessionClose();
     else if(button.id==='kb-clear'&&confirm('Clear the unsent items from this order?')){cart.clear();setEditError('');quote();}
-    else if(button.id==='kb-history-open')showHistory();
+    else if(button.id==='kb-history-open'||button.id==='kb-history-retry')showHistory();
     else if(button.id==='kb-resume')resumeBilling();
     else if(button.id==='kb-bill')openPayment();
     else if(button.id==='kb-send')sendToKitchen();
@@ -948,13 +976,13 @@
   });
   for(const id of ['history-back','history-detail-close'])$(id).addEventListener('click',closeHistoryDetail);
   historyDetail.addEventListener('cancel',event=>{event.preventDefault();closeHistoryDetail();});
-  historyDetail.addEventListener('close',async ()=>{
+  historyDetail.addEventListener('close',()=>{
     clearTimeout(editSearchTimer);
     editSearchVersion++;
     editingBill=null;
     if(!history.open)return;
-    if(historyDirty)await refreshHistory();
-    if(history.open){filterHistory();selectHistoryRow(activeHistoryRow,true);}
+    if(loadedHistoryVersion!==historyVersion)showHistory();
+    else filterHistory(true);
   });
   $('history-detail-reprint')?.addEventListener('click',()=>openReprint(editingBill?.row));
   $('history-resume')?.addEventListener('click',()=>{
@@ -1018,7 +1046,7 @@
   const editable=e=>e.target?.closest?.('input,textarea,select,button,a,[contenteditable],dialog');
   function shortcut(e) {
     if(!root.isConnected){document.removeEventListener('keydown',shortcut);document.removeEventListener('keyup',shortcut);return;}
-    if(document.getElementById('posCloseSessionOverlay')){shiftAlone=false;return;}
+    if(document.documentElement.classList.contains('zk-billing-pending')||document.getElementById('posCloseSessionOverlay')){shiftAlone=false;return;}
     if(e.type==='keyup'){
       if(e.key==='Shift'&&shiftAlone&&!editable(e)&&!root.querySelector('dialog[open]'))$('send')?.click();
       if(e.key==='Shift')shiftAlone=false;

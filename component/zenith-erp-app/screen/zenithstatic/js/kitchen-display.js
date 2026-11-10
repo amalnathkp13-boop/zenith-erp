@@ -4,12 +4,13 @@
     if (window.__zkKitchenUi) return;
     window.__zkKitchenUi = true;
     var pending = null, version = 0, timeout, scheduled = false, hooked = false, staleNodes=new WeakSet();
-    var tabRequest;
+    var tabRequest, frozenContent;
     var tabContent = {KotDashboard:'#kd-wrap',KitchenDisplay:'.zk-display',KotBilling:'#kb-wrap,#kot-terminal-entry',
         Tables:'#tm-wrap',KotHistory:'#zk-history-toolbar',WaiterManagement:'#wf-search'};
     function url(value) { try { return new URL(value, location.href); } catch (_) { return null; } }
     function key(value) { var u=url(value); return u ? u.pathname.replace(/^\/(apps|qapps)/,'').replace(/\.(qvt|html)$/,'').replace(/\/$/,'') : ''; }
     function kitchen(value) { return /^\/zenith\/(?:kot|pos\/Kitchen)(?:\/|$)/.test(key(value)); }
+    function billing(value) { return key(value).endsWith('/KotBilling'); }
     function appsKotTab(target) {
         return target && target.origin===location.origin && !target.hash &&
             /^\/apps\/zenith\/kot(?:\/(?:KotDashboard|KitchenDisplay|KotBilling|Tables|KotHistory|WaiterManagement))?\/?$/.test(target.pathname);
@@ -31,7 +32,7 @@
         var request = new AbortController();
         tabRequest = request;
         begin(target.href, false);
-        highlightAppsTab(target);
+        if (!billing(target.href)) highlightAppsTab(target);
         try {
             var response = await fetch(target.href, {cache:'no-store', signal:request.signal});
             if (!response.ok || response.redirected) throw Error('KOT tab did not return its screen');
@@ -44,6 +45,7 @@
             if (pushState) history.pushState(null, page.title, target.href);
             document.title = page.title;
             frame.replaceWith(next);
+            highlightAppsTab(target);
             window.scrollTo(0, 0);
             schedule();
         } catch (error) {
@@ -54,7 +56,7 @@
     }
     function title(value) { var name=key(value).split('/').pop();return ({kot:'KOT Dashboard',Kitchen:'Kitchen Display',KitchenDisplay:'Kitchen Display',KotBilling:'KOT Billing',KotDashboard:'KOT Dashboard',KotHistory:'KOT History',Tables:'Tables',WaiterManagement:'Waiters'})[name] || 'Kitchen'; }
     var critical=document.createElement('style');
-    critical.textContent='html.zk-initial-loading body{visibility:hidden!important}html.zk-route-pending #content>.inner>.container-fluid,html.zk-route-pending .q-page{visibility:hidden!important}#zk-route-status{visibility:visible!important;position:fixed;z-index:120;top:120px;left:240px;right:24px;padding:24px;border:1px solid #E4DFF3;border-radius:12px;background:#fff;color:#181329;font:15px/1.6 "Segoe UI",Arial,sans-serif}#zk-route-status h1{font-size:24px;margin:0 0 8px}#zk-route-status button{border:1px solid #7C3AED;background:#fff;color:#6D28D9;padding:8px 18px;border-radius:7px;cursor:pointer}#zk-route-status .zk-placeholder{height:72px;background:#F5F3FA;border-radius:8px;margin-top:18px}@media(max-width:900px){#zk-route-status{left:16px;right:16px;top:110px}}';
+    critical.textContent='html.zk-initial-loading:not(.zk-billing-pending) body,html.zk-initial-loading.zk-billing-pending #top{visibility:hidden!important}html.zk-route-pending:not(.zk-billing-pending) #content>.inner>.container-fluid,html.zk-route-pending:not(.zk-billing-pending) .q-page{visibility:hidden!important}#zk-route-status{visibility:visible!important;position:fixed;z-index:120;top:120px;left:240px;right:24px;padding:24px;border:1px solid #E4DFF3;border-radius:12px;background:#fff;color:#181329;font:15px/1.6 "Segoe UI",Arial,sans-serif}#zk-route-status h1{font-size:24px;margin:0 0 8px}#zk-route-status button{border:1px solid #7C3AED;background:#fff;color:#6D28D9;padding:8px 18px;border-radius:7px;cursor:pointer}#zk-route-status .zk-placeholder{height:72px;background:#F5F3FA;border-radius:8px;margin-top:18px}@media(max-width:900px){#zk-route-status{left:16px;right:16px;top:110px}}';
     document.head.appendChild(critical);
     function show(message, failed) {
         if (!pending || !document.body) return;
@@ -67,9 +69,15 @@
         else { var placeholder=document.createElement('div');placeholder.className='zk-placeholder';placeholder.setAttribute('aria-hidden','true');box.appendChild(placeholder); }
     }
     function fail() { if(pending)show('The Kitchen page could not be loaded. Please try again.',true); }
+    function releaseContent() {
+        if (!frozenContent) return;
+        frozenContent.inert = false;
+        frozenContent = null;
+    }
     function clearLoading() {
         clearTimeout(timeout);pending=null;
-        document.documentElement.classList.remove('zk-initial-loading','zk-route-pending');
+        releaseContent();
+        document.documentElement.classList.remove('zk-initial-loading','zk-route-pending','zk-billing-pending');
         var box=document.getElementById('zk-route-status');if(box)box.remove();
     }
     function leaveKitchen() {
@@ -82,12 +90,29 @@
         var target=url(value);if(!target || target.origin!==location.origin)return;
         if(!kitchen(target.href)) { leaveKitchen();return; }
         if(pending===target.href)return;
+        releaseContent();
         pending=target.href;++version;
-        document.querySelectorAll('dialog.zk-history-view').forEach(function(dialog){dialog.close();dialog.remove();});
+        var billingTarget=billing(pending);
+        document.querySelectorAll('dialog.zk-history-view').forEach(function(dialog){
+            dialog.close();
+            if (!billingTarget) dialog.remove();
+        });
         if(!initial)document.querySelectorAll('#kitchen-page-frame,.zk-display,#kb-wrap,#tm-wrap,#zk-history-toolbar,#kd-wrap,#wf-search').forEach(function(node){staleNodes.add(node);});
         document.documentElement.classList.add('zk-route-pending');
-        if(initial)document.documentElement.classList.add('zk-initial-loading');
+        document.documentElement.classList.toggle('zk-initial-loading',initial);
+        document.documentElement.classList.toggle('zk-billing-pending',billingTarget);
         clearTimeout(timeout);timeout=setTimeout(fail,20000);
+        if(billingTarget) {
+            document.getElementById('zk-route-status')?.remove();
+            // Keep the current page visible while the authorized Billing screen arrives.
+            var content=!initial && (document.getElementById('kitchen-page-frame') ||
+                document.querySelector('#content>.inner>.container-fluid,.q-page'));
+            if(content && !content.inert) {
+                content.inert = true;
+                frozenContent = content;
+            }
+            return;
+        }
         show('Loading '+title(pending)+'…',false);
         // Keep the existing active-tab styling; select the destination immediately.
         document.querySelectorAll('#z-subnav a,#zq-subnav a,#kitchen-tabs a').forEach(function(link){
@@ -134,7 +159,7 @@
     function sync() {
         scheduled=false;hooks();
         if(!pending || !document.body)return;
-        if(!document.getElementById('zk-route-status'))show('Loading '+title(pending)+'…',false);
+        if(!billing(pending) && !document.getElementById('zk-route-status'))show('Loading '+title(pending)+'…',false);
         var frame=document.getElementById('kitchen-page-frame');
         var ready=frame&&!staleNodes.has(frame)&&key(frame.dataset.kitchenRoute)===key(pending);
         if(frame) {
