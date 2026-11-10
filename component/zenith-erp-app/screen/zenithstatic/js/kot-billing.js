@@ -21,7 +21,8 @@
   let orderType=cfg.drafttype||'Dine In', taxOn=cfg.drafttax||'Y', draftId=cfg.draftid||'';
   let salesModeId=$('mode').value, quoteVersion=0, quoteTimer, total=null, busy=false, savedFingerprint='';
   let searchVersion=0, searchTimer, searchAbort, results=[], selected=0, exactId, ambiguous=false, hasMore=false, offset=0;
-  let historyDirty=false, grid=false, pickedMatch=false, categoryId='';
+  let historyVersion=0, loadedHistoryVersion=$('history-rows').hasAttribute('data-kb-history-loaded')?0:-1, historyLoading=false;
+  let grid=false, pickedMatch=false, categoryId='';
   let customer={}, custVersion=0, custTimer, custAbort;
   let invalidEdit, pendingTender, sessionLost=false, completedKotId='';
   const signInMessage='Sign in again to continue billing.';
@@ -574,7 +575,8 @@
       }
     }
     if(!bill)return;
-    completedKotId=bill.kotId;historyDirty=true;
+    completedKotId=bill.kotId;
+    refreshOpenHistory();
     $('list-last-bill').textContent=bill.billNumber;
     $('list-last-amount').textContent=$('list-last-stat').textContent=money.format(confirmedTotal);
     $('payment').close();resetOrder();
@@ -586,25 +588,48 @@
   }
   function filterHistory(){
     const term=$('history-search').value.trim().toLowerCase(),status=$('history-status').value,date=$('history-date').value;let visible=0;
-    for(const order of $('history-rows').children){
+    const rows=$('history-rows');
+    rows.hidden=loadedHistoryVersion!==historyVersion;
+    for(const order of rows.children){
       order.hidden=Boolean((date&&order.dataset.orderDate!==date)||(status&&order.dataset.kotGroup!==status)||(term&&!order.textContent.toLowerCase().includes(term)));
       if(!order.hidden)visible++;
     }
-    $('history-empty').hidden=visible!==0;
+    $('history-empty').hidden=rows.hidden||visible!==0;
+  }
+  function refreshOpenHistory(){
+    historyVersion++;
+    if($('history').open)showHistory();
   }
   async function showHistory(){
-    $('history').showModal();
-    if(historyDirty){
-      try{
-        const response=await fetch('/apps'+billingPath+'?sessionId='+encodeURIComponent(cfg.session));
-        if(!response.ok)throw Error('History could not be refreshed.');
-        const page=new DOMParser().parseFromString(await response.text(),'text/html');
-        const rows=page.getElementById('kb-history-rows');
-        if(!rows)throw Error('History could not be refreshed. Reload the page.');
-        $('history-rows').replaceChildren(...rows.children);historyDirty=false;
-      }catch(e){$('order-status').textContent=e.message;}
-    }
+    const dialog=$('history');
+    if(!dialog.open)dialog.showModal();
     filterHistory();
+    if(historyLoading||loadedHistoryVersion===historyVersion)return;
+    const version=historyVersion, status=$('history-load-status'), retry=$('history-retry');
+    historyLoading=true;
+    retry.hidden=true;
+    status.hidden=false;
+    status.textContent='Loading order history…';
+    try {
+      const response=await fetch('/apps'+billingPath+'?'+new URLSearchParams({sessionId:cfg.session,loadHistory:'Y'}),{cache:'no-store'});
+      if(!response.ok||response.redirected)throw Error('History request failed');
+      const page=new DOMParser().parseFromString(await response.text(),'text/html');
+      const rows=page.querySelector('#kb-history-rows[data-kb-history-loaded]'), billing=page.getElementById('kb-data')?.dataset;
+      if(!rows||billing?.session!==cfg.session||billing?.user!==cfg.user)throw Error('History response did not match this session');
+      if(!root.isConnected||version!==historyVersion)return;
+      $('history-rows').replaceChildren(...rows.children);
+      loadedHistoryVersion=version;
+      status.hidden=true;
+      filterHistory();
+    } catch {
+      if(root.isConnected&&version===historyVersion){
+        status.textContent='Order history could not be loaded. Please try again.';
+        retry.hidden=false;
+      }
+    } finally {
+      historyLoading=false;
+      if(root.isConnected&&dialog.open&&version!==historyVersion)showHistory();
+    }
   }
   async function sendToKitchen() {
     if($('send').disabled)return;
@@ -614,7 +639,7 @@
     try {
       const ticket=await request('createKot',{...orderData(),loadedDraftId:draftId,wantJson:'Y'});
       resetOrder();
-      historyDirty=true;
+      refreshOpenHistory();
       status.textContent='KOT #'+ticket.kotNumber+' sent to the kitchen.';
     } catch(error) {
       status.textContent=error.message;
@@ -636,7 +661,7 @@
     else if(button.id==='kb-fullscreen')toggleFullscreen();
     else if(button.id==='kb-close-session')openSessionClose();
     else if(button.id==='kb-clear'&&confirm('Clear the unsent items from this order?')){cart.clear();setEditError('');quote();}
-    else if(button.id==='kb-history-open')showHistory();
+    else if(button.id==='kb-history-open'||button.id==='kb-history-retry')showHistory();
     else if(button.id==='kb-resume')resumeBilling();
     else if(button.id==='kb-bill')openPayment();
     else if(button.id==='kb-send')sendToKitchen();
@@ -683,7 +708,7 @@
   const editable=e=>e.target?.closest?.('input,textarea,select,button,a,[contenteditable],dialog');
   function shortcut(e) {
     if(!root.isConnected){document.removeEventListener('keydown',shortcut);document.removeEventListener('keyup',shortcut);return;}
-    if(document.getElementById('posCloseSessionOverlay')){shiftAlone=false;return;}
+    if(document.documentElement.classList.contains('zk-billing-pending')||document.getElementById('posCloseSessionOverlay')){shiftAlone=false;return;}
     if(e.type==='keyup'){
       if(e.key==='Shift'&&shiftAlone&&!editable(e)&&!root.querySelector('dialog[open]'))$('send')?.click();
       if(e.key==='Shift')shiftAlone=false;

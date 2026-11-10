@@ -51,8 +51,12 @@ module.exports=async function({a,foreign,base,post,rows,count,check,out}){
  for(const kind of ['kot','orderBill','view']){r=await post('Kitchen/KotBilling','printRecord',{kotId:kot.kot_id,kind},foreign);check('foreign shop cannot read '+kind+' print data',r.status()===403||!(await r.json()).success);}
  r=await post('Kitchen/KotHistory','printRecord',{kotId:kot.kot_id,kind:'bill'});
  check('History Bill Print does not invent an invoice for an unpaid KOT',!(await r.json()).success);
- await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling?sessionId='+kotSessionId);await page.locator('#kb-history-open').click();await page.locator('#kb-history-status').selectOption('active');
+ await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling?sessionId='+kotSessionId);
+ await page.locator('#kb-wrap[data-ready=true]').waitFor();
+ check('KOT Billing startup does not render order history',await page.locator('#kb-history-rows > *').count()===0);
+ await page.locator('#kb-history-open').click();await page.locator('#kb-history-status').selectOption('active');
  const card=page.locator('[data-kot-group="active"] .kb-ocard').filter({has:page.locator(`[data-kot-id="${kot.kot_id}"]`)});
+ await card.waitFor();
  check('active order card has both independent print actions',await card.getByRole('button',{name:'KOT Print',exact:true}).count()===1&&await card.getByRole('button',{name:'Bill Print',exact:true}).count()===1);
  const printCount=()=>Number(rows('kitchen_order_ticket',`kot_id='${kot.kot_id}'`)[0].print_count);
  await stubPrint(true);const pc=printCount();await card.getByRole('button',{name:'KOT Print',exact:true}).click();await page.locator('#zk-print-status').filter({hasText:'Synthetic printer unavailable'}).waitFor();
@@ -64,7 +68,9 @@ module.exports=async function({a,foreign,base,post,rows,count,check,out}){
  check('order-card Bill Print reuses saved pricing without writing a sale',moneyState()===state&&printCount()===pc+1&&await page.evaluate(()=>window.__printHtml.join('').includes('328.00')));
  await post('Kitchen/KitchenDisplay','updateStatus',{kotId:kot.kot_id,statusId:'KotCancelled'});
  await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling?sessionId='+kotSessionId);await page.locator('#kb-history-open').click();await page.locator('#kb-history-status').selectOption('completed');
- check('completed order cards retain both print actions',await page.locator(`[data-kot-group="completed"] [data-kot-id="${kot.kot_id}"]`).count()===2);
+ const completedPrintActions=page.locator(`[data-kot-group="completed"] [data-kot-id="${kot.kot_id}"]`);
+ await completedPrintActions.first().waitFor();
+ check('completed order cards retain both print actions',await completedPrintActions.count()===2);
  async function invoke(op,params){const response=await post('PosQaAcceptance','invoke',{op,...params});const body=await response.json();if(body.errors?.length)throw Error(JSON.stringify(body));return body.result;}
  const terminalId='POS_QA_KITCHEN_PRINT_'+Date.now();
  await post('PosTerminals','createTerminal',{terminalId,terminalName:'Synthetic kitchen print terminal',facilityId:'POS_QA_A_FAC',stateCode:'33',isActive:'Y'});
