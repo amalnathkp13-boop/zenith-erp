@@ -43,31 +43,25 @@
             def yStart = new java.sql.Timestamp(dayStart.getTime() - DAYMS)
             def yEnd = new java.sql.Timestamp(dayStart.getTime() - 1000L)
 
-            // The standalone KOT role can report its linked sales without exposing general till totals.
-            def kotTxnIds = kitchenModuleId == 'kot' ? ec.entity.find('zenith.erp.pos.KitchenOrderTicket')
-                .condition('organizationPartyId', org ?: '__NO_ORGANIZATION__')
-                .condition('transactionId', 'is-not-null', null).selectField('transactionId')
-                .distinct(true).list()*.transactionId : null
+            // Limit standalone KOT reporting to sales linked to a ticket in the same organization.
+            def kotOnly = kitchenModuleId == 'kot'
+            def salesEntity = kotOnly ? 'zenith.erp.pos.KotTransactionView' : 'zenith.erp.pos.PosTransaction'
             def amt = { t -> (t.payableAmount ?: t.grandTotal ?: 0) as BigDecimal }
-            def findCompleted = { s, e ->
-                def f = ec.entity.find('zenith.erp.pos.PosTransaction').condition('statusId', 'PtCompleted')
+            def findOrders = { s, e, completedOnly ->
+                def f = ec.entity.find(salesEntity)
                     .condition('entryDate', 'greater-equals', s).condition('entryDate', 'less-equals', e)
-                f.condition('organizationPartyId', org ?: '__NO_ORGANIZATION__')
-                if (kotTxnIds != null) f.condition('transactionId', 'in', kotTxnIds ?: ['__NO_KOT_TRANSACTIONS__'])
+                    .condition('organizationPartyId', org ?: '__NO_ORGANIZATION__')
+                    .selectFields(['transactionId', 'entryDate', 'statusId', 'customerPartyId', 'payableAmount', 'grandTotal'])
+                if (completedOnly) f.condition('statusId', 'PtCompleted')
+                if (kotOnly) f.distinct(true) // Several tickets may be linked to one sale.
                 return f.orderBy('entryDate').list()
             }
-            def countAll = { s, e ->
-                def f = ec.entity.find('zenith.erp.pos.PosTransaction')
-                    .condition('entryDate', 'greater-equals', s).condition('entryDate', 'less-equals', e)
-                f.condition('organizationPartyId', org ?: '__NO_ORGANIZATION__')
-                if (kotTxnIds != null) f.condition('transactionId', 'in', kotTxnIds ?: ['__NO_KOT_TRANSACTIONS__'])
-                return f.count()
-            }
 
-            completedTxns = findCompleted(dayStart, dayEnd)
+            def todayOrders = findOrders(dayStart, dayEnd, false)
+            completedTxns = todayOrders.findAll { it.statusId == 'PtCompleted' }
             def totalSalesAmt = completedTxns.sum { amt(it) } ?: BigDecimal.ZERO
             completedOrders = completedTxns.size()
-            totalOrdersAll = countAll(dayStart, dayEnd) as int
+            totalOrdersAll = todayOrders.size()
             def cset = new HashSet(); def walk = 0
             completedTxns.each { t -> if (t.customerPartyId) cset.add(t.customerPartyId) else walk++ }
             customers = cset.size() + walk
@@ -81,10 +75,11 @@
             ordersInProgress = akf.count() as int
 
             // yesterday
-            def yTxns = findCompleted(yStart, yEnd)
+            def yOrders = findOrders(yStart, yEnd, false)
+            def yTxns = yOrders.findAll { it.statusId == 'PtCompleted' }
             def ySales = yTxns.sum { amt(it) } ?: BigDecimal.ZERO
             def yCompleted = yTxns.size()
-            def yAll = countAll(yStart, yEnd) as int
+            def yAll = yOrders.size()
             def ycset = new HashSet(); def ywalk = 0
             yTxns.each { t -> if (t.customerPartyId) ycset.add(t.customerPartyId) else ywalk++ }
             def yCustomers = ycset.size() + ywalk
@@ -135,7 +130,7 @@
             def todayAxis = ['12 AM', '4 AM', '8 AM', '12 PM', '4 PM', '8 PM', '12 AM']
 
             def monthStart = new java.sql.Timestamp(dayStart.getTime() - 29L * DAYMS)
-            def monthTxns = findCompleted(monthStart, dayEnd)
+            def monthTxns = findOrders(monthStart, dayEnd, true)
             def dayBucket = [:]
             monthTxns.each { t -> if (t.entryDate) { def ds = sdf.format(t.entryDate); dayBucket[ds] = (dayBucket[ds] ?: BigDecimal.ZERO) + amt(t) } }
             def dlabel = new java.text.SimpleDateFormat('d MMM'); dlabel.setTimeZone(ec.user.timeZone)
