@@ -511,9 +511,11 @@
     } catch(error){ $('order-status').textContent=error.message; }
     finally{busy=false;controls();}
   }
-  async function printChoice(kind) {
-    const row=historyPrintRow, kotId=row?.dataset.kotId||completedKotId;
+  async function printChoice(kind,row=historyPrintRow) {
+    const kotId=row?.dataset.kotId||completedKotId;
     if(busy||!kotId)return;
+    const chooser=$('print-choice'), errorOutput=chooser.open?$('print-error'):$('history-error');
+    errorOutput.textContent='';
     let billWindow,kotWindow;
     try {
       // Open windows from the click itself so the browser does not block them after fetching.
@@ -521,7 +523,6 @@
       if(kind==='kot'||kind==='both')kotWindow=KitchenPrint.open();
       busy=true;controls();
       for(const button of root.querySelectorAll('[data-kb-print]'))button.disabled=true;
-      $('print-error').textContent='';
       if(kotWindow) {
         const {record}=await request('printRecord',{kotId,kind:'kot'});
         await KitchenPrint.browserPrint(kotWindow,KitchenPrint.kotHtml(record));
@@ -535,9 +536,9 @@
         const status=$('history-detail').open?$('history-detail-message'):$('history-print-status');
         status.textContent='Print request opened.';
       } else $('order-status').textContent+=' Print request opened. The completed bill is also in History.';
-      $('print-choice').close();
+      if(chooser.open)chooser.close();
     } catch(error) {
-      $('print-error').textContent=error.message;
+      errorOutput.textContent=error.message;
     } finally {
       if(billWindow&&!billWindow.closed)billWindow.close();
       if(kotWindow&&!kotWindow.closed)kotWindow.close();
@@ -666,11 +667,52 @@
       ? '<input type="number" data-edit-'+type+' aria-label="'+type+' for '+name+'" value="'+esc(value)+'" min="'+min+'" step="'+step+'" required>'
       : type==='Rate'?amount(value):esc(value??'—');
     const row=document.createElement('tr');
-    row.innerHTML='<th scope="row">'+name+'</th><td>'+field('Rate',item.rate,0,0.01)+'</td><td>'+
-      field('Quantity',item.qty,0.001,0.001)+'</td><td>'+amount(item.tax)+'</td><td>'+amount(item.total)+'</td>'+
+    row.innerHTML='<th scope="row">'+name+'</th><td>'+field('Rate',item.rate,item.seq?0:0.01,0.01)+'</td><td>'+
+      field('Quantity',item.qty,0.001,0.001)+'</td><td data-edit-tax>'+amount(item.tax)+'</td><td data-edit-total>'+amount(item.total)+'</td>'+
       (canEdit?'<td class="kb-history-editable"><input type="checkbox" data-edit-remove aria-label="Remove '+name+'"></td>':'');
     $('history-detail-lines').append(row);
     return row;
+  }
+  function previewBillAmounts(){
+    const state=editingBill;
+    if(!state?.canEdit)return;
+    let total=0, changed=false, incomplete=false, newTax=false;
+    for(const line of state.lines){
+      const row=line.element, removed=row.querySelector('[data-edit-remove]').checked;
+      const qty=row.querySelector('[data-edit-quantity]').valueAsNumber;
+      const rate=row.querySelector('[data-edit-rate]').valueAsNumber;
+      const edited=!line.seq||qty!==Number(line.qty)||rate!==Number(line.rate);
+      let tax=Number(line.tax||0), amount=Number(line.total||0);
+      if(removed){
+        changed||=Boolean(line.seq);
+        tax=amount=null;
+      }else if(edited){
+        changed=true;
+        if(!Number.isFinite(qty)||!Number.isFinite(rate)||qty<=0||rate<0||(!line.seq&&rate===0)){
+          incomplete=true;
+          tax=amount=null;
+        }else if(!line.seq){
+          newTax||=state.hasTax;
+          tax=state.hasTax?null:0;
+          amount=qty*rate;
+        }else{
+          // Use the saved tax and discount basis, as the POS amendment does.
+          const savedTaxable=Number(line.taxableAmount||0);
+          const savedNet=Number(line.qty)*Number(line.rate)-Number(line.discountAmount||0);
+          const net=qty*rate*(1-Number(line.discountPercent||0)/100);
+          const taxable=savedNet>0?net*savedTaxable/savedNet:net;
+          tax=savedTaxable?taxable*tax/savedTaxable:0;
+          amount=taxable+tax;
+        }
+      }
+      row.querySelector('[data-edit-tax]').textContent=tax==null?'—':money.format(tax);
+      row.querySelector('[data-edit-total]').textContent=amount==null?'—':money.format(amount);
+      total+=amount||0;
+    }
+    $('history-detail-total').textContent=changed
+      ? 'Estimated total '+(incomplete?'—':money.format(Math.round(total)))
+      : money.format(state.savedTotal);
+    $('history-amount-note').hidden=!newTax;
   }
   async function openHistoryDetail(row){
     selectHistoryRow(row);
@@ -684,6 +726,7 @@
     $('history-detail-number').textContent=row.querySelector('[data-kb-history-detail]').textContent.trim();
     $('history-detail-total').textContent=row.querySelector('.kb-history-amount').textContent;
     $('history-detail-lines').replaceChildren();
+    $('history-amount-note').hidden=true;
     $('history-products').replaceChildren();
     $('history-edit-error').textContent='';
     $('history-detail-message').textContent='Loading items…';
@@ -698,13 +741,16 @@
       const data=billed?await request('historyBillDetails',params):(await request('printRecord',{...params,kind:'view'})).record;
       if(editingBill!==state||!historyDetail.open)return;
       state.transactionId=data.transactionId;
+      state.salesModeId=data.salesModeId||salesModeId;
+      state.savedTotal=data.total;
+      state.hasTax=data.items?.some(item=>Number(item.tax)>0);
       const canEdit=Boolean(data.canEdit&&$('history-save'));
       state.canEdit=canEdit;
       for(const item of data.items||[])state.lines.push({...item,element:billLine(item,canEdit)});
       historyEdit.classList.toggle('is-editable',canEdit);
       $('history-edit-fields').hidden=!canEdit;
       if($('history-save'))$('history-save').hidden=!canEdit;
-      $('history-detail-message').textContent=canEdit?'Amounts shown are from the saved bill. Enter a reason to save a revision.':'';
+      $('history-detail-message').textContent=canEdit?'Enter a reason to save a revision.':'';
     }catch(error){if(editingBill===state)$('history-detail-message').textContent=error.message;}
   }
   function billChanges(){
@@ -748,8 +794,10 @@
         const line={...item,rate:item.price};
         return {...line,element:billLine(line,true)};
       });
+      state.savedTotal=bill.payable;
+      state.hasTax=state.lines.some(line=>Number(line.tax)>0);
       $('history-edit-reason').value='';
-      $('history-detail-total').textContent=money.format(bill.payable);
+      previewBillAmounts();
       const adjustment=Number(bill.refundDue)>0?' Refund '+money.format(bill.refundDue)+'.':
         Number(bill.balanceDue)>0?' Collect '+money.format(bill.balanceDue)+'.':'';
       $('history-detail-message').textContent='Bill revision saved.'+adjustment;
@@ -760,22 +808,34 @@
   async function lookupBillProducts(term,version){
     const host=$('history-products'), state=editingBill;
     try{
-      const data=await request('searchMenu',{term,salesModeId:$('mode').value});
+      const data=await request('searchMenu',{term,salesModeId:state.salesModeId});
       if(version!==editSearchVersion||editingBill!==state||!historyDetail.open)return;
-      for(const product of (data.products||[]).slice(0,8)){
-        if(!(Number(product.price)>0))continue;
+      host.replaceChildren();
+      const matches=data.products||[];
+      const exact=data.ambiguous?null:matches.find(product=>product.id===data.exactId);
+      const results=exact?[exact,...matches.filter(product=>product!==exact)]:matches;
+      for(const product of results){
+        const rate=Number(product.price)>0?Number(product.price):null;
         const button=document.createElement('button');
-        button.type='button';button.className='kb-history-button';
-        button.textContent=product.name+' · '+money.format(product.price);
+        button.type='button';button.className='kb-history-match';
+        if(product===exact)button.dataset.exact='true';
+        const name=document.createElement('strong'), code=document.createElement('small'), price=document.createElement('span');
+        name.textContent=product.name;
+        code.textContent=product.code||product.id;
+        price.textContent=rate==null?'Enter rate':money.format(rate);
+        button.append(name,code,price);
         button.onclick=()=>{
-          const line={name:product.name,productId:product.id,qty:1,rate:product.price};
-          state.lines.push({...line,element:billLine(line,true)});
+          if(savingBill||editingBill!==state)return;
+          const line={name:product.name,productId:product.id,qty:1,rate};
+          const row=billLine(line,true);
+          state.lines.push({...line,element:row});
+          previewBillAmounts();
           $('history-add').value='';host.replaceChildren();
-          $('history-add').focus();
+          (rate==null?row.querySelector('[data-edit-rate]'):$('history-add')).focus();
         };
         host.append(button);
       }
-      if(!host.children.length)host.textContent='No priced products found.';
+      if(!host.children.length)host.textContent='No matching products.';
     }catch(error){if(version===editSearchVersion&&editingBill===state)host.textContent=error.message;}
   }
   async function sendToKitchen() {
@@ -858,7 +918,8 @@
     const row=event.target.closest('.kb-history-row');
     if(!row)return;
     selectHistoryRow(row);
-    if(event.target.closest('[data-kb-history-reprint]'))openReprint(row);
+    const print=event.target.closest('[data-kb-history-print]');
+    if(print){if(!print.disabled)printChoice(print.dataset.kbHistoryPrint,row);}
     else openHistoryDetail(row);
   });
   history.addEventListener('keydown',event=>{
@@ -871,6 +932,18 @@
       event.preventDefault();
       const rows=historyRows(), index=rows.indexOf(row)+(event.key==='ArrowDown'?1:-1);
       selectHistoryRow(rows[Math.max(0,Math.min(rows.length-1,index))],true);
+    } else if(row){
+      const buttons=Array.from(row.querySelectorAll('[data-kb-history-print]:enabled'));
+      if(!buttons.length)return;
+      const index=buttons.indexOf(event.target);
+      if(event.key===' '&&index===-1){
+        event.preventDefault();
+        buttons[0].focus();
+      }else if(index!==-1&&['ArrowLeft','ArrowRight'].includes(event.key)){
+        event.preventDefault();
+        const next=index+(event.key==='ArrowRight'?1:-1);
+        buttons[(next+buttons.length)%buttons.length].focus();
+      }
     }
   });
   for(const id of ['history-back','history-detail-close'])$(id).addEventListener('click',closeHistoryDetail);
@@ -893,17 +966,35 @@
     if(confirm('Discard this held order?'))post('deleteDraft',{kotId:editingBill.row.dataset.kotId});
   });
   historyEdit.addEventListener('submit',saveHistoryBill);
+  historyEdit.addEventListener('input',event=>{
+    if(event.target.matches('[data-edit-quantity],[data-edit-rate]'))previewBillAmounts();
+  });
   historyEdit.addEventListener('change',event=>{
     if(!event.target.matches('[data-edit-remove]'))return;
     for(const field of event.target.closest('tr').querySelectorAll('input[type=number]')){
       field.disabled=event.target.checked;
     }
+    previewBillAmounts();
   });
   $('history-add').addEventListener('input',event=>{
     clearTimeout(editSearchTimer);
     const term=event.target.value.trim(), version=++editSearchVersion;
-    $('history-products').replaceChildren();
+    $('history-products').textContent=term?'Searching…':'';
     if(term)editSearchTimer=setTimeout(()=>lookupBillProducts(term,version),150);
+  });
+  $('history-add').addEventListener('keydown',event=>{
+    if(event.isComposing||!['Enter','ArrowDown'].includes(event.key))return;
+    event.preventDefault();
+    const matches=$('history-products').querySelectorAll('button');
+    const exact=$('history-products').querySelector('[data-exact]');
+    if(event.key==='Enter'&&(exact||matches.length===1))(exact||matches[0]).click();
+    else matches[0]?.focus();
+  });
+  $('history-products').addEventListener('keydown',event=>{
+    if(!['ArrowUp','ArrowDown'].includes(event.key))return;
+    event.preventDefault();
+    if(event.key==='ArrowDown')event.target.nextElementSibling?.focus();
+    else (event.target.previousElementSibling||$('history-add')).focus();
   });
   historyDetail.addEventListener('keydown',event=>{
     const reprint=$('history-detail-reprint');

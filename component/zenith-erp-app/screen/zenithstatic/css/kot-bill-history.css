@@ -111,7 +111,8 @@
   font-weight: 650;
 }
 #kb-wrap .kb-history-primary { background: #7c3aed; color: #fff; }
-#kb-wrap .kb-history-reprint { grid-column: 3; grid-row: 1 / span 2; }
+#kb-wrap .kb-history-row-actions { display: flex; gap: 6px; grid-column: 3; grid-row: 1 / span 2; }
+#kb-wrap .kb-history-row-actions button { white-space: nowrap; }
 #kb-wrap .kb-history-dialog :focus-visible,
 #kb-wrap .kb-print-options :focus-visible { outline: 2px solid #7c3aed; outline-offset: 2px; }
 #kb-wrap .kb-history-heading :focus-visible { outline-color: #fff; }
@@ -139,13 +140,39 @@
 #kb-wrap #kb-history-edit.is-editable .kb-history-editable { display: table-cell; }
 #kb-wrap #kb-history-edit-fields { display: grid; gap: 8px; padding: 12px 0; }
 #kb-wrap #kb-history-edit-fields label { display: grid; gap: 4px; }
-#kb-wrap #kb-history-products,
+#kb-wrap #kb-history-products:not(:empty) {
+  display: grid;
+  max-height: 210px;
+  overflow: auto;
+  border: 1px solid #ddd9e6;
+  border-radius: 8px;
+  background: #fff;
+  color: #17152a;
+}
+#kb-wrap #kb-history-products:not(:has(button)):not(:empty) { padding: 8px 12px; }
+#kb-wrap .kb-history-match {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  padding: 8px 12px;
+  border: 0;
+  border-bottom: 1px solid #eae8ef;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+#kb-wrap .kb-history-match:last-child { border-bottom: 0; }
+#kb-wrap .kb-history-match:is(:hover,:focus-visible) { background: #f1ebff; outline-offset: -2px; }
+#kb-wrap .kb-history-match small { grid-row: 2; color: #666; }
+#kb-wrap .kb-history-match span { grid-column: 2; grid-row: 1 / span 2; align-self: center; color: #5b21b6; }
+#kb-wrap #kb-history-amount-note { margin: 8px 0 0; }
 #kb-wrap .kb-history-detail-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 #kb-wrap .kb-history-detail-actions { justify-content: flex-end; padding-top: 12px; }
 #kb-wrap:has(#kb-history[open]) #kb-history-detail::backdrop,
 #kb-wrap:has(#kb-history[open]) #kb-print-choice::backdrop { background: #0004; }
 @media (max-width: 520px) {
-  #kb-wrap .kb-history-row { gap: 4px 8px; padding: 10px; }
+  #kb-wrap .kb-history-row { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; padding: 10px; }
   #kb-wrap .kb-history-info { grid-column: 1 / span 2; grid-row: 3; text-align: left; }
+  #kb-wrap .kb-history-row-actions { grid-column: 1 / span 2; grid-row: 4; justify-content: flex-end; }
   #kb-wrap .kb-history-toolbar, #kb-wrap .kb-history-filters { padding-inline: 12px; }
 }

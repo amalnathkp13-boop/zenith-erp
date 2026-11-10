@@ -216,7 +216,35 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await page.waitForFunction(()=>window.kotPrints.length===4);
   await page.locator('#kb-print-choice').waitFor({state:'hidden'});
   check('History reprints both saved documents',await page.evaluate(()=>window.kotPrints[2]===window.kotPrints[0]&&window.kotPrints[3]===window.kotPrints[1]));
+  const editQuantity=page.locator('#kb-history-detail [data-edit-quantity]').first();
+  await editQuantity.fill('3');
+  check('Edit Bill shows the new amount before Save Changes',
+   await page.locator('#kb-history-detail [data-edit-total]').first().innerText()==='₹300.00'&&
+   await page.locator('#kb-history-detail-total').innerText()==='Estimated total ₹300.00');
+  const addItem=page.locator('#kb-history-add');
+  await addItem.fill('Disposable POS A NOWS');
+  await page.locator('#kb-history-products button').filter({hasText:'POS_QA_A_NOWS'}).waitFor();
+  await addItem.fill('POS_QA_A_UNPRICED');
+  await page.locator('#kb-history-products button').filter({hasText:'Disposable unpriced item'}).waitFor();
+  await addItem.press('Enter');
+  const added=page.locator('#kb-history-detail-lines tr').filter({hasText:'Disposable unpriced item'});
+  await added.locator('[data-edit-rate]').fill('25');
+  check('Name and code search can add an item without a saved rate',
+   await added.locator('[data-edit-total]').innerText()==='₹25.00'&&
+   await page.locator('#kb-history-detail-total').innerText()==='Estimated total ₹325.00');
+  page.once('dialog',dialog=>dialog.accept());
   await page.locator('#kb-history-back').click();
+  const printActions=historyBill.locator('..');
+  await page.waitForFunction(()=>document.activeElement?.matches('#kb-history .is-current [data-kb-history-detail]'));
+  await page.keyboard.press('Space');
+  check('Space moves from the bill number to Bill Print',await printActions.getByRole('button',{name:'Bill Print'}).evaluate(el=>el===document.activeElement));
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(()=>window.kotPrints.length===5);
+  await printActions.getByRole('button',{name:'KOT Print'}).click();
+  await page.waitForFunction(()=>window.kotPrints.length===6);
+  check('History has direct Bill Print and KOT Print actions',
+   !await page.locator('#kb-print-choice').isVisible()&&
+   await page.evaluate(()=>window.kotPrints[4]===window.kotPrints[1]&&window.kotPrints[5]===window.kotPrints[0]));
   await page.locator('#kb-history-close').click();
   for(const [view,option] of [['List',listMode],['Grid',gridMode]]) {
    await modes.locator('summary').click();

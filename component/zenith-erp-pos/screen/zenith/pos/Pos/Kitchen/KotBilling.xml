@@ -58,9 +58,10 @@
             def posWrite=ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId','pos').call().canWrite
             def lines=ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId',tx.transactionId).orderBy('itemSeqId').list()
             ec.web.sendJsonResponse([success:true,transactionId:tx.transactionId,number:tx.transactionNumber ?: tx.transactionId,
-                total:tx.payableAmount ?: 0, canEdit:kitchenWrite == true && posWrite == true,
+                total:tx.payableAmount ?: 0, salesModeId:tx.salesModeId, canEdit:kitchenWrite == true && posWrite == true,
                 items:lines.collect { [seq:it.itemSeqId, name:it.productName ?: it.productId, qty:it.quantity,
-                    rate:it.unitPrice, tax:it.totalTaxAmount ?: 0, total:it.lineTotal ?: 0] }])
+                    rate:it.unitPrice, discountPercent:it.discountPercent, discountAmount:it.discountAmount,
+                    taxableAmount:it.taxableAmount, tax:it.totalTaxAmount ?: 0, total:it.lineTotal ?: 0] }])
         ]]></script></actions><default-response type="none"/>
     </transition>
 
@@ -726,7 +727,7 @@
   <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=7"/>
   <link rel="stylesheet" href="/zenithstatic/css/pos-checkout.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/pos-checkout.css').getLastModified()?c}"/>
   <link rel="stylesheet" href="/zenithstatic/css/kot-list.css?v=7"/>
-  <link rel="stylesheet" href="/zenithstatic/css/kot-bill-history.css?v=1"/>
+  <link rel="stylesheet" href="/zenithstatic/css/kot-bill-history.css?v=2"/>
   <input type="hidden" id="kb-token" value="${(ec.web.sessionToken)!''}"/>
   <div id="kb-data" style="display:none" data-session="${billingSession.sessionId?html}" data-user="${(ec.user.userId!'')?html}" data-display-enabled="${kitchenDisplayEnabled?c}" data-kot-module="${(kitchenModuleId!'pos')?html}" data-stock-session="${((checkoutSessions?size == 1)?then(checkoutSessions[0].id,''))?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}"></div>
 
@@ -862,7 +863,12 @@
           <strong class="kb-history-amount"><#if k.total??>&#8377;${ec.l10n.format(k.total,'#,##0.00')?html}<#else>—</#if></strong>
           <span class="kb-history-meta">${k.time?html}</span>
           <span class="kb-history-meta kb-history-info">${k.customer?html} · ${k.items?size} <#if k.items?size == 1>item<#else>items</#if> · ${(k.payment?has_content?then(k.payment,k.label))?html}</span>
-          <#if modCanWrite><button type="button" class="kb-history-button kb-history-reprint" data-kb-history-reprint><@ic 'printer' 14/> Reprint</button></#if>
+          <#if modCanWrite>
+          <div class="kb-history-row-actions" role="group" aria-label="Print options">
+            <button type="button" class="kb-history-button" data-kb-history-print="bill" <#if !k.hasBill>disabled title="No saved bill or order pricing is available."</#if>><@ic 'printer' 14/> Bill Print</button>
+            <button type="button" class="kb-history-button" data-kb-history-print="kot"><@ic 'printer' 14/> KOT Print</button>
+          </div>
+          </#if>
         </article>
         </#list>
       </div>
@@ -878,9 +884,10 @@
           <thead><tr><th scope="col">Item</th><th scope="col">Rate (₹)</th><th scope="col">Quantity</th><th scope="col">Tax (₹)</th><th scope="col">Total (₹)</th><th scope="col" class="kb-history-editable">Remove</th></tr></thead>
           <tbody id="kb-history-detail-lines"></tbody>
         </table></div>
+        <p id="kb-history-amount-note" class="kb-history-meta" hidden>Tax on newly added items is calculated when you save.</p>
         <div id="kb-history-edit-fields" hidden>
-          <label>Add item <input id="kb-history-add" type="search" placeholder="Search by product name or code" autocomplete="off"></label>
-          <div id="kb-history-products"></div>
+          <label>Add item <input id="kb-history-add" type="search" placeholder="Search by product name or code" autocomplete="off" aria-controls="kb-history-products"></label>
+          <div id="kb-history-products" role="group" aria-label="Matching products"></div>
           <label>Reason for change <textarea id="kb-history-edit-reason" maxlength="500" rows="2" required></textarea></label>
         </div>
         <p id="kb-history-edit-error" class="kb-history-error" role="alert"></p>
@@ -933,7 +940,7 @@
   </dialog></#if>
 
   <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" style="display:none"
-       onload="(function(){function boot(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=bill-history-1';document.head.appendChild(s);}if(window.PosTillDialogs){boot();return;}var shared=document.createElement('script');shared.src='/zenithstatic/js/pos-till-dialogs.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-till-dialogs.js').getLastModified()?c}';shared.onload=boot;document.head.appendChild(shared);})()"/>
+       onload="(function(){function boot(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=bill-history-2';document.head.appendChild(s);}if(window.PosTillDialogs){boot();return;}var shared=document.createElement('script');shared.src='/zenithstatic/js/pos-till-dialogs.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-till-dialogs.js').getLastModified()?c}';shared.onload=boot;document.head.appendChild(shared);})()"/>
 </div>
 </#if>
         ]]></text></render-mode>
