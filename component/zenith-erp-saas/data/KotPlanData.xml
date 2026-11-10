@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<entity-facade-xml type="seed">
+    <!-- Prices are unset because the platform administrator assigns this plan manually.
+         KOT Billing uses the shared terminal and session records, so keep Starter's terminal limit. -->
+    <zenith.erp.saas.SaasPlan planId="KOT" planName="KOT Plan" planCode="KOT"
+        description="Kitchen orders and KOT Billing with Starter business modules"
+        currencyUomId="INR" maxUsers="2" maxPosTerminals="1" maxProductsSku="500"
+        maxMonthlyTransactions="1000" maxStorageMb="500" maxStores="1"
+        maxLoyaltyMembers="0" maxPromotions="3" trialDays="0" isActive="Y" sortOrder="5"/>
+
+    <zenith.erp.saas.SaasPlanModule planId="KOT" moduleId="kot"/>
+    <zenith.erp.saas.SaasPlanModule planId="KOT" moduleId="inventory"/>
+    <zenith.erp.saas.SaasPlanModule planId="KOT" moduleId="contacts"/>
+    <zenith.erp.saas.SaasPlanModule planId="KOT" moduleId="sales"/>
+    <zenith.erp.saas.SaasPlanModule planId="KOT" moduleId="purchase"/>
+    <zenith.erp.saas.SaasPlanModule planId="KOT" moduleId="pricing"/>
+    <zenith.erp.saas.SaasPlanModule planId="KOT" moduleId="stores"/>
+    <zenith.erp.saas.SaasPlanModule planId="KOT" moduleId="tax"/>
+    <zenith.erp.saas.SaasPlanModule planId="KOT" moduleId="barcode"/>
+    <zenith.erp.saas.SaasPlanModule planId="KOT" moduleId="subscriptions"/>
+</entity-facade-xml>

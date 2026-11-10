@@ -518,6 +518,7 @@
             context.isSaasTenant = false
             context.isSaasSuspended = false
             context.saasAllowedModules = null
+            context.saasPlanId = null
             context.saasPlanName = null
             context.saasAllowedModulesJson = '[]'
             if (orgId) {
@@ -545,6 +546,7 @@
                         def plan = ec.entity.find("zenith.erp.saas.SaasPlan")
                             .condition("planId", tenant.planId).one()
                         context.saasPlanName = plan?.planName ?: tenant.planId
+                        context.saasPlanId = tenant.planId
 
                         def planModules = ec.entity.find("zenith.erp.saas.SaasPlanModule")
                             .condition("planId", tenant.planId).list()

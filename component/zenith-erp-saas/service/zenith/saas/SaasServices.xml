@@ -71,6 +71,14 @@
             <parameter name="userId"/>
         </out-parameters>
         <actions>
+            <!-- Manual plans have no monthly price. They enter through assign#ManualPlan. -->
+            <entity-find-count entity-name="zenith.erp.saas.SaasPlan" count-field="provisionablePlanCount">
+                <econdition field-name="planId"/>
+                <econdition field-name="isActive" value="Y"/>
+                <econdition field-name="monthlyPrice" operator="is-not-null"/>
+            </entity-find-count>
+            <if condition="provisionablePlanCount == 0"><return error="true" message="Choose a plan available for new tenants."/></if>
+
             <!-- Canonicalise + validate the subdomain (format, reserved words, uniqueness) in ONE place,
                  shared with the live availability check so the rules can never drift. -->
             <service-call name="zenith.saas.SaasServices.validate#Subdomain" out-map="sdChk"

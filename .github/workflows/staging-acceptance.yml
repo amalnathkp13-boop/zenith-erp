@@ -332,6 +332,16 @@ jobs:
           docker exec -i "$DBID" psql -U moqui -d moqui -v ON_ERROR_STOP=1 <<'SQL'
           DO $$
           BEGIN
+            IF NOT EXISTS (SELECT 1 FROM saas_plan WHERE plan_id='KOT' AND plan_name='KOT Plan'
+              AND is_active='Y' AND monthly_price IS NULL AND yearly_price IS NULL
+              AND max_users=2 AND max_pos_terminals=1) THEN
+              RAISE EXCEPTION 'Manual KOT Plan must include two logins and one billing counter';
+            END IF;
+            IF (SELECT array_agg(module_id ORDER BY module_id) FROM saas_plan_module WHERE plan_id='KOT')
+              IS DISTINCT FROM (SELECT array_agg(module_id ORDER BY module_id) FROM
+                (SELECT module_id FROM saas_plan_module WHERE plan_id='STARTER' AND module_id<>'pos' UNION SELECT 'kot') expected) THEN
+              RAISE EXCEPTION 'KOT Plan must grant KOT and the non-POS Starter modules';
+            END IF;
             IF NOT EXISTS (SELECT 1 FROM user_account WHERE user_id='EX_JOHN_DOE' AND username='john.doe' AND disabled='N' AND party_id='EX_JOHN_DOE') THEN
               RAISE EXCEPTION 'Required active demo login or synthetic party association is missing';
             END IF;

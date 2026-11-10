@@ -1,5 +1,39 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
+    <service verb="check" noun="KotCapacity" authenticate="true">
+        <in-parameters>
+            <parameter name="resource" required="true"/>
+            <parameter name="userId"/>
+            <parameter name="terminalId"/>
+        </in-parameters>
+        <out-parameters><parameter name="tenantGroupId"/></out-parameters>
+        <actions><script><![CDATA[
+            if (!(resource in ['user','terminal'])) { ec.message.addError('Choose a valid capacity check.'); return }
+            def access = ec.service.sync().name('zenith.saas.SaasAccessServices.get#TenantAccess').disableAuthz().call()
+            if (!access.tenant) return
+            if (!access.canManage) { ec.message.addError('Only an administrator can manage this workspace.'); return }
+            // The caller keeps this lock until its write commits. Manual plan assignment locks the same row.
+            def tenant = ec.entity.find('zenith.erp.saas.SaasTenant').condition('tenantId',access.tenant.tenantId)
+                .forUpdate(true).disableAuthz().one()
+            if (!tenant) return
+            if (tenant.subdomain) tenantGroupId = 'TENANT_' + tenant.subdomain.toUpperCase(java.util.Locale.ROOT)
+            if (tenant.planId != 'KOT') return
+            if (resource == 'user') {
+                if (userId && ec.entity.find('moqui.security.UserAccount').condition('userId',userId)
+                        .disableAuthz().one()?.disabled != 'Y') return
+                def usage = ec.service.sync().name('zenith.saas.SaasUsageServices.get#TenantUsage')
+                    .parameter('tenantId',tenant.tenantId).disableAuthz().call()?.usage
+                if (!usage || usage.activeUsers >= 2)
+                    ec.message.addError('KOT Plan allows two active logins: the owner and one staff user.')
+            } else {
+                def other = ec.entity.find('zenith.erp.pos.PosTerminal')
+                    .condition('organizationPartyId',tenant.organizationPartyId).disableAuthz()
+                if (terminalId) other.condition('terminalId','!=',terminalId).condition('isActive','Y')
+                if (other.count() > 0) ec.message.addError('KOT Plan allows only one billing counter. Use the existing counter.')
+            }
+        ]]></script></actions>
+    </service>
+
     <service verb="get" noun="TenantUsage" authenticate="true" transaction="ignore">
         <in-parameters><parameter name="tenantId" required="true"/></in-parameters>
         <out-parameters><parameter name="usage" type="Map"/></out-parameters>
