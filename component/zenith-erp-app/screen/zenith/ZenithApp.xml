@@ -335,7 +335,7 @@
             html_stylesheets.add('/zenithstatic/css/subnav-manager.css?v=3')
             html_stylesheets.add('/zenithstatic/css/my-subscription-reference.css?v=1')
             html_stylesheets.add('/zenithstatic/css/saas-admin.css?v=4')
-            html_stylesheets.add('/zenithstatic/css/product-catalog.css?v=2')
+            html_stylesheets.add('/zenithstatic/css/product-catalog.css?v=3')
             html_stylesheets.add('/zenithstatic/css/receiving-stock.css?v=14')
             html_stylesheets.add('/zenithstatic/css/gate-passes.css?v=12')
             html_stylesheets.add('/zenithstatic/css/shops-reference.css?v=2')
@@ -392,7 +392,7 @@
             footer_scripts.add('/zenithstatic/js/pos-report-date-picker.js?v=3')
             footer_scripts.add('/zenithstatic/js/purchase-vendor-evaluation.js?v=1')
             footer_scripts.add('/zenithstatic/js/pricing-dashboard.js?v=2')
-            footer_scripts.add('/zenithstatic/js/product-catalog.js?v=3')
+            footer_scripts.add('/zenithstatic/js/product-catalog.js?v=4')
             footer_scripts.add('/zenithstatic/js/stock-transfers.js?v=2')
             footer_scripts.add('/zenithstatic/js/pricing-rules.js?v=1')
             footer_scripts.add('/zenithstatic/js/purchase-operations.js?v=2')
@@ -1311,7 +1311,7 @@
             <link rel="stylesheet" href="/zenithstatic/css/users-access.css?v=2"/>
             <link rel="stylesheet" href="/zenithstatic/css/my-subscription-reference.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/saas-admin.css?v=4"/>
-            <link rel="stylesheet" href="/zenithstatic/css/product-catalog.css?v=2"/>
+            <link rel="stylesheet" href="/zenithstatic/css/product-catalog.css?v=3"/>
             <link rel="stylesheet" href="/zenithstatic/css/barcode-module.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/barcode-reference.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/receiving-stock.css?v=14"/>
