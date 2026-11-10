@@ -741,7 +741,7 @@
     <div class="kg-bill-status"><span class="kg-bill-last"><@ic 'receipt'/> Last bill <strong id="kb-header-last-bill">${latestIssuedBillNo?html}</strong></span><span class="kg-bill-today">Today: <strong id="kb-header-today-bills">${todayBillCount!0}</strong> bills</span></div>
   </header>
   <div class="kb-toolbar">
-    <a class="kb-control kg-back" href="KotBilling">← Back to Terminals</a>
+    <a class="kb-control kg-back" href="KotHistory" aria-label="Back to KOT History">← Back</a>
     <details class="kg-modes">
       <summary class="kb-control">Modes</summary>
       <div class="kg-menu" aria-label="Sales modes and billing views">
