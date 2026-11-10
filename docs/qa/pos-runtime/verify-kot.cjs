@@ -52,8 +52,9 @@ module.exports = async function verifyKot({a,foreign,base,post,rows,count,check}
       focus:()=>{},print:()=>{window.__printCalls++},close:()=>{}});
   });
   await printPage.locator('#kb-history-open').click();
-  await printPage.locator('[data-kitchen-print="kot"][data-kot-id="'+ticket.kot_id+'"]').click();
-  await printPage.waitForFunction(()=>document.getElementById('zk-print-status')?.textContent.includes('1 print request'));
+  const printRow=printPage.locator(`#kb-history-rows [data-kot-id="${ticket.kot_id}"]`);
+  await printRow.getByRole('button',{name:'KOT Print',exact:true}).click();
+  await printPage.locator('#kb-history-print-status').filter({hasText:'Print request opened.'}).waitFor();
   await printPage.waitForFunction(()=>window.__printedHtml.includes('Disposable POS A P18'));
   check('Print on an existing KOT records one shop-owned reprint and opens the slip',
     Number(rows('kitchen_order_ticket',`kot_id='${ticket.kot_id}'`)[0].print_count)===1&&
