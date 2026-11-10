@@ -87,6 +87,7 @@
   display:block;min-width:0;padding:9px 10px;border:1px solid var(--kl-line);border-radius:7px;text-align:left;overflow-wrap:anywhere;
 }
 #kb-wrap:not(.kg-grid) .kl-line-mode{background:#e6f1fd;color:#0067e8;border-color:transparent}
+#kb-wrap:not(.kg-grid) .kl-line-rate{text-align:center}
 #kb-wrap:not(.kg-grid) .kb-ostep{
   display:grid;grid-template-columns:minmax(24px,1fr) minmax(22px,2fr) minmax(24px,1fr);align-items:center;
   height:39px;border:1px solid var(--kl-line);border-radius:8px;background:#fff;overflow:hidden;font-weight:750;
@@ -148,6 +149,7 @@
 #kb-wrap .kb-print-options [data-kb-print=both]{background:#e0edfd;color:#0e65be;border-color:#c5dbf8}
 #kb-wrap #kb-print-close{background:#f5f0ff;color:#5d17cb}
 #kb-wrap .kb-print-options button:hover:enabled{border-color:currentColor}
+#kb-wrap :is(.kb-cash-dialog,#kb-print-choice) button:focus{outline:3px solid #6332ff;outline-offset:2px}
 #kb-wrap:not(.kg-grid) [data-kb-payment=Cash]{background:#e1f4f0;color:#007d69}
 #kb-wrap:not(.kg-grid) :is([data-kb-payment=Card],[data-kb-payment=Split]){background:#e0edfd;color:#0062c9}
 #kb-wrap:not(.kg-grid) [data-kb-payment=Credit]{background:#fff0e1;color:#ad3900}

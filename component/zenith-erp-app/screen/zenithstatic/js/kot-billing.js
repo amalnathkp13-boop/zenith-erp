@@ -584,9 +584,10 @@
     if(!bill)return;
     completedKotId=bill.kotId;historyDirty=true;
     $('list-last-bill').textContent=bill.billNumber;
-    if($('header-last-bill').textContent!==bill.billNumber){
-      $('header-last-bill').textContent=bill.billNumber;
-      $('header-today-bills').textContent=Number($('header-today-bills').textContent)+1;
+    const headerLastBill=$('header-last-bill'), headerTodayBills=$('header-today-bills');
+    if(headerLastBill&&headerLastBill.textContent!==bill.billNumber){
+      headerLastBill.textContent=bill.billNumber;
+      if(headerTodayBills)headerTodayBills.textContent=Number(headerTodayBills.textContent)+1;
     }
     $('list-last-amount').textContent=$('list-last-stat').textContent=money.format(confirmedTotal);
     $('payment').close();resetOrder();
@@ -595,6 +596,7 @@
     $('print-summary').textContent='Bill '+bill.billNumber+' is saved.'+change+' Choose a print option.';
     $('print-error').textContent='';
     $('print-choice').showModal();
+    $('print-choice').querySelector('[data-kb-print="bill"]').focus();
   }
   function filterHistory(){
     const term=$('history-search').value.trim().toLowerCase(),status=$('history-status').value,date=$('history-date').value;let visible=0;
@@ -662,7 +664,9 @@
       post('saveDraft',{...orderData(),existingDraftId:draftId});
     }
     else if(button.classList.contains('pos-cash-quick')){
-      $('cash').value=button.dataset.amt;PosTillDialogs.updateCash($('cash-slot'),total);
+      const slot=$('cash-slot');
+      $('cash').value=button.dataset.amt;
+      if(PosTillDialogs.updateCash(slot,total)&&e.detail===0)slot.querySelector('.pos-cash-confirm').focus();
     }
     else if(button.id==='kb-payment-close'||button.classList.contains('pos-cash-cancel'))$('payment').close();
     else if(button.dataset.kbPrint)printChoice(button.dataset.kbPrint);
@@ -696,6 +700,40 @@
   $('payment-method')?.addEventListener('change',tenderFields);
   $('payment-form')?.addEventListener('submit',pay);
   $('payment')?.addEventListener('cancel',e=>{if(busy)e.preventDefault();});
+  function ignoreDialogKey(e) {
+    return e.defaultPrevented||e.isComposing||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey;
+  }
+  $('cash-slot')?.addEventListener('keydown',e=>{
+    if(ignoreDialogKey(e))return;
+    if(e.key==='Enter'&&e.repeat){e.preventDefault();return;}
+    const slot=e.currentTarget, received=$('cash');
+    const quick=Array.from(slot.querySelectorAll('.pos-cash-quick'));
+    if(e.key==='ArrowLeft'||e.key==='ArrowRight'){
+      const index=quick.indexOf(e.target);
+      if(index<0)return;
+      e.preventDefault();
+      quick[(index+(e.key==='ArrowRight'?1:-1)+quick.length)%quick.length].focus();
+    }else if(e.key==='ArrowUp'||e.key==='ArrowDown'){
+      const rows=[[received],Array.from(slot.querySelectorAll('.pos-cash-confirm:enabled')),
+        quick,Array.from(slot.querySelectorAll('.pos-cash-cancel:enabled'))].filter(row=>row.length);
+      const index=rows.findIndex(row=>row.includes(e.target));
+      if(index<0)return;
+      e.preventDefault();
+      rows[index+(e.key==='ArrowDown'?1:-1)]?.[0].focus();
+    }else if(e.key==='Enter'&&e.target===received&&!slot.querySelector('.pos-cash-confirm:enabled')&&!busy){
+      e.preventDefault();quick[0].focus();
+    }
+  });
+  $('print-choice')?.addEventListener('keydown',e=>{
+    if(ignoreDialogKey(e))return;
+    if(e.key==='Enter'&&e.repeat){e.preventDefault();return;}
+    if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;
+    const buttons=Array.from(e.currentTarget.querySelectorAll('button:enabled'));
+    const index=buttons.indexOf(e.target);
+    if(index<0)return;
+    e.preventDefault();
+    buttons[(index+(e.key==='ArrowRight'?1:-1)+buttons.length)%buttons.length].focus();
+  });
   let shiftAlone=false;
   const editable=e=>e.target?.closest?.('input,textarea,select,button,a,[contenteditable],dialog');
   function shortcut(e) {
