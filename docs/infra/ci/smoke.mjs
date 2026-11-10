@@ -50,6 +50,7 @@ const PATHS = [
   '/apps/zenith/Inventory/DashboardDetails?listType=movements',
   '/apps/zenith/Inventory/DashboardDetails?listType=lowstock',
   '/apps/zenith/Inventory/DashboardDetails?listType=products',
+  '/apps/zenith/Inventory/FindProduct',
   '/qapps/zenith',
   '/qapps/zenith/Contacts/ContactsDashboard',
   '/qapps/zenith/Contacts/FindContact',
@@ -71,6 +72,7 @@ const PATHS = [
   '/qapps/zenith/Inventory/DashboardDetails?listType=movements',
   '/qapps/zenith/Inventory/DashboardDetails?listType=lowstock',
   '/qapps/zenith/Inventory/DashboardDetails?listType=products',
+  '/qapps/zenith/Inventory/FindProduct',
 ];
 
 const ERR_SIG = /(java\.lang\.|groovy\.lang\.|org\.moqui\.\w+Exception|freemarker\.core|ScreenRenderException|Error rendering|500 Internal Server Error|HTTP Status 500)/i;
@@ -157,6 +159,22 @@ try {
         }
       } else if (path.includes('/Inventory/DashboardDetails')) {
         await page.waitForSelector('.inv-detail-content', { timeout: 15000 });
+      } else if (path.endsWith('/Inventory/FindProduct')) {
+        await page.waitForSelector('#FindProductList_table tbody .catalog-view', { timeout: 15000 });
+        const columns = await page.$$eval('#FindProductList_table thead th[data-catalog-column]',
+          headers => headers.map(header => header.dataset.catalogColumn).join(','));
+        if (columns !== 'pseudoId,productName,gstRate,uqcEnumId,mrpAmount,catalogTaxCode') {
+          throw new Error('Product Catalog business columns changed');
+        }
+        await page.type('#catalogSearch', 'C');
+        await page.waitForSelector('#catalog-suggestions [role="option"]', { visible: true, timeout: 15000 });
+        const filtered = await page.evaluate(async path => {
+          const response = await fetch(path + '/catalogQuery?catalogSearch=CITEST_BW&mrpMin=100&mrpMax=100&gstRates=18');
+          return response.ok ? response.json() : null;
+        }, path);
+        if (filtered?.total !== 1 || filtered.rows[0]?.productId !== 'CITEST_BW18') {
+          throw new Error('Product Catalog search, inclusive MRP and GST filters returned the wrong rows');
+        }
       }
       // Check the VISIBLE body text, not the full HTML — the Quasar SPA's JS bundle legitimately
       // contains exception-class strings and would false-positive against raw HTML.
