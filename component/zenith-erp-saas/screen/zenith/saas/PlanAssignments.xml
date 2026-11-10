@@ -77,7 +77,7 @@
                         <label text="${grants[selectedTenant.tenantId] ? (isPermanent(selectedSub) ? 'Non-expiring manual access' : 'Access through: '+(selectedSub?.endDate ? ec.l10n.format(selectedSub.endDate,'dd-MMM-yyyy') : 'Date unavailable')+' · '+(daysRemaining(selectedSub) ?: 0)+' days remaining') : 'Trial / renewal: '+(selectedSub?.trialEndDate ?: selectedSub?.renewalDate ?: '—')}" type="p" style="sap-notice"/>
                         <label text="${grants[selectedTenant.tenantId] &amp;&amp; selectedSub?.startDate ? 'Elapsed access days (calendar): '+elapsedDays(selectedSub) : ''}" type="p"/>
                         <label text="Included modules" type="h3"/><label text="${selectedModules.contains('ALL') ? 'All modules' : selectedModules.join(', ')}" type="p"/>
-                        <label text="Limits: ${selectedPlan?.maxUsers ?: 'Unlimited'} users · ${selectedPlan?.maxStores ?: 'Unlimited'} stores · ${selectedPlan?.maxPosTerminals ?: 'Unlimited'} POS terminals" type="p"/>
+                        <label text="Limits: ${selectedPlan?.maxUsers ?: 'Unlimited'} users · ${selectedPlan?.maxStores ?: 'Unlimited'} stores · ${selectedPlan?.maxPosTerminals ?: 'Unlimited'} ${selectedPlan?.planId == 'KOT' ? 'KOT billing terminals' : 'POS terminals'}" type="p"/>
                         <link url="../TenantDetail" text="Tenant details and activity" parameter-map="[tenantId:selectedTenant.tenantId]"/>
                     </container>
                     <container style="sap-card">

@@ -56,6 +56,7 @@
         </entity-find>
         <entity-find entity-name="zenith.erp.saas.SaasPlan" list="allPlans">
             <econdition field-name="isActive" value="Y"/>
+            <econdition field-name="monthlyPrice" operator="is-not-null"/>
             <order-by field-name="sortOrder"/>
         </entity-find>
         <!-- Show "Extend Trial" only for trial-stage tenants: no live paid (SubActive) sub and not cancelled.
@@ -105,7 +106,7 @@
                     </container>
                     <container style="q-mb-sm">
                         <label text="Limits: " style="text-grey-7"/>
-                        <label text="${plan?.maxUsers ?: 0} users, ${plan?.maxPosTerminals ?: 0} POS, ${plan?.maxProductsSku ?: 0} products, ${plan?.maxStores ?: 0} stores, ${plan?.maxPromotions ?: 0} promos"/>
+                        <label text="${plan?.maxUsers ?: 0} users, ${plan?.maxPosTerminals ?: 0} ${plan?.planId == 'KOT' ? 'KOT billing terminals' : 'POS'}, ${plan?.maxProductsSku ?: 0} products, ${plan?.maxStores ?: 0} stores, ${plan?.maxPromotions ?: 0} promos"/>
                     </container>
 
                     <link url="../PlanAssignments" text="Assign / Extend Manual Plan" btn-type="primary" parameter-map="[tenantId:tenantId]"/>
