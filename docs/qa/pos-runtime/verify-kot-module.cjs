@@ -113,7 +113,7 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   const draft=await draftResponse.json();
   const paid=await post(kit,'kot/KotBilling/checkoutKot',{sessionId,kotId:draft.kotId,paymentMethod:'Cash',cashAmount:'100'});
   check('KOT-only clerk can complete a bill on the assigned terminal',draft.success&&(await paid.json()).success===true);
-  await page.reload();
+  await page.goto(base+'/apps/zenith/kot/KotDashboard');
   check('standalone KOT dashboard counts the newly completed KOT sale once',Number(await completedOrders.innerText())===before+1);
   const unchanged=q("SELECT setting_value FROM company_settings WHERE organization_party_id='POS_QA_A' AND setting_key='KITCHEN_DISPLAY_POS_QA_A_FAC'");
   await post(kit,'kot/KitchenDisplay/saveDisplayPolicy',{facilityId:'POS_QA_A_FAC',enabled:'N'});
