@@ -2358,10 +2358,11 @@
     </service>
 
     <service verb="get" noun="PosSessionCashSummary">
-        <in-parameters><parameter name="sessionId" required="true"/></in-parameters>
+        <in-parameters><parameter name="sessionId" required="true"/><parameter name="includeCheckoutSummary" type="Boolean" default="false"/></in-parameters>
         <out-parameters>
             <parameter name="cashReceived" type="BigDecimal"/><parameter name="changeGiven" type="BigDecimal"/>
             <parameter name="movementNet" type="BigDecimal"/><parameter name="expectedCash" type="BigDecimal"/>
+            <parameter name="checkoutSummary" type="Map"/>
         </out-parameters>
         <actions>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[sessionId:sessionId]" out-map="_summaryAccess"/>
@@ -2407,6 +2408,15 @@
                     else if (entry.entryType == 'CashOut') movementNet -= amount
                 }
                 expectedCash = ((session.openingCash ?: 0) as BigDecimal) + cashReceived - changeGiven + movementNet
+                if (includeCheckoutSummary) {
+                    def other = txnIds ? ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId','in',txnIds)
+                        .condition('paymentMethod','in',['Card','UPI']).list() : []
+                    checkoutSummary = [billCount:txns.size(),totalSales:txns.sum { it.grandTotal ?: 0G } ?: 0G,
+                        openingCash:session.openingCash ?: 0G,cashReceived:cashReceived,changeGiven:changeGiven,
+                        movementNet:movementNet,expectedCash:expectedCash,
+                        cardReceived:other.findAll { it.paymentMethod=='Card' }.sum { it.amount ?: 0G } ?: 0G,
+                        upiReceived:other.findAll { it.paymentMethod=='UPI' }.sum { it.amount ?: 0G } ?: 0G]
+                }
             ]]></script>
         </actions>
     </service>

@@ -15,8 +15,8 @@
  * (the /qapps SPA strips <style>/<script> from screen content, but this loads in
  * the page footer, not screen content).
  *
- * Billing workspaces keep their authenticated session alive while open. Other
- * POS screens keep their existing exemption from the client-side logout.
+ * KOT billing keeps the HTTP session alive for up to an hour without cashier
+ * input. The standard POS terminal and other POS screens keep their exemptions.
  * ==========================================================================*/
 (function () {
   'use strict';
@@ -27,11 +27,12 @@
   // Read the current route on each check because Quasar switches screens in place.
   var inApp = /\/(apps|qapps)\/zenith(\/|$)/.test(path);
   if (!inApp) return;
-  function isBilling() {
-    return /\/zenith\/(?:pos\/(?:Terminal|Kitchen\/KotBilling)|kot\/KotBilling)(?:\/|$)/i.test(location.pathname);
+  function isPosTerminal() {
+    return /\/zenith\/pos\/Terminal(?:\/|$)/i.test(location.pathname);
   }
 
   var IDLE_MS   = 30 * 60 * 1000;  // must match the server session-config timeout (30 min)
+  var KOT_IDLE_MS = 60 * 60 * 1000;
   var WARN_MS   = 60 * 1000;       // show the "you're about to be signed out" warning this long before
   var CHECK_MS  = 5 * 1000;        // how often we re-evaluate idleness
   var LS_KEY    = 'zIdleLastActivity';   // shared across tabs so activity in ANY tab keeps them all alive
@@ -39,8 +40,19 @@
 
   var lastKeepAlive = 0;
   var banner = null, countdownEl = null, warned = false;
+  var kotScreen = null, lastKotActivity = 0, checkTimer;
 
   function now() { return Date.now(); }
+
+  function activeKotScreen(time) {
+    var onKotRoute = /\/zenith\/(?:kot|pos\/Kitchen)\/KotBilling\/?$/i.test(location.pathname);
+    var screen = onKotRoute ? document.getElementById('kb-wrap') : null;
+    if (screen !== kotScreen) {
+      kotScreen = screen;
+      lastKotActivity = time;
+    }
+    return !!screen;
+  }
 
   function readLast() {
     var v;
@@ -71,7 +83,21 @@
 
   // Throttle high-frequency events (mousemove/scroll) so we don't hammer localStorage.
   var throttled = false;
-  function onActivity() {
+  function onActivity(event) {
+    if (loggingOut) return;
+    var time = now();
+    if (activeKotScreen(time)) {
+      // Programmatic scrolls also produce trusted scroll events. Count the gesture instead.
+      if (!event.isTrusted || event.type === 'scroll') return;
+      if (time - lastKotActivity >= KOT_IDLE_MS) {
+        if (event.type === 'keydown' || event.type === 'click') event.preventDefault();
+        event.stopImmediatePropagation();
+        doLogout();
+        return;
+      }
+      lastKotActivity = time;
+      if (warned) hideWarning();
+    }
     if (throttled) return;
     throttled = true;
     setTimeout(function () { throttled = false; }, 1000);
@@ -112,6 +138,8 @@
   function showWarning() {
     warned = true;
     buildBanner();
+    var container = document.fullscreenElement || document.body;
+    if (banner.parentNode !== container) container.appendChild(banner);
     banner.style.display = 'flex';
   }
   function hideWarning() {
@@ -128,31 +156,50 @@
     location.href = '/Login/logout';
   }
 
-  function tick() {
-    if (loggingOut) return;
-    if (isBilling()) {
+  function checkIdle() {
+    var time = now();
+    var kot = activeKotScreen(time);
+    if (!kot && isPosTerminal()) {
       markActivity();
       return;
     }
-    if (/\/zenith\/pos(?:\/|$)/i.test(location.pathname)) {
+    if (!kot && /\/zenith\/pos(?:\/|$)/i.test(location.pathname)) {
       if (warned) hideWarning();
       return;
     }
-    var idle = now() - readLast();
-    if (idle >= IDLE_MS) {
+    var remaining = kot ? KOT_IDLE_MS - (time - lastKotActivity) : IDLE_MS - (time - readLast());
+    if (remaining <= 0) {
       doLogout();
-    } else if (idle >= IDLE_MS - WARN_MS) {
-      if (!warned) showWarning();
-      if (countdownEl) countdownEl.textContent = Math.max(0, Math.ceil((IDLE_MS - idle) / 1000));
+      return;
+    }
+    if (remaining <= WARN_MS) {
+      showWarning();
+      countdownEl.textContent = Math.ceil(remaining / 1000);
     } else if (warned) {
       hideWarning();
     }
+    if (kot) {
+      // Keep the shared login alive in other app tabs without resetting the cashier's deadline.
+      writeLast(time);
+      keepAlive();
+      return Math.min(CHECK_MS, remaining);
+    }
+  }
+
+  function tick() {
+    clearTimeout(checkTimer);
+    if (loggingOut) return;
+    var delay = checkIdle();
+    if (!loggingOut) checkTimer = setTimeout(tick, delay || CHECK_MS);
   }
 
   ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'wheel', 'click']
-    .forEach(function (ev) { window.addEventListener(ev, onActivity, { passive: true, capture: true }); });
+    .forEach(function (ev) {
+      window.addEventListener(ev, onActivity, { passive: ev !== 'keydown' && ev !== 'click', capture: true });
+    });
+  window.addEventListener('focus', tick);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) tick(); });
 
   writeLast(now());          // seed activity on load
   tick();
-  setInterval(tick, CHECK_MS);
 })();

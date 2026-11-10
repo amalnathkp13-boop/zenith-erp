@@ -82,7 +82,10 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    const note='KOT UI '+randomUUID();
    await page.goto(base+'/'+shell+'/zenith/kot/KotBilling?sessionId='+sessionId);
    await page.locator('#kb-wrap[data-ready=true]').waitFor();
-   if(grid) await page.locator('#kb-view-grid').click();
+   if(grid) {
+    await page.locator('.kg-modes summary').click();
+    await page.getByRole('button',{name:'Grid View',exact:true}).click();
+   }
    await page.route('**/cartReceipt',route=>route.abort());
    try {
     await page.locator('#kb-search').fill('POS_QA_A_P18');
@@ -104,7 +107,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
     check(shell+' sends from '+(grid?'grid':'list')+' when the preview request fails',
      await page.locator('#kb-cart tr').count()===0 &&
      q(`SELECT kot_id FROM kitchen_order_ticket WHERE terminal_id='${terminalId}' AND status_id='KotNew' AND notes LIKE '%${note}%'`).length===1);
-    check(shell+' keeps its billing view after sending',await page.locator('#kb-view-grid').getAttribute('aria-expanded')===String(grid));
+    check(shell+' keeps its billing view after sending',await page.locator('#kb-product-grid').isVisible()===grid);
    } finally { await page.unroute('**/cartReceipt'); }
    await page.goto(base+'/'+shell+'/zenith/kot/KitchenDisplay?facilityId=POS_QA_A_FAC');
    await page.getByText(note,{exact:false}).waitFor();
@@ -114,6 +117,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await invoke('kitchenSend',{posTransactionId:posCart.transactionId,items:JSON.stringify([{productId:'POS_QA_A_P18',quantity:1}])});
   check('shared POS send records the terminal so the shop policy follows the ticket',q(`SELECT terminal_id FROM kitchen_order_ticket WHERE transaction_id='${posCart.transactionId}'`)[0]?.terminal_id===terminalId);
   await invoke('void',{transactionId:posCart.transactionId});
+  await require('./verify-kot-idle.cjs')({browser:a.c.browser(),base,check,q,sessionId});
  } catch(error) {
   console.error('KOT gateway state',page.url(),(await page.locator('body').innerText()).slice(-1800));
   if(out)await page.screenshot({path:require('node:path').join(out,'kot-gateway-failure.png')});

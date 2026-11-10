@@ -4509,22 +4509,6 @@ window.posToggleFullscreen = function() {
                 + '</div>';
         }
 
-        function cashQuickBtns(total) {
-            var seen = {}, amounts = [], steps = [1, 10, 50, 100, 500, 1000];
-            amounts.push(total); seen[total] = true;
-            for (var i = 0; i < steps.length; i++) {
-                var r = Math.ceil(total / steps[i]) * steps[i];
-                if (r > total && !seen[r]) { amounts.push(r); seen[r] = true; }
-                if (amounts.length >= 5) break;
-            }
-            var h = '';
-            for (var i = 0; i < amounts.length; i++) {
-                h += '<button type="button" class="pos-cash-quick" data-amt="'+amounts[i]+'" style="padding:10px 16px;border:1px solid #4caf50;border-radius:8px;background:#fff;color:#2e7d32;font-size:15px;font-weight:700;cursor:pointer">'
-                    + CS + fmt(amounts[i]) + '</button>';
-            }
-            return h;
-        }
-
         function buildCashPanel() {
             var modeLabel = SM ? (SM.charAt(0).toUpperCase() + SM.slice(1).toLowerCase()) : 'Retail';
             return '<div class="pos-sum-strip" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
@@ -4537,19 +4521,7 @@ window.posToggleFullscreen = function() {
                 + '<div class="pos-sum-total" style="background:#7C3AED;color:#fff;padding:clamp(5px,1vh,12px) 20px;border-radius:10px;display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
                 + '<span style="font-size:16px;font-weight:600">'+modeLabel+' TOTAL</span>'
                 + '<span style="font-size:28px;font-weight:800;letter-spacing:1px">'+CS+fmt(lastPay)+'</span></div>'
-                + '<div class="pos-cash-panel" style="border:2px solid #4caf50;border-radius:10px;padding:14px;background:#e8f5e9">'
-                + '<div style="text-align:center;font-size:17px;font-weight:700;color:#2e7d32;margin-bottom:6px">CASH PAYMENT</div>'
-                + '<div style="text-align:center;font-size:24px;font-weight:800;color:#333;margin-bottom:14px">Bill: '+CS+fmt(lastPay)+'</div>'
-                + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
-                + '<span style="min-width:80px;font-size:14px;font-weight:700;color:#2e7d32;text-align:right">Received</span>'
-                + '<input type="number" class="pos-cash-input" value="" placeholder="Enter amount" step="any" min="0" onfocus="this.select()" autofocus style="flex:1;padding:14px 10px;border:2px solid #4caf50;border-radius:8px;font-size:22px;text-align:right;box-sizing:border-box;outline:none"/>'
-                + '</div>'
-                + '<div class="pos-cash-change" style="text-align:center;font-size:20px;font-weight:700;margin-bottom:12px;min-height:32px"></div>'
-                + '<button type="button" class="pos-cash-confirm" disabled style="width:100%;padding:16px;background:#4caf50;color:#fff;border:none;border-radius:10px;font-size:17px;font-weight:700;cursor:pointer;margin-bottom:8px;opacity:0.5">&#128176; CONFIRM PAYMENT</button>'
-                + '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;justify-content:center">'
-                + cashQuickBtns(lastPay) + '</div>'
-                + '<button type="button" class="pos-cash-cancel" style="display:block;width:100%;text-align:center;padding:12px;background:#f5f5f5;border:none;border-radius:8px;color:#666;font-size:14px;font-weight:600;cursor:pointer">&#10006; CANCEL</button>'
-                + '</div>';
+                + PosTillDialogs.cashMarkup(lastPay);
         }
 
         function cartText(value) { return window._posReceiptTextData(String(value == null ? '' : value)); }
@@ -5587,118 +5559,34 @@ window.posToggleFullscreen = function() {
                 .finally(function(){modeSwitching=false;if(btn)btn.disabled=false;});
         });
 
-        /* --- Close Session: AJAX dialog --- */
+        /* --- Close Session: shared cash review --- */
         var closeForm = document.querySelector('.pos-header form[action*="closeSession"]');
-        if (closeForm) {
-            closeForm.removeAttribute('onsubmit');
-            closeForm.addEventListener('submit', function(e) {
-                e.preventDefault();
-                if (document.querySelector('.pos-close-overlay')) return;
-                fetch('Terminal/ajaxCart', {
-                    method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                    body: new URLSearchParams({action:'sessionSummary', sessionId: SI, taxOn: TO, salesModeId: SM, moquiSessionToken: TK}),
-                    credentials: 'same-origin'
-                }).then(function(r) { return r.json(); }).then(function(d) {
-                    if (!d || !d.success) { showToast((d && d.error) || 'Failed to load session summary', '#c62828'); return; }
-                    var ov = document.createElement('div');
-                    ov.className = 'pos-close-overlay'; ov.id='posCloseSessionOverlay'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-label','Close session');
-                    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box';
-                    var row = function(label, val, color) {
-                        return '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee">'
-                            + '<span style="color:#555;font-size:15px">'+label+'</span>'
-                            + '<span style="font-weight:700;font-size:15px;color:'+(color||'#333')+'">'+CS+fmt2(val)+'</span></div>';
-                    };
-                    var html = '<div style="background:#fff;border-radius:16px;padding:28px 32px;width:484px;max-width:100%;max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;box-shadow:0 12px 40px rgba(0,0,0,0.3)">'
-                        + '<div style="text-align:center;font-size:22px;font-weight:800;color:#463D7A;margin-bottom:4px">Close Session</div>'
-                        + '<div style="text-align:center;font-size:13px;color:#888;margin-bottom:18px">Session #'+SI+'</div>'
-                        + '<div style="background:#f5f5f5;border-radius:10px;padding:14px 16px;margin-bottom:16px">'
-                        + '<div style="font-size:13px;font-weight:700;color:#777;text-transform:uppercase;margin-bottom:8px">Session Summary</div>'
-                        + '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee">'
-                        + '<span style="color:#555;font-size:15px">Bills Completed</span>'
-                        + '<span style="font-weight:700;font-size:15px;color:#7C3AED">'+d.billCount+'</span></div>'
-                        + row('Total Sales', d.totalSales, '#2e7d32')
-                        + '</div>'
-                        + '<div style="background:#f5f5f5;border-radius:10px;padding:14px 16px;margin-bottom:16px">'
-                        + '<div style="font-size:13px;font-weight:700;color:#777;text-transform:uppercase;margin-bottom:8px">Cash Breakdown</div>'
-                        + row('Opening Cash', d.openingCash)
-                        + row('Cash Received', d.cashReceived, '#2e7d32')
-                        + row('Change Given', d.changeGiven, '#e65100')
-                        + '<div style="display:flex;justify-content:space-between;padding:10px 0 4px;border-top:2px solid #463D7A;margin-top:6px">'
-                        + '<span style="font-weight:800;font-size:17px;color:#463D7A">Expected Cash</span>'
-                        + '<span style="font-weight:800;font-size:17px;color:#463D7A">'+CS+fmt2(d.expectedCash)+'</span></div>'
-                        + '</div>'
-                        + (d.cardReceived > 0 || d.upiReceived > 0 ? '<div style="background:#f5f5f5;border-radius:10px;padding:14px 16px;margin-bottom:16px">'
-                            + '<div style="font-size:13px;font-weight:700;color:#777;text-transform:uppercase;margin-bottom:8px">Other Payments</div>'
-                            + (d.cardReceived > 0 ? row('Card', d.cardReceived, '#7C3AED') : '')
-                            + (d.upiReceived > 0 ? row('UPI', d.upiReceived, '#7b1fa2') : '')
-                            + '</div>' : '')
-                        + '<div style="margin-bottom:16px">'
-                        + '<label style="font-size:14px;font-weight:700;color:#333;display:block;margin-bottom:6px">Enter Closing Cash Amount</label>'
-                        + '<input type="number" class="pos-close-cash" step="0.01" min="0" value="'+fmt2(d.expectedCash)+'" style="width:100%;padding:14px 16px;border:2px solid #463D7A;border-radius:10px;font-size:22px;font-weight:700;text-align:right;box-sizing:border-box;outline:none;color:#463D7A" onfocus="this.select()"/>'
-                        + '<div class="pos-close-diff" style="text-align:right;margin-top:6px;font-size:14px;font-weight:600"></div>'
-                        + '</div>'
-                        + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
-                        + '<button type="button" class="pos-close-cancel" style="padding:14px;border:2px solid #999;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;background:#fff;color:#666">Cancel</button>'
-                        + '<button type="button" class="pos-close-confirm" style="padding:14px;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;background:#c62828;color:#fff">&#9724; CLOSE SESSION</button>'
-                        + '</div></div>';
-                    ov.innerHTML = html;
-                    document.body.appendChild(ov);
-                    var inp = ov.querySelector('.pos-close-cash');
-                    var diffEl = ov.querySelector('.pos-close-diff');
-                    var expected = d.expectedCash;
-                    function updateDiff() {
-                        var v = parseFloat(inp.value) || 0;
-                        var diff = v - expected;
-                        if (Math.abs(diff) < 0.01) {
-                            diffEl.textContent = '✓ Exact match';
-                            diffEl.style.color = '#2e7d32';
-                        } else if (diff > 0) {
-                            diffEl.textContent = 'Excess: +' + CS + fmt2(diff);
-                            diffEl.style.color = '#e65100';
-                        } else {
-                            diffEl.textContent = 'Short: ' + CS + fmt2(diff);
-                            diffEl.style.color = '#c62828';
-                        }
-                    }
-                    updateDiff();
-                    inp.addEventListener('input', updateDiff);
-                    ov.querySelector('.pos-close-cancel').addEventListener('click', function() { ov.remove(); });
-                    ov.addEventListener('click', function(ev) { if (ev.target === ov) ov.remove(); });
-                    ov.querySelector('.pos-close-confirm').addEventListener('click', function() {
-                        var closingCash = Number(inp.value);
-                        if (inp.value === '' || !Number.isFinite(closingCash) || closingCash < 0) {
-                            inp.setCustomValidity('Enter a valid, non-negative closing cash amount.');
-                            inp.reportValidity();
-                            return;
-                        }
-                        inp.setCustomValidity('');
-                        var fd = new FormData(closeForm);
-                        fd.set('closingCash', inp.value);
-                        fd.set('wantJson', '1');
-                        fd.set('moquiSessionToken', TK);
-                        var confirmButton = this;
-                        confirmButton.disabled = true;
-                        confirmButton.textContent = 'Closing...';
-                        fetch(closeForm.action, {method:'POST', body: new URLSearchParams(fd), credentials:'same-origin'})
-                            .then(function(response) {
-                                if (!response.ok) throw new Error('Session close failed. Please try again.');
-                                return response.json();
-                            }).then(function(result) {
-                                if (!result.success) throw new Error(result.error || 'Session close failed.');
-                                ov.remove();
-                                showToast('Session closed successfully');
-                                var cleared = window._posOffline ? window._posOffline.sessionClosed() : Promise.resolve();
-                                return cleared.then(function () { window.location.assign(result.redirectUrl || '/apps/zenith/pos/Terminal?sessionId=' + encodeURIComponent(SI)); });
-                            }).catch(function(error) {
-                                confirmButton.disabled = false;
-                                confirmButton.textContent = 'CLOSE SESSION';
-                                showToast(error.message, '#c62828');
-                            });
-                    });
-                    inp.focus();
+        if (closeForm) closeForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            if (closeForm.dataset.loading || document.getElementById('posCloseSessionOverlay')) return;
+            closeForm.dataset.loading = '1';
+            try {
+                var response = await fetch('Terminal/ajaxCart', {
+                    method:'POST', credentials:'same-origin',
+                    body:new URLSearchParams({action:'sessionSummary', sessionId:SI, taxOn:TO, salesModeId:SM, moquiSessionToken:TK})
                 });
-            });
-        }
+                var summary = await response.json();
+                if (!response.ok || !summary.success) throw new Error(summary.error || 'Failed to load session summary');
+                PosTillDialogs.openClose({sessionId:SI, summary:summary, close:async function(amount) {
+                    var fd = new FormData(closeForm);
+                    fd.set('closingCash',amount); fd.set('wantJson','1'); fd.set('moquiSessionToken',TK);
+                    var response = await fetch(closeForm.action,{method:'POST',body:new URLSearchParams(fd),credentials:'same-origin'});
+                    var result = await response.json().catch(function() { return {}; });
+                    if (!response.ok || !result.success) throw new Error(result.error || 'Session close failed. Please try again.');
+                    return result;
+                }, onClosed:function(result) {
+                    showToast('Session closed successfully');
+                    var cleared = window._posOffline ? window._posOffline.sessionClosed() : Promise.resolve();
+                    cleared.finally(function() { location.assign(result.redirectUrl || '/apps/zenith/pos/Terminal?sessionId='+encodeURIComponent(SI)); });
+                }});
+            } catch (error) { showToast(error.message,'#c62828'); }
+            finally { delete closeForm.dataset.loading; }
+        });
 
         /* --- Replace server-rendered <a> tags with buttons so SPA router can't intercept --- */
         var smRoot = document.querySelector('.pos-summary');
@@ -6032,24 +5920,7 @@ window.posToggleFullscreen = function() {
         /* --- Cash input: live change calculation --- */
         if (smRoot) smRoot.addEventListener('input', function(e) {
             if (!e.target.classList.contains('pos-cash-input')) return;
-            var received = Number(e.target.value) || 0;
-            var changeDiv = smRoot.querySelector('.pos-cash-change');
-            var confirmBtn = smRoot.querySelector('.pos-cash-confirm');
-            if (!changeDiv || !confirmBtn) return;
-            var diff = received - lastPay;
-            if (e.target.value === '' || received === 0) {
-                changeDiv.innerHTML = '';
-                confirmBtn.disabled = true; confirmBtn.style.opacity = '0.5';
-            } else if (diff < 0) {
-                changeDiv.innerHTML = '<span style="color:#e53935;font-size:20px">⚠ Short: ' + CS + fmt(Math.abs(diff)) + ' more needed</span>';
-                confirmBtn.disabled = true; confirmBtn.style.opacity = '0.5';
-            } else if (diff === 0) {
-                changeDiv.innerHTML = '<span style="color:#2e7d32;font-size:22px">✔ Exact Amount</span>';
-                confirmBtn.disabled = false; confirmBtn.style.opacity = '1';
-            } else {
-                changeDiv.innerHTML = '<span style="color:#7C3AED;font-size:26px;letter-spacing:0.5px">Change: ' + CS + fmt(diff) + '</span>';
-                confirmBtn.disabled = false; confirmBtn.style.opacity = '1';
-            }
+            PosTillDialogs.updateCash(smRoot,lastPay);
         });
         pollCatalog();
     }
