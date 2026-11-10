@@ -41,6 +41,29 @@
         ]]></script></actions><default-response type="none"/>
     </transition>
 
+    <transition name="historyBillDetails" method="post" begin-transaction="false">
+        <actions><script><![CDATA[
+            def billing=ec.service.sync().name('zenith.pos.KotServices.get#BillingSession').parameter('sessionId',sessionId).call()
+            def k=billing.terminal ? ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('kotId',kotId)
+                .condition('organizationPartyId',billing.terminal.organizationPartyId).one() : null
+            def tx=k?.transactionId ? ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',k.transactionId)
+                .condition('organizationPartyId',k.organizationPartyId).condition('statusId','PtCompleted').one() : null
+            def issuedAt=tx ? ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',tx.sessionId).one() : null
+            def scope=tx ? ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess').parameter('transactionId',tx.transactionId).call() : null
+            if (!scope?.allowed || issuedAt?.terminalId!=billing.terminal?.terminalId || (k.terminalId && k.terminalId!=issuedAt.terminalId)) {
+                ec.web.sendJsonResponse([success:false,error:'This bill is unavailable for the current terminal and login.']); return
+            }
+            def kitchenWrite=ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess')
+                .parameter('moduleId',ec.context.kitchenModuleId ?: 'pos').call().canWrite
+            def posWrite=ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId','pos').call().canWrite
+            def lines=ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId',tx.transactionId).orderBy('itemSeqId').list()
+            ec.web.sendJsonResponse([success:true,transactionId:tx.transactionId,number:tx.transactionNumber ?: tx.transactionId,
+                total:tx.payableAmount ?: 0, canEdit:kitchenWrite == true && posWrite == true,
+                items:lines.collect { [seq:it.itemSeqId, name:it.productName ?: it.productId, qty:it.quantity,
+                    rate:it.unitPrice, tax:it.totalTaxAmount ?: 0, total:it.lineTotal ?: 0] }])
+        ]]></script></actions><default-response type="none"/>
+    </transition>
+
     <transition name="touchSession" method="post" begin-transaction="true">
         <actions>
             <service-call name="zenith.pos.KotServices.get#BillingSession" in-map="[sessionId:sessionId]" out-map="_billing"/>
@@ -588,22 +611,35 @@
                 def bills=ks*.transactionId.findAll { it }
                 def issued=bills ? ec.entity.find('zenith.erp.pos.PosTransaction').condition('organizationPartyId',org)
                     .condition('transactionId',IN,bills).condition('statusId','PtCompleted').list().collectEntries { [it.transactionId,it] } : [:]
+                def methods=issued ? ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId',IN,issued.keySet())
+                    .selectFields(['transactionId','paymentMethod']).list().groupBy { it.transactionId } : [:]
                 return ks.collect { k ->
                     def snapshot=[:]
                     if(k.orderReceiptJson) {
                         try { snapshot=new groovy.json.JsonSlurper().parseText(k.orderReceiptJson) ?: [:] } catch(Exception ignored) { }
                     }
                     def issuedBill=issued[k.transactionId]
-                    [ billNumber:issuedBill?.transactionNumber ?: '', total:issuedBill?.payableAmount ?: snapshot?.summary?.total,
+                    def date=issuedBill?.completedDate ?: k.kotDate
+                    [ billNumber:issuedBill ? (issuedBill.transactionNumber ?: issuedBill.transactionId) : '',
+                      total:issuedBill ? issuedBill.payableAmount : snapshot?.summary?.total,
+                      customer:issuedBill?.customerName ?: snapshot?.bill?.customer ?: 'Walk-in',
+                      payment:(methods[k.transactionId] ?: [])*.paymentMethod.findAll { it }.unique().join(', '),
+                      searchText:([k.kotNumber,k.kotId,k.waiterName,issuedBill ? issuedBill.payableAmount : snapshot?.summary?.total] +
+                          (byKot[k.kotId] ?: [])*.name).findAll { it != null }.join(' '),
+                      sortedAt:date?.time ?: 0L,
                       mode:modes.find { it.salesModeId==snapshot?.bill?.salesModeId }?.modeName ?: snapshot?.bill?.salesModeId ?: '',
                       id:k.kotId, num:(k.kotNumber ?: k.kotId), table:(k.tableNumber ?: '-'),
-                    isoDate:(k.kotDate ? ec.l10n.format(k.kotDate, 'yyyy-MM-dd') : ''), time:(k.kotDate ? ec.l10n.format(k.kotDate, 'dd/MM/yyyy hh:mm a') : ''), waiter:k.waiterName ?: '', serviceType:(k.notes ?: '').startsWith('[Take Away]') ? 'Take Away' : 'Dine In',
-                    label:kotLabel(k.statusId), badge:kotBadge(k.statusId), hasBill:!!(k.transactionId || k.orderReceiptJson), items:(byKot[k.kotId] ?: []) ] }
+                    isoDate:(date ? ec.l10n.format(date, 'yyyy-MM-dd') : ''), time:(date ? ec.l10n.format(date, 'dd/MM/yyyy hh:mm a') : ''), waiter:k.waiterName ?: '', serviceType:(k.notes ?: '').startsWith('[Take Away]') ? 'Take Away' : 'Dine In',
+                    label:kotLabel(k.statusId), hasBill:!!(issuedBill || k.orderReceiptJson), items:(byKot[k.kotId] ?: []) ] }
             }
 
             activeKots = loadKots(['KotNew', 'KotPreparing', 'KotReady'], 60)
             completedKots = loadKots(['KotServed', 'KotCancelled'], 60)
             draftKots = loadKots(['KotDraft'], 30)
+            historyKots=(draftKots.collect { it + [group:'draft'] } + activeKots.collect { it + [group:'active'] } +
+                completedKots.collect { it + [group:'completed'] }).sort { a,b ->
+                    ((b.billNumber ? 1 : 0) <=> (a.billNumber ? 1 : 0)) ?: (b.sortedAt <=> a.sortedAt) ?: (b.id <=> a.id)
+                }
 
 
             // resume a draft into the cart?
@@ -673,28 +709,6 @@
 </#if>
 </svg></#macro>
 
-<#macro ordercard k>
-<div class="kb-ocard">
-  <div class="kb-ocard__h">
-    <span class="kb-ocard__n">KOT #${k.num?html}</span>
-    <span class="kb-ocard__b" data-s="${k.badge}">${k.label}</span>
-    <span class="kb-ocard__m">${k.serviceType?html}<#if k.table != '-'> · Table ${k.table?html}</#if> · ${k.time?html}<#if k.waiter?has_content> · ${k.waiter?html}</#if></span>
-  </div>
-  <p class="kb-ocard__m"><#if k.billNumber?has_content>Bill ${k.billNumber?html} · </#if><#if k.mode?has_content>${k.mode?html} · </#if><#if k.total??>&#8377;${ec.l10n.format(k.total,'#,##0.00')?html}</#if></p>
-  <#if k.items?has_content>
-  <ul class="kb-ocard__items">
-    <#list k.items as it><li><span>${it.name?html}</span><span class="kb-ocard__q">&#215; ${it.qty}</span></li></#list>
-  </ul>
-  </#if>
-  <div class="kb-ocard__f zk-history-actions">
-    <#if modCanWrite>
-    <button type="button" class="kb-oprint" data-kitchen-print="kot" data-kot-id="${k.id?html}"><@ic 'printer' 13/> KOT Print</button>
-    <button type="button" class="kb-oprint" data-kitchen-print="orderBill" data-kot-id="${k.id?html}" <#if !k.hasBill>disabled="disabled" title="No saved customer bill or order pricing is available."</#if>><@ic 'printer' 13/> Bill Print</button>
-    </#if>
-  </div>
-</div>
-</#macro>
-
 <#if !billingSession??>
 <section class="kb-wrap kb-panel" id="kot-terminal-entry" aria-labelledby="kot-entry-title">
   <h1 id="kot-entry-title">KOT Billing Terminal</h1><p>Select your terminal to open or resume billing.</p>
@@ -712,6 +726,7 @@
   <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=7"/>
   <link rel="stylesheet" href="/zenithstatic/css/pos-checkout.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/pos-checkout.css').getLastModified()?c}"/>
   <link rel="stylesheet" href="/zenithstatic/css/kot-list.css?v=7"/>
+  <link rel="stylesheet" href="/zenithstatic/css/kot-bill-history.css?v=1"/>
   <input type="hidden" id="kb-token" value="${(ec.web.sessionToken)!''}"/>
   <div id="kb-data" style="display:none" data-session="${billingSession.sessionId?html}" data-user="${(ec.user.userId!'')?html}" data-display-enabled="${kitchenDisplayEnabled?c}" data-kot-module="${(kitchenModuleId!'pos')?html}" data-stock-session="${((checkoutSessions?size == 1)?then(checkoutSessions[0].id,''))?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}"></div>
 
@@ -735,7 +750,7 @@
       </div>
     </details>
     <button type="button" class="kb-control kb-tax-toggle is-on" id="kb-tax-toggle" role="switch" aria-label="Tax" aria-checked="true">Tax: ON</button>
-    <button type="button" class="kb-control" id="kb-history-open"><@ic 'clock'/> History <kbd class="kg-only">F10</kbd></button>
+    <button type="button" class="kb-control" id="kb-history-open" aria-keyshortcuts="F10"><@ic 'clock'/> History <kbd>F10</kbd></button>
     <div class="kb-otype" role="group" aria-label="Service type">
       <button type="button" class="kb-otbtn is-active" data-ot="Dine In"><@ic 'bag'/> Dine In</button>
       <button type="button" class="kb-otbtn" data-ot="Take Away"><@ic 'box'/> Take Away</button>
@@ -826,14 +841,60 @@
       <div id="kb-suggestions" class="kb-suggestions" aria-label="Matching products" hidden></div>
     </div>
   </div>
-  <dialog id="kb-history" class="zk-history-view" aria-labelledby="kb-history-title">
-    <h2 id="kb-history-title">Order History</h2>
-    <div class="kb-dialog-fields"><label>Search orders<input id="kb-history-search" type="search" placeholder="KOT, bill, product, or waiter"></label><label>Status<select id="kb-history-status"><option value="">All</option><option value="draft">Held</option><option value="active">Active</option><option value="completed">Completed / Cancelled</option></select></label><label>Date<input id="kb-history-date" type="date"></label></div>
-    <div id="kb-history-rows">
-      <#list draftKots as d><div data-kot-group="draft" data-order-date="${d.isoDate}"><@ordercard d/><#if modCanWrite><button type="button" class="kb-control" data-kot-resume="${d.id?html}">Resume</button><button type="button" class="kb-control" data-kot-discard="${d.id?html}">Discard</button></#if></div></#list>
-      <#list activeKots as k><div data-kot-group="active" data-order-date="${k.isoDate}"><@ordercard k/></div></#list>
-      <#list completedKots as k><div data-kot-group="completed" data-order-date="${k.isoDate}"><@ordercard k/></div></#list>
-    </div><p id="kb-history-empty" hidden>No matching orders.</p><form method="dialog"><button class="kb-control">Close</button></form>
+  <dialog id="kb-history" class="kb-history-dialog" aria-labelledby="kb-history-title">
+    <header class="kb-history-heading"><h2 id="kb-history-title"><@ic 'receipt' 20/> Bill History</h2><button id="kb-history-close" type="button" aria-label="Close history">×</button></header>
+    <div class="kb-history-toolbar">
+      <input id="kb-history-search" type="search" aria-label="Search bills and KOTs" placeholder="Search by bill number, amount, or customer…">
+      <button id="kb-history-filter" class="kb-history-button" type="button" aria-expanded="false" aria-controls="kb-history-filters">Filter</button>
+    </div>
+    <div id="kb-history-filters" class="kb-history-filters" hidden>
+      <label>Status <select id="kb-history-status"><option value="">All</option><option value="billed">Billed</option><option value="draft">Held</option><option value="active">Active</option><option value="completed">Served / Cancelled</option></select></label>
+      <label>Date <input id="kb-history-date" type="date"></label>
+    </div>
+    <div class="kb-history-scroll">
+      <p id="kb-history-count" role="status"></p>
+      <p id="kb-history-print-status" role="status"></p>
+      <p id="kb-history-error" class="kb-history-error" role="alert"></p>
+      <div id="kb-history-rows">
+        <#list historyKots as k>
+        <article class="kb-history-row" data-kot-id="${k.id?html}" data-kot-group="${k.group}" data-order-date="${k.isoDate}" data-billed="${k.billNumber?has_content?c}" data-has-bill="${k.hasBill?c}" data-kot-number="${k.num?html}" data-search="${(k.searchText!'')?html}">
+          <button type="button" class="kb-history-number" data-kb-history-detail>#<#if k.billNumber?has_content>${k.billNumber?html}<#else>KOT ${k.num?html}</#if></button>
+          <strong class="kb-history-amount"><#if k.total??>&#8377;${ec.l10n.format(k.total,'#,##0.00')?html}<#else>—</#if></strong>
+          <span class="kb-history-meta">${k.time?html}</span>
+          <span class="kb-history-meta kb-history-info">${k.customer?html} · ${k.items?size} <#if k.items?size == 1>item<#else>items</#if> · ${(k.payment?has_content?then(k.payment,k.label))?html}</span>
+          <#if modCanWrite><button type="button" class="kb-history-button kb-history-reprint" data-kb-history-reprint><@ic 'printer' 14/> Reprint</button></#if>
+        </article>
+        </#list>
+      </div>
+    </div>
+  </dialog>
+  <dialog id="kb-history-detail" class="kb-history-dialog" aria-labelledby="kb-history-detail-title">
+    <header class="kb-history-heading"><h2 id="kb-history-detail-title"><@ic 'receipt' 20/> <span id="kb-history-detail-label">Edit Bill</span></h2><button id="kb-history-detail-close" type="button" aria-label="Close bill details">×</button></header>
+    <div class="kb-history-scroll">
+      <p class="kb-history-detail-meta"><strong id="kb-history-detail-number"></strong><span id="kb-history-detail-total"></span></p>
+      <p id="kb-history-detail-message" role="status"></p>
+      <form id="kb-history-edit">
+        <div class="kb-history-table"><table>
+          <thead><tr><th scope="col">Item</th><th scope="col">Rate (₹)</th><th scope="col">Quantity</th><th scope="col">Tax (₹)</th><th scope="col">Total (₹)</th><th scope="col" class="kb-history-editable">Remove</th></tr></thead>
+          <tbody id="kb-history-detail-lines"></tbody>
+        </table></div>
+        <div id="kb-history-edit-fields" hidden>
+          <label>Add item <input id="kb-history-add" type="search" placeholder="Search by product name or code" autocomplete="off"></label>
+          <div id="kb-history-products"></div>
+          <label>Reason for change <textarea id="kb-history-edit-reason" maxlength="500" rows="2" required></textarea></label>
+        </div>
+        <p id="kb-history-edit-error" class="kb-history-error" role="alert"></p>
+        <footer class="kb-history-detail-actions">
+          <button type="button" class="kb-history-button" id="kb-history-back">Back to History</button>
+          <#if modCanWrite>
+          <button type="button" class="kb-history-button" id="kb-history-resume" hidden>Resume Order</button>
+          <button type="button" class="kb-history-button" id="kb-history-discard" hidden>Discard Held Order</button>
+          <button type="button" class="kb-history-button" id="kb-history-detail-reprint" aria-keyshortcuts="Space"><@ic 'printer' 14/> Reprint</button>
+          <button type="submit" class="kb-history-button kb-history-primary" id="kb-history-save" hidden>Save Changes</button>
+          </#if>
+        </footer>
+      </form>
+    </div>
   </dialog>
   <#if modCanWrite><dialog id="kb-payment" class="zk-history-view" aria-labelledby="kb-payment-title">
     <div id="kb-payment-heading"><h2 id="kb-payment-title">Bill Out</h2><p id="kb-payment-total"></p></div>
@@ -857,8 +918,8 @@
   <#if modCanWrite><dialog id="kb-print-choice" class="zk-history-view" aria-labelledby="kb-print-title">
     <h2 id="kb-print-title">Payment complete</h2><p id="kb-print-summary"></p>
     <div class="zk-history-actions kb-print-options" role="group" aria-label="Print options">
-      <button type="button" class="kb-control" data-kb-print="bill">Print Bill</button>
-      <button type="button" class="kb-control" data-kb-print="kot">KOT print</button>
+      <button type="button" class="kb-control" data-kb-print="kot">KOT Print</button>
+      <button type="button" class="kb-control" data-kb-print="bill">Bill Print</button>
       <button type="button" class="kb-control" data-kb-print="both">Print both</button>
     </div>
     <p id="kb-print-error" role="alert"></p><button type="button" class="kb-control" id="kb-print-close">Done</button>
@@ -872,7 +933,7 @@
   </dialog></#if>
 
   <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" style="display:none"
-       onload="(function(){function boot(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=keypad-4';document.head.appendChild(s);}if(window.PosTillDialogs){boot();return;}var shared=document.createElement('script');shared.src='/zenithstatic/js/pos-till-dialogs.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-till-dialogs.js').getLastModified()?c}';shared.onload=boot;document.head.appendChild(shared);})()"/>
+       onload="(function(){function boot(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=bill-history-1';document.head.appendChild(s);}if(window.PosTillDialogs){boot();return;}var shared=document.createElement('script');shared.src='/zenithstatic/js/pos-till-dialogs.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-till-dialogs.js').getLastModified()?c}';shared.onload=boot;document.head.appendChild(shared);})()"/>
 </div>
 </#if>
         ]]></text></render-mode>
