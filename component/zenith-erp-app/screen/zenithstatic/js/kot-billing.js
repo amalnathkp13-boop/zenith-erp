@@ -91,7 +91,6 @@
     for(const button of root.querySelectorAll('[data-ot]')) {
       const active=button.dataset.ot===value;button.classList.toggle('is-active',active);button.setAttribute('aria-pressed',active);
     }
-    $('table-field').hidden=value==='Take Away'||$('table').options.length===1;
     if(value==='Take Away') $('table').value='';
     $('list-type').textContent=orderType;
   }
@@ -681,7 +680,6 @@
     for(const item of cart.values())delete item.manualRate;
     salesModeId=$('mode').value;paintSalesMode();quote();lookup();
   });
-  $('table').addEventListener('change',quote);
   $('waiter').addEventListener('change',quote);
   $('history-search').addEventListener('input',filterHistory);
   $('history-status').addEventListener('change',filterHistory);

@@ -34,7 +34,7 @@ body:has(#kb-wrap) :is(#top,#footer,#z-sidebar,#z-side-burger,#z-subnav,#pos-mod
 #kb-wrap.kg-grid:is(:fullscreen,:-webkit-full-screen){height:100%;padding:0 24px 16px}
 #kb-wrap.kg-grid :is(.kg-header,.kb-toolbar,.kb-checkout-actions){grid-column:1/-1}
 #kb-wrap.kg-grid .kg-header{
-  grid-row:1;display:flex;align-items:center;flex-wrap:wrap;gap:18px;
+  grid-row:1;display:flex;align-items:center;flex-wrap:wrap;gap:10px;
   padding:5px 24px;margin:0 -24px;background:#fff;
   border-bottom:1px solid var(--kg-line);min-height:60px;
 }
