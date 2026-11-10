@@ -153,6 +153,10 @@ body:has(#kb-wrap) :is(#top,#footer,#z-sidebar,#z-side-burger,#z-subnav,#pos-mod
   #kb-wrap.kg-grid{--kg-control:42px;--kg-pay:62px;--kg-total:76px;--kg-stats:36px}
   #kb-wrap.kg-grid .kg-header{min-height:58px}
 }
+@media(max-width:1400px){
+  #kb-wrap.kg-grid .kb-toolbar{gap:5px;padding-inline:12px}
+  #kb-wrap.kg-grid .kb-toolbar :is(.kb-control,.kb-otbtn,select){padding-inline:7px}
+}
 @media(max-width:1150px){
   #kb-wrap.kg-grid #kb-product-grid .kb-results-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
   #kb-wrap.kg-grid .kg-back{min-width:0}
