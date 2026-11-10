@@ -440,7 +440,8 @@
                 for(def item in quote.items) {
                     ec.service.sync().name('zenith.pos.PosServices.add#PosTransactionItem')
                         .parameters([transactionId:tx,productId:item.productId,quantity:item.qty,
-                            salesModeId:quote.bill.salesModeId,taxOn:quote.bill.taxOn]).call()
+                            salesModeId:quote.bill.salesModeId,taxOn:quote.bill.taxOn,
+                            unitPrice:item.manualPrice=='Y' ? item.rate : null,manualUnitPrice:item.manualPrice=='Y']).call()
                     if(ec.message.hasError()) { ec.web.sendJsonResponse([success:false,error:ec.message.errorsString]); return }
                 }
                 def current=ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',tx).one()
@@ -707,12 +708,12 @@
   </form><#else><p>Your administrator must assign an active terminal and shop before you can bill.</p></#if>
 </section>
 <#else>
-<div class="kb-wrap" id="kb-wrap">
-  <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=6"/>
+<div class="kb-wrap<#if !kitchenDisplayEnabled> kb-display-disabled</#if>" id="kb-wrap">
+  <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=7"/>
   <link rel="stylesheet" href="/zenithstatic/css/pos-checkout.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/pos-checkout.css').getLastModified()?c}"/>
-  <link rel="stylesheet" href="/zenithstatic/css/kot-list.css?v=4"/>
+  <link rel="stylesheet" href="/zenithstatic/css/kot-list.css?v=7"/>
   <input type="hidden" id="kb-token" value="${(ec.web.sessionToken)!''}"/>
-  <div id="kb-data" style="display:none" data-session="${billingSession.sessionId?html}" data-display-enabled="${kitchenDisplayEnabled?c}" data-kot-module="${(kitchenModuleId!'pos')?html}" data-stock-session="${((checkoutSessions?size == 1)?then(checkoutSessions[0].id,''))?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}"></div>
+  <div id="kb-data" style="display:none" data-session="${billingSession.sessionId?html}" data-user="${(ec.user.userId!'')?html}" data-display-enabled="${kitchenDisplayEnabled?c}" data-kot-module="${(kitchenModuleId!'pos')?html}" data-stock-session="${((checkoutSessions?size == 1)?then(checkoutSessions[0].id,''))?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}"></div>
 
 
   <header class="kg-header">
@@ -761,10 +762,17 @@
   <div class="kl-workspace">
   <section class="kb-panel">
     <div class="kb-panel__head"><h2 class="kb-panel__title"><span class="kg-normal"><@ic 'cart' 24/> Bill Items (<span id="kb-list-count">0</span>)</span><span class="kg-only"><@ic 'chef' 24/> KOT Items (<span id="kb-grid-count">0</span>)</span></h2><span class="kb-panel__badge" id="kb-badge">New KOT</span><button type="button" class="kb-clear" id="kb-clear" disabled>Clear Cart</button></div>
+    <div id="kb-session-notice" hidden>
+      <p id="kb-session-message" role="alert"></p>
+      <a class="kb-control" href="/Login" target="_blank" rel="noopener">Sign in again</a>
+      <button class="kb-control" id="kb-resume" type="button">Resume billing</button>
+    </div>
+    <#if modCanWrite><p id="kb-key-help"><span><kbd>/</kbd> Search</span> <span><kbd><span class="kg-only">←</span>↑↓<span class="kg-only">→</span></kbd> Choose item</span> <span><kbd>Enter</kbd> Add and edit rate</span> <span><kbd>→</kbd> Quantity</span> <span><kbd>↓</kbd> Payment</span> <span><kbd>←→</kbd> Choose method</span></p></#if>
     <div class="kb-order-scroll"><table class="kb-otable" aria-label="Current Order"><thead><tr>
       <th scope="col">#</th><th scope="col"><span class="kg-only">Item</span><span class="kg-normal">Product</span></th>
-      <th scope="col" class="kg-normal">Mode</th><th scope="col" class="r">Rate (&#8377;)</th>
-      <th scope="col">Qty</th><th scope="col" class="kg-normal">Tax (&#8377;)</th>
+      <th scope="col" class="kg-normal">Mode</th><th scope="col">Rate (&#8377;)</th>
+      <th scope="col"><span class="kg-only">Quantity</span><span class="kg-normal">Qty</span></th>
+      <th scope="col" class="kg-normal">Tax (&#8377;)</th>
       <th scope="col" class="r"><span class="kg-only">Amount (&#8377;)</span><span class="kg-normal">Total (&#8377;)</span></th>
       <th scope="col"><span class="kg-only">Remove</span><span class="kg-normal">Action</span></th>
     </tr></thead><tbody id="kb-cart"></tbody></table>
@@ -773,7 +781,7 @@
     <div class="kb-instr"><label for="kb-instr">Add Note</label><textarea id="kb-instr" rows="1" maxlength="500" placeholder="e.g. No onion, less spicy"></textarea></div>
     <div class="kb-sum kg-only"><div class="kb-sum__row"><span>Items</span><span id="kb-item-count">0</span></div><div class="kb-sum__row"><span>Subtotal</span><span id="kb-subtotal">&#8377;0.00</span></div><div id="kb-tax-rows"></div>
     </div>
-    <p id="kb-quote-error" role="alert"></p><p id="kb-order-status" role="status"></p>
+    <p id="kb-edit-error" role="alert" hidden></p><p id="kb-quote-error" role="alert"></p><p id="kb-order-status" role="status"></p>
     <p id="kb-display-message" <#if kitchenDisplayEnabled>hidden</#if>>Kitchen Display disabled. Use printed KOTs for takeaway, or bill dine-in customers after their meal.</p>
   </section>
   <aside class="kl-side kg-normal">
@@ -804,16 +812,17 @@
       <span>Qty: <b id="kb-list-qty">0</b></span><span>Tax: <b id="kb-list-tax-stat">0</b></span><span>Disc: <b>0</b></span>
     </div>
     <div class="kb-total-row"><span>KOT TOTAL</span><strong id="kb-grand">&#8377;0.00</strong></div>
-    <#if modCanWrite><div class="kb-checkout-actions">
+    <#if modCanWrite><div class="kb-checkout-actions" role="group" aria-label="Payment and kitchen actions">
       <#list ['Cash','Card','Credit','UPI','Split'] as tender>
       <button type="button" class="kg-tender" data-kb-payment="${tender}" disabled><@ic tender?lower_case 24/> ${(tender == 'Split')?then('Split Payment',tender)} <kbd>F${tender?index + 2}</kbd></button>
       </#list>
       <button type="button" id="kb-draft" class="kb-action-hold" disabled><span aria-hidden="true">Ⅱ</span> Hold <kbd>F7</kbd></button>
-      <button type="button" id="kb-send" class="kb-action-send" title="Press Shift by itself" disabled><@ic 'printer'/> Send to KOT <kbd>Shift</kbd></button>
+      <button type="button" id="kb-send" class="kb-action-send" title="Press Shift by itself" <#if !kitchenDisplayEnabled>style="display:none"</#if> disabled><@ic 'printer'/> Send to KOT <kbd>Shift</kbd></button>
       <button type="button" id="kb-bill" class="kb-action-bill" disabled><@ic 'box'/> Bill Out <kbd>Space</kbd></button>
     </div></#if>
     <div class="kb-search"><@ic 'search'/>
-      <input type="search" id="kb-search" placeholder="Scan barcode, or type product name or code…   ( press / )" autocomplete="off" aria-label="Search products" aria-controls="kb-suggestions" <#if !modCanWrite>disabled</#if>>
+      <input type="search" id="kb-search" placeholder="Scan barcode, or type product name or code… ( / )" autocomplete="off" aria-label="Search products" aria-keyshortcuts="/" aria-controls="kb-suggestions" <#if modCanWrite>aria-describedby="kb-key-help"<#else>disabled</#if>>
+      <span id="kb-match-status" role="status"></span>
       <div id="kb-suggestions" class="kb-suggestions" aria-label="Matching products" hidden></div>
     </div>
   </div>
@@ -841,9 +850,18 @@
         <label data-kb-tender="Card UPI Split" hidden>Payment reference<input name="referenceNumber" maxlength="80"></label>
         <label data-kb-tender="Credit" hidden>Customer name<input name="customerName" maxlength="80"></label>
         <label data-kb-tender="Credit" hidden>Customer phone<input name="customerPhone" type="tel" maxlength="20"></label>
-      </div><button class="kb-action-bill" type="submit">Confirm and print</button><button class="kb-control" type="button" id="kb-payment-close">Cancel</button></div>
+      </div><button class="kb-action-bill" type="submit">Confirm payment</button><button class="kb-control" type="button" id="kb-payment-close">Cancel</button></div>
       <p id="kb-payment-error" role="alert"></p>
     </form><#else><p>Open a POS session on your assigned terminal before taking payment. You can still hold your order.</p><form method="dialog"><button class="kb-control">Close</button></form></#if>
+  </dialog></#if>
+  <#if modCanWrite><dialog id="kb-print-choice" class="zk-history-view" aria-labelledby="kb-print-title">
+    <h2 id="kb-print-title">Payment complete</h2><p id="kb-print-summary"></p>
+    <div class="zk-history-actions kb-print-options" role="group" aria-label="Print options">
+      <button type="button" class="kb-control" data-kb-print="bill">Print Bill</button>
+      <button type="button" class="kb-control" data-kb-print="kot">KOT print</button>
+      <button type="button" class="kb-control" data-kb-print="both">Print both</button>
+    </div>
+    <p id="kb-print-error" role="alert"></p><button type="button" class="kb-control" id="kb-print-close">Done</button>
   </dialog></#if>
   <#if modCanWrite><dialog id="kb-customer-dialog" class="zk-history-view" aria-labelledby="kb-customer-title">
     <h2 id="kb-customer-title">Choose Customer</h2>
@@ -854,7 +872,7 @@
   </dialog></#if>
 
   <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" style="display:none"
-       onload="(function(){function boot(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=pos-layout-2';document.head.appendChild(s);}if(window.PosTillDialogs){boot();return;}var shared=document.createElement('script');shared.src='/zenithstatic/js/pos-till-dialogs.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-till-dialogs.js').getLastModified()?c}';shared.onload=boot;document.head.appendChild(shared);})()"/>
+       onload="(function(){function boot(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=keypad-4';document.head.appendChild(s);}if(window.PosTillDialogs){boot();return;}var shared=document.createElement('script');shared.src='/zenithstatic/js/pos-till-dialogs.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-till-dialogs.js').getLastModified()?c}';shared.onload=boot;document.head.appendChild(shared);})()"/>
 </div>
 </#if>
         ]]></text></render-mode>

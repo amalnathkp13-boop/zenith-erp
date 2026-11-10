@@ -6,8 +6,8 @@
   if(window.KitchenPrint)return;
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
   function kotHtml(record){
-    return '<!doctype html><html><head><meta charset="utf-8"><title>KOT</title><style>@page{size:80mm auto;margin:0}body{font:13px monospace;color:#000;width:74mm;padding:3mm;margin:0}h3{text-align:center}table{width:100%;border-collapse:collapse}td,th{text-align:left;border-bottom:1px dashed #000;padding:4px 0}.q{text-align:right}small{display:block;white-space:pre-wrap}p{white-space:pre-wrap}</style></head><body><h3>KOT #'+esc(record.number)+'</h3><p>Table: '+esc(record.table)+'\n'+esc(record.date)+(record.waiter?'\nWaiter: '+esc(record.waiter):'')+'</p><table><thead><tr><th>Item</th><th class="q">Qty</th></tr></thead><tbody>'+
-      (record.items||[]).map(it=>'<tr><td>'+esc(it.name)+(it.instructions?'<small>'+esc(it.instructions)+'</small>':'')+'</td><td class="q">'+esc(it.qty)+'</td></tr>').join('')+'</tbody></table>'+(record.notes?'<p>Notes: '+esc(record.notes)+'</p>':'')+'</body></html>';
+    return '<!doctype html><html><head><meta charset="utf-8"><title>KOT</title><style>@page{size:80mm auto;margin:0}body{font:13px monospace;color:#000;width:74mm;padding:3mm;margin:0}table{width:100%;border-collapse:collapse}td{border-bottom:1px dashed #000;padding:4px 0}.q{text-align:right}</style></head><body><table><tbody>'+
+      (record.items||[]).map(it=>'<tr><td>'+esc(it.name)+'</td><td class="q">'+esc(it.qty)+'</td></tr>').join('')+'</tbody></table></body></html>';
   }
   function open(){const w=window.open('','_blank','width=430,height=650');if(!w)throw Error('Allow pop-ups for this site, then retry printing.');return w;}
   async function browserPrint(w,html){

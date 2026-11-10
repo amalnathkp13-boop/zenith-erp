@@ -404,7 +404,7 @@
             html_scripts.add('/zenithstatic/js/qapps-shell-boot.js?v=1')
             html_scripts.add('/zenithstatic/js/kitchen-display.js?v=5')
             html_scripts.add('/zenithstatic/js/pos-receipt-layout.js?v=3')
-            html_scripts.add('/zenithstatic/js/kitchen-print.js?v=3')
+            html_scripts.add('/zenithstatic/js/kitchen-print.js?v=4')
             html_stylesheets.add('/zenithstatic/css/kitchen-display.css?v=5')
             // ZE-DASH-0402: neutralise the stock framework "notifications disabled" nag toast (Safari fires it
             // on every load). HEAD script so it runs before WebrootVue's mounted() hook. Both surfaces.

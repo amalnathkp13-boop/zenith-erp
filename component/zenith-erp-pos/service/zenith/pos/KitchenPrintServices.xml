@@ -67,12 +67,13 @@
                             .parameters([productId:p.productId,quantity:qty,organizationPartyId:scope.organizationPartyId,salesChannelEnumId:'ScPos']).call()
                         if(priced?.unitPrice>0) price=priced.unitPrice
                     }
-                    if(!mode && item.manualPrice=='Y') {
+                    def manualPrice=item.manualPrice=='Y'
+                    if(manualPrice) {
                         try { price=new BigDecimal(String.valueOf(item.unitPrice)) } catch(Exception ignored) { price=null }
                     }
                     if(price==null || price<0 || price>10000000 || price.scale()>2) { ec.message.addError('Enter a valid item price before printing.'); return }
                     def discount=(price*qty*((mp.discountPercent ?: 0) as BigDecimal)/100).setScale(2,java.math.RoundingMode.HALF_UP)
-                    products.add([product:p,qty:qty,price:price,discount:discount])
+                    products.add([product:p,qty:qty,price:price,discount:discount,manualPrice:manualPrice])
                     taxInputs.add([productId:p.productId,productTaxCode:p.productTaxCode,taxCategoryId:p.taxCategoryId,quantity:qty,unitAmount:price,discountAmount:discount,isTaxInclusive:mode?.isTaxInclusive ?: 'N'])
                 }
                 def templates=ec.entity.find('zenith.erp.pos.PosReceiptTemplate').condition('organizationPartyId',scope.organizationPartyId)
@@ -100,7 +101,7 @@
                 products.eachWithIndex { row,i ->
                     def ti=tax?.taxedItems?.getAt(i)
                     (ti?.taxBreakdowns ?: []).each { b -> sumTax[b.taxName]=(sumTax[b.taxName] ?: 0)+(b.taxAmount ?: 0) }
-                    lines.add([productId:row.product.productId,name:row.product.productName ?: row.product.productId,code:row.product.pseudoId ?: row.product.productId,qty:row.qty,rate:row.price,
+                    lines.add([productId:row.product.productId,name:row.product.productName ?: row.product.productId,code:row.product.pseudoId ?: row.product.productId,qty:row.qty,rate:row.price,manualPrice:row.manualPrice?'Y':'N',
                         total:(ti?.taxableAmount != null ? ti.taxableAmount : row.price*row.qty-row.discount),tax:(ti?.totalTaxAmount ?: 0),discount:row.discount,
                         uom:['OTH_ea':'Nos','WT_kg':'kg','WT_g':'g','VLIQ_L':'L','VLIQ_ml':'ml'][row.product.amountUomId] ?: ''])
                 }
