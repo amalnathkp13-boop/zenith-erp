@@ -114,6 +114,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await invoke('kitchenSend',{posTransactionId:posCart.transactionId,items:JSON.stringify([{productId:'POS_QA_A_P18',quantity:1}])});
   check('shared POS send records the terminal so the shop policy follows the ticket',q(`SELECT terminal_id FROM kitchen_order_ticket WHERE transaction_id='${posCart.transactionId}'`)[0]?.terminal_id===terminalId);
   await invoke('void',{transactionId:posCart.transactionId});
+  await require('./verify-kot-idle.cjs')({browser:a.c.browser(),base,check,q,sessionId});
  } catch(error) {
   console.error('KOT gateway state',page.url(),(await page.locator('body').innerText()).slice(-1800));
   if(out)await page.screenshot({path:require('node:path').join(out,'kot-gateway-failure.png')});
