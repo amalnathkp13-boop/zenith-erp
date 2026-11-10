@@ -9,8 +9,12 @@ module.exports=async function({browser,base,check,q,sessionId}) {
    await page.goto(base+'/'+shell+'/zenith/kot/KotBilling?sessionId='+sessionId);
    await page.waitForFunction(()=>window.__zIdleLogout&&document.getElementById('kb-wrap')?.dataset.ready);
    if(grid) {
-    await page.locator('.kg-modes summary').click();
-    await page.locator('[data-kb-view=grid]').click();
+    const gridToggle=page.locator('#kb-view-grid');
+    if(await gridToggle.isVisible()) await gridToggle.click();
+    else {
+     await page.locator('.kg-modes summary').click();
+     await page.locator('[data-kb-view=grid]').click();
+    }
     await page.locator('#kb-product-grid').waitFor();
    }
    await page.clock.pauseAt(new Date(await page.evaluate(()=>Date.now())+1000));
