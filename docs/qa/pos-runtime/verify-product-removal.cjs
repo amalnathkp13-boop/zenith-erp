@@ -57,6 +57,7 @@ module.exports = async function ({a, foreign, base, check, q, invoke, post}) {
   (await lookup()).some(p => p.productId === id) && (await menu()).products.some(p => p.id === id));
  const deleteFromScreen = async (productId, shell) => {
   await a.p.goto(inventoryUrl(shell) + '/EditProduct?productId=' + productId);
+  await a.p.locator('#productEditor[data-bound="true"]').waitFor();
   const button = a.p.getByRole('button',{name:'Delete Product',exact:true});
   let prompt;
   a.p.once('dialog', dialog => { prompt = dialog.message(); return dialog.accept(); });
