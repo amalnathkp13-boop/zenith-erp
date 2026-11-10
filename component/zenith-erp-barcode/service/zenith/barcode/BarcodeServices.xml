@@ -356,7 +356,8 @@ ec.entity.find('zenith.erp.barcode.BarcodeLabel').condition('organizationPartyId
             if(ids.size()>1){ambiguous=true;return}
             if(ids.size()!=1)return
             def product=ec.entity.find('mantle.product.Product').condition('ownerPartyId',org).condition('productId',ids.first()).one()
-            if(!product || product.ownerPartyId!=org)return
+            if(!product || product.ownerPartyId!=org ||
+                (product.salesDiscontinuationDate && product.salesDiscontinuationDate <= ec.user.nowTimestamp))return
             found=true;productId=product.productId
         ]]></script></actions>
     </service>

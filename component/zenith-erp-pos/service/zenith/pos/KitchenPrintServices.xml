@@ -57,6 +57,9 @@
                     BigDecimal qty=null
                     try { qty=new BigDecimal(String.valueOf(item instanceof Map ? item.quantity : null)) } catch(Exception ignored) { }
                     if (!p || p.ownerPartyId!=scope.organizationPartyId || p.productTypeEnumId!='PtAsset' || qty==null || qty<=0 || qty>1000000) { ec.message.addError('The order contains an invalid product or quantity.'); return }
+                    if (p.salesDiscontinuationDate && p.salesDiscontinuationDate <= ec.user.nowTimestamp) {
+                        ec.message.addError('A product was removed from the active catalogue. Refresh the menu and try again.'); return
+                    }
                     def price=p.mrpAmount as BigDecimal
                     def mp=mode ? ec.service.sync().name('zenith.pos.PosServices.resolve#PosModePrice')
                         .parameters([productId:p.productId,salesModeId:salesModeId,product:p]).call() : [:]

@@ -228,6 +228,7 @@
                     <search-form-inputs skip-fields="ownerPartyId" input-fields-map="catalogInputs" default-order-by="productName,pseudoId,productId"/>
                     <!-- ZE-SALES-014 f/u: org-isolate CSV/XLSX export (standalone render bypasses the MANTLE_ACTIVE_ORG authz filter) -->
                     <econdition field-name="ownerPartyId" from="catalogOrgId"/>
+                    <date-filter from-field-name="salesIntroductionDate" thru-field-name="salesDiscontinuationDate"/>
                     <econdition-object field="catalogSearchCondition"/>
                     <econdition-object field="catalogFilterCondition"/>
                 </entity-find>

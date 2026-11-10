@@ -373,6 +373,7 @@
                 } else {
                     def products=ec.entity.find('mantle.product.Product')
                         .condition([ownerPartyId:scope.organizationPartyId,productTypeEnumId:'PtAsset'])
+                        .conditionDate('salesIntroductionDate','salesDiscontinuationDate',ec.user.nowTimestamp)
                     def categoryId=ec.context.categoryId
                     if(categoryId) {
                         def category=ec.entity.find('mantle.product.category.ProductCategory')
