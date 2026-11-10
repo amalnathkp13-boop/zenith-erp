@@ -1,5 +1,39 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
+    <!-- Callers pass the organization established by their access check. -->
+    <service verb="get" noun="OrganizationModes" authenticate="true">
+        <in-parameters><parameter name="organizationPartyId" required="true"/></in-parameters>
+        <out-parameters><parameter name="modes" type="List"/></out-parameters>
+        <actions><script><![CDATA[
+            import org.moqui.entity.EntityCondition
+            modes = []
+            if (!ec.user.isInGroup('ADMIN') && ec.user.context.activeOrgId != organizationPartyId) return
+            def cf = ec.entity.conditionFactory
+            def equals = EntityCondition.ComparisonOperator.EQUALS
+            def candidates = ec.entity.find('zenith.erp.pos.PosSalesMode').condition('isActive','Y')
+                .condition(cf.makeCondition([
+                    cf.makeCondition('organizationPartyId',equals,organizationPartyId),
+                    cf.makeCondition('organizationPartyId',equals,null)
+                ], EntityCondition.JoinOperator.OR)).orderBy('-isDefault,modeName,salesModeId').disableAuthz().list()
+            def defaults = ['RETAIL','WHOLESALE']
+            def removed = ec.entity.find('zenith.erp.pos.PosSalesModeOrgRemoval').condition('organizationPartyId',organizationPartyId)
+                .selectField('salesModeId').disableAuthz().list()*.salesModeId as Set
+            def legacy = candidates.findAll { !it.organizationPartyId && !defaults.contains(it.salesModeId) && !removed.contains(it.salesModeId) }*.salesModeId
+            def configured = [] as Set
+            if (legacy) {
+                // Old terminal mappings may have been auto-populated. Keep only deliberately configured shared extras.
+                for (def entityName in ['zenith.erp.pos.PosSalesModeOrgConfig','zenith.erp.pos.PosProductModePrice']) {
+                    configured.addAll(ec.entity.find(entityName).condition('organizationPartyId',organizationPartyId)
+                        .condition('salesModeId','in',legacy).selectField('salesModeId').distinct(true).disableAuthz().list()*.salesModeId)
+                }
+            }
+            def ownedDefault = candidates.any { it.organizationPartyId == organizationPartyId && it.isDefault == 'Y' }
+            modes = candidates.findAll {
+                (it.organizationPartyId || defaults.contains(it.salesModeId) || configured.contains(it.salesModeId)) &&
+                (!removed.contains(it.salesModeId) || (it.salesModeId == 'RETAIL' && !ownedDefault))
+            }
+        ]]></script></actions>
+    </service>
     <service verb="get" noun="TerminalModes">
         <in-parameters><parameter name="terminalId" required="true"/></in-parameters>
         <out-parameters><parameter name="modes" type="List"/></out-parameters>
@@ -7,20 +41,17 @@
             <set field="modes" from="[]"/>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[terminalId:terminalId]" out-map="access"/>
             <if condition="!access.allowed"><return/></if>
+            <service-call name="zenith.pos.PosModeServices.get#OrganizationModes"
+                in-map="[organizationPartyId:access.organizationPartyId]" out-map="organizationModes"/>
             <script><![CDATA[
                 def terminal = ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',terminalId).one()
                 def removed = ec.entity.find('zenith.erp.pos.PosSalesModeShop')
                     .condition('organizationPartyId',access.organizationPartyId).condition('facilityId',terminal.facilityId).list()*.salesModeId as Set
-                removed.addAll(ec.entity.find('zenith.erp.pos.PosSalesModeOrgRemoval')
-                    .condition('organizationPartyId',access.organizationPartyId).list()*.salesModeId)
                 def assigned = ec.entity.find('zenith.erp.pos.PosTerminalSalesMode')
                     .condition('terminalId',terminalId).condition('isActive','Y').list()*.salesModeId as Set
-                def activeModes = ec.entity.find('zenith.erp.pos.PosSalesMode').condition('isActive','Y').orderBy('isDefault,modeName').list()
-                def ownDefault = activeModes.any { it.organizationPartyId == access.organizationPartyId && it.isDefault == 'Y' }
-                modes = activeModes.findAll {
-                    (!it.organizationPartyId || it.organizationPartyId == access.organizationPartyId) &&
-                    !(ownDefault && !it.organizationPartyId && it.isDefault == 'Y' && removed.contains(it.salesModeId)) &&
-                    (it.isDefault == 'Y' || ((!assigned || assigned.contains(it.salesModeId)) && !removed.contains(it.salesModeId)))
+                assigned.retainAll(organizationModes.modes*.salesModeId)
+                modes = organizationModes.modes.findAll {
+                    it.isDefault == 'Y' || ((!assigned || assigned.contains(it.salesModeId)) && !removed.contains(it.salesModeId))
                 }
             ]]></script>
         </actions>

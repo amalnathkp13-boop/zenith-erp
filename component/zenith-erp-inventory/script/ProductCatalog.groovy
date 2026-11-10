@@ -71,7 +71,8 @@ def cf = ef.conditionFactory
 def condition = { field, operator, value -> cf.makeCondition(field, operator, value) }
 def and = { conditions -> cf.makeCondition(conditions, EntityCondition.AND) }
 def or = { conditions -> cf.makeCondition(conditions, EntityCondition.OR) }
-def catalog = { ef.find(view).condition('ownerPartyId', catalogOrgId) }
+// Exclude products removed from the active catalogue (salesDiscontinuationDate reached), matching the POS/sales paths.
+def catalog = { ef.find(view).condition('ownerPartyId', catalogOrgId).conditionDate('salesIntroductionDate', 'salesDiscontinuationDate', ec.user.nowTimestamp) }
 def categories = { ef.find('mantle.product.category.ProductCategory').condition('ownerPartyId', catalogOrgId) }
 if (includeFilters) {
     catalogData.filters = [

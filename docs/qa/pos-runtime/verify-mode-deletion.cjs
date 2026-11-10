@@ -36,6 +36,19 @@ module.exports = async ({a,foreign,base,check,q,invoke,post,out,sessionId,accoun
   await post('SalesMode','deleteMode',{salesModeId:id},foreign);
   check(shell+' foreign organization cannot delete an owned definition',q(`SELECT is_active FROM pos_sales_mode WHERE sales_mode_id='${id}'`)[0].is_active==='Y');
   const p=await a.c.newPage();await p.goto(`${base}/${shell}/zenith/pos/SalesMode`,{waitUntil:'networkidle'});
+  const legacyName='Disposable unconfigured legacy';
+  let options;
+  if (shell==='apps') {
+   options=await p.locator('.smode-assign select[name=salesModeId] option').allTextContents();
+  } else {
+   await p.locator('.smode-assign .q-select').nth(1).click();
+   await p.getByRole('option',{name:'Retail',exact:true}).waitFor();
+   options=await p.getByRole('option').allTextContents();
+   await p.keyboard.press('Escape');
+  }
+  check(shell+' hides unconfigured shared modes from cards and terminal assignments',
+   options.some(text=>text.trim()==='Retail')&&options.some(text=>text.trim()==='Wholesale')&&
+   !options.some(text=>text.trim()===legacyName)&&await p.locator('.smode-tile').filter({hasText:legacyName}).count()===0);
   let card=p.locator('.smode-tile').filter({hasText:name});
   await card.locator('.smode-menu summary').click();
   await card.locator('.smode-menu').getByRole('button',{name:'Remove from selected shops',exact:true}).click();

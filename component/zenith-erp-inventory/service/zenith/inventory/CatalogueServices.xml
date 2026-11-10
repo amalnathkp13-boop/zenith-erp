@@ -82,6 +82,9 @@
                     ec.message.addError('Choose a catalogue and product belonging to the selected organization.'); return
                 }
                 def now = ec.user.nowTimestamp
+                if (product.salesDiscontinuationDate && product.salesDiscontinuationDate <= now) {
+                    ec.message.addError('This product has been removed from the active catalogue.'); return
+                }
                 def members = ec.entity.find('mantle.product.category.ProductCategoryMember')
                         .condition([productCategoryId:productCategoryId,productId:productId]).disableAuthz().forUpdate(true).list()
                 if (members.any { it.fromDate <= now && (it.thruDate == null || it.thruDate > now) }) {

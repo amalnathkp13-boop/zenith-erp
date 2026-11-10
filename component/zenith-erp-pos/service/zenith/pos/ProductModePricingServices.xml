@@ -180,20 +180,17 @@
                 .condition([productId:productId, ownerPartyId:orgId]).disableAuthz().one() : null
             if (productId && !product) return
 
-            def removed = ec.entity.find('zenith.erp.pos.PosSalesModeOrgRemoval').condition('organizationPartyId',orgId)
-                .disableAuthz().list()*.salesModeId as Set
             def overrides = product ? ec.entity.find('zenith.erp.pos.PosProductModePrice')
                 .condition('productId',productId).disableAuthz().list()
                 .findAll { !it.organizationPartyId || it.organizationPartyId == orgId }
                 .collectEntries { [(it.salesModeId):it.price] } : [:]
-            modes = ec.entity.find('zenith.erp.pos.PosSalesMode').condition('isActive','Y')
-                .orderBy('-isDefault,modeName,salesModeId').disableAuthz().list().findAll {
-                    (!it.organizationPartyId || it.organizationPartyId == orgId) && !removed.contains(it.salesModeId)
-                }.collect { mode ->
-                    def override = overrides[mode.salesModeId]
-                    [salesModeId:mode.salesModeId, modeName:mode.modeName, priceOverride:override,
-                     effectivePrice:override != null ? override : product?.mrpAmount]
-                }
+            def availableModes = ec.service.sync().name('zenith.pos.PosModeServices.get#OrganizationModes')
+                .parameter('organizationPartyId',orgId).disableAuthz().call().modes ?: []
+            modes = availableModes.collect { mode ->
+                def override = overrides[mode.salesModeId]
+                [salesModeId:mode.salesModeId, modeName:mode.modeName, priceOverride:override,
+                 effectivePrice:override != null ? override : product?.mrpAmount]
+            }
             if (product) generatedBarcode = ec.entity.find('zenith.erp.barcode.ProductBarcode')
                 .condition([productId:productId, organizationPartyId:orgId, isPrimary:'Y', isActive:'Y'])
                 .orderBy('barcodeId').disableAuthz().limit(1).one()?.barcodeValue

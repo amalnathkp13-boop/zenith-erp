@@ -20,20 +20,21 @@
                     if (!p.productId) { ec.web.sendJsonResponse([success:false, error:'Missing product']); return }
                     def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId','pos').call()
                     if (access?.canWrite != true) { ec.web.sendJsonResponse([success:false, error:'You cannot change POS prices.']); return }
-                    // The active-org filter does not apply in transitions. Verify the product and every mode.
-                    def _ppAo = ec.user.getPreference('ACTIVE_ORGANIZATION')
-                    def _ppOwn = ec.entity.find("mantle.product.Product").condition("productId", p.productId).disableAuthz().one()?.ownerPartyId
-                    if (!_ppOwn) { ec.web.sendJsonResponse([success:false, error:'Product not found.']); return }
-                    if (!ec.user.isInGroup('ADMIN')) {
-                        if (!_ppAo || _ppAo == '_NA_' || _ppOwn != _ppAo) { ec.web.sendJsonResponse([success:false, error:'You do not have access to this product.']); return }
+                    def scope = ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess')
+                        .parameter('productId',p.productId).call()
+                    if (!scope.allowed) {
+                        ec.message.clearErrors(); ec.web.sendJsonResponse([success:false, error:'You do not have access to this product.']); return
                     }
+                    def posOrg = scope.organizationPartyId
                     def rawPrices = new groovy.json.JsonSlurper().parseText((p.modePricesJson ?: '{}').toString())
                     if (!(rawPrices instanceof Map) || !rawPrices || rawPrices.size() > 30) { ec.web.sendJsonResponse([success:false, error:'Select at least one editable sales mode.']); return }
                     def rawThresholds = new groovy.json.JsonSlurper().parseText((p.modeThresholdsJson ?: '{}').toString())
                     if (!(rawThresholds instanceof Map) || rawThresholds.keySet().any { it != 'WHOLESALE' }) { ec.web.sendJsonResponse([success:false, error:'Invalid quantity-break mode.']); return }
-                    def modeList = ec.entity.find('zenith.erp.pos.PosSalesMode').condition('salesModeId','in',rawPrices.keySet().toList()).list()
-                    def byId = modeList.collectEntries { [(it.salesModeId):it] }
-                    if (byId.size() != rawPrices.size() || byId.values().any { it.isActive != 'Y' || (it.organizationPartyId && it.organizationPartyId != _ppOwn) || (it.salesModeId != 'RETAIL' && it.priceSource != 'PpsFixedProduct') }) {
+                    ec.entity.find('mantle.party.Party').condition('partyId',posOrg).disableAuthz().forUpdate(true).one()
+                    def availableModes = ec.service.sync().name('zenith.pos.PosModeServices.get#OrganizationModes')
+                        .parameter('organizationPartyId',posOrg).call().modes ?: []
+                    def byId = availableModes.collectEntries { [(it.salesModeId):it] }
+                    if (rawPrices.keySet().any { id -> !byId[id] || (id != 'RETAIL' && byId[id].priceSource != 'PpsFixedProduct') }) {
                         ec.web.sendJsonResponse([success:false, error:'A selected sales mode cannot be priced for this product.']); return
                     }
                     if (rawThresholds && !rawPrices.containsKey('WHOLESALE')) { ec.web.sendJsonResponse([success:false, error:'Select Wholesale to set its quantity break.']); return }
@@ -47,7 +48,6 @@
                     if (qtyText && !(qtyText ==~ /\d+/)) { ec.web.sendJsonResponse([success:false, error:'Auto-wholesale quantity must be a non-negative whole number.']); return }
                     def threshold = qtyText ? (qtyText as BigDecimal) : null
                     if (threshold != null && threshold > 0 && (!parsed.WHOLESALE || parsed.WHOLESALE <= 0)) { ec.web.sendJsonResponse([success:false, error:'Set a Wholesale price before enabling auto-wholesale.']); return }
-                    ec.entity.find('mantle.party.Party').condition('partyId',_ppOwn).disableAuthz().forUpdate(true).one()
                     // Hidden columns are absent from the request and cannot be changed by this row save.
                     parsed.each { id, price ->
                         if (id == 'RETAIL' && (price == null || price <= 0)) return
@@ -56,7 +56,7 @@
                         ec.service.sync().name('zenith.pos.PosServices.set#PosModePrice').parameters(args).call()
                     }
                     if (!ec.message.hasError()) ec.service.sync().name('zenith.pos.ProductModePricingServices.mark#CatalogChanged')
-                        .parameter('organizationPartyId',_ppOwn).disableAuthz().call()
+                        .parameter('organizationPartyId',posOrg).disableAuthz().call()
                     if (ec.message.hasError()) {
                         def em = ec.message.errorsString
                         ec.transaction.setRollbackOnly('POS price save failed', new IllegalStateException(em))
@@ -84,9 +84,9 @@
         def access = ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess').call()
         if (!access?.allowed) return
         def ids = (ec.web.parameters.modeIds ?: '').toString().split(',').collect { it.trim() }.findAll { it }.unique()
-        def modes = ids && ids.size() <= 100 ? ec.entity.find('zenith.erp.pos.PosSalesMode')
-                .condition('salesModeId','in',ids).condition('isActive','Y').list() : []
-        if (!ids || modes.size() != ids.size() || modes.any { it.organizationPartyId && it.organizationPartyId != access.organizationPartyId }) {
+        def availableModes = ids && ids.size() <= 100 ? ec.service.sync().name('zenith.pos.PosModeServices.get#OrganizationModes')
+            .parameter('organizationPartyId',access.organizationPartyId).call().modes : []
+        if (!ids || !(availableModes*.salesModeId ?: []).containsAll(ids)) {
             ec.web.sendJsonResponse([success:false,error:'Select at least one available sales mode.']); return
         }
         ec.user.setPreference('POS_PRODUCT_PRICE_MODES_' + access.organizationPartyId,ids.join(','))
@@ -99,21 +99,21 @@
             <script><![CDATA[
                 def p = ec.web.parameters
                 def _searchTerm = p.searchTerm; def _catId = p.catId; def _pricingStatus = p.pricingStatus; def _gstFilter = p.gstFilter
-                def posOrg = ec.user.getPreference('ACTIVE_ORGANIZATION')
-                def removedIds = ec.entity.find('zenith.erp.pos.PosSalesModeOrgRemoval').condition('organizationPartyId',posOrg).list()*.salesModeId as Set
-                def availableModes = ec.entity.find('zenith.erp.pos.PosSalesMode').condition('isActive','Y').list()
-                    .findAll { (!it.organizationPartyId || it.organizationPartyId == posOrg) && !removedIds.contains(it.salesModeId) }
-                    .sort { a,b -> ((a.salesModeId == 'RETAIL') ? 0 : (a.salesModeId == 'WHOLESALE' ? 1 : 2)) <=> ((b.salesModeId == 'RETAIL') ? 0 : (b.salesModeId == 'WHOLESALE' ? 1 : 2)) ?: (a.modeName ?: '') <=> (b.modeName ?: '') }
+                def access = ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess').call()
+                if (!access.allowed) return
+                def posOrg = access.organizationPartyId
+                def availableModes = (ec.service.sync().name('zenith.pos.PosModeServices.get#OrganizationModes')
+                    .parameter('organizationPartyId',posOrg).call().modes ?: [])
+                    .sort(false) { it.salesModeId == 'RETAIL' ? 0 : it.salesModeId == 'WHOLESALE' ? 1 : 2 }
                 def requested = (p.modeIds ?: ec.user.getPreference('POS_PRODUCT_PRICE_MODES_' + posOrg) ?: 'RETAIL,WHOLESALE').toString().split(',').collect { it.trim() }.findAll { it }.unique()
                 def selectedModes = availableModes.findAll { requested.contains(it.salesModeId) }
-                if (!selectedModes && availableModes) selectedModes = [availableModes[0]]
+                if (!selectedModes && availableModes) selectedModes = availableModes.findAll { it.salesModeId in ['RETAIL','WHOLESALE'] } ?: [availableModes[0]]
                 def catPIds = null
                 if (_catId) { catPIds = [] as Set; ec.entity.find("mantle.product.category.ProductCategoryMember").condition("productCategoryId", _catId).list().each { catPIds.add(it.productId) } }
                 def slab = [:]; try { ec.entity.find("zenith.erp.india.IndiaGstSlab").list().each { slab[it.gstSlabId] = it.gstRate } } catch (Exception ig) {}
                 def rateSlab = { pr -> (pr.gstSlabId && slab[pr.gstSlabId] != null) ? (slab[pr.gstSlabId] as BigDecimal) : null }
-                def pf = ec.entity.find("mantle.product.Product").condition("productTypeEnumId", "PtAsset")
-                if (posOrg) pf.condition("ownerPartyId", posOrg)
-                def cands = pf.orderBy("productName").limit(5000).list()
+                def cands = ec.entity.find("mantle.product.Product").condition("productTypeEnumId", "PtAsset")
+                    .condition("ownerPartyId", posOrg).orderBy("productName").limit(5000).list()
                 def tl = (_searchTerm ?: '').toLowerCase().trim()
                 def fl = cands.findAll { pr ->
                     (tl == '' || (pr.productName ?: '').toLowerCase().contains(tl) || (pr.pseudoId ?: '').toLowerCase().contains(tl)) &&
@@ -160,14 +160,14 @@
 
     <actions>
         <script><![CDATA[
-            def posOrg = ec.user.getPreference('ACTIVE_ORGANIZATION')
-            def removedIds = ec.entity.find('zenith.erp.pos.PosSalesModeOrgRemoval').condition('organizationPartyId',posOrg).list()*.salesModeId as Set
-            priceModeChoices = ec.entity.find('zenith.erp.pos.PosSalesMode').condition('isActive','Y').list()
-                .findAll { (!it.organizationPartyId || it.organizationPartyId == posOrg) && !removedIds.contains(it.salesModeId) }
-                .sort { a,b -> ((a.salesModeId == 'RETAIL') ? 0 : (a.salesModeId == 'WHOLESALE' ? 1 : 2)) <=> ((b.salesModeId == 'RETAIL') ? 0 : (b.salesModeId == 'WHOLESALE' ? 1 : 2)) ?: (a.modeName ?: '') <=> (b.modeName ?: '') }
+            def access = ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess').call()
+            def posOrg = access.allowed ? access.organizationPartyId : null
+            priceModeChoices = posOrg ? (ec.service.sync().name('zenith.pos.PosModeServices.get#OrganizationModes')
+                .parameter('organizationPartyId',posOrg).call().modes ?: [])
+                .sort(false) { it.salesModeId == 'RETAIL' ? 0 : it.salesModeId == 'WHOLESALE' ? 1 : 2 } : []
             def requestedIds = (modeIds ?: ec.user.getPreference('POS_PRODUCT_PRICE_MODES_' + posOrg) ?: 'RETAIL,WHOLESALE').toString().split(',').collect { it.trim() }.findAll { it }.unique()
             selectedPriceModes = priceModeChoices.findAll { requestedIds.contains(it.salesModeId) }
-            if (!selectedPriceModes && priceModeChoices) selectedPriceModes = [priceModeChoices[0]]
+            if (!selectedPriceModes && priceModeChoices) selectedPriceModes = priceModeChoices.findAll { it.salesModeId in ['RETAIL','WHOLESALE'] } ?: [priceModeChoices[0]]
             selectedModeIds = selectedPriceModes.collect { it.salesModeId }
             selectedModeIdsCsv = selectedModeIds.join(',')
             tableColumnCount = 5 + selectedPriceModes.size() + (selectedModeIds.contains('WHOLESALE') ? 1 : 0)
@@ -182,22 +182,19 @@
             try { if (pageIndex) pIdx = (pageIndex as Integer) } catch (Exception ig) { pIdx = 0 }
             if (pIdx < 0) pIdx = 0
 
-            // Categories for the filter dropdown (tenant-scoped when an org is active).
-            def catFinder = ec.entity.find("mantle.product.category.ProductCategory")
-            if (posOrg) catFinder.condition("ownerPartyId", posOrg)
-            categories = catFinder.orderBy("categoryName").list()
+            categories = posOrg ? ec.entity.find("mantle.product.category.ProductCategory")
+                .condition("ownerPartyId", posOrg).orderBy("categoryName").list() : []
 
             // Product ids that belong to the selected category (if filtering).
             def catProdIds = null
-            if (catId) {
+            if (posOrg && catId) {
                 catProdIds = [] as Set
                 ec.entity.find("mantle.product.category.ProductCategoryMember").condition("productCategoryId", catId).list().each { catProdIds.add(it.productId) }
             }
 
             // Load candidate products (tenant-scoped), then filter by search/category in memory.
-            def pf = ec.entity.find("mantle.product.Product").condition("productTypeEnumId", "PtAsset")
-            if (posOrg) pf.condition("ownerPartyId", posOrg)
-            def candidates = pf.orderBy("productName").limit(5000).list()
+            def candidates = posOrg ? ec.entity.find("mantle.product.Product").condition("productTypeEnumId", "PtAsset")
+                .condition("ownerPartyId", posOrg).orderBy("productName").limit(5000).list() : []
             // GST slab -> rate map (used by the GST filter, the average-GST stat card, and the rows; cheap, no HSN fallback).
             def slabRates = [:]
             try { ec.entity.find("zenith.erp.india.IndiaGstSlab").list().each { slabRates[it.gstSlabId] = it.gstRate } } catch (Exception ig) {}

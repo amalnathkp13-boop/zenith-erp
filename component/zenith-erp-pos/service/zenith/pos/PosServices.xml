@@ -459,12 +459,14 @@
             <if condition="txn.statusId != 'PtCreated'">
                 <return error="true" message="Transaction is already completed or voided"/></if>
 
+            <!-- Get product details -->
+            <entity-find-one entity-name="mantle.product.Product" value-field="product" for-update="true">
+                <field-map field-name="productId"/></entity-find-one>
+            <if condition="product?.salesDiscontinuationDate &amp;&amp; product.salesDiscontinuationDate &lt;= ec.user.nowTimestamp">
+                <return error="true" message="This product has been removed from the active catalogue."/></if>
             <service-call name="zenith.pos.PosStockServices.check#PosCartStock"
                 in-map="[transactionId:transactionId, productId:productId, quantityDelta:quantity]"/>
             <if condition="ec.message.hasError()"><return/></if>
-            <!-- Get product details -->
-            <entity-find-one entity-name="mantle.product.Product" value-field="product">
-                <field-map field-name="productId"/></entity-find-one>
             <set field="productName" from="product?.printName ?: product?.productName ?: productId"/>
             <!-- Look up session/terminal up-front: needed for org-aware pricing AND tax -->
             <entity-find-one entity-name="zenith.erp.pos.PosSession" value-field="session">
@@ -1753,6 +1755,7 @@
             <if condition="!organizationPartyId"><return/></if>
             <entity-find entity-name="mantle.product.Product" list="productList">
                 <econdition field-name="ownerPartyId" from="organizationPartyId"/>
+                <date-filter from-field-name="salesIntroductionDate" thru-field-name="salesDiscontinuationDate"/>
             </entity-find>
             <entity-find-one entity-name="zenith.erp.pos.PosTerminal" value-field="_catalogTerminal"><field-map field-name="terminalId"/></entity-find-one>
             <entity-find entity-name="zenith.erp.india.IndiaGstConfig" list="_catalogGst" limit="1"><econdition field-name="organizationPartyId"/></entity-find>

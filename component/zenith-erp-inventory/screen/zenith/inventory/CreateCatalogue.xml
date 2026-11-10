@@ -45,7 +45,8 @@
             catalogueRows = []; memberView = []; selCat = null; eligibleProducts = []
             if (selOrg) {
                 def cats = ec.entity.find('mantle.product.category.ProductCategory').condition('ownerPartyId',selOrg).orderBy('categoryName').list()
-                eligibleProducts = ec.entity.find('mantle.product.Product').condition('ownerPartyId',selOrg).orderBy('productName').list()
+                eligibleProducts = ec.entity.find('mantle.product.Product').condition('ownerPartyId',selOrg)
+                    .conditionDate('salesIntroductionDate','salesDiscontinuationDate',ec.user.nowTimestamp).orderBy('productName').list()
                 def ownProducts = eligibleProducts.collectEntries { [(it.productId):it] }
                 def members = cats ? ec.entity.find('mantle.product.category.ProductCategoryMember')
                         .condition('productCategoryId','in',cats*.productCategoryId).conditionDate('fromDate','thruDate',ec.user.nowTimestamp).orderBy('sequenceNum,productId').list() : []
@@ -168,7 +169,7 @@
                                             <entity-options key="${productId}" text="${productName}">
                                                 <entity-find entity-name="mantle.product.Product">
                                                     <econdition field-name="ownerPartyId" from="selOrg"/>
-
+                                                    <date-filter from-field-name="salesIntroductionDate" thru-field-name="salesDiscontinuationDate"/>
                                                     <order-by field-name="productName"/>
                                                 </entity-find>
                                             </entity-options>
