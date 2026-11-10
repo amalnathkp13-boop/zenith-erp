@@ -439,9 +439,7 @@
         for (var k in SUBNAV) { if (rel.indexOf(k) === 0 && k.length > klen) { key = k; klen = k.length; } }
         subBar.innerHTML = '';
         if (!key) { subBar.classList.remove('show'); document.body.classList.remove('zq-has-subnav'); syncHeaderLayout(); document.dispatchEvent(new Event('zc:subnav-updated')); return; }
-        var mount = key.slice(1), groups = [key];
-        var enabled = tenantMods();
-        if (key === '/kot' && (!enabled || enabled.indexOf('pos') >= 0)) groups.push('/pos');
+        var mount = key.slice(1), tabs = SUBNAV[key];
         subBar.setAttribute('data-mod', mount);  // ZE-CONTACTS-DS: lets CSS scope the active-tab pill to Contacts only
         // ZE-NAV-ALIAS: a detail/edit screen (menu-include=false, e.g. EditStockTransfer) shares no URL prefix with its
         // list tab, so no tab would highlight. Map it to the parent list route for active-state matching only (the group
@@ -453,20 +451,18 @@
         // Manager are never posOnly, so they keep every tab.
         var posCash = null;
         var config = document.getElementById('zenith-saas-cfg');
-        if (config && config.getAttribute('data-pos-only') === 'true') posCash = { Dashboard: 1, Terminal: 1, PosTransactions: 1, DailySummary: 1, PosSessions: 1, CreditBills: 1, CashEntry: 1 };
-        subBar.appendChild(el('span', 'zqsub-title', SUBNAV[key][0]));
+        if (mount === 'pos' && config && config.getAttribute('data-pos-only') === 'true') posCash = { Dashboard: 1, Terminal: 1, PosTransactions: 1, DailySummary: 1, PosSessions: 1, CreditBills: 1, CashEntry: 1 };
+        subBar.appendChild(el('span', 'zqsub-title', tabs[0]));
         var active = null, alen = -1;
-        groups.forEach(function (group) {
-            SUBNAV[group].slice(1).forEach(function (pair) {
-                var ci = pair.indexOf(':'), seg = pair.slice(0, ci), label = pair.slice(ci + 1);
-                var match = group + '/' + seg;
-                if ((group === '/pos' && posCash && !posCash[seg]) || !roleAllows(match)) return;
-                var a = el('a', 'zqsub-tab', label);
-                a.href = match === '/pos/Terminal' ? '/apps/zenith' + match : '/qapps/zenith' + match;
-                a.setAttribute('data-match', match);
-                if (relA.indexOf(match) === 0 && match.length > alen) { active = a; alen = match.length; }
-                subBar.appendChild(a);
-            });
+        tabs.slice(1).forEach(function (pair) {
+            var ci = pair.indexOf(':'), seg = pair.slice(0, ci), label = pair.slice(ci + 1);
+            var match = key + '/' + seg;
+            if ((posCash && !posCash[seg]) || !roleAllows(match)) return;
+            var a = el('a', 'zqsub-tab', label);
+            a.href = match === '/pos/Terminal' ? '/apps/zenith' + match : '/qapps/zenith' + match;
+            a.setAttribute('data-match', match);
+            if (relA.indexOf(match) === 0 && match.length > alen) { active = a; alen = match.length; }
+            subBar.appendChild(a);
         });
         if (active) active.classList.add('on');
         subBar.classList.add('show'); document.body.classList.add('zq-has-subnav'); syncHeaderLayout();

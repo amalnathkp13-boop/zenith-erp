@@ -620,11 +620,15 @@
         </member-entity>
         <alias entity-alias="PX" name="transactionId"/>
         <alias entity-alias="PX" name="organizationPartyId"/>
+        <alias entity-alias="PX" name="sessionId"/>
         <alias entity-alias="PX" name="entryDate"/>
         <alias entity-alias="PX" name="statusId"/>
         <alias entity-alias="PX" name="customerPartyId"/>
         <alias entity-alias="PX" name="payableAmount"/>
         <alias entity-alias="PX" name="grandTotal"/>
+        <alias entity-alias="KOT" name="kotId"/>
+        <!-- Keep the KOT join when a query projects only transaction fields. -->
+        <entity-condition><econdition field-name="kotId" operator="is-not-null"/></entity-condition>
     </view-entity>
 
     <view-entity entity-name="KotView" package="zenith.erp.pos">

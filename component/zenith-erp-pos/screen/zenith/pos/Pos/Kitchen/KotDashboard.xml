@@ -4,16 +4,18 @@
         default-menu-title="KOT Dashboard" default-menu-index="0">
 
     <parameter name="dashDate"/>
-    <transition name="goReports"><default-response url="../../Reports"/></transition>
-    <transition name="goBilling"><default-response url="KotBilling"/></transition>
 
     <actions>
         <script><![CDATA[
             import java.math.RoundingMode
             import java.util.Calendar
             import groovy.json.JsonOutput
+            import org.moqui.entity.EntityCondition
             org = posOrganizationPartyId
             if (!org || org == '_NA_') org = null
+            def scopedOrg = org ?: '__NO_ORGANIZATION__'
+            def shopScope = ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope')
+                .parameter('includePosScope', true).call()
 
             def inr = { amt, dec = 2 ->
                 def n = ((amt ?: 0) as BigDecimal).setScale(dec, RoundingMode.HALF_UP)
@@ -43,25 +45,46 @@
             def yStart = new java.sql.Timestamp(dayStart.getTime() - DAYMS)
             def yEnd = new java.sql.Timestamp(dayStart.getTime() - 1000L)
 
-            // Limit standalone KOT reporting to sales linked to a ticket in the same organization.
-            def kotOnly = kitchenModuleId == 'kot'
-            def salesEntity = kotOnly ? 'zenith.erp.pos.KotTransactionView' : 'zenith.erp.pos.PosTransaction'
+            // Both kitchen entry points report KOT-linked bills once, even if a sale has several tickets.
             def amt = { t -> (t.payableAmount ?: t.grandTotal ?: 0) as BigDecimal }
-            def findOrders = { s, e, completedOnly ->
-                def f = ec.entity.find(salesEntity)
+            def findBilledOrders = { s, e ->
+                def f = ec.entity.find('zenith.erp.pos.KotTransactionView')
                     .condition('entryDate', 'greater-equals', s).condition('entryDate', 'less-equals', e)
-                    .condition('organizationPartyId', org ?: '__NO_ORGANIZATION__')
-                    .selectFields(['transactionId', 'entryDate', 'statusId', 'customerPartyId', 'payableAmount', 'grandTotal'])
-                if (completedOnly) f.condition('statusId', 'PtCompleted')
-                if (kotOnly) f.distinct(true) // Several tickets may be linked to one sale.
+                    .condition('organizationPartyId', scopedOrg).condition('statusId', 'PtCompleted')
+                    .selectFields(['transactionId', 'entryDate', 'customerPartyId', 'payableAmount', 'grandTotal'])
+                    .distinct(true)
+                if (shopScope.activeShopId) f.condition('sessionId', 'in', shopScope.sessionIds ?: ['__NONE__'])
                 return f.orderBy('entryDate').list()
             }
 
-            def todayOrders = findOrders(dayStart, dayEnd, false)
-            completedTxns = todayOrders.findAll { it.statusId == 'PtCompleted' }
+            def ticketShopCondition = null
+            if (shopScope.activeShopId) {
+                def cf = ec.entity.conditionFactory
+                def terminalMatch = cf.makeCondition('terminalId', EntityCondition.IN, shopScope.terminalIds ?: ['__NONE__'])
+                def shopTables = ec.entity.find('zenith.erp.pos.RestaurantTable').condition('facilityId', shopScope.activeShopId)
+                    .selectField('tableId').list()*.tableId
+                // A legacy ticket without a terminal can still belong to a shop through its table.
+                ticketShopCondition = shopTables ? cf.makeCondition([terminalMatch, cf.makeCondition([
+                    cf.makeCondition('terminalId', EntityCondition.EQUALS, null),
+                    cf.makeCondition('tableId', EntityCondition.IN, shopTables)
+                ], EntityCondition.AND)], EntityCondition.OR) : terminalMatch
+            }
+            def activeStatuses = ['KotNew', 'KotPreparing', 'KotReady']
+            def ticketQuery = { statuses ->
+                def f = ec.entity.find('zenith.erp.pos.KitchenOrderTicket')
+                    .condition('organizationPartyId', scopedOrg).condition('statusId', 'in', statuses)
+                if (ticketShopCondition) f.condition(ticketShopCondition)
+                return f
+            }
+            def countTickets = { s, e ->
+                ticketQuery(activeStatuses + ['KotServed', 'KotCancelled'])
+                    .condition('kotDate', 'greater-equals', s).condition('kotDate', 'less-equals', e).count()
+            }
+
+            completedTxns = findBilledOrders(dayStart, dayEnd)
             def totalSalesAmt = completedTxns.sum { amt(it) } ?: BigDecimal.ZERO
             completedOrders = completedTxns.size()
-            totalOrdersAll = todayOrders.size()
+            totalKitchenTickets = countTickets(dayStart, dayEnd)
             def cset = new HashSet(); def walk = 0
             completedTxns.each { t -> if (t.customerPartyId) cset.add(t.customerPartyId) else walk++ }
             customers = cset.size() + walk
@@ -70,16 +93,12 @@
             if (dashDate == todayStr) { def hc = Calendar.getInstance(ec.user.timeZone); hc.setTime(now); hoursElapsed = hc.get(Calendar.HOUR_OF_DAY) + 1 }
             def ophAmt = (completedOrders as BigDecimal).divide((Math.max(1, hoursElapsed)) as BigDecimal, 1, RoundingMode.HALF_UP)
 
-            def akf = ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('statusId', 'in', ['KotNew', 'KotPreparing', 'KotReady'])
-            akf.condition('organizationPartyId', org ?: '__NO_ORGANIZATION__')
-            ordersInProgress = akf.count() as int
+            ordersInProgress = ticketQuery(activeStatuses).count()
 
             // yesterday
-            def yOrders = findOrders(yStart, yEnd, false)
-            def yTxns = yOrders.findAll { it.statusId == 'PtCompleted' }
+            def yTxns = findBilledOrders(yStart, yEnd)
             def ySales = yTxns.sum { amt(it) } ?: BigDecimal.ZERO
             def yCompleted = yTxns.size()
-            def yAll = yOrders.size()
             def ycset = new HashSet(); def ywalk = 0
             yTxns.each { t -> if (t.customerPartyId) ycset.add(t.customerPartyId) else ywalk++ }
             def yCustomers = ycset.size() + ywalk
@@ -95,7 +114,7 @@
             dSales = delta(totalSalesAmt, ySales)
             dCompleted = delta(completedOrders, yCompleted)
             dCustomers = delta(customers, yCustomers)
-            dTotalOrders = delta(totalOrdersAll, yAll)
+            dKitchenTickets = delta(totalKitchenTickets, countTickets(yStart, yEnd))
             dAov = delta(avgOrderAmt, yAov)
             dOph = delta(ophAmt, yOph)
 
@@ -130,7 +149,7 @@
             def todayAxis = ['12 AM', '4 AM', '8 AM', '12 PM', '4 PM', '8 PM', '12 AM']
 
             def monthStart = new java.sql.Timestamp(dayStart.getTime() - 29L * DAYMS)
-            def monthTxns = findOrders(monthStart, dayEnd, true)
+            def monthTxns = findBilledOrders(monthStart, dayEnd)
             def dayBucket = [:]
             monthTxns.each { t -> if (t.entryDate) { def ds = sdf.format(t.entryDate); dayBucket[ds] = (dayBucket[ds] ?: BigDecimal.ZERO) + amt(t) } }
             def dlabel = new java.text.SimpleDateFormat('d MMM'); dlabel.setTimeZone(ec.user.timeZone)
@@ -226,7 +245,7 @@
     <div class="kd-stat">
       <div class="kd-stat__h"><span class="kd-stat__label">Completed Orders</span><span class="kd-stat__help"><@ic 'help' 13/></span><span class="kd-stat__icon blue"><@ic 'clipcheck'/></span></div>
       <div class="kd-stat__value">${completedOrders}</div>
-      <div class="kd-stat__sub">Today's Completed Orders</div>
+      <div class="kd-stat__sub">Completed KOT bills on selected date</div>
       <@chg dCompleted 'kd-change'/>
     </div>
 
@@ -240,7 +259,7 @@
     <div class="kd-stat">
       <div class="kd-stat__h"><span class="kd-stat__label">Orders in Progress</span><span class="kd-stat__help"><@ic 'help' 13/></span><span class="kd-stat__icon pri"><@ic 'filetext'/></span></div>
       <div class="kd-stat__value">${ordersInProgress}</div>
-      <div class="kd-stat__sub">Active KOTs</div>
+      <div class="kd-stat__sub">Active KOTs now</div>
     </div>
   </section>
 
@@ -260,7 +279,7 @@
       </div>
       <div class="kd-axisx" id="kd-axis"></div>
       <div class="kd-mini">
-        <div class="kd-mini__c"><span class="kd-mini__icon blue"><@ic 'cart'/></span><div><div class="kd-mini__v">${totalOrdersAll}</div><div class="kd-mini__l">Total Orders</div><@chg dTotalOrders 'kd-mini__chg'/></div></div>
+        <div class="kd-mini__c"><span class="kd-mini__icon blue"><@ic 'cart'/></span><div><div class="kd-mini__v" data-kot-ticket-count>${totalKitchenTickets}</div><div class="kd-mini__l">Kitchen Tickets</div><@chg dKitchenTickets 'kd-mini__chg'/></div></div>
         <div class="kd-mini__c"><span class="kd-mini__icon pri"><@ic 'bag'/></span><div><div class="kd-mini__v">${avgOrderStr}</div><div class="kd-mini__l">Average Order Value</div><@chg dAov 'kd-mini__chg'/></div></div>
         <div class="kd-mini__c"><span class="kd-mini__icon yellow"><@ic 'trendup'/></span><div><div class="kd-mini__v">${ordersPerHourStr}</div><div class="kd-mini__l">Orders / Hour</div><@chg dOph 'kd-mini__chg'/></div></div>
       </div>
@@ -282,14 +301,10 @@
         </li>
         </#list>
       </ol>
-      <#if kitchenModuleId=='kot'>
-      <a class="kd-viewall" href="<#if (ec.web.request.requestURI!'')?starts_with('/qapps/')>/qapps<#else>/apps</#if>/zenith/kot/KotHistory">View KOT History <@ic 'chevr' 14/></a>
-      <#else>
-      <a class="kd-viewall" onclick="kdGo('goReports')">View All Dishes <@ic 'chevr' 14/></a>
-      </#if>
       <#else>
       <div class="kd-dishes__empty">No dishes sold for this day yet.</div>
       </#if>
+      <a class="kd-viewall" href="${sri.buildUrl('../KotHistory').url?html}">View KOT History <@ic 'chevr' 14/></a>
     </div>
   </section>
 

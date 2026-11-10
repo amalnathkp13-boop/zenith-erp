@@ -83,9 +83,9 @@
         </actions>
         <default-response url="."/>
     </transition>
-    <transition name="goTerminal"><default-response url="${kitchenModuleId == 'kot' ? '../../pos/Terminal' : '../../Terminal'}"/></transition>
-    <transition name="goTransactions"><default-response url="${kitchenModuleId == 'kot' ? '../../pos/PosTransactions' : '../../PosTransactions'}"/></transition>
-    <transition name="goDashboard"><default-response url="${kitchenModuleId == 'kot' ? '../../pos/Dashboard' : '../../Dashboard'}"/></transition>
+    <transition name="goTerminal"><default-response url="../KotBilling"/></transition>
+    <transition name="goTransactions"><default-response url="../KotHistory"/></transition>
+    <transition name="goDashboard"><default-response url="../KotDashboard"/></transition>
 
     <actions>
         <entity-find entity-name="mantle.facility.Facility" list="facilities">
@@ -355,7 +355,7 @@
           <div class="tm-actions">
             <button type="button" class="tm-abtn is-primary" data-billing-table="${tbl.tableId?html}" onclick="tmOpenBilling(this.dataset.billingTable)"><@ic 'plus' 14/> Open Billing</button>
             <#if ord?has_content>
-            <button type="button" class="tm-abtn" onclick="tmGo('goTransactions')"><@ic 'receipt' 14/> View Transactions</button>
+            <button type="button" class="tm-abtn" onclick="tmGo('goTransactions')"><@ic 'receipt' 14/> View KOT History</button>
             </#if>
             <#if modCanWrite>
             <button type="button" class="tm-abtn is-danger" onclick="tmPost('closeTable',{tableId:'${tbl.tableId}'})"><@ic 'xcircle' 14/> Close Table</button>

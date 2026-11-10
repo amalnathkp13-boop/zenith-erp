@@ -16,6 +16,17 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   maxRedirects:0,form:{ moquiSessionToken:actor.t,...values }
  });
  const completedOrders = page.locator('.kd-stat').filter({hasText:'Completed Orders'}).locator('.kd-stat__value');
+ const kitchenTickets = page.locator('[data-kot-ticket-count]');
+ const sales = page.locator('.kd-stat').filter({hasText:'Total Sales'}).locator('.kd-stat__value');
+ const dashboardRoutes = ['kot/KotDashboard','pos/Kitchen/KotDashboard'];
+ async function snapshotDashboard(route) {
+  await page.goto(base+'/apps/zenith/'+route);
+  return {
+   completed:Number(await completedOrders.innerText()),
+   tickets:Number(await kitchenTickets.innerText()),
+   sales:await sales.innerText()
+  };
+ }
  try {
   for (const shell of ['apps','qapps']) {
    const sidebar = page.locator(shell==='apps'?'#z-sidebar a[data-match="/kot"]':'#zq-sidebar a[data-match="/kot"]');
@@ -24,44 +35,78 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
    await page.goto(base+'/'+shell+'/zenith/pos/Dashboard');
    await strip.locator('a[data-match="/pos/Dashboard"]').waitFor();
    const posLinks = await links.evaluateAll(anchors=>anchors.map(a=>a.getAttribute('data-match')));
+   check(shell+' retains retail shortcuts in POS',
+    ['/pos/Terminal','/pos/Barcodes','/pos/BarcodeLabels'].every(link=>posLinks.includes(link)),{posLinks});
    await sidebar.click();
    await page.locator('#kd-wrap').waitFor();
    const activeSidebar = sidebar.and(page.locator('.on'));
    await activeSidebar.waitFor();
    check(shell+' opens KOT as its own sidebar module',await activeSidebar.isVisible(),{url:page.url()});
-   const kotLinks = await links.evaluateAll(anchors=>anchors.map(a=>a.getAttribute('data-match')));
-   check(shell+' keeps the six KOT tabs and adds every visible POS tab in order',
-    kotLinks.join('|')===[...tabs.map(([seg])=>'/kot/'+seg),...posLinks].join('|'),{kotLinks});
-   const shellSelector=shell==='apps'?'#z-sidebar':'#kitchen-page-frame';
+   const kotLinks = await links.evaluateAll(anchors=>anchors.map(a=>[a.getAttribute('data-match'),new URL(a.href).pathname]));
+   check(shell+' KOT navigation contains only the six kitchen tabs in order',
+    JSON.stringify(kotLinks)===JSON.stringify(tabs.map(([seg])=>['/kot/'+seg,'/'+shell+'/zenith/kot/'+seg])),{kotLinks});
+   const shellSelector=shell==='apps'?'#z-sidebar':'#zq-sidebar';
    await page.evaluate(selector=>{window.qaKotShell=document.querySelector(selector);},shellSelector);
    for (const [seg,name,content] of tabs.slice(1)) {
     await strip.getByRole('link',{name,exact:true}).click();
     await page.locator(content).waitFor();
-    check(shell+' opens '+name+' from KOT navigation',new URL(page.url()).pathname.endsWith('/kot/'+seg)&&await page.locator('#kitchen-tabs').count()===0);
+    const activeTab = strip.locator('a.on[data-match="/kot/'+seg+'"]');
+    await activeTab.waitFor();
+    check(shell+' opens '+name+' inside the KOT workspace',
+     new URL(page.url()).pathname==='/'+shell+'/zenith/kot/'+seg&&
+     await activeSidebar.isVisible()&&await activeTab.isVisible()&&
+     await page.locator('#kitchen-tabs').count()===0,{url:page.url()});
     check(shell+' keeps its shell mounted on '+name,await page.evaluate(selector=>window.qaKotShell===document.querySelector(selector),shellSelector));
    }
    if(out) await page.screenshot({path:path.join(out,shell+'-standalone-kot.png')});
    await strip.getByRole('link',{name:'KOT Billing',exact:true}).click();
    await page.locator('#kot-terminal-entry').waitFor();
-   await strip.locator('a[data-match="/pos/Dashboard"]').click();
-   await page.waitForURL('**/'+shell+'/zenith/pos/Dashboard');
-   await strip.locator('a[data-match="/pos/Dashboard"]').waitFor();
-   check(shell+' can leave the KOT terminal gateway using a POS submodule',await page.locator('#zk-route-status').count()===0);
-   await sidebar.click();
+   await strip.getByRole('link',{name:'KOT Dashboard',exact:true}).click();
    await page.locator('#kd-wrap').waitFor();
+   check(shell+' leaves the KOT terminal gateway for KOT Dashboard',await page.locator('#zk-route-status').count()===0&&await activeSidebar.isVisible());
    await strip.getByRole('link',{name:'KOT Billing',exact:true}).click();
    await page.locator('#kot-terminal-entry').waitFor();
    await page.locator((shell==='apps'?'#z-sidebar':'#zq-sidebar')+' a[data-match="/pos"]').click();
    await page.waitForURL('**/'+shell+'/zenith/pos/Dashboard');
    await strip.locator('a[data-match="/pos/Dashboard"]').waitFor();
    check(shell+' can leave the KOT terminal gateway using the sidebar',await page.locator('#zk-route-status').count()===0);
+   const tableHistory = base+'/'+shell+'/zenith/kot/Tables/goTransactions';
+   const historyRedirect = await a.c.request.get(tableHistory,{maxRedirects:0});
+   check(shell+' table history action stays in KOT',historyRedirect.status()===302&&
+    new URL(historyRedirect.headers().location,tableHistory).pathname==='/'+shell+'/zenith/kot/KotHistory',
+    {status:historyRedirect.status(),location:historyRedirect.headers().location});
   }
-  const preference = JSON.stringify({version:1,order:['/kot/KotBilling','/pos/Reports'],hidden:[]});
+  const preference = JSON.stringify({version:1,order:['/kot/KotBilling'],hidden:['/kot/WaiterManagement']});
   const saved = await post(a,'saveSubnavConfiguration',{module:'kot',payload:preference});
-  check('KOT preferences accept both KOT and POS tabs',saved.ok()&&JSON.parse((await saved.json()).preference).order[1]==='/pos/Reports');
+  const crossModule = await post(a,'saveSubnavConfiguration',{module:'kot',payload:JSON.stringify({version:1,order:['/pos/Reports'],hidden:[]})});
+  check('KOT preferences accept kitchen sections and reject retail sections',
+   saved.ok()&&(await saved.json()).preference===preference&&
+   crossModule.status()===400&&(await crossModule.json()).saved===false);
   await post(a,'saveSubnavConfiguration',{module:'kot',payload:JSON.stringify({version:1,order:[],hidden:[]})});
-  await page.goto(base+'/apps/zenith/kot/KotDashboard');
-  const before = Number(await completedOrders.innerText());
+  const before = new Map();
+  for (const route of dashboardRoutes) before.set(route,await snapshotDashboard(route));
+  const retailSession = await require('./kot-test-session.cjs')({a,base});
+  async function invoke(op, params) {
+   const response = await post(a,'pos/PosQaAcceptance/invoke',{op,...params});
+   const body = await response.json();
+   check('retail control sale '+op,response.ok()&&!body.errors?.length,{status:response.status(),errors:body.errors});
+   return body.result;
+  }
+  const { transactionId } = await invoke('cart',{sessionId:retailSession,reuseOpenCart:'N'});
+  await invoke('add',{transactionId,productId:'POS_QA_A_P18',quantity:'1',taxOn:'N'});
+  const [retail] = q("SELECT payable_amount FROM pos_transaction WHERE transaction_id='"+transactionId+"'");
+  await invoke('pay',{transactionId,paymentMethod:'Cash',amount:String(retail.payable_amount)});
+  await invoke('complete',{transactionId});
+  check('control bill is completed and has no kitchen ticket',
+   q("SELECT status_id FROM pos_transaction WHERE transaction_id='"+transactionId+"'")[0]?.status_id==='PtCompleted'&&
+   q("SELECT kot_id FROM kitchen_order_ticket WHERE transaction_id='"+transactionId+"'").length===0);
+  for (const route of dashboardRoutes) {
+   const afterRetail = await snapshotDashboard(route);
+   check(route+' ignores a completed retail bill',JSON.stringify(afterRetail)===JSON.stringify(before.get(route)),{before:before.get(route),afterRetail});
+   const history = page.getByRole('link',{name:'View KOT History'});
+   check(route+' points to sibling KOT History',
+    new URL(await history.getAttribute('href'),page.url()).pathname.endsWith('/'+route.replace('KotDashboard','KotHistory')));
+  }
   await page.goto(base+'/apps/zenith/pos/Kitchen');
   await page.locator('.zk-display').waitFor();
   check('old Kitchen bookmark still opens the shared Kitchen Display',
@@ -115,12 +160,24 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   check('KOT-only clerk can fetch their own kitchen ticket for printing',ownPrint.ok()&&(await ownPrint.json()).success===true);
   const ack=await post(kit,'kot/KotBilling/ackKotPrint',{kotId:ownId});
   check('KOT-only clerk can record a successful print',ack.ok()&&(await ack.json()).success===true);
+  for (const route of dashboardRoutes) {
+   const afterTicket = await snapshotDashboard(route);
+   const initial = before.get(route);
+   check(route+' counts an unpaid kitchen ticket as activity only',
+    afterTicket.tickets===initial.tickets+1&&afterTicket.completed===initial.completed&&afterTicket.sales===initial.sales,
+    {initial,afterTicket});
+  }
   const draftResponse=await post(kit,'kot/KotBilling/saveDraft',{sessionId,itemsJson:JSON.stringify([{productId:'POS_QA_A_P18',quantity:1}]),orderType:'Take Away',taxOn:'N',salesModeId:'RETAIL',wantJson:'Y'});
   const draft=await draftResponse.json();
   const paid=await post(kit,'kot/KotBilling/checkoutKot',{sessionId,kotId:draft.kotId,paymentMethod:'Cash',cashAmount:'100'});
   check('KOT-only clerk can complete a bill on the assigned terminal',draft.success&&(await paid.json()).success===true);
-  await page.goto(base+'/apps/zenith/kot/KotDashboard');
-  check('standalone KOT dashboard counts the newly completed KOT sale once',Number(await completedOrders.innerText())===before+1);
+  for (const route of dashboardRoutes) {
+   const afterPayment = await snapshotDashboard(route);
+   const initial = before.get(route);
+   check(route+' counts the newly completed KOT bill once',
+    afterPayment.completed===initial.completed+1&&afterPayment.tickets===initial.tickets+2&&afterPayment.sales!==initial.sales,
+    {initial,afterPayment});
+  }
   const unchanged=q("SELECT setting_value FROM company_settings WHERE organization_party_id='POS_QA_A' AND setting_key='KITCHEN_DISPLAY_POS_QA_A_FAC'");
   await post(kit,'kot/KitchenDisplay/saveDisplayPolicy',{facilityId:'POS_QA_A_FAC',enabled:'N'});
   check('KOT clerk cannot change the administrator kitchen policy',JSON.stringify(q("SELECT setting_value FROM company_settings WHERE organization_party_id='POS_QA_A' AND setting_key='KITCHEN_DISPLAY_POS_QA_A_FAC'"))===JSON.stringify(unchanged));

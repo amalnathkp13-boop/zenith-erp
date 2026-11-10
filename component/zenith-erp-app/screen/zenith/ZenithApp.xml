@@ -375,7 +375,7 @@
             html_stylesheets.add('https://fonts.googleapis.com/icon?family=Material+Icons')
             if (footer_scripts == null) footer_scripts = []
             footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=14')
-            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=52')
+            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=53')
             footer_scripts.add('/zenithstatic/js/profile-menu.js?v=1')
             footer_scripts.add('/zenithstatic/js/sidebar-manager.js?v=3')
             footer_scripts.add('/zenithstatic/js/subnav-manager.js?v=4')
@@ -972,7 +972,7 @@
           </div>
 ]]></text></render-mode>
         <render-mode><text type="html" template="true"><![CDATA[
-          <#macro posSubnavTabs>
+          <div class="zsub-grp" data-match="/pos"><span class="zsub-title">POS</span>
             <#list [
               ["Dashboard", "Dashboard"],
               ["Terminal", "Billing Terminal"],
@@ -1001,9 +1001,6 @@
             ] as tab>
               <a class="zsub-tab" data-match="/pos/${tab[0]}" href="/apps/zenith/pos/${tab[0]}">${tab[1]}</a>
             </#list>
-          </#macro>
-          <div class="zsub-grp" data-match="/pos"><span class="zsub-title">POS</span>
-            <@posSubnavTabs/>
           </div>
           <div class="zsub-grp" data-match="/kot"><span class="zsub-title">KOT</span>
             <a class="zsub-tab" data-match="/kot/KotDashboard" href="/apps/zenith/kot/KotDashboard">KOT Dashboard</a>
@@ -1012,7 +1009,6 @@
             <a class="zsub-tab" data-match="/kot/Tables" href="/apps/zenith/kot/Tables">Tables</a>
             <a class="zsub-tab" data-match="/kot/KotHistory" href="/apps/zenith/kot/KotHistory">KOT History</a>
             <a class="zsub-tab" data-match="/kot/WaiterManagement" href="/apps/zenith/kot/WaiterManagement">Waiters</a>
-            <#if (navShow["pos"])!false><@posSubnavTabs/></#if>
           </div>
 ]]></text></render-mode>
         <render-mode><text type="html"><![CDATA[
