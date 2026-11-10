@@ -43,11 +43,12 @@ module.exports=async function({a,foreign,base,post,rows,count,check}) {
  await Promise.all([page.waitForNavigation(),page.getByRole('button',{name:'Open Billing',exact:true}).click()]);
  await page.getByRole('button',{name:'Open / Resume Session'}).click();
  await page.locator('#kb-wrap[data-ready=true]').waitFor();
- const selectedTable=page.locator('#kb-table option:checked');
- check('Open Billing retains the occupied table for the next order',await selectedTable.getAttribute('value')===table.table_id&&await selectedTable.isEnabled());
- const draft=await post('Kitchen/KotBilling','saveDraft',{...payload,wantJson:'Y'});
+ const selectedTableId=await page.locator('#kb-table').inputValue();
+ check('Open Billing retains the occupied table for the next order',selectedTableId===table.table_id);
+ const draft=await post('Kitchen/KotBilling','saveDraft',{...payload,tableId:selectedTableId,wantJson:'Y'});
  const savedDraft=await draft.json();
- check('a draft can be saved for an occupied table',savedDraft.success&&!!savedDraft.kotId,savedDraft);
+ check('a draft can be saved for an occupied table',savedDraft.success&&!!savedDraft.kotId&&
+  rows('kitchen_order_ticket',`kot_id='${savedDraft.kotId}'`)[0]?.table_id===table.table_id,savedDraft);
  await post('Kitchen/KotBilling','deleteDraft',{kotId:savedDraft.kotId});
  await post('Kitchen/Tables','closeTable',{tableId:table.table_id});
  check('closing a table with active kitchen orders is rejected',rows('restaurant_table',`table_id='${table.table_id}'`)[0].status_id==='TblOccupied');
