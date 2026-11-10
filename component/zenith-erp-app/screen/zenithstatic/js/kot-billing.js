@@ -21,9 +21,11 @@
   let orderType=cfg.drafttype||'Dine In', taxOn=cfg.drafttax||'Y', draftId=cfg.draftid||'';
   let salesModeId=$('mode').value, quoteVersion=0, quoteTimer, total=null, busy=false, savedFingerprint='';
   let searchVersion=0, searchTimer, searchAbort, results=[], selected=0, exactId, ambiguous=false, hasMore=false, offset=0;
+  let browsePage, pendingLookup, searchMessage='';
   let historyDirty=false, grid=false, pickedMatch=false, categoryId='';
-  let customer={}, custVersion=0, custTimer, custAbort;
+  let customer=JSON.parse(cfg.draftcustomer||'{}'), custVersion=0, custTimer, custAbort;
   let invalidEdit, pendingTender, sessionLost=false, completedKotId='';
+  let historyTender, paymentAmount;
   const signInMessage='Sign in again to continue billing.';
   if(cfg.draftmode && Array.from($('mode').options).some(o=>o.value===cfg.draftmode)) salesModeId=$('mode').value=cfg.draftmode;
   if(cfg.draftwaiter) $('waiter').value=cfg.draftwaiter;
@@ -62,6 +64,7 @@
       cfg.displayEnabled=fresh.displayEnabled;
       $('display-message').hidden=fresh.displayEnabled==='true';
       sessionLost=false;
+      browsePage=null;
       $('session-notice').hidden=true;
       search.focus();lookup();quote();
     } catch {
@@ -114,6 +117,7 @@
   }
   function resetOrder() {
     cart.clear();
+    browsePage=null;
     setEditError('');
     draftId='';savedFingerprint='';customer={};
     $('badge').textContent='New KOT';$('instr').value='';
@@ -146,7 +150,7 @@
   }
   function renderCustomerResults(list) {
     const box=$('customer-results');if(!box)return;
-    if(!list.length){box.innerHTML='<p class="kb-search-message" role="status">No matching customers. Billing stays as Walk-in.</p>';return;}
+    if(!list.length){box.innerHTML='<p class="kb-search-message" role="status">No matching customers.</p>';return;}
     box.innerHTML=list.map(c=>'<button type="button" class="kb-suggestion" data-cust-id="'+esc(c.id)+'" data-cust-name="'+esc(c.name)+'" data-cust-phone="'+esc(c.phone||'')+'"><span><strong>'+esc(c.name)+'</strong><small>'+esc(c.phone||c.id)+'</small></span></button>').join('');
   }
   function selectCustomer(el) {
@@ -310,12 +314,17 @@
       }
     });
   }
-  function renderMatches(message) {
+  function renderMatches(message=searchMessage) {
+    searchMessage=message;
     const term=search.value.trim();
     const showResults=grid||!!term;
     suggestions.hidden=!showResults;
     search.setAttribute('aria-expanded',String(showResults));
     suggestions.classList.toggle('kb-results-grid',grid);
+    suggestions.classList.toggle('is-searching',!!term);
+    for(const button of root.querySelectorAll('[data-kb-category]')){
+      button.setAttribute('aria-pressed',String(button.dataset.kbCategory===(term?'':categoryId)));
+    }
     if(!showResults){suggestions.replaceChildren();return;}
     suggestions.innerHTML=(message?'<p class="kb-search-message" role="status">'+esc(message)+'</p>':'')+
       results.map((p,i)=>{
@@ -348,28 +357,61 @@
     $('match-status').textContent=results[selected].name;
     return true;
   }
+  function cancelLookup() {
+    clearTimeout(searchTimer);
+    searchVersion++;
+    searchAbort?.abort();
+    pendingLookup=null;
+  }
+  function resetMatches() {
+    results=[];selected=0;pickedMatch=false;offset=0;hasMore=false;exactId=null;ambiguous=false;
+  }
   async function lookup(append=false) {
-    const value=search.value, version=++searchVersion;
-    searchAbort?.abort(); searchAbort=new AbortController();
-    if(!append){results=[];selected=0;pickedMatch=false;offset=0;hasMore=false;exactId=null;ambiguous=false;}
-    if(!grid&&!value.trim()){renderMatches();return false;}
-    if(!append)renderMatches(value.trim()?'Searching…':'Loading products…');
-    try{
-      const data=await request('searchMenu',{term:value,salesModeId,offset,categoryId:grid?categoryId:'',stockSessionId:cfg.stockSession||''},searchAbort.signal);
-      if(version!==searchVersion||!root.isConnected)return false;
-      results=append?results.concat(data.products.filter(p=>!results.some(x=>x.id===p.id))):data.products;
-      offset+=40;hasMore=data.hasMore;exactId=data.exactId;ambiguous=data.ambiguous;
-      if(!append&&exactId)selected=Math.max(0,results.findIndex(p=>p.id===exactId));
-      const noResults=value.trim()?'No products match your search.':'No products available.';
-      renderMatches(ambiguous?'Multiple products use this code. Choose a product from the results.':results.length?'':noResults);
+    const value=search.value, searching=!!value.trim();
+    const category=searching?'':categoryId;
+    const browseKey=JSON.stringify([salesModeId,category]);
+    const pageOffset=append?offset:0;
+    const key=JSON.stringify([browseKey,value,pageOffset]);
+    if(pendingLookup?.key===key)return pendingLookup.promise;
+    cancelLookup();
+    if(!append)resetMatches();
+    if(!grid&&!searching){renderMatches('');return false;}
+    if(!append&&!searching&&browsePage?.key===browseKey&&Date.now()-browsePage.loadedAt<30000){
+      ({results,offset,hasMore}=browsePage);
+      renderMatches(results.length?'':'No products available.');
       return true;
-    }catch(e){if(version===searchVersion&&e.name!=='AbortError')renderMatches(e.message);return false;}
+    }
+    if(!append)renderMatches(searching?'Searching…':'Loading products…');
+    const version=searchVersion;
+    searchAbort=new AbortController();
+    const promise=request('searchMenu',{term:value,salesModeId,offset:pageOffset,categoryId:category,stockSessionId:cfg.stockSession||''},searchAbort.signal)
+      .then(data=>{
+        if(version!==searchVersion||!root.isConnected||search.value!==value)return false;
+        if(append){
+          const previousIds=new Set(results.map(product=>product.id));
+          results=results.concat(data.products.filter(product=>!previousIds.has(product.id)));
+        }else{
+          results=data.products;
+          exactId=data.exactId;ambiguous=data.ambiguous;
+          if(exactId)selected=Math.max(0,results.findIndex(product=>product.id===exactId));
+        }
+        offset=pageOffset+40;hasMore=data.hasMore;
+        if(!searching)browsePage={key:browseKey,loadedAt:Date.now(),results,offset,hasMore};
+        const empty=searching?'No products match your search.':'No products available.';
+        renderMatches(ambiguous?'Multiple products use this code. Choose a product from the results.':results.length?'':empty);
+        return true;
+      }).catch(error=>{
+        if(version===searchVersion&&error.name!=='AbortError')renderMatches(error.message);
+        return false;
+      }).finally(()=>{if(version===searchVersion)pendingLookup=null;});
+    pendingLookup={key,promise};
+    return promise;
   }
   function clearSearch() {
     clearTimeout(searchTimer);
     $('match-status').textContent='';
     if(grid&&!search.value){
-      selected=0;pickedMatch=false;renderMatches();return;
+      selected=0;pickedMatch=false;suggestions.querySelector('.is-active')?.classList.remove('is-active');return;
     }
     search.value='';
     lookup();
@@ -384,11 +426,8 @@
     panel.hidden=!grid;
     for(const option of modeOptions)option.setAttribute('aria-pressed',String((option.dataset.kbView==='grid')===grid));
     (grid?panel:search.parentElement).append(suggestions);
-    if(search.value.trim())renderMatches();
-    else {
-      clearTimeout(searchTimer);
-      lookup();
-    }
+    if(!grid||search.value.trim())renderMatches();
+    else lookup();
   }
   function updateHeader() {
     $('online').textContent=navigator.onLine?'Online':'Offline';
@@ -443,11 +482,18 @@
     if(byKeyboard)focusEditor(editorFor(item.id,'rate'));
     else search.focus({preventScroll:grid});
   }
-  search.addEventListener('input',()=>{
-    clearTimeout(searchTimer);++searchVersion;searchAbort?.abort();results=[];selected=0;pickedMatch=false;exactId=null;ambiguous=false;hasMore=false;
+  search.addEventListener('input',e=>{
+    cancelLookup();
+    resetMatches();
     $('match-status').textContent='';
     renderMatches(search.value.trim()?'Searching…':'Loading products…');
-    if(grid||search.value.trim())searchTimer=setTimeout(()=>lookup(),85);
+    if(e.isComposing)return;
+    if(!search.value.trim())lookup();
+    else searchTimer=setTimeout(()=>lookup(),85);
+  });
+  search.addEventListener('compositionend',()=>{
+    clearTimeout(searchTimer);
+    searchTimer=setTimeout(()=>lookup(),85);
   });
   search.addEventListener('keydown',async e=>{
     if(e.isComposing||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey)return;
@@ -457,7 +503,9 @@
     if(e.key===' '&&!search.value&&!$('bill')?.disabled&&!e.ctrlKey&&!e.altKey&&!e.metaKey&&!e.shiftKey){e.preventDefault();openPayment();return;}
     if(e.key!=='Enter'||(!search.value.trim()&&!(grid&&pickedMatch)))return;
     e.preventDefault();clearTimeout(searchTimer);
+    const submitted=search.value;
     if(!results.length&&!(await lookup()))return;
+    if(search.value!==submitted)return;
     if(ambiguous&&!pickedMatch){renderMatches('Choose a match with the mouse or arrow keys before adding.');return;}
     if(!pickedMatch&&!exactId&&/^\d{8,}$/.test(search.value.trim())){renderMatches('Barcode not found. Check the code or choose a matching product.');return;}
     if(results.length)choose(selected,true);
@@ -474,29 +522,32 @@
     const match=e.target.closest('[data-result]');if(match)choose(Number(match.dataset.result),e.detail===0);
   });
 
-  function openPayment(method='Cash') {
-    if(!$('bill')||$('bill').disabled||$('payment').open)return;
-    $('payment-total').textContent='Order total: '+money.format(total);
+  function openPayment(method='Cash', order=null) {
+    if(!$('bill')||busy||sessionLost||$('payment').open||(!order&&$('bill').disabled))return;
+    $('payment-form').reset();
+    historyTender=order;
+    paymentAmount=order?.total??total;
+    $('payment-total').textContent='Order total: '+money.format(paymentAmount);
     if($('payment-method')){$('payment-method').value=method;tenderFields();}
     if($('payment-error'))$('payment-error').textContent='';
     $('payment').showModal();
-    $('cash')?.focus();
+    ($('cash')||$('payment-method'))?.focus();
   }
   function tenderFields() {
     const method=$('payment-method').value, cash=method==='Cash', slot=$('cash-slot'), dialog=$('payment');
     dialog.classList.toggle('kb-cash-dialog',cash);
     dialog.setAttribute('aria-labelledby',cash?'pos-cash-title':'kb-payment-title');
     $('payment-heading').hidden=$('other-payment').hidden=cash;
-    $('other-payment').querySelector('[type=submit]').disabled=cash;
+    $('other-payment').querySelector('[type=submit]').disabled=cash||!method;
     for(const label of dialog.querySelectorAll('[data-kb-tender]')){
       const shown=label.dataset.kbTender.split(' ').includes(method);label.hidden=!shown;
       label.querySelector('input').disabled=!shown;
     }
-    slot.innerHTML=cash?PosTillDialogs.cashMarkup(total,true):'';
+    slot.innerHTML=cash?PosTillDialogs.cashMarkup(paymentAmount,true):'';
     if(cash){
       const input=slot.querySelector('.pos-cash-input');
       input.id='kb-cash';slot.querySelector('label').htmlFor=input.id;
-      input.addEventListener('input',()=>PosTillDialogs.updateCash(slot,total));
+      input.addEventListener('input',()=>PosTillDialogs.updateCash(slot,paymentAmount));
     }
   }
   async function openSessionClose() {
@@ -543,8 +594,9 @@
   }
   async function pay(e) {
     e.preventDefault();
-    if(busy||sessionLost||total===null)return;
-    const confirmedTotal=total;
+    const existingOrder=historyTender;
+    const confirmedTotal=paymentAmount;
+    if(busy||sessionLost||!$('payment-method').value||confirmedTotal===null||(!existingOrder&&total!==confirmedTotal))return;
     const form=e.currentTarget, cash=$('payment-method').value==='Cash';
     const submit=cash?$('cash-slot').querySelector('[type=submit]'):$('other-payment').querySelector('[type=submit]');
     const cancel=cash?$('cash-slot').querySelector('.pos-cash-cancel'):$('payment-close');
@@ -553,7 +605,7 @@
     let bill;
     busy=true;controls();submit.disabled=true;cancel.disabled=true;$('payment-error').textContent='';
     try{
-      if(!draftId||fingerprint!==savedFingerprint){
+      if(!existingOrder&&(!draftId||fingerprint!==savedFingerprint)){
         const saved=await request('saveDraft',{...data,existingDraftId:draftId,wantJson:'Y'});
         draftId=saved.kotId;
         if(Number(saved.total)!==confirmedTotal){
@@ -563,7 +615,7 @@
         }
         savedFingerprint=fingerprint;
       }
-      bill=await request('checkoutKot',{...payment,kotId:draftId});
+      bill=await request('checkoutKot',{...payment,kotId:existingOrder?.id||draftId,confirmedTotal});
     }catch(error){
       $('payment-error').textContent=error.message;
     }finally{
@@ -575,9 +627,11 @@
     }
     if(!bill)return;
     completedKotId=bill.kotId;historyDirty=true;
+    browsePage=null;
     $('list-last-bill').textContent=bill.billNumber;
     $('list-last-amount').textContent=$('list-last-stat').textContent=money.format(confirmedTotal);
-    $('payment').close();resetOrder();
+    $('payment').close();
+    if(!existingOrder)resetOrder();
     const change=Number(bill.changeAmount)>0?' Change given: '+money.format(bill.changeAmount)+'.':'';
     $('order-status').textContent='Saved bill '+bill.billNumber+'.'+change;
     $('print-summary').textContent='Bill '+bill.billNumber+' is saved.'+change+' Choose a print option.';
@@ -593,6 +647,8 @@
     $('history-empty').hidden=visible!==0;
   }
   async function showHistory(){
+    const error=$('history-error');
+    error.hidden=true;
     $('history').showModal();
     if(historyDirty){
       try{
@@ -602,7 +658,7 @@
         const rows=page.getElementById('kb-history-rows');
         if(!rows)throw Error('History could not be refreshed. Reload the page.');
         $('history-rows').replaceChildren(...rows.children);historyDirty=false;
-      }catch(e){$('order-status').textContent=e.message;}
+      }catch(e){error.textContent=e.message;error.hidden=false;}
     }
     filterHistory();
   }
@@ -629,14 +685,18 @@
     else if(button.dataset.kbView)setGridView(button.dataset.kbView==='grid');
     else if(button.hasAttribute('data-kb-category')){
       categoryId=button.dataset.kbCategory;
-      for(const category of button.parentElement.children) category.setAttribute('aria-pressed',String(category===button));
-      clearTimeout(searchTimer);search.value='';lookup();
+      search.value='';lookup();
     }
     else if(button.dataset.kbPayment)openPayment(button.dataset.kbPayment);
     else if(button.id==='kb-fullscreen')toggleFullscreen();
     else if(button.id==='kb-close-session')openSessionClose();
     else if(button.id==='kb-clear'&&confirm('Clear the unsent items from this order?')){cart.clear();setEditError('');quote();}
     else if(button.id==='kb-history-open')showHistory();
+    else if(button.dataset.kbBillOrder){
+      if(sessionLost)return;
+      $('history').close();
+      openPayment('',{id:button.dataset.kbBillOrder,total:Number(button.dataset.kbBillTotal)});
+    }
     else if(button.id==='kb-resume')resumeBilling();
     else if(button.id==='kb-bill')openPayment();
     else if(button.id==='kb-send')sendToKitchen();
@@ -645,7 +705,7 @@
       post('saveDraft',{...orderData(),existingDraftId:draftId});
     }
     else if(button.classList.contains('pos-cash-quick')){
-      $('cash').value=button.dataset.amt;PosTillDialogs.updateCash($('cash-slot'),total);
+      $('cash').value=button.dataset.amt;PosTillDialogs.updateCash($('cash-slot'),paymentAmount);
     }
     else if(button.id==='kb-payment-close'||button.classList.contains('pos-cash-cancel'))$('payment').close();
     else if(button.dataset.kbPrint)printChoice(button.dataset.kbPrint);
@@ -661,21 +721,28 @@
     }else if(button.dataset.remove||button.dataset.qty){
       const id=button.closest('tr').dataset.product,it=cart.get(id);
       if(button.dataset.remove){cart.delete(id);if(invalidEdit?.id===id)setEditError('');}
-      else{it.qty=Math.max(1,it.qty+Number(button.dataset.qty));it.amount=null;}
+      else{it.qty=Number((it.qty+Number(button.dataset.qty)).toFixed(6));it.amount=null;}
       quote();
     }
   });
   $('mode').addEventListener('change',()=>{
     if(cart.size&&!confirm('Update the cart? Existing items will be repriced for the selected sales mode.')){$('mode').value=salesModeId;return;}
     for(const item of cart.values())delete item.manualRate;
-    salesModeId=$('mode').value;quote();lookup();
+    salesModeId=$('mode').value;browsePage=null;quote();lookup();
   });
   $('table').addEventListener('change',quote);
   $('waiter').addEventListener('change',quote);
   $('history-search').addEventListener('input',filterHistory);
   $('history-status').addEventListener('change',filterHistory);
   $('history-date').addEventListener('change',filterHistory);
-  $('customer-search')?.addEventListener('input',e=>{clearTimeout(custTimer);const v=e.target.value.trim();custTimer=setTimeout(()=>searchCustomers(v),150);});
+  $('customer-search')?.addEventListener('input',e=>{
+    clearTimeout(custTimer);
+    custVersion++;
+    custAbort?.abort();
+    $('customer-results').replaceChildren();
+    const term=e.target.value.trim();
+    custTimer=setTimeout(()=>searchCustomers(term),150);
+  });
   $('payment-method')?.addEventListener('change',tenderFields);
   $('payment-form')?.addEventListener('submit',pay);
   $('payment')?.addEventListener('cancel',e=>{if(busy)e.preventDefault();});
