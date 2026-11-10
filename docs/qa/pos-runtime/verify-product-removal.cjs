@@ -16,7 +16,7 @@ module.exports = async function ({a, foreign, base, check, q, invoke, post}) {
   form: {productId:id, ...(token ? {moquiSessionToken:actor.t} : {})}, maxRedirects:0
  });
  const product = id => q(`SELECT * FROM product WHERE product_id='${id}'`)[0];
- const details = id => q(`SELECT * FROM asset_detail WHERE product_id='${id}' ORDER BY asset_id, asset_detail_seq_id`);
+ const details = id => q(`SELECT * FROM asset_detail WHERE product_id='${id}'`).map(row => JSON.stringify(row)).sort();
  const onHand = id => Number(q(`SELECT coalesce(sum(quantity_on_hand_total),0) n FROM asset WHERE product_id='${id}'`)[0].n);
  const revision = () => q("SELECT setting_value FROM company_settings WHERE organization_party_id='POS_QA_A' AND setting_key='POS_CATALOG_REVISION'")[0]?.setting_value;
  const id = await create(productName, '1');
