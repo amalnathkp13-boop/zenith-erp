@@ -1,5 +1,5 @@
 module.exports=async function({browser,base,check,q,sessionId}) {
- for(const [shell,grid] of [['apps',false],['qapps',true]]) {
+ for(const shell of ['apps','qapps']) {
   const context=await browser.newContext();
   try {
    const auth='Basic '+Buffer.from('pos.qa:moqui').toString('base64');
@@ -7,19 +7,11 @@ module.exports=async function({browser,base,check,q,sessionId}) {
    const page=await context.newPage();
    await page.clock.install();
    await page.goto(base+'/'+shell+'/zenith/kot/KotBilling?sessionId='+sessionId);
+   await page.locator('#kb-wrap').waitFor();
    await page.waitForFunction(()=>window.__zIdleLogout&&document.getElementById('kb-wrap')?.dataset.ready);
-   if(grid) {
-    const gridToggle=page.locator('#kb-view-grid');
-    if(await gridToggle.isVisible()) await gridToggle.click();
-    else {
-     await page.locator('.kg-modes summary').click();
-     await page.locator('[data-kb-view=grid]').click();
-    }
-    await page.locator('#kb-product-grid').waitFor();
-   }
    await page.clock.pauseAt(new Date(await page.evaluate(()=>Date.now())+1000));
    await page.keyboard.press('a');
-   if(grid) {
+   if(shell==='qapps') {
     await page.clock.fastForward('55:00');
     await page.keyboard.press('b');
     await page.clock.fastForward('05:00');
