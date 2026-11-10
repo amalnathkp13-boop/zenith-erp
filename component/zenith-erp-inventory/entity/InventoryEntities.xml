@@ -267,6 +267,7 @@
         <member-entity entity-alias="SLB" entity-name="zenith.erp.india.IndiaGstSlab" join-from-alias="PRD" join-optional="true"><key-map field-name="gstSlabId"/></member-entity>
         <alias entity-alias="PRD" name="productId"/><alias entity-alias="PRD" name="ownerPartyId"/>
         <alias entity-alias="PRD" name="pseudoId"/><alias entity-alias="PRD" name="productName"/>
+        <alias entity-alias="PRD" name="salesIntroductionDate"/><alias entity-alias="PRD" name="salesDiscontinuationDate"/>
         <alias entity-alias="PRD" name="productTypeEnumId"/><alias entity-alias="PRD" name="description"/>
         <alias entity-alias="PRD" name="hsnCode"/><alias entity-alias="PRD" name="sacCode"/>
         <alias name="catalogTaxCode" type="text-short"><complex-alias function="COALESCE">
