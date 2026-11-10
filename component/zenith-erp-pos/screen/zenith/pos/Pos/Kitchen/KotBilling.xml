@@ -367,7 +367,7 @@
                 def scan
                 def found
                 if(term.trim()) {
-                    scan=ec.service.sync().name('zenith.barcode.BarcodeServices.resolve#ScanProduct').parameters([code:term]).call()
+                    if(!offset) scan=ec.service.sync().name('zenith.barcode.BarcodeServices.resolve#ScanProduct').parameter('code',term).call()
                     found=ec.service.sync().name('zenith.pos.PosCheckoutServices.search#PosProducts')
                         .parameters([term:term,offset:offset,pageSize:41]).call()?.products ?: []
                 } else {
@@ -385,24 +385,39 @@
                             .orderBy('productName,productId').offset(offset).limit(41).list() : []
                     } else found=products.orderBy('productName,productId').offset(offset).limit(41).list()
                 }
-                if(scan?.found && !found.any { it.productId==scan.productId }) {
-                    def p=ec.entity.find('mantle.product.Product').condition('productId',scan.productId)
-                        .condition('ownerPartyId',scope.organizationPartyId).condition('productTypeEnumId','PtAsset').one()
-                    if(p) found=[p]+found
+                def hasMore=found.size()>40 && offset<3000
+                def page=found.take(40)
+                def exact
+                if(scan?.found) {
+                    exact=page.find { it.productId==scan.productId }
+                    if(!exact) {
+                        exact=ec.entity.find('mantle.product.Product').condition('productId',scan.productId)
+                            .condition('ownerPartyId',scope.organizationPartyId).condition('productTypeEnumId','PtAsset').one()
+                        // A scan is an additional exact match. Keep the entire page for subsequent paging.
+                        if(exact) page=[exact]+page
+                    }
                 }
                 def stock=[:]
                 def sid=ec.context.stockSessionId
                 def authorizedSession=sid ? ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',sid)
                     .condition('operatorPartyId',ec.user.userAccount?.partyId).condition('organizationPartyId',scope.organizationPartyId)
                     .condition('statusId','PsOpen').one() : null
-                if(authorizedSession && found) stock=ec.service.sync().name('zenith.pos.PosCheckoutServices.get#PosCardStock')
-                    .parameters([sessionId:sid,productIds:found*.productId]).call()?.stock ?: [:]
-                result=[success:!ec.message.hasError(),exactId:scan?.productId,ambiguous:scan?.ambiguous,hasMore:found.size()>40 && offset<3000,
-                    products:found.take(40).collect { p ->
-                        def rate=ec.service.sync().name('zenith.pos.PosServices.resolve#PosModePrice')
-                            .parameters([productId:p.productId,salesModeId:ec.context.salesModeId,product:p]).call()
+                if(authorizedSession && page) stock=ec.service.sync().name('zenith.pos.PosCheckoutServices.get#PosCardStock')
+                    .parameters([sessionId:sid,productIds:page*.productId]).call()?.stock ?: [:]
+                def modeId=ec.context.salesModeId
+                def mode=modeId ? ec.entity.find('zenith.erp.pos.PosSalesMode').condition([salesModeId:modeId,isActive:'Y']).one() : null
+                def validMode=!modeId || (mode && (!mode.organizationPartyId || mode.organizationPartyId==scope.organizationPartyId))
+                def overrides=[:]
+                if(validMode && modeId && page) overrides=ec.service.sync()
+                    .name('zenith.pos.ProductModePricingServices.get#ModePriceOverrides')
+                    .parameters([salesModeId:modeId,productIds:page*.productId]).disableAuthz().call().overrides ?: [:]
+                result=[success:!ec.message.hasError(),exactId:exact?.productId,ambiguous:scan?.ambiguous,hasMore:hasMore,
+                    products:page.collect { p ->
+                        def price=validMode ? (overrides.containsKey(p.productId) ? overrides[p.productId] : p.mrpAmount) : null
+                        def reason=!validMode ? 'This sales mode is not available for this product.' :
+                            (price==null ? 'Price not configured for this sales mode.' : null)
                         [id:p.productId,name:p.productName ?: p.productId,code:p.pseudoId ?: p.productId,
-                         price:rate.blocked ? null : rate.unitPrice,reason:rate.blockReason,stock:stock[p.productId]?.quantity]
+                         price:price,reason:reason,stock:stock[p.productId]?.quantity]
                     }]
             }
             ec.web.sendJsonResponse(result)
@@ -427,14 +442,22 @@
                 reject('Choose your terminal session in this shop.'); return
             }
             if(!kot.transactionId) {
-                if(kot.statusId!='KotDraft' || !kot.orderReceiptJson || session.statusId!='PsOpen' || terminal.isActive!='Y') {
-                    reject('The draft or terminal session is no longer available.'); return
+                def fromDraft=kot.statusId=='KotDraft'
+                def kitchenActive=['KotNew','KotPreparing','KotReady']
+                if(!(kot.statusId in (kitchenActive+['KotDraft','KotServed'])) || !kot.orderReceiptJson || session.statusId!='PsOpen' || terminal.isActive!='Y') {
+                    reject('This order or terminal session is no longer available for billing.'); return
                 }
                 def table=kot.tableId ? ec.entity.find('zenith.erp.pos.RestaurantTable').condition('tableId',kot.tableId).forUpdate(true).one() : null
                 if(kot.tableId && (!table || table.facilityId!=terminal.facilityId || !(table.statusId in [null,'TblAvailable','TblOccupied']))) {
                     reject('Choose an available or occupied table at the terminal shop.'); return
                 }
                 def quote=new groovy.json.JsonSlurper().parseText(kot.orderReceiptJson)
+                if(ec.context.confirmedTotal) {
+                    def amount=ec.context.confirmedTotal.toString()
+                    if(!amount.isBigDecimal() || new BigDecimal(amount).compareTo(quote.summary.total as BigDecimal)!=0) {
+                        reject('The saved order total changed. Reopen it in History and review it before taking payment.'); return
+                    }
+                }
                 def tx=ec.service.sync().name('zenith.pos.PosServices.create#PosTransaction')
                     .parameters([sessionId:sid,reuseOpenCart:false]).call()?.transactionId
                 if(!tx) { reject(ec.message.errorsString ?: 'Could not create the bill.'); return }
@@ -482,13 +505,22 @@
                     ec.service.sync().name('zenith.pos.PosServices.complete#PosTransaction').parameter('transactionId',tx).call()
                 }
                 if(ec.message.hasError()) { ec.web.sendJsonResponse([success:false,error:ec.message.errorsString]); return }
-                def display=ec.service.sync().name('zenith.pos.KotServices.get#KitchenDisplayPolicy').parameter('facilityId',terminal.facilityId).call()
-                kot.setAll([transactionId:tx,terminalId:terminal.terminalId,statusId:display.enabled ? 'KotNew' : 'KotServed',kotDate:ec.user.nowTimestamp]).update()
+                kot.setAll([transactionId:tx,terminalId:terminal.terminalId])
+                if(fromDraft) {
+                    def display=ec.service.sync().name('zenith.pos.KotServices.get#KitchenDisplayPolicy').parameter('facilityId',terminal.facilityId).call()
+                    kot.setAll([statusId:display.enabled ? 'KotNew' : 'KotServed',kotDate:ec.user.nowTimestamp])
+                }
+                kot.update()
                 if(table) {
-                    def unpaid=ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('organizationPartyId',scope.organizationPartyId)
-                        .condition('tableId',table.tableId).condition('kotId','!=',kid).condition('transactionId',null)
-                        .condition('statusId','in',['KotDraft','KotNew','KotPreparing','KotReady']).count()
-                    if(display.enabled || unpaid || table.currentTransactionId) table.set('statusId','TblOccupied').update()
+                    def cf=ec.entity.conditionFactory
+                    def openTickets=ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('organizationPartyId',scope.organizationPartyId)
+                        .condition('tableId',table.tableId).condition('kotId','!=',kid)
+                        .condition(cf.makeCondition([
+                            cf.makeCondition('statusId',org.moqui.entity.EntityCondition.IN,kitchenActive),
+                            cf.makeCondition([statusId:'KotDraft',transactionId:null]),
+                            cf.makeCondition([statusId:'KotServed',transactionId:null])
+                        ],org.moqui.entity.EntityCondition.OR)).count()
+                    if(kot.statusId in kitchenActive || openTickets || table.currentTransactionId) table.set('statusId','TblOccupied').update()
                     else table.set('statusId','TblAvailable').update()
                 }
             }
@@ -508,42 +540,32 @@
             import groovy.json.JsonOutput
             def scope=ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess').call()
             org=scope.allowed ? scope.organizationPartyId : null
-            def shop=ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call().activeShopId
             def IN=EntityCondition.ComparisonOperator.IN
             def cf=ec.entity.conditionFactory
-            waiters=org ? ec.entity.find('zenith.erp.pos.Waiter').condition('organizationPartyId',org).condition('isActive','Y').orderBy('waiterName').list() : []
-            def tf=ec.entity.find('zenith.erp.pos.PosTerminal').condition('organizationPartyId',org ?: '__NO_ORGANIZATION__').condition('isActive','Y')
-            if(shop) tf.condition('facilityId',shop)
-            def checkoutTerminals=tf.list().findAll { !scope.terminalRestricted || it.terminalId in (scope.allowedTerminalIds ?: []) }
-            entryTerminals=checkoutTerminals
-            billingSession=null; billingTerminal=null; kitchenDisplayEnabled=true
+            billingSession=null; billingTerminal=null
             if(ec.context.sessionId) {
                 def billing=ec.service.sync().name('zenith.pos.KotServices.get#BillingSession').parameter('sessionId',ec.context.sessionId).call()
                 billingSession=billing.session; billingTerminal=billing.terminal
-                if(billingTerminal) {
-                    shop=billingTerminal.facilityId
-                    kitchenDisplayEnabled=ec.service.sync().name('zenith.pos.KotServices.get#KitchenDisplayPolicy').parameter('facilityId',shop).call().enabled
-                }
             }
-            if(!billingSession) return
+            if(!billingSession) {
+                def shop=ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call().activeShopId
+                def terminals=ec.entity.find('zenith.erp.pos.PosTerminal').condition('organizationPartyId',org ?: '__NO_ORGANIZATION__').condition('isActive','Y')
+                if(shop) terminals.condition('facilityId',shop)
+                entryTerminals=terminals.list().findAll { !scope.terminalRestricted || it.terminalId in (scope.allowedTerminalIds ?: []) }
+                return
+            }
+            def shop=billingTerminal.facilityId
+            kitchenDisplayEnabled=ec.service.sync().name('zenith.pos.KotServices.get#KitchenDisplayPolicy').parameter('facilityId',shop).call().enabled
             modes=ec.service.sync().name('zenith.pos.PosModeServices.get#TerminalModes').parameter('terminalId',billingTerminal.terminalId).call().modes ?: []
+            waiters=org ? ec.entity.find('zenith.erp.pos.Waiter').condition('organizationPartyId',org).condition('isActive','Y').orderBy('waiterName').list() : []
             lastCompleted=ec.entity.find('zenith.erp.pos.PosTransaction')
                 .condition([sessionId:billingSession.sessionId,organizationPartyId:org,statusId:'PtCompleted'])
                 .selectFields(['transactionNumber','payableAmount']).orderBy('-completedDate,-transactionId').limit(1).list().find { true }
             gridCategories=org ? ec.entity.find('mantle.product.category.ProductCategory').condition('ownerPartyId',org)
                 .orderBy('categoryName,productCategoryId').limit(60).list() : []
-            def sf=ec.entity.find('zenith.erp.pos.PosSession').condition('organizationPartyId',org ?: '__NO_ORGANIZATION__')
-                .condition('operatorPartyId',ec.user.userAccount?.partyId).condition('statusId','PsOpen')
-            checkoutSessions=checkoutTerminals ? sf.condition('terminalId',IN,checkoutTerminals*.terminalId).orderBy('-openDate').list().collect { ss ->
-                [id:ss.sessionId,name:checkoutTerminals.find { it.terminalId==ss.terminalId }?.terminalName ?: ss.terminalId]
-            } : []
-            if(billingSession) checkoutSessions=checkoutSessions.findAll { it.id==billingSession.sessionId }
-
-            def ownedFacilities = ec.entity.find('mantle.facility.Facility')
-                .condition('ownerPartyId', org ?: '__NO_ORGANIZATION__').selectField('facilityId').list()
-            def ownedFacilityIds = ownedFacilities.collect { it.facilityId }.findAll { !shop || it==shop }
-            tables = ownedFacilityIds ? ec.entity.find('zenith.erp.pos.RestaurantTable')
-                .condition('facilityId', IN, ownedFacilityIds).orderBy('tableNumber').limit(200).list() : []
+            // BillingSession already validates ownership of the terminal's shop.
+            tables=ec.entity.find('zenith.erp.pos.RestaurantTable')
+                .condition('facilityId',shop).orderBy('tableNumber').limit(200).list()
 
             def kotLabel = { st ->
                 if (st == 'KotNew') return 'Pending'
@@ -598,12 +620,17 @@
                       mode:modes.find { it.salesModeId==snapshot?.bill?.salesModeId }?.modeName ?: snapshot?.bill?.salesModeId ?: '',
                       id:k.kotId, num:(k.kotNumber ?: k.kotId), table:(k.tableNumber ?: '-'),
                     isoDate:(k.kotDate ? ec.l10n.format(k.kotDate, 'yyyy-MM-dd') : ''), time:(k.kotDate ? ec.l10n.format(k.kotDate, 'dd/MM/yyyy hh:mm a') : ''), waiter:k.waiterName ?: '', serviceType:(k.notes ?: '').startsWith('[Take Away]') ? 'Take Away' : 'Dine In',
-                    label:kotLabel(k.statusId), badge:kotBadge(k.statusId), hasBill:!!(k.transactionId || k.orderReceiptJson), items:(byKot[k.kotId] ?: []) ] }
+                      label:kotLabel(k.statusId), badge:kotBadge(k.statusId), hasBill:!!(k.transactionId || k.orderReceiptJson),
+                      canBill:!k.transactionId && (k.statusId in ['KotNew','KotPreparing','KotReady','KotServed']) && snapshot?.summary?.total!=null,
+                      items:(byKot[k.kotId] ?: []) ] }
             }
 
-            activeKots = loadKots(['KotNew', 'KotPreparing', 'KotReady'], 60)
-            completedKots = loadKots(['KotServed', 'KotCancelled'], 60)
-            draftKots = loadKots(['KotDraft'], 30)
+            includeBillingHistory = ec.web.parameters.loadHistory == 'Y'
+            if(includeBillingHistory) {
+                activeKots = loadKots(['KotNew', 'KotPreparing', 'KotReady'], 60)
+                completedKots = loadKots(['KotServed', 'KotCancelled'], 60)
+                draftKots = loadKots(['KotDraft'], 30)
+            }
 
 
             // resume a draft into the cart?
@@ -615,6 +642,7 @@
                 selectedTableId = selected?.tableId ?: ''
             }
             draftLoadTable = ''; draftLoadType = ''; draftLoadInstr = ''; draftLoadTax = 'Y'; draftLoadMode = ''; draftLoadWaiter = ''; draftReceiptLines = []
+            draftCustomer = [:]
             if (loadedDraftId) {
                 def dk = ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('kotId', loadedDraftId).one()
                 if (billingTerminal && dk && dk.statusId == 'KotDraft' && org && dk.organizationPartyId == org && ((!dk.terminalId && !scope.terminalRestricted) || dk.terminalId==billingTerminal.terminalId)) {
@@ -632,6 +660,8 @@
                             draftLoadMode = savedReceipt?.bill?.salesModeId ?: ''
                             draftLoadWaiter = savedReceipt?.bill?.waiterId ?: ''
                             draftReceiptLines = savedReceipt?.items ?: []
+                            def bill=savedReceipt?.bill
+                            if(bill?.customerPartyId) draftCustomer=[id:bill.customerPartyId,name:bill.customer,phone:bill.customerPhone]
                         } catch (ignored) { }
                     }
                 } else { loadedDraftId = '' }
@@ -639,6 +669,7 @@
 
             draftLoadJson = JsonOutput.toJson(draftLoadItems)
             draftReceiptLinesJson = JsonOutput.toJson(draftReceiptLines)
+            draftCustomerJson = JsonOutput.toJson(draftCustomer)
             draftModeUnavailable = draftLoadMode && !modes.any { it.salesModeId == draftLoadMode }
         ]]></script>
     </actions>
@@ -690,6 +721,7 @@
     <#if modCanWrite>
     <button type="button" class="kb-oprint" data-kitchen-print="kot" data-kot-id="${k.id?html}"><@ic 'printer' 13/> KOT Print</button>
     <button type="button" class="kb-oprint" data-kitchen-print="orderBill" data-kot-id="${k.id?html}" <#if !k.hasBill>disabled="disabled" title="No saved customer bill or order pricing is available."</#if>><@ic 'printer' 13/> Bill Print</button>
+    <#if k.canBill><button type="button" class="kb-control kb-action-bill" data-kb-bill-order="${k.id?html}" data-kb-bill-total="${k.total?c}" aria-label="Bill out KOT ${k.num?html}"><@ic 'cash' 14/> Bill Out</button></#if>
     </#if>
   </div>
 </div>
@@ -709,11 +741,11 @@
 </section>
 <#else>
 <div class="kb-wrap<#if !kitchenDisplayEnabled> kb-display-disabled</#if>" id="kb-wrap">
-  <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=7"/>
+  <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=8"/>
   <link rel="stylesheet" href="/zenithstatic/css/pos-checkout.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/pos-checkout.css').getLastModified()?c}"/>
   <link rel="stylesheet" href="/zenithstatic/css/kot-list.css?v=8"/>
   <input type="hidden" id="kb-token" value="${(ec.web.sessionToken)!''}"/>
-  <div id="kb-data" style="display:none" data-session="${billingSession.sessionId?html}" data-user="${(ec.user.userId!'')?html}" data-display-enabled="${kitchenDisplayEnabled?c}" data-kot-module="${(kitchenModuleId!'pos')?html}" data-stock-session="${((checkoutSessions?size == 1)?then(checkoutSessions[0].id,''))?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}"></div>
+  <div id="kb-data" style="display:none" data-session="${billingSession.sessionId?html}" data-user="${(ec.user.userId!'')?html}" data-display-enabled="${kitchenDisplayEnabled?c}" data-kot-module="${(kitchenModuleId!'pos')?html}" data-stock-session="${billingSession.sessionId?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftcustomer="${draftCustomerJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}"></div>
 
 
   <header class="kg-header">
@@ -829,21 +861,25 @@
   <dialog id="kb-history" class="zk-history-view" aria-labelledby="kb-history-title">
     <h2 id="kb-history-title">Order History</h2>
     <div class="kb-dialog-fields"><label>Search orders<input id="kb-history-search" type="search" placeholder="KOT, bill, product, or waiter"></label><label>Status<select id="kb-history-status"><option value="">All</option><option value="draft">Held</option><option value="active">Active</option><option value="completed">Completed / Cancelled</option></select></label><label>Date<input id="kb-history-date" type="date"></label></div>
-    <div id="kb-history-rows">
-      <#list draftKots as d><div data-kot-group="draft" data-order-date="${d.isoDate}"><@ordercard d/><#if modCanWrite><button type="button" class="kb-control" data-kot-resume="${d.id?html}">Resume</button><button type="button" class="kb-control" data-kot-discard="${d.id?html}">Discard</button></#if></div></#list>
-      <#list activeKots as k><div data-kot-group="active" data-order-date="${k.isoDate}"><@ordercard k/></div></#list>
-      <#list completedKots as k><div data-kot-group="completed" data-order-date="${k.isoDate}"><@ordercard k/></div></#list>
+    <p id="kb-history-load-status" role="status" hidden></p>
+    <button type="button" class="kb-control" id="kb-history-retry" hidden>Retry</button>
+    <div id="kb-history-rows"<#if includeBillingHistory> data-kb-history-loaded</#if>>
+      <#if includeBillingHistory>
+        <#list draftKots as d><div data-kot-group="draft" data-order-date="${d.isoDate}"><@ordercard d/><#if modCanWrite><button type="button" class="kb-control" data-kot-resume="${d.id?html}">Resume</button><button type="button" class="kb-control" data-kot-discard="${d.id?html}">Discard</button></#if></div></#list>
+        <#list activeKots as k><div data-kot-group="active" data-order-date="${k.isoDate}"><@ordercard k/></div></#list>
+        <#list completedKots as k><div data-kot-group="completed" data-order-date="${k.isoDate}"><@ordercard k/></div></#list>
+      </#if>
     </div><p id="kb-history-empty" hidden>No matching orders.</p><form method="dialog"><button class="kb-control">Close</button></form>
   </dialog>
   <#if modCanWrite><dialog id="kb-payment" class="zk-history-view" aria-labelledby="kb-payment-title">
     <div id="kb-payment-heading"><h2 id="kb-payment-title">Bill Out</h2><p id="kb-payment-total"></p></div>
-    <#if checkoutSessions?has_content><form id="kb-payment-form">
+    <form id="kb-payment-form">
       <input type="hidden" name="sessionId" value="${billingSession.sessionId?html}"/>
       <div id="kb-cash-slot"></div>
       <div id="kb-other-payment">
       <div class="kb-dialog-fields">
         <p>Terminal: ${(billingTerminal.terminalName!billingTerminal.terminalId)?html}</p>
-        <label>Payment method<select name="paymentMethod" id="kb-payment-method"><option>Cash</option><option>Card</option><option>UPI</option><option>Split</option><option>Credit</option></select></label>
+        <label>Payment method<select name="paymentMethod" id="kb-payment-method"><option value="" disabled>Choose payment method</option><option>Cash</option><option>Card</option><option>UPI</option><option>Split</option><option>Credit</option></select></label>
         <label data-kb-tender="Split" hidden>Cash received<input name="cashAmount" type="number" min="0" step="0.01" inputmode="decimal"></label>
         <label data-kb-tender="Split" hidden>Card amount<input name="cardAmount" type="number" min="0" step="0.01"></label>
         <label data-kb-tender="Split" hidden>UPI amount<input name="upiAmount" type="number" min="0" step="0.01"></label>
@@ -852,7 +888,7 @@
         <label data-kb-tender="Credit" hidden>Customer phone<input name="customerPhone" type="tel" maxlength="20"></label>
       </div><button class="kb-action-bill" type="submit">Confirm payment</button><button class="kb-control" type="button" id="kb-payment-close">Cancel</button></div>
       <p id="kb-payment-error" role="alert"></p>
-    </form><#else><p>Open a POS session on your assigned terminal before taking payment. You can still hold your order.</p><form method="dialog"><button class="kb-control">Close</button></form></#if>
+    </form>
   </dialog></#if>
   <#if modCanWrite><dialog id="kb-print-choice" class="zk-history-view" aria-labelledby="kb-print-title">
     <h2 id="kb-print-title">Payment complete</h2><p id="kb-print-summary"></p>
