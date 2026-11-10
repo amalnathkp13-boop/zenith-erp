@@ -727,7 +727,7 @@
 <div class="kb-wrap<#if !kitchenDisplayEnabled> kb-display-disabled</#if>" id="kb-wrap">
   <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=10"/>
   <link rel="stylesheet" href="/zenithstatic/css/pos-checkout.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/pos-checkout.css').getLastModified()?c}"/>
-  <link rel="stylesheet" href="/zenithstatic/css/kot-list.css?v=9"/>
+  <link rel="stylesheet" href="/zenithstatic/css/kot-list.css?v=10"/>
   <input type="hidden" id="kb-token" value="${(ec.web.sessionToken)!''}"/>
   <div id="kb-data" style="display:none" data-session="${billingSession.sessionId?html}" data-user="${(ec.user.userId!'')?html}" data-display-enabled="${kitchenDisplayEnabled?c}" data-kot-module="${(kitchenModuleId!'pos')?html}" data-stock-session="${((checkoutSessions?size == 1)?then(checkoutSessions[0].id,''))?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}"></div>
 
@@ -743,7 +743,7 @@
   <div class="kb-toolbar">
     <a class="kb-control kg-back" href="KotBilling">← Back to Terminals</a>
     <details class="kg-modes">
-      <summary class="kb-control">Modes ⌄</summary>
+      <summary class="kb-control">Modes</summary>
       <div class="kg-menu" aria-label="Sales modes and billing views">
         <div class="kg-menu-section" role="group" aria-label="Sales mode"><span class="kg-menu-label">Sales mode</span>
           <#if draftModeUnavailable><span class="kg-menu-label" role="status">Previous mode unavailable</span></#if>
