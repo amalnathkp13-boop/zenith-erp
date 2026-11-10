@@ -288,11 +288,13 @@
     }
     const toQty=field==='rate' && (e.key==='ArrowRight'||e.key==='Enter');
     const toRate=field==='qty' && e.key==='ArrowLeft';
-    const toPayment=e.key==='ArrowDown'||(field==='qty'&&e.key==='Enter');
-    if(!toQty&&!toRate&&!toPayment)return;
+    const toSearch=field==='qty' && e.key==='ArrowDown';
+    const toPayment=(field==='rate'&&e.key==='ArrowDown')||(field==='qty'&&e.key==='Enter');
+    if(!toQty&&!toRate&&!toSearch&&!toPayment)return;
     e.preventDefault();
     if(!commitEdit(input))return;
-    if(toPayment)paymentButtons[0]?.focus();
+    if(toSearch)search.focus();
+    else if(toPayment)paymentButtons[0]?.focus();
     else focusEditor(editorFor(id,toQty?'qty':'rate'));
   });
   for(const [index,button] of paymentButtons.entries()) {
@@ -451,6 +453,12 @@
   });
   search.addEventListener('keydown',async e=>{
     if(e.isComposing||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey)return;
+    const cash=paymentButtons[0];
+    if(e.key==='ArrowDown'&&!search.value.trim()&&cash&&!cash.disabled){
+      e.preventDefault();
+      if(!e.repeat)cash.focus();
+      return;
+    }
     if(moveMatch(e.key,false)){e.preventDefault();return;}
     if(e.repeat)return;
     if(e.key==='Escape'){clearSearch();return;}

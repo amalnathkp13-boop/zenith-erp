@@ -218,7 +218,21 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    check(view+' Right commits the rate and selects the entire quantity',await rate.inputValue()==='150'&&await quantity.evaluate(allSelected));
    await page.keyboard.type('3');
    await page.keyboard.press('ArrowDown');
-   check(view+' Down moves from quantity to Cash',await page.locator('[data-kb-payment=Cash]').evaluate(el=>el===document.activeElement));
+   check(view+' Down commits quantity and returns to search',await quantity.inputValue()==='3'&&
+    await search.evaluate(el=>el===document.activeElement));
+   await page.keyboard.press('ArrowDown');
+   check(view+' Down from empty search moves to Cash',await page.locator('[data-kb-payment=Cash]').evaluate(el=>el===document.activeElement));
+   if(view==='List'){
+    const fits=await page.locator('#kb-wrap').evaluate(root=>{
+     const payment=root.querySelector('.kb-checkout-actions').getBoundingClientRect();
+     const searchTop=root.querySelector('#kb-search').getBoundingClientRect().top;
+     const cartBottom=root.querySelector('.kb-panel').getBoundingClientRect().bottom;
+     const summaryBottom=root.querySelector('.kl-grand').getBoundingClientRect().bottom;
+     return root.scrollHeight<=root.clientHeight+1&&payment.bottom<=innerHeight&&
+      cartBottom<=searchTop&&summaryBottom<=searchTop;
+    });
+    check('List View keeps the cart and payment row in one viewport',fits);
+   }
    await page.keyboard.press('ArrowRight');
    await page.keyboard.press('Enter');
    await page.locator('#kb-payment').waitFor();
