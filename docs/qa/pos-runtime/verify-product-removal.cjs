@@ -15,6 +15,19 @@ module.exports = async function ({a, foreign, base, check, q, invoke, post}) {
  const remove = (id, shell='apps', actor=a, token=true) => actor.c.request.post(inventoryUrl(shell) + '/EditProduct/deleteProduct', {
   form: {productId:id, ...(token ? {moquiSessionToken:actor.t} : {})}, maxRedirects:0
  });
+ const deleteFromScreen = async (productId, shell) => {
+  await a.p.goto(inventoryUrl(shell) + '/EditProduct?productId=' + productId);
+  await a.p.locator('#productEditor[data-bound="true"]').waitFor();
+  let prompt;
+  a.p.once('dialog', dialog => { prompt = dialog.message(); return dialog.accept(); });
+  const [response] = await Promise.all([
+   a.p.waitForResponse(r => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith('/EditProduct/deleteProduct')),
+   a.p.getByRole('button',{name:'Delete Product',exact:true}).click()
+  ]);
+  check('Delete Product explains that past bills and stock history are kept',
+   prompt?.includes('Past bills and stock history are kept') && response.status() === 302, {status:response.status()});
+  return new URL(response.headers().location || '/', base).pathname;
+ };
  const product = id => q(`SELECT * FROM product WHERE product_id='${id}'`)[0];
  const details = id => q(`SELECT * FROM asset_detail WHERE product_id='${id}'`).map(row => JSON.stringify(row)).sort();
  const onHand = id => Number(q(`SELECT coalesce(sum(quantity_on_hand_total),0) n FROM asset WHERE product_id='${id}'`)[0].n);
@@ -26,13 +39,11 @@ module.exports = async function ({a, foreign, base, check, q, invoke, post}) {
  await remove(unused, 'apps', foreign);
  await remove(unused, 'apps', a, false);
  check('foreign tenant and missing CSRF cannot remove a product', product(unused).sales_discontinuation_date == null);
- const blocked = await remove(id);
- const blockedLocation = new URL(blocked.headers().location || '/', base);
+ const blockedLocation = await deleteFromScreen(id, 'apps');
  check('a stocked product stays active and does not change the POS catalogue revision',
-  blockedLocation.pathname.endsWith('/EditProduct') && onHand(id) === 1 &&
-  product(id).sales_discontinuation_date == null && revision() === beforeBlocked, {location:blockedLocation.pathname});
- await a.p.goto(blockedLocation.href);
- check('Inventory explains that stock must be zero', (await a.p.locator('body').innerText()).includes('Current stock must be zero'));
+  blockedLocation.endsWith('/EditProduct') && onHand(id) === 1 &&
+  product(id).sales_discontinuation_date == null && revision() === beforeBlocked, {location:blockedLocation});
+ await a.p.getByText('Current stock must be zero in every shop and lot before removing this product.', {exact:true}).first().waitFor();
 
  await post('PosTerminals','createTerminal',{terminalId, terminalName:'Disposable product removal terminal',
   facilityId:'POS_QA_A_FAC', organizationPartyId:'POS_QA_A', stateCode:'33', isActive:'Y'});
@@ -64,19 +75,12 @@ module.exports = async function ({a, foreign, base, check, q, invoke, post}) {
  };
  check('active product is selectable by code on both tills',
   (await lookup(code)).some(p => p.productId === id) && (await menu(code)).products.some(p => p.id === id));
- const deleteFromScreen = async (productId, shell) => {
-  await a.p.goto(inventoryUrl(shell) + '/EditProduct?productId=' + productId);
-  await a.p.locator('#productEditor[data-bound="true"]').waitFor();
-  const button = a.p.getByRole('button',{name:'Delete Product',exact:true});
-  let prompt;
-  a.p.once('dialog', dialog => { prompt = dialog.message(); return dialog.accept(); });
-  await button.click();
+ for (const [productId, shell] of [[id,'apps'],[unused,'qapps']]) {
+  const location = await deleteFromScreen(productId, shell);
   await a.p.locator('#productCatalog').waitFor();
   check(shell+' Delete Product removes the item from the active catalogue',
-   prompt?.includes('Past bills and stock history are kept') && product(productId).sales_discontinuation_date != null);
- };
- await deleteFromScreen(id, 'apps');
- await deleteFromScreen(unused, 'qapps');
+   location.endsWith('/FindProduct') && product(productId).sales_discontinuation_date != null, {location});
+ }
  for (const shell of ['apps','qapps']) {
   await a.p.goto(inventoryUrl(shell) + '/FindProduct?catalogSearch=' + encodeURIComponent(productName));
   await a.p.locator('#productCatalog').waitFor();
