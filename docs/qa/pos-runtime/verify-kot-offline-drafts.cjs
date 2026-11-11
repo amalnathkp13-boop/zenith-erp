@@ -300,10 +300,24 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
       assert.deepEqual(result.errors,[],op);
       return result.result;
     };
+    const completedKotOrders = async () => {
+      const dashboard = await context.newPage();
+      try {
+        const response = await dashboard.goto(base + '/apps/zenith/kot/KotDashboard');
+        assert.ok(response.ok(),'KOT Dashboard loads');
+        return Number(await dashboard.locator('.kd-stat').filter({hasText:'Completed Orders'}).locator('.kd-stat__value').innerText());
+      } finally {
+        await dashboard.close();
+      }
+    };
+    const beforeRetail = await completedKotOrders();
     const { transactionId } = await invokePos('cart',{sessionId,reuseOpenCart:'false'});
     await invokePos('add',{transactionId,productId:product,quantity:'1',taxOn:'N'});
+    await invokePos('kot',{posTransactionId:transactionId,items:JSON.stringify([{productId:product,quantity:1}])});
     await invokePos('pay',{transactionId,paymentMethod:'Cash',amount:'100'});
     await invokePos('complete',{transactionId});
+    const legacyTickets = q("SELECT kot_id,order_receipt_json FROM kitchen_order_ticket WHERE transaction_id='" + transactionId + "'");
+    assert.ok(legacyTickets.length === 1 && legacyTickets[0].order_receipt_json === null,'Retail fixture has a legacy kitchen ticket');
     const retailNumber = q("SELECT transaction_number FROM pos_transaction WHERE transaction_id='" + transactionId + "'")[0].transaction_number;
     const [kotTransactions, posTransactions, posHistory] = await Promise.all([
       context.request.get(base + '/apps/zenith/kot/PosTransactions'),
@@ -312,12 +326,18 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
         form:{moquiSessionToken:foreign.t,sessionId,action:'billHistory'},maxRedirects:0
       })
     ]);
+    const [kotList,posList,historyList] = await Promise.all([kotTransactions,posTransactions,posHistory].map(response => response.text()));
+    const afterRetail = await completedKotOrders();
+    const inKot = kotList.includes(retailNumber);
+    const inPos = posList.includes(retailNumber);
+    const inPosHistory = historyList.includes(retailNumber);
+    check('A POS bill with a legacy kitchen ticket remains a POS sale and leaves the KOT dashboard unchanged',
+      posTransactions.ok() && posHistory.ok() && kotTransactions.ok() && inPos && inPosHistory && !inKot && afterRetail === beforeRetail,
+      {retailNumber,inPos,inPosHistory,inKot,beforeRetail,afterRetail});
     const number = payment[0].transaction_number;
     check('The synced offline bill is in KOT Transactions and stays out of POS Transactions and POS Bill History',
-      kotTransactions.ok() && (await kotTransactions.text()).includes(number) && posTransactions.ok() &&
-      !(await kotTransactions.text()).includes(retailNumber) && !(await posTransactions.text()).includes(number) &&
-      (await posTransactions.text()).includes(retailNumber) && posHistory.ok() && !(await posHistory.text()).includes(number) &&
-      (await posHistory.text()).includes(retailNumber),
+      kotTransactions.ok() && kotList.includes(number) && posTransactions.ok() && !posList.includes(number) &&
+      posHistory.ok() && !historyList.includes(number),
       {kotStatus:kotTransactions.status(),posStatus:posTransactions.status(),historyStatus:posHistory.status(),number});
     await page.reload();
     check('Reloaded KOT header counts only the confirmed KOT bill and ignores the newer POS bill',

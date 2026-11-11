@@ -57,6 +57,14 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
    }
    if(out) await page.screenshot({path:path.join(out,shell+'-standalone-kot.png')});
    for (const [seg,name] of tools) {
+    if (shell==='qapps' && seg==='CreditBills') {
+     await strip.getByRole('link',{name,exact:true}).click();
+     await page.waitForURL('**/apps/zenith/kot/CreditBills');
+     await page.locator('#credit-list-host').waitFor();
+     check('qapps opens the shared KOT Credit Bills screen directly',
+      await page.locator('#z-subnav .zsub-grp.show a.on[data-match="/kot/CreditBills"]').isVisible());
+     continue;
+    }
     const response=await page.goto(base+'/'+shell+'/zenith/kot/'+seg);
     const active=strip.locator('a.on[data-match="/kot/'+seg+'"]');
     await active.waitFor();
@@ -80,8 +88,6 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   await migratedTab.locator('xpath=self::*[@hidden]').waitFor({state:'attached'});
   check('KOT preserves the visibility of tabs saved under their previous POS paths',await migratedTab.isHidden());
   await post(a,'saveSubnavConfiguration',{module:'kot',payload:JSON.stringify({version:1,order:[],hidden:[]})});
-  await page.goto(base+'/apps/zenith/kot/KotDashboard');
-  const before = Number(await completedOrders.innerText());
   await page.goto(base+'/apps/zenith/pos/Kitchen');
   await page.locator('.zk-display').waitFor();
   check('old Kitchen bookmark still opens the shared Kitchen Display',
@@ -143,6 +149,10 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   check('KOT-only clerk can record a successful print',ack.ok()&&(await ack.json()).success===true);
   const draftResponse=await post(kit,'kot/KotBilling/saveDraft',{sessionId,itemsJson:JSON.stringify([{productId:'POS_QA_A_P18',quantity:1}]),orderType:'Take Away',taxOn:'N',salesModeId:'RETAIL',wantJson:'Y'});
   const draft=await draftResponse.json();
+  const dashboardUrl=base+'/apps/zenith/kot/KotDashboard';
+  await page.goto(dashboardUrl);
+  const dashDate=await page.locator('#kd-wrap input[type=date]').inputValue();
+  const before=Number(await completedOrders.innerText());
   const paid=await post(kit,'kot/KotBilling/checkoutKot',{sessionId,kotId:draft.kotId,paymentMethod:'Cash',cashAmount:'100'});
   const settled=await paid.json();
   check('KOT-only clerk can complete a bill on the assigned terminal',draft.success&&settled.success===true);
@@ -162,8 +172,10 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   const receipt=await a.c.request.get(base+'/fop/apps/zenith/kot/ReceiptPdf?transactionId='+transactionId);
   check('owner can generate the linked KOT receipt PDF',receipt.ok()&&
    (await receipt.body()).subarray(0,4).toString()==='%PDF');
-  await page.goto(base+'/apps/zenith/kot/KotDashboard');
-  check('standalone KOT dashboard counts the newly completed KOT sale once',Number(await completedOrders.innerText())===before+1);
+  await page.goto(dashboardUrl+'?dashDate='+encodeURIComponent(dashDate));
+  const after=Number(await completedOrders.innerText());
+  check('standalone KOT dashboard counts the newly completed KOT sale once',after===before+1,
+   {before,after,dashDate,transactionId,transaction:q("SELECT status_id,entry_date FROM pos_transaction WHERE transaction_id='"+transactionId+"'")[0]});
   const unchanged=q("SELECT setting_value FROM company_settings WHERE organization_party_id='POS_QA_A' AND setting_key='KITCHEN_DISPLAY_POS_QA_A_FAC'");
   await post(kit,'kot/KitchenDisplay/saveDisplayPolicy',{facilityId:'POS_QA_A_FAC',enabled:'N'});
   check('KOT clerk cannot change the administrator kitchen policy',JSON.stringify(q("SELECT setting_value FROM company_settings WHERE organization_party_id='POS_QA_A' AND setting_key='KITCHEN_DISPLAY_POS_QA_A_FAC'"))===JSON.stringify(unchanged));

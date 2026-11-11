@@ -466,7 +466,8 @@
             var match = key + '/' + seg;
             if ((key === '/pos' && posCash && !posCash[seg]) || !roleAllows(match)) return;
             var a = el('a', 'zqsub-tab', label);
-            a.href = match === '/pos/Terminal' ? '/apps/zenith' + match : '/qapps/zenith' + match;
+            var classicOnly = match === '/pos/Terminal' || match === '/kot/CreditBills';
+            a.href = (classicOnly ? '/apps/zenith' : '/qapps/zenith') + match;
             a.setAttribute('data-match', match);
             if (relA.indexOf(match) === 0 && match.length > alen) { active = a; alen = match.length; }
             subBar.appendChild(a);

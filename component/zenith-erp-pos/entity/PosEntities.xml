@@ -655,7 +655,6 @@
         <member-entity entity-alias="KOT" entity-name="zenith.erp.pos.KitchenOrderTicket" join-from-alias="PX">
             <key-map field-name="transactionId"/>
             <key-map field-name="organizationPartyId"/>
-            <entity-condition><econdition field-name="orderReceiptJson" operator="is-not-null"/></entity-condition>
         </member-entity>
         <alias entity-alias="PX" name="transactionId"/>
         <alias entity-alias="PX" name="organizationPartyId"/>
@@ -664,6 +663,8 @@
         <alias entity-alias="PX" name="customerPartyId"/>
         <alias entity-alias="PX" name="payableAmount"/>
         <alias entity-alias="PX" name="grandTotal"/>
+        <!-- A view-level filter keeps the KOT join when callers select only transaction fields. -->
+        <entity-condition><econdition entity-alias="KOT" field-name="orderReceiptJson" operator="is-not-null"/></entity-condition>
     </view-entity>
 
     <view-entity entity-name="KotView" package="zenith.erp.pos">
@@ -731,7 +732,6 @@
         <member-entity entity-alias="KOT" entity-name="zenith.erp.pos.KitchenOrderTicket" join-from-alias="PX">
             <key-map field-name="transactionId"/>
             <key-map field-name="organizationPartyId"/>
-            <entity-condition><econdition field-name="orderReceiptJson" operator="is-not-null"/></entity-condition>
         </member-entity>
         <alias-all entity-alias="PX"/>
         <alias entity-alias="PS" name="operatorPartyId"/>
@@ -741,6 +741,7 @@
         <alias entity-alias="PS" name="ztfSessionOrg" field="organizationPartyId"/>
         <alias entity-alias="PT" name="ztfTerminalOrg" field="organizationPartyId"/>
         <alias entity-alias="KOT" name="kotOrganizationPartyId" field="organizationPartyId"/>
+        <entity-condition><econdition entity-alias="KOT" field-name="orderReceiptJson" operator="is-not-null"/></entity-condition>
     </view-entity>
 
     <!-- ========== POS Bill Amendment Audit View (amendment -> txn -> session -> terminal) ========== -->
