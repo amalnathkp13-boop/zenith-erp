@@ -378,3 +378,8 @@ html body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root.pos-checkout-r
   html body.Terminal.pos-mode-advanced .z-pos-page #pos-terminal-root.pos-checkout-reference { grid-template-rows:56px max-content 46px minmax(150px,1fr) 36px 44px 70px max-content!important; }
   html body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root.pos-checkout-reference { grid-template-rows:56px max-content 40px minmax(150px,1fr) 44px 36px 70px max-content!important; }
 }
+
+/* Shared till review is a native modal in POS and KOT, including fullscreen. */
+dialog.pos-close-overlay { border:0; padding:0; max-width:calc(100vw - 24px); max-height:none; border-radius:16px; background:transparent; }
+dialog.pos-close-overlay::backdrop { background:rgba(0,0,0,.6); }
+dialog.pos-close-overlay button:disabled { opacity:.5; cursor:not-allowed!important; }

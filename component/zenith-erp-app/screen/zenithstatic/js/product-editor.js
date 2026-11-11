@@ -85,7 +85,12 @@
    submitProduct(form,status,body=>{if(!custom)body.set('printName','');});
   });
   root.querySelectorAll('[data-pe-leave]').forEach(a=>a.addEventListener('click',e=>{if(dirty&&!window.confirm('Discard unsaved product changes?'))e.preventDefault();else dirty=false;}));
-  root.querySelector('[data-pe-delete]')?.addEventListener('click',()=>{if(window.confirm('Permanently delete this product? Products with bills, orders or stock history cannot be deleted.')){dirty=false;root.querySelector('#productDeleteForm').requestSubmit();}});
+  root.querySelector('[data-pe-delete]')?.addEventListener('click',()=>{
+    if(window.confirm('Remove this product from active inventory and billing? Current stock must be zero. Past bills and stock history are kept.')){
+      dirty=false;
+      root.querySelector('#productDeleteForm').requestSubmit();
+    }
+  });
   root.querySelectorAll('.pe-tabs a').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();root.querySelectorAll('.pe-tabs a').forEach(b=>b.removeAttribute('aria-current'));a.setAttribute('aria-current','true');root.querySelector(a.getAttribute('href')).scrollIntoView({block:'start'});}));
   const file=root.querySelector('[data-pe-file]'),image=root.querySelector('[data-pe-image]'),blank=root.querySelector('[data-pe-no-image]'),imageStatus=root.querySelector('[data-pe-image-status]'),drop=root.querySelector('[data-pe-drop]');
   let imageRead=0;

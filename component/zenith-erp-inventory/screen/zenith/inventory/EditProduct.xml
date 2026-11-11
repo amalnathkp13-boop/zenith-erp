@@ -6,13 +6,8 @@
     <parameter name="productId" required="true"/>
 
     <transition name="findProduct"><default-response url="../FindProduct"/></transition>
-    <!-- ZE-POS-014: guarded delete - the service blocks products with bills/invoices/orders/stock history -->
     <transition name="deleteProduct" method="post">
-        <actions>
-        <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'inventory']" out-map="writeAccess"/>
-        <if condition="!writeAccess.canWrite"><return error="true" message="You have view-only access."/></if>
-        <service-call name="zenith.inventory.InventoryServices.delete#Product" in-map="[productId:productId]"/>
-        </actions>
+        <actions><service-call name="zenith.inventory.InventoryServices.delete#Product" in-map="[productId:productId]"/></actions>
         <conditional-response url=".">
             <condition><expression>ec.message.hasError()</expression></condition>
         </conditional-response>

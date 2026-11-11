@@ -551,51 +551,41 @@
         </actions>
     </service>
 
-    <!-- ZE-POS-014: guarded hard-delete for a mistakenly-created product. BLOCKED when the product is
-         on business documents (POS bills / invoices / orders) or has stock history (non-zero on-hand or
-         any AssetDetail movement) - master data referenced by history must stay for audit. Org-guarded
-         (ownerPartyId == active org, ADMIN exempt - same idiom as updateProduct). Any unexpected FK
-         reference (e.g. variants via ProductAssoc) is caught into the same "referenced" message. -->
+    <!-- Remove from active catalogues while keeping the product ID and its historical references. -->
     <service verb="delete" noun="Product">
         <in-parameters><parameter name="productId" required="true"/></in-parameters>
         <actions>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'inventory']" out-map="writeAccess"/>
+            <if condition="!writeAccess.canWrite"><return error="true" message="You have view-only access."/></if>
+            <service-call name="zenith.barcode.BarcodeServices.get#AuthorizedActiveOrganization" out-map="scope"/>
             <script><![CDATA[
-                def prod = ec.entity.find("mantle.product.Product").condition("productId", productId).one()
-                if (prod == null) { ec.message.addError("Product not found."); return }
-                def activeOrg = ec.user.getPreference('ACTIVE_ORGANIZATION')
-                if (!ec.user.isInGroup('ADMIN') && (!activeOrg || prod.ownerPartyId != activeOrg)) {
-                    ec.message.addError("Product not found for your account."); return
+                def find = ec.entity.find('mantle.product.Product').condition('productId', productId)
+                def owner = ec.user.isInGroup('ADMIN') ? find.one()?.ownerPartyId : scope.activeOrgId
+                if (!owner) { ec.message.addError('Product not found for your account.'); return }
+                // Publish the catalogue revision under the same organization lock used by product edits.
+                ec.entity.find('mantle.party.Party').condition('partyId', owner).disableAuthz().forUpdate(true).one()
+                def prod = find.condition('ownerPartyId', owner).one()
+                if (!prod || prod.ownerPartyId != owner) {
+                    ec.message.addError('Product not found for your account.'); return
                 }
-                def refs = []
-                if (ec.entity.find("zenith.erp.pos.PosTransactionItem").condition("productId", productId).count() > 0) refs.add("POS bills")
-                if (ec.entity.find("mantle.account.invoice.InvoiceItem").condition("productId", productId).count() > 0) refs.add("invoices")
-                if (ec.entity.find("mantle.order.OrderItem").condition("productId", productId).count() > 0) refs.add("orders")
-                def assets = ec.entity.find("mantle.product.asset.Asset").condition("productId", productId).list()
-                def hasStock = false
-                for (a in assets) {
-                    if (((a.quantityOnHandTotal ?: 0) as BigDecimal) != 0) { hasStock = true; break }
-                    if (ec.entity.find("mantle.product.asset.AssetDetail").condition("assetId", a.assetId).count() > 0) { hasStock = true; break }
-                }
-                if (hasStock) refs.add("stock records")
-                if (refs) {
-                    ec.message.addError("Cannot delete: this product is on " + refs.join(", ") + " and must stay for history/audit.")
+                def now = ec.user.nowTimestamp
+                if (prod.salesDiscontinuationDate && prod.salesDiscontinuationDate <= now) return
+                // Checkout can hold the catalogue marker before locking products and lots.
+                // Keep that order here. An ineligible removal rolls back the revision as well.
+                ec.service.sync().name('zenith.pos.ProductModePricingServices.mark#CatalogChanged')
+                    .parameter('organizationPartyId', owner).call()
+                if (ec.message.hasError()) return
+                prod = find.forUpdate(true).one()
+                // Check each lot, so balances cannot cancel across shops.
+                def assets = ec.entity.find('mantle.product.asset.Asset').condition('productId', productId)
+                    .condition('ownerPartyId', prod.ownerPartyId).orderBy('assetId').forUpdate(true).list()
+                if (assets.any { (it.quantityOnHandTotal ?: 0G) != 0G }) {
+                    ec.message.addError('Current stock must be zero in every shop and lot before removing this product.')
                     return
                 }
-                // audit: an irreversible delete on a live system must be reconstructable from the logs
-                ec.logger.warn("delete#Product AUDIT: user " + (ec.user.username ?: "?") + " permanently deleting product " + productId + " (org " + prod.ownerPartyId + "): " + groovy.json.JsonOutput.toJson(new HashMap(prod)))
-                try {
-                    ec.entity.find("zenith.erp.inventory.ProductEditorImage").condition("productId", productId).condition("organizationPartyId",prod.ownerPartyId).deleteAll()
-                    ec.entity.find("mantle.product.ProductPrice").condition("productId", productId).deleteAll()
-                    ec.entity.find("zenith.erp.pos.PosProductModePrice").condition("productId", productId).deleteAll()
-                    ec.entity.find("mantle.product.category.ProductCategoryMember").condition("productId", productId).deleteAll()
-                    ec.entity.find("mantle.product.ProductIdentification").condition("productId", productId).deleteAll()
-                    for (a in assets) { try { a.delete() } catch (Exception ignored) { } }
-                    ec.entity.find("mantle.product.Product").condition("productId", productId).deleteAll()
-                    ec.message.addMessage("Product deleted.")
-                } catch (Exception e) {
-                    ec.logger.warn("delete#Product blocked for " + productId + ": " + e.message)
-                    ec.message.addError("Cannot delete this product - it is referenced by other records (e.g. variants or stock).")
-                }
+                prod.salesDiscontinuationDate = now
+                prod.update()
+                if (!ec.message.hasError()) ec.message.addMessage('Product removed from the active catalogue. Bill and stock history were kept.')
             ]]></script>
         </actions>
     </service>

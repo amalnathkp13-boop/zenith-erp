@@ -70,6 +70,7 @@
             def prefix=cf.makeCondition('productName',EC.LIKE,escaped+'%').ignoreCase()
             def others=cf.makeCondition([cf.makeCondition('productName',EC.NOT_LIKE,escaped+'%').ignoreCase(),cf.makeCondition('productName',EC.EQUALS,null)],EC.OR)
             def find={ ec.entity.find('mantle.product.Product').condition('ownerPartyId',org).condition('productTypeEnumId','PtAsset')
+                .conditionDate('salesIntroductionDate','salesDiscontinuationDate',ec.user.nowTimestamp)
                 .condition(cf.makeCondition(matches,EC.OR)).orderBy('productName,productId') }
             // Suggestions and the first grid page do not need a count round trip.
             int firstCount = start ? find().condition(prefix).count() : 0
@@ -106,11 +107,13 @@
                     gridProducts = ec.entity.find("mantle.product.Product")
                         .condition("productId", org.moqui.entity.EntityCondition.ComparisonOperator.IN, pIds)
                         .condition([ownerPartyId: posOrg, productTypeEnumId: 'PtAsset'])
+                        .conditionDate('salesIntroductionDate','salesDiscontinuationDate',ec.user.nowTimestamp)
                         .offset(gridOffset).limit(gridPageSize + 1).orderBy("productName,productId").list()
                 }
             } else {
                 gridProducts = ec.entity.find("mantle.product.Product")
                     .condition([productTypeEnumId:'PtAsset', ownerPartyId: posOrg])
+                    .conditionDate('salesIntroductionDate','salesDiscontinuationDate',ec.user.nowTimestamp)
                     .offset(gridOffset).limit(gridPageSize + 1).orderBy("productName,productId").list()
             }
             if (gridProducts.size() > gridPageSize) {

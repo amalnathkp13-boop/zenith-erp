@@ -104,6 +104,7 @@
   <zenith.erp.pos.PosSalesMode salesModeId="RETAIL" modeName="Retail" modeCode="RTL" priceSource="PpsMrp" isTaxInclusive="N" requireCustomer="N" invoicePrefix="RTL" colorCode="#1976D2" isDefault="Y" isActive="Y" description="Standard retail sales to walk-in customers (price + GST)" />
   <zenith.erp.pos.PosSalesMode salesModeId="WHOLESALE" modeName="Wholesale" modeCode="WSL" priceSource="PpsFixedProduct" discountPercent="0" isTaxInclusive="N" requireCustomer="Y" minOrderAmount="500" invoicePrefix="WSL" colorCode="#388E3C" isDefault="N" isActive="Y" description="Wholesale sales at an explicit per-product price" />
   <zenith.erp.pos.PosSalesMode salesModeId="EMPLOYEE" modeName="Employee" modeCode="EMP" priceSource="PpsFixedProduct" discountPercent="0" isTaxInclusive="N" requireCustomer="Y" invoicePrefix="EMP" colorCode="#7B1FA2" isDefault="N" isActive="Y" description="Employee purchase at an explicit per-product price (price + GST)" />
+  <zenith.erp.pos.PosSalesMode salesModeId="POS_QA_LEGACY_MODE" modeName="Disposable unconfigured legacy" modeCode="QALEGACY" priceSource="PpsMrp" isDefault="N" isActive="Y" />
   <moqui.basic.StatusType statusTypeId="OfflineTransaction" description="Offline Transaction" />
   <moqui.basic.StatusItem statusId="OtPending" statusTypeId="OfflineTransaction" description="Pending Sync" sequenceNum="1" />
   <moqui.basic.StatusItem statusId="OtSyncing" statusTypeId="OfflineTransaction" description="Syncing" sequenceNum="2" />

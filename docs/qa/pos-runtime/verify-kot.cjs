@@ -57,7 +57,7 @@ module.exports = async function verifyKot({a,foreign,base,post,rows,count,check}
   await printPage.waitForFunction(()=>window.__printedHtml.includes('Disposable POS A P18'));
   check('Print on an existing KOT records one shop-owned reprint and opens the slip',
     Number(rows('kitchen_order_ticket',`kot_id='${ticket.kot_id}'`)[0].print_count)===1&&
-    await printPage.evaluate(()=>window.__printedHtml.includes('KOT #')));
+    await printPage.evaluate(()=>window.__printedHtml.includes('<td>Disposable POS A P18</td>')&&!window.__printedHtml.includes('KOT #')));
   await printPage.close();
 
   const ownTable='POS_QA_KOT_A_TABLE_'+Date.now().toString(36);

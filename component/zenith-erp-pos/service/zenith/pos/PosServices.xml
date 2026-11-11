@@ -444,6 +444,7 @@
             <parameter name="productId" required="true"/>
             <parameter name="quantity" type="BigDecimal" default-value="1"/>
             <parameter name="unitPrice" type="BigDecimal"/>
+            <parameter name="manualUnitPrice" type="Boolean" default-value="false"/>
             <parameter name="discountPercent" type="BigDecimal" default-value="0"/>
             <parameter name="salesModeId"/>
             <parameter name="taxOn" default-value="Y"/>
@@ -458,12 +459,14 @@
             <if condition="txn.statusId != 'PtCreated'">
                 <return error="true" message="Transaction is already completed or voided"/></if>
 
+            <!-- Get product details -->
+            <entity-find-one entity-name="mantle.product.Product" value-field="product" for-update="true">
+                <field-map field-name="productId"/></entity-find-one>
+            <if condition="product?.salesDiscontinuationDate &amp;&amp; product.salesDiscontinuationDate &lt;= ec.user.nowTimestamp">
+                <return error="true" message="This product has been removed from the active catalogue."/></if>
             <service-call name="zenith.pos.PosStockServices.check#PosCartStock"
                 in-map="[transactionId:transactionId, productId:productId, quantityDelta:quantity]"/>
             <if condition="ec.message.hasError()"><return/></if>
-            <!-- Get product details -->
-            <entity-find-one entity-name="mantle.product.Product" value-field="product">
-                <field-map field-name="productId"/></entity-find-one>
             <set field="productName" from="product?.printName ?: product?.productName ?: productId"/>
             <!-- Look up session/terminal up-front: needed for org-aware pricing AND tax -->
             <entity-find-one entity-name="zenith.erp.pos.PosSession" value-field="session">
@@ -475,7 +478,7 @@
                  (a unitPrice that differs from the product MRP). Keeps POS, Inventory and Pricing in sync. -->
             <service-call name="zenith.pos.PosModeServices.assert#TerminalMode" in-map="[terminalId:terminal.terminalId,salesModeId:salesModeId]"/>
             <if condition="ec.message.hasError()"><return/></if>
-            <set field="isDefaultPrice" from="unitPrice == null || (product?.mrpAmount != null &amp;&amp; (unitPrice as BigDecimal).compareTo(product.mrpAmount as BigDecimal) == 0)"/>
+            <set field="isDefaultPrice" from="unitPrice == null || (!manualUnitPrice &amp;&amp; product?.mrpAmount != null &amp;&amp; (unitPrice as BigDecimal).compareTo(product.mrpAmount as BigDecimal) == 0)"/>
             <!-- An explicit mode price wins over MRP and price lists. The fixed-mode MRP
                  fallback is also exact. An intentional cashier override remains separate. -->
             <set field="modeIsFixed" from="false"/>
@@ -1752,6 +1755,7 @@
             <if condition="!organizationPartyId"><return/></if>
             <entity-find entity-name="mantle.product.Product" list="productList">
                 <econdition field-name="ownerPartyId" from="organizationPartyId"/>
+                <date-filter from-field-name="salesIntroductionDate" thru-field-name="salesDiscontinuationDate"/>
             </entity-find>
             <entity-find-one entity-name="zenith.erp.pos.PosTerminal" value-field="_catalogTerminal"><field-map field-name="terminalId"/></entity-find-one>
             <entity-find entity-name="zenith.erp.india.IndiaGstConfig" list="_catalogGst" limit="1"><econdition field-name="organizationPartyId"/></entity-find>
@@ -2358,10 +2362,11 @@
     </service>
 
     <service verb="get" noun="PosSessionCashSummary">
-        <in-parameters><parameter name="sessionId" required="true"/></in-parameters>
+        <in-parameters><parameter name="sessionId" required="true"/><parameter name="includeCheckoutSummary" type="Boolean" default="false"/></in-parameters>
         <out-parameters>
             <parameter name="cashReceived" type="BigDecimal"/><parameter name="changeGiven" type="BigDecimal"/>
             <parameter name="movementNet" type="BigDecimal"/><parameter name="expectedCash" type="BigDecimal"/>
+            <parameter name="checkoutSummary" type="Map"/>
         </out-parameters>
         <actions>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[sessionId:sessionId]" out-map="_summaryAccess"/>
@@ -2407,6 +2412,15 @@
                     else if (entry.entryType == 'CashOut') movementNet -= amount
                 }
                 expectedCash = ((session.openingCash ?: 0) as BigDecimal) + cashReceived - changeGiven + movementNet
+                if (includeCheckoutSummary) {
+                    def other = txnIds ? ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId','in',txnIds)
+                        .condition('paymentMethod','in',['Card','UPI']).list() : []
+                    checkoutSummary = [billCount:txns.size(),totalSales:txns.sum { it.grandTotal ?: 0G } ?: 0G,
+                        openingCash:session.openingCash ?: 0G,cashReceived:cashReceived,changeGiven:changeGiven,
+                        movementNet:movementNet,expectedCash:expectedCash,
+                        cardReceived:other.findAll { it.paymentMethod=='Card' }.sum { it.amount ?: 0G } ?: 0G,
+                        upiReceived:other.findAll { it.paymentMethod=='UPI' }.sum { it.amount ?: 0G } ?: 0G]
+                }
             ]]></script>
         </actions>
     </service>

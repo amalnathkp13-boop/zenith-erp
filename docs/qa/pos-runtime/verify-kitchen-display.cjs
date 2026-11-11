@@ -49,7 +49,9 @@ try{
  await page.route('**/Kitchen/KotBilling.qvt*',async route=>{started();await blocked;await route.continue();});
  const navigation=page.getByRole('tab',{name:'KOT Billing',exact:true}).click({noWaitAfter:true});
  await Promise.race([requested,new Promise((_,reject)=>setTimeout(()=>reject(Error('Kitchen component navigation request was not observed')),10000))]);await page.waitForTimeout(1100);
- check('slow real qapps navigation hides old Kitchen content immediately',!await page.locator('.zk-display').isVisible()&&await page.locator('#zk-route-status').isVisible());
+ const staleDisplay=page.locator('.zk-display');
+ check('slow real qapps Billing navigation has no loading card and keeps old actions unavailable',
+  await page.locator('#zk-route-status').count()===0&&(!await staleDisplay.isVisible()||await staleDisplay.evaluate(node=>node.closest('[inert]')!==null)));
  check('existing global navigation remains visible during loading',await page.locator('#zq-subnav').isVisible());
  await page.screenshot({path:path.join(out,'slow-navigation.png')});release();await navigation;await page.locator('#kot-terminal-entry').waitFor();await page.waitForFunction(()=>!document.documentElement.classList.contains('zk-route-pending'));
  check('qapps replaces child content without retaining a loading mask',await page.locator('#kitchen-page-frame').count()===1&&await page.locator('#zk-route-status').count()===0);
