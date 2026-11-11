@@ -1040,7 +1040,7 @@
       const buttons=Array.from(row.querySelectorAll('[data-kb-history-print]:enabled'));
       if(!buttons.length)return;
       const index=buttons.indexOf(event.target);
-      if(event.key===' '&&index===-1){
+      if(event.key===' '&&event.target.matches('[data-kb-history-detail]')){
         event.preventDefault();
         buttons[0].focus();
       }else if(index!==-1&&['ArrowLeft','ArrowRight'].includes(event.key)){
