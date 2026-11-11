@@ -50,6 +50,7 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
    const links = strip.locator('a:visible');
    await page.goto(base+'/'+shell+'/zenith/pos/Dashboard');
    await strip.locator('a[data-match="/pos/Dashboard"]').waitFor();
+   const posLinks = await links.evaluateAll(anchors=>anchors.map(a=>a.getAttribute('data-match')));
    await sidebar.click();
    await page.locator('#kd-wrap').waitFor();
    const activeSidebar = sidebar.and(page.locator('.on'));
