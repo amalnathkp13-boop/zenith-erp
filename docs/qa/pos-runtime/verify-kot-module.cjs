@@ -90,6 +90,7 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   await post(a,'saveSubnavConfiguration',{module:'kot',payload:JSON.stringify({version:1,order:[],hidden:[]})});
   await page.goto(base+'/apps/zenith/kot/KotDashboard');
   const before = Number(await completedOrders.innerText());
+  const reportingDate = await page.locator('.kd-datepill input').inputValue();
   const posBefore = await posTotal();
   const homeBefore = await homeTotal();
   await page.goto(base+'/apps/zenith/pos/Kitchen');
@@ -167,8 +168,14 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   const receipt=await a.c.request.get(base+'/fop/apps/zenith/kot/ReceiptPdf?transactionId='+transactionId);
   check('owner can generate the linked KOT receipt PDF',receipt.ok()&&
    (await receipt.body()).subarray(0,4).toString()==='%PDF');
-  await page.goto(base+'/apps/zenith/kot/KotDashboard');
-  check('standalone KOT dashboard counts the newly completed KOT sale once',Number(await completedOrders.innerText())===before+1);
+  await page.goto(base+'/apps/zenith/kot/KotDashboard?dashDate='+encodeURIComponent(reportingDate));
+  const afterText = await completedOrders.innerText();
+  const after = Number(afterText);
+  const dashboardDate = await page.locator('.kd-datepill input').inputValue();
+  check('standalone KOT dashboard counts the newly completed KOT sale once',after===before+1&&dashboardDate===reportingDate,{
+   before,after,afterText,transactionId,reportingDate,dashboardDate,
+   shop:await page.locator('#z-shopdata').getAttribute('data-active')
+  });
   check('POS dashboard includes the KOT bill once',await posTotal()===posBefore+100);
   await page.goto(base+'/apps/zenith/pos/PosTransactions');
   const posRow = page.getByRole('row').filter({has:page.getByText(settled.billNumber,{exact:true})});
