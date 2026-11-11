@@ -47,25 +47,25 @@ async function verifyKotCreditBills({ a, foreign, base, check, q, out, kotId, re
       denied(a,kotPath+'/settleCredit',{settleTxId:kotId,settleMethod:'UPI',settleAmount:'1'})
     ]);
     check('Credit detail and repayment enforce the module and organization boundary',
-      blocked.every(Boolean) && payments(kotId).length === 0 && payments(retailId).length === 0,blocked);
+      blocked.every(Boolean) && payments(kotId).length === 1 && payments(retailId).length === 0,blocked);
 
     const partial = await repay('UPI',40);
     check('KOT can record a partial repayment against its offline credit bill',
-      partial.success === true && Number(partial.outstanding) === 50 && !partial.fullyPaid,partial);
+      partial.success === true && Number(partial.outstanding) === 40 && !partial.fullyPaid,partial);
     const partialNotice = page.getByText('Payment recorded',{exact:false});
     await partialNotice.waitFor();
-    const final = await repay('Card',50);
+    const final = await repay('Card',40);
     await page.getByText('Bill fully settled',{exact:false}).waitFor();
     check('The latest repayment confirmation replaces the previous notification',
       await partialNotice.count() === 0);
-    check('KOT can settle the remaining balance with exactly two persisted payments',
+    check('KOT keeps the upfront payment and both repayments when settling the remaining balance',
       final.success === true && final.fullyPaid === true && Number(final.outstanding) === 0 &&
-      JSON.stringify(payments(kotId).map(p => [p.payment_method,Number(p.amount)])) === JSON.stringify([['Card',50],['UPI',40]]) &&
+      JSON.stringify(payments(kotId).map(p => [p.payment_method,Number(p.amount)])) === JSON.stringify([['Card',40],['Cash',10],['UPI',40]]) &&
       payments(retailId).length === 0,final);
     await row(kotId).click();
     const dialog = page.locator('#pos-credit-history');
     await dialog.getByText('Balance after payment',{exact:true}).waitFor();
-    check('KOT repayment history shows both saved payments',await dialog.locator('tbody tr').count() === 2);
+    check('KOT repayment history shows the upfront payment and both repayments',await dialog.locator('tbody tr').count() === 3);
     if (out) await page.screenshot({path:join(out,'kot-credit-settlement.png')});
   } finally {
     await page.close();
