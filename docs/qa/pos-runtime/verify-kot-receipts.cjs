@@ -81,15 +81,23 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await page.locator('#kb-wrap[data-ready=true]').waitFor();
   await page.evaluate(()=>{
    window.qaPrintHtml=[];
-   window.open=()=>({closed:false,document:{open(){},write(html){window.qaPrintHtml.push(html);},
-    close(){},images:[],fonts:{ready:Promise.resolve()}},focus(){},print(){},close(){this.closed=true;}});
+   window.qaPrintWindows=[];
+   window.open=()=>{
+    const popup=Object.assign(new EventTarget(),{
+     closed:false,document:{open(){},write(html){window.qaPrintHtml.push(html);},
+      close(){},images:[],fonts:{ready:Promise.resolve()}},
+     focus(){},print(){this.dispatchEvent(new Event('afterprint'));},close(){this.closed=true;}
+    });
+    window.qaPrintWindows.push(popup);
+    return popup;
+   };
   });
   await page.locator('#kb-history-open').click();
   const historyRow=page.locator('#kb-history-rows [data-kot-id="'+draft.kotId+'"]');
   await historyRow.getByRole('button',{name:'KOT Print',exact:true}).click();
   await page.locator('#kb-history-print-status').getByText('Print request opened.').waitFor();
   await historyRow.getByRole('button',{name:'Bill Print',exact:true}).click();
-  await page.waitForFunction(()=>window.qaPrintHtml.length===2);
+  await page.waitForFunction(()=>window.qaPrintHtml.length===2&&window.qaPrintWindows.every(popup=>popup.closed));
   check('browser prints the configured kitchen ticket and customer bill',
    await page.evaluate(([orderText,billText])=>window.qaPrintHtml[0].includes(orderText)&&
     !window.qaPrintHtml[0].includes(billText)&&window.qaPrintHtml[1].includes(billText)&&
