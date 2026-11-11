@@ -82,8 +82,9 @@ module.exports = async function verifyKot({a,foreign,base,post,rows,count,check}
   const menu=await a.c.newPage();
   await menu.goto(base+'/apps/zenith/pos/Kitchen/KotBilling?sessionId='+kotSessionId,{waitUntil:'networkidle'});
   await menu.locator('#kb-wrap[data-ready=true]').waitFor();
-  check('KOT table picker contains only active-shop tables',await menu.locator('#kb-table').locator('option').allTextContents().then(labels=>labels.some(x=>x.includes(ownTable))&&!labels.some(x=>x.includes(foreignTable))));
-  await menu.locator('#kb-mode').selectOption('RETAIL');
+  check('KOT removes the table picker from the billing toolbar',await menu.locator('#kb-table-field').count()===0&&await menu.locator('#kb-table').isHidden());
+  await menu.locator('.kg-modes summary').click();
+  await menu.locator('[data-kb-sales-mode="RETAIL"]').click();
   await menu.locator('#kb-search').fill('POS_QA_A_P18');await menu.locator('#kb-search').press('Enter');
   await menu.locator('#kb-instr').fill('No onion');
   await Promise.all([menu.waitForNavigation({waitUntil:'networkidle'}),menu.locator('#kb-draft').click()]);
