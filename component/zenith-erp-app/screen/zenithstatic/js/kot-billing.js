@@ -58,7 +58,8 @@
       throw Error(signInMessage);
     }
     const result=await response.json().catch(()=>null);
-    if(createsOrder&&(response.status>=500||!result)) {
+    // Moqui sends explicit validation rejections as HTTP 500 JSON.
+    if(createsOrder&&result?.success!==false&&(response.status>=500||!result)) {
       unconfirmedOrder=true;
       throw Error(unconfirmedMessage);
     }
