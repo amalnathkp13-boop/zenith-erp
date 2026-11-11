@@ -342,13 +342,14 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await page.keyboard.press('Enter');
    const rate=page.locator('[data-kb-edit="rate"]'), quantity=page.locator('[data-kb-edit="qty"]');
    const allSelected=el=>el===document.activeElement&&el.selectionStart===0&&el.selectionEnd===el.value.length;
-   check(view+' Enter selects the entire rate',await rate.evaluate(allSelected));
+   check(view+' Enter selects the entire centered rate',await rate.evaluate(el=>
+    el===document.activeElement&&el.selectionStart===0&&el.selectionEnd===el.value.length&&getComputedStyle(el).textAlign==='center'));
    await page.keyboard.type('150');
-   await page.keyboard.press('ArrowRight');
-   check(view+' Right commits the rate and selects the entire quantity',await rate.inputValue()==='150'&&await quantity.evaluate(allSelected));
+   await page.keyboard.press('Enter');
+   check(view+' Enter commits the rate and selects the entire quantity',await rate.inputValue()==='150'&&await quantity.evaluate(allSelected));
    await page.keyboard.type('3');
-   await page.keyboard.press('ArrowDown');
-   check(view+' Down commits quantity and returns to search',await quantity.inputValue()==='3'&&
+   await page.keyboard.press('Enter');
+   check(view+' Enter commits quantity and returns to search',await quantity.inputValue()==='3'&&
     await search.evaluate(el=>el===document.activeElement));
    await page.keyboard.press('ArrowDown');
    check(view+' Down from empty search moves to Cash',await page.locator('[data-kb-payment=Cash]').evaluate(el=>el===document.activeElement));

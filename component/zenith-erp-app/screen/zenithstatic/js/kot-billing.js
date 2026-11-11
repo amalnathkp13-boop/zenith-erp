@@ -534,13 +534,11 @@
     }
     const toQty=field==='rate' && (e.key==='ArrowRight'||e.key==='Enter');
     const toRate=field==='qty' && e.key==='ArrowLeft';
-    const toSearch=field==='qty' && e.key==='ArrowDown';
-    const toPayment=(field==='rate'&&e.key==='ArrowDown')||(field==='qty'&&e.key==='Enter');
-    if(!toQty&&!toRate&&!toSearch&&!toPayment)return;
+    const toSearch=field==='qty' && (e.key==='ArrowDown'||e.key==='Enter');
+    if(!toQty&&!toRate&&!toSearch)return;
     e.preventDefault();
     if(!commitEdit(input))return;
     if(toSearch)search.focus();
-    else if(toPayment)paymentButtons[0]?.focus();
     else focusEditor(editorFor(id,toQty?'qty':'rate'));
   });
   for(const [index,button] of paymentButtons.entries()) {

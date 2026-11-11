@@ -845,7 +845,7 @@
       <a class="kb-control" href="/Login" target="_blank" rel="noopener">Sign in again</a>
       <button class="kb-control" id="kb-resume" type="button">Resume billing</button>
     </div>
-    <#if modCanWrite><p id="kb-key-help"><span><kbd>/</kbd> Search</span> <span><kbd><span class="kg-only">←</span>↑↓<span class="kg-only">→</span></kbd> Choose item</span> <span><kbd>Enter</kbd> Add and edit rate</span> <span><kbd>→</kbd> Quantity</span> <span><kbd>↓</kbd> Search</span> <span><kbd>↓</kbd> Payment from empty search</span> <span><kbd>←→</kbd> Choose method</span></p></#if>
+    <#if modCanWrite><p id="kb-key-help"><span><kbd>/</kbd> Search</span> <span><kbd><span class="kg-only">←</span>↑↓<span class="kg-only">→</span></kbd> Choose item</span> <span><kbd>Enter</kbd> Add and edit rate</span> <span><kbd>Enter</kbd> Quantity</span> <span><kbd>Enter</kbd> Search</span> <span><kbd>↓</kbd> Payment from empty search</span> <span><kbd>←→</kbd> Choose method</span></p></#if>
     <div class="kb-order-scroll"><table class="kb-otable" aria-label="Current Order"><thead><tr>
       <th scope="col">#</th><th scope="col"><span class="kg-only">Item</span><span class="kg-normal">Product</span></th>
       <th scope="col" class="kg-normal">Mode</th><th scope="col">Rate (&#8377;)</th>

@@ -108,18 +108,20 @@
 #kb-wrap .kl-card{padding:10px 12px}
 #kb-wrap .kl-card-title{display:flex;align-items:center;gap:12px;min-width:0}
 #kb-wrap .kl-card-title h2{overflow-wrap:anywhere}
-#kb-wrap .kl-card-title p{margin:3px 0 0;color:var(--kl-muted)}
-#kb-wrap .kl-card-title button{margin-inline-start:auto;background:#f5f2ff;color:#6522e9;border-color:#ece8fc}
+#kb-wrap .kl-side .kl-card-title h2{font-size:16px;font-weight:700}
+#kb-wrap .kl-card-title p{margin:3px 0 0;color:var(--kl-muted);font-size:12px}
+#kb-wrap .kl-card-title button{margin-inline-start:auto;background:#f5f2ff;color:#6522e9;border-color:#ece8fc;font-size:12px}
 #kb-wrap .kl-icon{display:grid;place-items:center;flex:0 0 36px;height:36px;border-radius:9px;background:#f0eafe;color:#681cff}
 #kb-wrap .kl-details{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid #edf0f6;margin:6px 0 0;padding-top:5px;font-size:13px;line-height:1.35}
 #kb-wrap .kl-details div{padding-inline:4px 9px}
 #kb-wrap .kl-details div+div{border-inline-start:1px solid #edf0f6;padding-inline-start:12px}
-#kb-wrap .kl-details dt{color:var(--kl-muted);font-size:13px;font-weight:500}
-#kb-wrap .kl-details dd{margin:2px 0 6px;font-weight:700;overflow-wrap:anywhere}
+#kb-wrap .kl-details dt{color:var(--kl-muted);font-size:12px;font-weight:400}
+#kb-wrap .kl-details dd{margin:2px 0 6px;font-size:13px;font-weight:600;overflow-wrap:anywhere}
 #kb-wrap .kl-details dd:last-child{margin-bottom:0}
 #kb-wrap .kl-summary .kl-card-title{margin-bottom:4px}
 #kb-wrap .kl-sum-row{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:30px;padding:4px 10px;border-bottom:1px solid #eff1f6;color:#424b76}
-#kb-wrap .kl-sum-row strong{color:var(--kl-ink);white-space:nowrap}
+#kb-wrap .kl-sum-row:not(.kl-grand) span{font-size:12px}
+#kb-wrap .kl-sum-row:not(.kl-grand) strong{color:var(--kl-ink);font-size:13px;font-weight:600;white-space:nowrap}
 #kb-wrap .kl-grand{margin-top:4px;min-height:34px;border:0;border-radius:8px;background:#eee8fc;color:#611ad3;font-size:17px;font-weight:750}
 #kb-wrap .kl-grand strong{color:inherit}
 #kb-wrap:not(.kg-grid) .kb-bottom{position:relative;bottom:auto;display:flex;flex:none;flex-direction:column;gap:8px;margin:10px 0 0;padding:0;background:transparent}
