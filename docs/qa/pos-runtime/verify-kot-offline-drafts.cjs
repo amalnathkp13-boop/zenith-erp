@@ -1,95 +1,412 @@
+const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
 const { join } = require('node:path');
 
-module.exports = async ({ foreign, base, check, q, out }) => {
-  const page = await foreign.c.newPage();
+module.exports = async ({ a, foreign, base, check, q, out }) => {
+  const context = foreign.c;
+  const page = await context.newPage();
   const billing = base + '/apps/zenith/kot/KotBilling';
-  let note = 'Disposable KOT offline draft ' + randomUUID();
   const terminalId = 'POS_QA_B_TERM1';
-  const matchingDrafts = () => q(
-    "SELECT kot_id,kot_number,status_id,transaction_id FROM kitchen_order_ticket WHERE organization_party_id='POS_QA_B'" +
-    " AND terminal_id='" + terminalId + "' AND notes LIKE '%" + note + "%'"
+  const org = 'POS_QA_B';
+  const product = 'POS_QA_B_P18';
+  const note = 'KOT Offline QA ' + randomUUID();
+  const matchingOrders = () => q(
+    "SELECT kot_id,kot_number,status_id,transaction_id FROM kitchen_order_ticket WHERE organization_party_id='" + org + "'" +
+    " AND terminal_id='" + terminalId + "' AND notes LIKE '%" + note + "%' ORDER BY kot_id"
   );
-  const confirmation = '**/kot/KotBilling/confirmOfflineDraft';
-  const drafts = page.locator('#kb-offline');
-  const openDrafts = () => page.locator('#kb-offline-open').click();
-  const sync = () => drafts.getByRole('button', { name:'Sync', exact:true }).click();
-  async function openCounter() {
-    await page.goto(billing);
+  const syncRoute = '**/kot/KotBilling/syncOfflineSale';
+  const saveDraftRoute = '**/kot/KotBilling/saveDraft';
+  const search = page.locator('#kb-search');
+  const cart = page.locator('#kb-cart');
+  const history = page.getByRole('dialog', { name:'Bill History' });
+  const orderStatus = page.locator('#kb-order-status');
+  const waitTotal = amount => page.locator('#kb-grand').getByText(amount, { exact:true }).waitFor();
+  let sessionId;
+  let user;
+
+  async function enterCounter() {
     await page.locator('#kot-terminal-entry select[name=terminalId]').selectOption(terminalId);
     await page.getByRole('button', { name:'Open / Resume Session' }).click();
     await page.locator('#kb-wrap[data-ready=true]').waitFor();
+    sessionId = new URL(page.url()).searchParams.get('sessionId');
+    user = await page.locator('#kb-data').getAttribute('data-user');
   }
+
+  async function chooseMode(mode) {
+    await page.locator('.kg-modes summary').click();
+    await page.locator('[data-kb-sales-mode="' + mode + '"]').click();
+  }
+
+  async function switchOffline(offline) {
+    await context.setOffline(offline);
+    await page.locator('#kb-online.is-offline').waitFor({state:offline ? 'visible' : 'hidden'});
+  }
+
+  async function addItem(query, sku, method = 'click') {
+    await search.fill(query);
+    const result = page.locator('#kb-suggestions [data-result]').filter({hasText:sku});
+    await result.waitFor();
+    if (method === 'enter') await search.press('Enter');
+    else await result.click();
+    await cart.locator('tr[data-product="' + sku + '"]').waitFor();
+  }
+
+  async function offlineDashboard() {
+    const dashboard = await context.newPage();
+    await dashboard.goto(base + '/apps/zenith/kot/OfflineMode');
+    const queue = dashboard.locator('[data-kot-device-queue][data-terminal="' + terminalId + '"]');
+    await queue.waitFor();
+    return { dashboard, queue };
+  }
+
   try {
-    await openCounter();
-    await page.locator('[data-ot="Take Away"]').click();
-    await page.locator('#kb-search').fill('POS_QA_B_P18');
-    await page.locator('#kb-suggestions [data-result]').first().click();
-    await page.locator('#kb-instr').fill(note);
-    await foreign.c.setOffline(true);
-    await page.locator('#kb-online.is-offline').waitFor();
-    check('KOT checkout and online Hold are disabled while disconnected',
-      await page.locator('#kb-bill').isDisabled() && await page.locator('#kb-draft').isDisabled());
-    await openDrafts();
-    await drafts.getByRole('button', { name:'Save Current Order' }).click();
-    await drafts.getByRole('status').filter({ hasText:'Order saved on this device' }).waitFor();
-    check('offline KOT save clears the cart and creates no server order',
-      await page.locator('#kb-cart tr').count() === 0 && matchingDrafts().length === 0);
+    await page.goto(billing);
+    await enterCounter();
+    await page.locator('#kb-wrap[data-offline-ready=true]').waitFor();
+    const initialToday = Number(await page.locator('#kb-header-today-bills').textContent());
+    check('KOT has a prepared offline workspace and uses the ordinary billing buttons',
+      await page.locator('#kb-offline-open,#kb-offline').count() === 0 &&
+      await page.locator('#kb-draft').isVisible() && await page.locator('#kb-history-open').isVisible());
 
-    await foreign.c.setOffline(false);
-    for (const shell of ['apps','qapps']) {
-      await page.goto(base + '/' + shell + '/zenith/kot/OfflineMode');
-      const localCounter = page.locator('[data-kot-device-drafts][data-terminal="' + terminalId + '"]');
-      await localCounter.getByText('Take Away · 1 item line', { exact:false }).waitFor();
-      check(shell + ' Offline Mode reads the same device draft after navigation', await localCounter.isVisible());
+    const readResponses = [];
+    for (let burst = 0; burst < 3; burst++) {
+      readResponses.push(...await Promise.all([
+        ...Array.from({length:4}, async () => {
+          const response = await context.request.get(base + '/apps/zenith/kot/OfflineMode');
+          return {kind:'dashboard', status:response.status(), correct:(await response.text()).includes('id="kot-offline-title"')};
+        }),
+        ...Array.from({length:4}, async () => {
+          const response = await context.request.post(billing + '/exportOfflineWorkspace', {
+            form:{moquiSessionToken:foreign.t,sessionId},maxRedirects:0
+          });
+          const body = await response.json().catch(() => null);
+          return {kind:'workspace', status:response.status(), correct:body?.workspace?.organizationPartyId===org};
+        })
+      ]));
     }
-    await openCounter();
-    await openDrafts();
-    await page.route(confirmation, route => route.abort());
-    await sync();
-    await drafts.getByRole('status').filter({ hasText:'Refresh or retry' }).waitFor();
-    const firstSave = matchingDrafts();
-    check('failed KOT confirmation keeps the device draft and leaves exactly one unpaid order',
-      await drafts.getByRole('button', { name:'Sync', exact:true }).isEnabled() &&
-      firstSave.length === 1 && firstSave[0].status_id === 'KotDraft' && !firstSave[0].transaction_id);
-    await page.unroute(confirmation);
-    await sync();
-    await drafts.getByRole('status').filter({ hasText:'synced to Held Orders' }).waitFor();
-    check('KOT retry clears the local draft only after confirming the same held order',
-      JSON.stringify(matchingDrafts()) === JSON.stringify(firstSave) &&
-      await drafts.getByText('No drafts saved on this device for this counter.').isVisible());
-    if (out) await page.screenshot({ path:join(out,'kot-offline-draft-synced.png') });
-    await drafts.getByRole('button', { name:'View Held Orders' }).click();
-    const heldOrder = page.getByRole('dialog', { name:'Bill History' })
-      .locator('[data-kot-id="' + firstSave[0].kot_id + '"][data-kot-group="draft"]');
-    await heldOrder.getByRole('button', { name:'#KOT ' + firstSave[0].kot_number, exact:true }).click();
-    await page.getByRole('dialog', { name:'Held Order' }).getByRole('button', { name:'Resume Order' }).click();
-    await page.waitForURL(url => url.searchParams.get('loadDraft') === String(firstSave[0].kot_id));
-    const resumedItem = page.locator('#kb-cart tr[data-product="POS_QA_B_P18"]');
-    await resumedItem.waitFor();
-    check('the synced KOT draft is visible in Bill History and resumes into the cart',
-      await resumedItem.count() === 1 && (await page.locator('#kb-instr').inputValue()).includes(note));
-    await page.goto(base + '/apps/zenith/kot/OfflineMode');
-    check('KOT Offline Mode shows the persisted sync receipt',
-      await page.locator('td').getByText(firstSave[0].kot_number, { exact:true }).count() === 1);
+    check('Concurrent KOT dashboard and catalog requests all resolve the same cached shop list',
+      readResponses.every(response => response.status === 200 && response.correct), {readResponses});
 
-    note += ' online hold';
-    await openCounter();
     await page.locator('[data-ot="Take Away"]').click();
-    await page.locator('#kb-search').fill('POS_QA_B_P18');
-    await page.locator('#kb-suggestions [data-result]').first().click();
-    await page.locator('#kb-instr').fill(note);
-    await page.route('**/kot/KotBilling/saveDraft', async route => {
+    if (await page.locator('#kb-tax-toggle').getAttribute('aria-checked') === 'true') {
+      await page.locator('#kb-tax-toggle').click();
+    }
+    const browserRequests = [];
+    page.on('request', request => {
+      if (request.method() === 'POST' && request.url().includes('/zenith/')) browserRequests.push(request.url());
+    });
+    await switchOffline(true);
+    await addItem(product, product, 'enter');
+    const rate = cart.locator('[data-kb-edit="rate"]');
+    const quantity = cart.locator('[data-kb-edit="qty"]');
+    await rate.fill('120');
+    await rate.press('Enter');
+    await quantity.fill('1.25');
+    await quantity.press('ArrowDown');
+    await waitTotal('₹150.00');
+    await page.locator('#kb-tax-toggle').click();
+    await waitTotal('₹177.00');
+    await page.locator('#kb-instr').fill(note + ' hold and checkout');
+    await page.locator('#kb-instr').blur();
+    check('Disconnected KOT accepts keyboard product lookup, rate, fractional quantity and tax changes',
+      await search.inputValue() === '' && await page.locator('#kb-bill').isEnabled() &&
+      !browserRequests.some(url => /\/(?:searchMenu|cartReceipt)$/.test(url)));
+
+    await page.keyboard.press('F7');
+    await cart.locator('tr[data-product]').waitFor({state:'hidden'});
+    check('Normal F7 Hold clears the cart and keeps the disconnected order on this device', matchingOrders().length === 0);
+    await page.locator('#kb-history-open').click();
+    await history.locator('#kb-history-filter').click();
+    await history.locator('#kb-history-status').selectOption('draft');
+    const localResume = history.locator('article[data-kb-resume-local] [data-kb-history-detail]');
+    await localResume.waitFor();
+    await localResume.click();
+    await page.locator('#kb-history-resume').click();
+    await waitTotal('₹177.00');
+    check('Normal History resumes the local Hold with tax, note, item rate and quantity intact',
+      await page.locator('#kb-instr').inputValue() === note + ' hold and checkout' &&
+      Number(await rate.inputValue()) === 120 && Number(await quantity.inputValue()) === 1.25);
+
+    await page.evaluate(() => {
+      window.kotOfflinePrints = [];
+      window.open = () => {
+        let html = '';
+        return {
+          document: { open() { html = ''; }, write(markup) { html += markup; }, close() {}, images: [] },
+          closed: false, focus() {}, print() { window.kotOfflinePrints.push(html); }, close() { this.closed = true; }
+        };
+      };
+    });
+    await search.focus();
+    await page.keyboard.press('Space');
+    const cash = page.locator('#kb-payment input[name=cashAmount]:visible');
+    await cash.fill('200');
+    await page.locator('#kb-payment .pos-cash-confirm').click();
+    await page.locator('#kb-print-choice').waitFor();
+    check('Normal disconnected Cash checkout queues the sale without requiring a server receipt',
+      matchingOrders().length === 0 && await page.locator('#kb-print-summary').getByText(/23\.00/).isVisible() &&
+      await page.locator('#kb-close-session').isDisabled());
+    if (out) await page.screenshot({path:join(out,'kot-offline-disconnected-checkout.png')});
+    await page.locator('[data-kb-print="both"]').click();
+    await page.waitForFunction(() => window.kotOfflinePrints.length === 2);
+    const prints = await page.evaluate(() => window.kotOfflinePrints);
+    check('Print both dispatches the actual kitchen ticket and customer receipt while disconnected',
+      prints[0].includes('Disposable POS B P18') && prints[0].includes('class="q">1.25</td>') &&
+      prints[1].includes('Disposable POS B P18') && prints[1].includes('177.00') &&
+      !browserRequests.some(url => /\/(?:printRecord|checkoutKot|syncOfflineSale)$/.test(url)));
+
+    let sale;
+    let committed = false;
+    let syncFailure;
+    let acknowledgeReplay = false;
+    const dropAcknowledgement = async route => {
+      const acknowledge = acknowledgeReplay;
+      const data = new URLSearchParams(route.request().postData());
+      sale = JSON.parse(data.get('saleJson'));
+      try {
+        const response = await route.fetch();
+        if (acknowledge) {
+          await route.fulfill({response});
+          return;
+        }
+        const result = await response.json().catch(() => null);
+        committed ||= response.ok() && result?.success === true;
+        if (!committed) syncFailure = result || {status:response.status()};
+      } catch (error) { syncFailure = {message:error.message}; }
+      await route.abort().catch(() => {});
+    };
+    await page.route(syncRoute, dropAcknowledgement);
+    const lostResponse = page.waitForEvent('requestfailed', request => request.url().endsWith('/syncOfflineSale'));
+    await switchOffline(false);
+    await lostResponse;
+    const firstSave = matchingOrders();
+    check('A lost reconnect response leaves exactly one persisted paid KOT order',
+      committed && firstSave.length === 1 && !!firstSave[0].transaction_id, {firstSave,syncFailure});
+    const payment = q("SELECT t.transaction_number,t.payable_amount,t.change_amount,p.amount,p.payment_method FROM pos_transaction t" +
+      " JOIN pos_payment p ON p.transaction_id=t.transaction_id WHERE t.transaction_id='" + firstSave[0].transaction_id + "'");
+    check('Reconciliation records one ₹177 sale with ₹200 received and ₹23 change',
+      payment.length === 1 && Number(payment[0].payable_amount) === 177 &&
+      Number(payment[0].change_amount) === 23 && Number(payment[0].amount) === 200 && payment[0].payment_method === 'Cash', {payment});
+
+    const { dashboard, queue } = await offlineDashboard();
+    await queue.getByText(sale.offlineId,{exact:false}).waitFor();
+    check('KOT Offline Mode can still see the pending device entry after acknowledgement loss', await queue.isVisible());
+    await dashboard.close();
+    const replayResponse = page.waitForResponse(response => response.url().endsWith('/syncOfflineSale') && response.ok());
+    // Keep withholding any acknowledgement from the old document, including focus-triggered sync.
+    const allowReplay = frame => {
+      if (frame !== page.mainFrame()) return;
+      acknowledgeReplay = true;
+      page.off('framenavigated',allowReplay);
+    };
+    page.on('framenavigated',allowReplay);
+    await page.reload();
+    const replay = await (await replayResponse).json();
+    await page.unroute(syncRoute, dropAcknowledgement);
+    assert.equal(replay.success,true);
+    check('Reload replays the same sale without a duplicate KOT ticket, transaction or tender',
+      JSON.stringify(matchingOrders()) === JSON.stringify(firstSave) &&
+      q("SELECT transaction_id FROM pos_payment WHERE transaction_id='" + firstSave[0].transaction_id + "'").length === 1);
+
+    const ack = await offlineDashboard();
+    await ack.queue.getByText('No KOT orders pending sync on this counter.').waitFor();
+    check('KOT clears its local queue after verified server acknowledgement', await ack.queue.isVisible());
+    if (out) await ack.dashboard.screenshot({path:join(out,'kot-offline-synced.png')});
+    await ack.dashboard.close();
+
+    const direct = (actor, route, payload) => actor.c.request.post(base + '/apps/zenith/' + route, {
+      form: {moquiSessionToken:actor.t, sessionId, saleJson:JSON.stringify(payload)}, maxRedirects:0
+    });
+    const bad = await direct(a,'kot/KotBilling/syncOfflineSale',sale);
+    const pos = await direct(foreign,'pos/Kitchen/KotBilling/syncOfflineSale',sale);
+    check('The same offline sale is unavailable to a different organization and the legacy POS Kitchen route',
+      (await bad.json().catch(() => null))?.success !== true && (await pos.json().catch(() => null))?.success !== true &&
+      JSON.stringify(matchingOrders()) === JSON.stringify(firstSave), {foreignStatus:bad.status(),posStatus:pos.status()});
+    const invokePos = async (op, params) => {
+      const response = await context.request.post(base + '/apps/zenith/pos/PosQaAcceptance/invoke', {
+        form:{moquiSessionToken:foreign.t,op,...params},maxRedirects:0
+      });
+      const result = await response.json();
+      assert.deepEqual(result.errors,[],op);
+      return result.result;
+    };
+    const { transactionId } = await invokePos('cart',{sessionId,reuseOpenCart:'false'});
+    await invokePos('add',{transactionId,productId:product,quantity:'1',taxOn:'N'});
+    await invokePos('pay',{transactionId,paymentMethod:'Cash',amount:'100'});
+    await invokePos('complete',{transactionId});
+    const retailNumber = q("SELECT transaction_number FROM pos_transaction WHERE transaction_id='" + transactionId + "'")[0].transaction_number;
+    const [kotTransactions, posTransactions, posHistory] = await Promise.all([
+      context.request.get(base + '/apps/zenith/kot/PosTransactions'),
+      context.request.get(base + '/apps/zenith/pos/PosTransactions'),
+      context.request.post(base + '/apps/zenith/pos/Terminal/ajaxCart', {
+        form:{moquiSessionToken:foreign.t,sessionId,action:'billHistory'},maxRedirects:0
+      })
+    ]);
+    const number = payment[0].transaction_number;
+    check('The synced offline bill is in KOT Transactions and stays out of POS Transactions and POS Bill History',
+      kotTransactions.ok() && (await kotTransactions.text()).includes(number) && posTransactions.ok() &&
+      !(await kotTransactions.text()).includes(retailNumber) && !(await posTransactions.text()).includes(number) &&
+      (await posTransactions.text()).includes(retailNumber) && posHistory.ok() && !(await posHistory.text()).includes(number) &&
+      (await posHistory.text()).includes(retailNumber),
+      {kotStatus:kotTransactions.status(),posStatus:posTransactions.status(),historyStatus:posHistory.status(),number});
+    await page.reload();
+    check('Reloaded KOT header counts only the confirmed KOT bill and ignores the newer POS bill',
+      Number(await page.locator('#kb-header-today-bills').textContent()) === initialToday+1 &&
+      (await page.locator('#kb-header-last-bill').textContent()).trim() === number);
+
+    await page.locator('#kb-wrap[data-offline-ready=true]').waitFor();
+    await page.locator('.kg-modes summary').click();
+    await page.locator('[data-kb-view=grid]').click();
+    await switchOffline(true);
+    await page.locator('[data-ot="Take Away"]').click();
+    if (await page.locator('#kb-tax-toggle').getAttribute('aria-checked') === 'true') {
+      await page.locator('#kb-tax-toggle').click();
+    }
+    await chooseMode('WHOLESALE');
+    await addItem('disposable   pos b p5', 'POS_QA_B_P5');
+    await waitTotal('₹90.00');
+    await page.locator('#kb-instr').fill(note + ' split');
+    await page.locator('[data-kb-payment=Split]').click();
+    await cash.fill('40');
+    await page.locator('#kb-payment [name=upiAmount]').fill('49');
+    const confirmOther = page.locator('#kb-other-payment').getByRole('button',{name:'Confirm payment'});
+    await confirmOther.click();
+    await page.locator('#kb-payment-error').getByText(/add up to the bill total/i).waitFor();
+    await page.locator('#kb-payment [name=upiAmount]').fill('50');
+    await confirmOther.click();
+    await page.locator('#kb-print-close').click();
+    check('Grid View finds multiword searches offline, uses Wholesale price, and validates split before checkout',
+      matchingOrders().length === 1 && await page.locator('#kb-order-status').getByText(/queued to sync/).isVisible());
+
+    const scope = {org,terminalId,user};
+    const deviceCount = ({org,terminalId,user}) => window.KotOffline.createWorkspace(org,terminalId,user).queue().length;
+    await addItem('disposable pos b p18',product);
+    await page.locator('#kb-instr').fill(note + ' credit');
+    await page.locator('[data-kb-payment=Credit]').click();
+    await page.locator('#kb-payment [name=customerName]').fill('Unregistered QA Customer');
+    await page.locator('#kb-payment [name=customerPhone]').fill('123');
+    await confirmOther.click();
+    await page.locator('#kb-payment-error').getByText(/valid customer phone number/i).waitFor();
+    check('An invalid offline credit phone leaves the queued Split and current credit cart unchanged',
+      await page.evaluate(deviceCount,scope) === 1 && !await page.locator('#kb-print-choice').isVisible());
+    await page.locator('#kb-payment-close').click();
+    await page.locator('#kb-customer-open').click();
+    await page.locator('#kb-customer-search').fill('Synthetic POS B SAME');
+    await page.locator('[data-cust-id="POS_QA_B_CUST_SAME"]').click();
+    await page.locator('[data-kb-payment=Credit]').click();
+    await page.locator('#kb-payment [name=customerPhone]').fill('9000000020');
+    await confirmOther.click();
+    await page.locator('#kb-print-close').click();
+    check('A named-customer credit checkout is queued independently of the Split bill',
+      await page.evaluate(deviceCount,scope) === 2 && matchingOrders().length === 1);
+    await switchOffline(false);
+    await page.waitForFunction(scope => window.KotOffline.createWorkspace(scope.org,scope.terminalId,scope.user).queue().length === 0,scope);
+    const synchronized = matchingOrders();
+    const split = q("SELECT payment_method,amount FROM pos_payment WHERE transaction_id='" + synchronized[1]?.transaction_id + "' ORDER BY payment_method");
+    const credit = q("SELECT customer_party_id,payable_amount,paid_amount FROM pos_transaction WHERE transaction_id='" + synchronized[2]?.transaction_id + "'");
+    check('Reconnect settles Split once and keeps the credit bill outstanding for the selected customer',
+      synchronized.length === 3 && split.length === 2 && split[0].payment_method === 'Cash' && Number(split[0].amount) === 40 &&
+      split[1].payment_method === 'UPI' && Number(split[1].amount) === 50 && credit.length === 1 &&
+      credit[0].customer_party_id === 'POS_QA_B_CUST_SAME' && Number(credit[0].payable_amount) === 90 && Number(credit[0].paid_amount) === 0,
+      {split,credit});
+
+    const tableNumber = 'OFFLINE-' + randomUUID().slice(0,8);
+    const tableResponse = await context.request.post(base + '/apps/zenith/kot/Tables/createTable', {
+      form:{moquiSessionToken:foreign.t,facilityId:'POS_QA_B_FAC',tableNumber,seatingCapacity:'2'},maxRedirects:0
+    });
+    const table = q("SELECT table_id FROM restaurant_table WHERE facility_id='POS_QA_B_FAC' AND table_number='" + tableNumber + "'");
+    assert.ok(tableResponse.status()<400 && table.length===1,'Synthetic dine-in table exists');
+    const tableId = table[0].table_id;
+    await page.goto(base + '/apps/zenith/kot/Tables');
+    await page.locator('.tm-card[data-table-id="' + tableId + '"]').click();
+    await page.locator('[data-billing-table="' + tableId + '"]').click();
+    await enterCounter();
+    await page.locator('#kb-wrap[data-offline-ready=true]').waitFor();
+    await page.locator('.kg-modes summary').click();
+    await page.locator('[data-kb-view=grid]').click();
+    await switchOffline(true);
+    assert.equal(await page.locator('#kb-table').inputValue(),tableId,'Table selected in the Tables workflow carries through to offline billing');
+    await addItem(product,product);
+    await page.locator('#kb-instr').fill(note + ' dine-in');
+    await page.locator('#kb-send').click();
+    await page.locator('#kb-print-close').click();
+    await page.locator('#kb-history-open').click();
+    await history.locator('[data-kb-bill-local]').click();
+    await page.locator('#kb-payment .pos-cash-cancel').click();
+    await page.locator('[data-kb-payment=UPI]').click();
+    await confirmOther.click();
+    await page.locator('#kb-print-close').click();
+    check('A disconnected dine-in kitchen ticket can be billed from ordinary History',
+      await page.evaluate(deviceCount,scope) === 2 && matchingOrders().length === 3);
+    await switchOffline(false);
+    await page.waitForFunction(scope => window.KotOffline.createWorkspace(scope.org,scope.terminalId,scope.user).queue().length === 0,scope);
+    const dineIn = matchingOrders()[3];
+    const tickets = q("SELECT operation,kot_id,transaction_id FROM kot_offline_sale_sync WHERE kot_id='" + dineIn?.kot_id + "' ORDER BY operation");
+    check('The queued kitchen ticket and its later UPI payment reconcile to a single table order',
+      matchingOrders().length === 4 && !!dineIn.transaction_id && tickets.length === 2 &&
+      tickets[0].operation === 'checkout' && tickets[0].transaction_id === dineIn.transaction_id &&
+      tickets[1].operation === 'send' && !tickets[1].transaction_id,
+      {dineIn,tickets});
+
+    await switchOffline(true);
+    await page.locator('[data-ot="Take Away"]').click();
+    await addItem(product,product);
+    await page.locator('#kb-instr').fill(note + ' card');
+    await page.locator('[data-kb-payment=Card]').click();
+    await page.locator('#kb-payment [name=referenceNumber]').fill('KOT-QA-CARD');
+    await confirmOther.click();
+    await page.locator('#kb-print-close').click();
+    await switchOffline(false);
+    await page.waitForFunction(scope => window.KotOffline.createWorkspace(scope.org,scope.terminalId,scope.user).queue().length === 0,scope);
+    const cardOrder = matchingOrders()[4];
+    const card = q("SELECT payment_method,reference_number FROM pos_payment WHERE transaction_id='" + cardOrder?.transaction_id + "'");
+    check('Direct Card checkout syncs exactly once with its cashier-entered reference',
+      matchingOrders().length === 5 && card.length === 1 && card[0].payment_method === 'Card' && card[0].reference_number === 'KOT-QA-CARD', {card});
+
+    await chooseMode('RETAIL');
+
+    const legacy = {
+      itemsJson:JSON.stringify([{productId:product,quantity:1}]), orderType:'Take Away',
+      salesModeId:'RETAIL',taxOn:'N',notes:note + ' legacy draft'
+    };
+    const legacyId = await page.evaluate(({org,terminalId,user,legacy}) => {
+      return window.KotOfflineDrafts.createStore(org,terminalId,user).save(legacy).id;
+    }, {org,terminalId,user,legacy});
+    const legacyResponse = page.waitForResponse(response => response.url().endsWith('/confirmOfflineDraft') && response.ok());
+    await page.reload();
+    assert.equal((await (await legacyResponse).json()).success,true);
+    await page.waitForFunction(({org,terminalId,user,legacyId}) => !window.KotOfflineDrafts.createStore(org,terminalId,user).read(legacyId),
+      {org,terminalId,user,legacyId});
+    check('A legacy device draft still syncs automatically to one unpaid KOT hold',
+      matchingOrders().filter(order => order.status_id === 'KotDraft' && !order.transaction_id).length === 1);
+
+    const catalogRoute = '**/kot/KotBilling/searchMenu';
+    const blockSearch = route => route.abort('failed');
+    await page.route(catalogRoute,blockSearch);
+    await addItem('disposable pos b p18',product);
+    check('Cached search continues during an ERP connection failure with the network adapter still online',
+      await page.evaluate(() => navigator.onLine) && await page.locator('#kb-online.is-offline').isVisible());
+    await page.unroute(catalogRoute,blockSearch);
+    await page.locator('#kb-online.is-offline').waitFor({state:'hidden'});
+    page.once('dialog',dialog => dialog.accept());
+    await page.locator('#kb-clear').click();
+
+    await page.locator('[data-ot="Take Away"]').click();
+    await addItem(product, product);
+    await page.locator('#kb-instr').fill(note + ' online hold');
+    const dropHoldResponse = async route => {
       await route.fetch();
       await route.abort();
-    });
+    };
+    await page.route(saveDraftRoute, dropHoldResponse);
     await page.locator('#kb-draft').click();
-    await page.locator('#kb-order-status').getByText('The last order submission could not be confirmed.', {exact:false}).waitFor();
-    await openDrafts();
-    check('a committed online hold with a lost response cannot be copied to Offline Drafts',
-      await drafts.getByRole('button',{name:'Save Current Order'}).isDisabled()&&matchingDrafts().length===1);
+    await orderStatus.getByText(/could not be confirmed|could not be completed/i).waitFor();
+    await switchOffline(true);
+    check('A committed online Hold with a lost response cannot be resubmitted from the offline cart',
+      await page.locator('#kb-draft').isDisabled() && await page.locator('#kb-bill').isDisabled() &&
+      matchingOrders().filter(order => order.status_id === 'KotDraft').length === 2);
   } finally {
-    await foreign.c.setOffline(false);
+    await context.setOffline(false);
     await page.close();
   }
 };

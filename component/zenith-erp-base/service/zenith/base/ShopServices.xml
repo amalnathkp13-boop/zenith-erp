@@ -79,7 +79,8 @@
                             isAllShops = false
                         }
                     }
-                    shops = shops ? shops.sort { (it.facilityName ?: it.facilityId) } : []
+                    // The entity list may be shared by concurrent requests through the cache.
+                    shops = shops ? shops.sort(false) { (it.facilityName ?: it.facilityId) } : []
                     shopCount = shops.size()
                     hasMultiShop = shopCount >= 2
                     shopList = shops.collect { [id: it.facilityId, name: (it.facilityName ?: it.facilityId)] }

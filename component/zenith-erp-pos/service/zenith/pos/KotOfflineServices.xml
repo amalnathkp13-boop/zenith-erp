@@ -1,0 +1,257 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
+    <service verb="export" noun="KotWorkspace">
+        <in-parameters><parameter name="sessionId" required="true"/></in-parameters>
+        <out-parameters><parameter name="workspace" type="Map"/></out-parameters>
+        <actions>
+            <if condition="!((ec.web?.request?.requestURI ?: '') ==~ /\/(apps|qapps)\/zenith\/kot\/KotBilling\/exportOfflineWorkspace/)">
+                <return error="true" message="Use the KOT billing workspace for offline setup."/>
+            </if>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'kot']" out-map="permission"/>
+            <if condition="permission.canWrite != true"><return error="true" message="KOT billing access is required."/></if>
+            <service-call name="zenith.pos.KotServices.get#BillingSession" in-map="[sessionId:sessionId]" out-map="billing"/>
+            <if condition="!billing.terminal"><return/></if>
+            <service-call name="zenith.pos.PosOfflineServices.export#Workspace" in-map="[terminalId:billing.terminal.terminalId,kotWorkspace:true]" out-map="exported"/>
+            <if condition="!exported.workspace"><return/></if>
+            <script><![CDATA[
+                workspace=exported.workspace
+                def terminal=billing.terminal
+                def orgId=terminal.organizationPartyId
+                def aliases=ec.entity.find('zenith.erp.barcode.ProductBarcode').condition([organizationPartyId:orgId,isActive:'Y'])
+                    .list().groupBy { it.productId }
+                def categories=ec.entity.find('mantle.product.category.ProductCategory').condition('ownerPartyId',orgId)
+                    .selectField('productCategoryId').list()*.productCategoryId
+                def memberships=categories ? ec.entity.find('mantle.product.category.ProductCategoryMember')
+                    .condition('productCategoryId','in',categories).conditionDate('fromDate','thruDate',ec.user.nowTimestamp)
+                    .list().groupBy { it.productId } : [:]
+                def standardMode=!workspace.modes
+                if (standardMode) workspace.modes=[[id:'',name:'Standard',inclusive:false]]
+                workspace.products=workspace.products.collect { product ->
+                    product + [aliases:(aliases[product.productId] ?: [])*.barcodeValue,
+                        categoryIds:(memberships[product.productId] ?: [])*.productCategoryId,
+                        prices:standardMode ? [ (''):[price:product.listPrice,disc:0,blocked:false] ] : product.prices]
+                }
+                def template=ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#TerminalPrintTemplate')
+                    .parameter('terminalId',terminal.terminalId).call().template
+                if (template) {
+                    workspace.store += [name:template.companyName ?: workspace.store.name,
+                        address:[template.addressLine1,template.addressLine2,template.city,template.state,template.pincode].findAll { it }.join(', '),
+                        phone:template.phone ?: workspace.store.phone,receiptWidth:template.receiptWidth ?: '80mm']
+                }
+                workspace.sessionId=sessionId
+                workspace.facilityId=terminal.facilityId
+                workspace.remove('discountLimit')
+            ]]></script>
+        </actions>
+    </service>
+
+    <service verb="import" noun="KotSale" transaction="force-new">
+        <in-parameters><parameter name="sessionId" required="true"/><parameter name="sale" type="Map" required="true"/></in-parameters>
+        <out-parameters><parameter name="syncedOrder" type="Map"/></out-parameters>
+        <actions>
+            <if condition="!((ec.web?.request?.requestURI ?: '') ==~ /\/(apps|qapps)\/zenith\/kot\/KotBilling\/syncOfflineSale/)">
+                <return error="true" message="Sync offline orders from the KOT billing workspace."/>
+            </if>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'kot']" out-map="permission"/>
+            <if condition="permission.canWrite != true"><return error="true" message="KOT billing access is required."/></if>
+            <service-call name="zenith.pos.KotServices.get#BillingScope" in-map="[sessionId:sessionId]" out-map="billingScope"/>
+            <if condition="!billingScope.scope?.allowed"><return/></if>
+            <script><![CDATA[
+                def reject={ String reason -> ec.message.addError(reason) }
+                def amount={ value ->
+                    try { return value == null ? null : new BigDecimal(value.toString()) }
+                    catch (NumberFormatException ignored) { return null }
+                }
+                def orgId=billingScope.scope.organizationPartyId
+                def userId=ec.user.userId
+                def session=ec.entity.find('zenith.erp.pos.PosSession').condition([sessionId:sessionId,organizationPartyId:orgId]).one()
+                def terminal=session ? ec.entity.find('zenith.erp.pos.PosTerminal')
+                    .condition([terminalId:session.terminalId,organizationPartyId:orgId,isActive:'Y']).forUpdate(true).one() : null
+                def activeShop=ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call().activeShopId
+                def operation=sale.operation ?: 'checkout'
+                def idPattern=/[A-Za-z0-9][A-Za-z0-9_-]{0,119}/
+                if (!terminal || !terminal.facilityId || (activeShop && activeShop!=terminal.facilityId) ||
+                    session.operatorPartyId!=ec.user.userAccount?.partyId || sale.version!=2 || sale.sessionId!=sessionId ||
+                    sale.terminalId!=terminal.terminalId || sale.organizationPartyId!=orgId || sale.userId!=userId ||
+                    (sale.facilityId && sale.facilityId!=terminal.facilityId) || !(sale.offlineId instanceof String) ||
+                    !(sale.offlineId ==~ idPattern) || !(operation in ['send','checkout'])) {
+                    reject('This offline order does not belong to your KOT terminal session.'); return
+                }
+                def key=[organizationPartyId:orgId,terminalId:terminal.terminalId,userId:userId]
+                def receiptFor={ id -> ec.entity.find('zenith.erp.pos.KotOfflineSaleSync').condition(key+[offlineId:id]).one() }
+                def prior=receiptFor(sale.offlineId)
+                if (prior) {
+                    if (prior.sessionId!=sessionId || prior.operation!=operation) { reject('This offline reference was already used.'); return }
+                    syncedOrder=[success:true,offlineId:prior.offlineId,kotId:prior.kotId,kotNumber:prior.kotNumber,
+                        billNumber:prior.billNumber,changeAmount:prior.changeAmount ?: 0G]
+                    return
+                }
+                session=ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',sessionId).forUpdate(true).one()
+                def billing=ec.service.sync().name('zenith.pos.KotServices.get#BillingSession').parameter('sessionId',sessionId).call()
+                if (!billing.terminal || ec.message.hasError()) return
+                long issuedAt
+                try {
+                    issuedAt=sale.ts instanceof Number ? sale.ts.longValue() : java.time.Instant.parse(sale.ts as String).toEpochMilli()
+                } catch (Exception ignored) { reject('The offline order date is invalid.'); return }
+                if (issuedAt<=0 || (session.openDate && issuedAt<session.openDate.time-300000L) ||
+                    issuedAt>ec.user.nowTimestamp.time+300000L || !(sale.items instanceof List) ||
+                    !sale.items || sale.items.size()>100 || !(sale.orderType in ['Dine In','Take Away']) || !(sale.taxOn in ['Y','N']) ||
+                    (sale.customer != null && !(sale.customer instanceof Map))) {
+                    reject('The offline order has invalid items, date or tax details.'); return
+                }
+                def expectedTotal=amount(sale.total), expectedTax=amount(sale.taxAmount)
+                if (expectedTotal==null || expectedTotal<0 || expectedTax==null || expectedTax<0) {
+                    reject('Enter a valid offline order total and tax amount.'); return
+                }
+                def total=0G
+                def change=amount(sale.change ?: 0)
+                def method=sale.paymentMethod
+                def tenders=[:]
+                def customer=sale.customer ?: [:]
+                def customerId=customer.partyId ?: customer.id
+                if (operation=='checkout') {
+                    if (!(method in ['Cash','UPI','Card','Split','Credit']) || change==null || change<0 || change.scale()>2 ||
+                        !(sale.payments instanceof List) || sale.payments.size()>3) {
+                        reject('Enter a valid payment breakdown.'); return
+                    }
+                    for (def tender in sale.payments) {
+                        def value=tender instanceof Map ? amount(tender.amount) : null
+                        if (value==null || value<=0 || value.scale()>2 || !(tender.method in ['Cash','UPI','Card']) || tenders.containsKey(tender.method)) {
+                            reject('Enter a valid payment breakdown.'); return
+                        }
+                        tenders[tender.method]=value
+                        total+=value
+                    }
+                    if (method=='Credit' ? (tenders || change!=0 || (!customerId && (!customer.name || !customer.phone))) :
+                        (total-change!=expectedTotal || (method=='Split' ? tenders.size()<2 : tenders.keySet()!=([method] as Set)) ||
+                            (change>0 && method!='Cash'))) {
+                        reject('Payment or change does not match the KOT order. Credit requires a customer name and phone.'); return
+                    }
+                }
+                def sourceId=sale.kotId
+                if (sale.sourceOfflineId) {
+                    if (!(sale.sourceOfflineId instanceof String) || !(sale.sourceOfflineId ==~ idPattern)) {
+                        reject('Choose a valid saved offline kitchen ticket.'); return
+                    }
+                    def source=receiptFor(sale.sourceOfflineId)
+                    if (source?.operation!='send' || source.sessionId!=sessionId || (sourceId && sourceId!=source.kotId)) {
+                        reject('Sync the original kitchen ticket before its payment.'); return
+                    }
+                    sourceId=source.kotId
+                }
+                def ticket=sourceId ? ec.entity.find('zenith.erp.pos.KitchenOrderTicket')
+                    .condition([kotId:sourceId,organizationPartyId:orgId,terminalId:terminal.terminalId]).forUpdate(true).one() : null
+                if (sourceId && (!ticket || ticket.transactionId || (operation=='send' && ticket.statusId!='KotDraft'))) {
+                    reject('This kitchen ticket is no longer available. Review the order before retrying.'); return
+                }
+                def orderItems=[]
+                for (def item in sale.items) {
+                    def quantity=item instanceof Map ? amount(item.qty) : null
+                    def rate=item instanceof Map ? amount(item.price) : null
+                    def discount=amount(item instanceof Map ? item.discount ?: 0 : null)
+                    if (quantity==null || quantity<=0 || quantity>1000000 || quantity.stripTrailingZeros().scale()>6 ||
+                        rate==null || rate<=0 || rate>10000000 || rate.stripTrailingZeros().scale()>2 ||
+                        discount==null || discount<0 || discount>100 || !(item.productId instanceof String) || !item.productId ||
+                        (item.mode && item.mode!=sale.mode)) {
+                        reject('Positive prices and quantities are required for offline KOT items.'); return
+                    }
+                    orderItems.add([productId:item.productId,quantity:quantity,unitPrice:rate,
+                        manualPrice:item.manualPrice in ['Y',true] ? 'Y' : 'N',discount:discount])
+                }
+                def tableId=sale.orderType=='Dine In' ? sale.tableId ?: null : null
+                def table=tableId ? ec.entity.find('zenith.erp.pos.RestaurantTable')
+                    .condition([tableId:tableId,facilityId:terminal.facilityId]).forUpdate(true).one() : null
+                if (tableId && (!table || !(table.statusId in [null,'TblAvailable','TblOccupied']))) {
+                    reject('Choose an available or occupied table at this terminal shop.'); return
+                }
+                def notes=(sale.notes ?: '').toString()
+                def customerName=customer.name?.toString()?.trim()
+                def customerPhone=customer.phone?.toString()?.trim()
+                if (notes.size()>255 || (customerId && !(customerId instanceof String)) ||
+                    (customerName?.size() ?: 0)>255 || (customerPhone?.size() ?: 0)>100) {
+                    reject('The offline customer or order note is invalid.'); return
+                }
+                def quote
+                if (ticket && ticket.statusId!='KotDraft') {
+                    quote=new groovy.json.JsonSlurper().parseText(ticket.orderReceiptJson ?: '{}')
+                    if (ticket.tableId!=tableId || quote.bill?.orderType!=sale.orderType || quote.bill?.taxOn!=sale.taxOn ||
+                        (quote.bill?.salesModeId ?: null)!=(sale.mode ?: null) || (quote.bill?.customerPartyId ?: null)!=customerId) {
+                        reject('The original kitchen ticket changed. Review it before syncing payment.'); return
+                    }
+                } else {
+                    if (ticket && (!sale.sourceRevision || sale.sourceRevision.toString()!=ticket.lastUpdatedStamp?.time?.toString())) {
+                        reject('The held order changed. Review it before syncing the offline order.'); return
+                    }
+                    quote=ec.service.sync().name('zenith.pos.KitchenPrintServices.get#CartReceipt')
+                        .parameters([sessionId:sessionId,itemsJson:groovy.json.JsonOutput.toJson(orderItems),tableId:tableId,
+                            orderType:sale.orderType,taxOn:sale.taxOn,salesModeId:sale.mode,waiterId:sale.waiterId,
+                            customerPartyId:customerId,notes:notes]).call().receipt
+                }
+                if (ec.message.hasError()) return
+                if (!quote?.items || quote.items.size()!=orderItems.size() || amount(quote.summary?.total)!=expectedTotal ||
+                    amount(quote.summary?.tax)!=expectedTax || orderItems.indices.any { index ->
+                        def submitted=orderItems[index], priced=quote.items[index]
+                        def discount=(submitted.quantity*submitted.unitPrice*submitted.discount/100).setScale(2,java.math.RoundingMode.HALF_UP)
+                        submitted.productId!=priced.productId || submitted.quantity!=amount(priced.qty) ||
+                            submitted.unitPrice!=amount(priced.rate) || discount!=amount(priced.discount ?: 0)
+                    }) {
+                    reject('KOT prices or taxes changed. This offline order is still on the device for review.'); return
+                }
+                if (!ticket || ticket.statusId=='KotDraft') {
+                    def number=ticket?.kotNumber ?: ec.service.sync().name('zenith.pos.KotServices.next#KotNumber').call().kotNumber
+                    if (!number || ec.message.hasError()) return
+                    quote.bill.number='KOT #'+number
+                    def saved=[organizationPartyId:orgId,terminalId:terminal.terminalId,kotNumber:number.toString(),
+                        tableId:tableId,tableNumber:table?.tableNumber,waiterName:quote.bill.waiter,
+                        orderReceiptJson:groovy.json.JsonOutput.toJson(quote),statusId:'KotDraft',
+                        kotDate:new java.sql.Timestamp(issuedAt),notes:'['+sale.orderType+'] '+notes]
+                    if (ticket) {
+                        def oldTableId=ticket.tableId
+                        ticket.setAll(saved).update()
+                        ec.entity.find('zenith.erp.pos.KotItem').condition('kotId',ticket.kotId).deleteAll()
+                        if (oldTableId && oldTableId!=tableId) {
+                            def oldTable=ec.entity.find('zenith.erp.pos.RestaurantTable')
+                                .condition([tableId:oldTableId,facilityId:terminal.facilityId]).forUpdate(true).one()
+                            def orders={ ec.entity.find('zenith.erp.pos.KitchenOrderTicket')
+                                .condition([organizationPartyId:orgId,tableId:oldTableId]) }
+                            def active=orders().condition('statusId','in',['KotNew','KotPreparing','KotReady']).count()
+                            def unpaid=orders().condition('transactionId',null).condition('statusId','in',['KotDraft','KotServed']).count()
+                            if (oldTable?.statusId=='TblOccupied' && !oldTable.currentTransactionId && !active && !unpaid)
+                                oldTable.set('statusId','TblAvailable').update()
+                        }
+                    } else {
+                        def created=ec.service.sync().name('create#zenith.erp.pos.KitchenOrderTicket').parameters(saved+[printCount:0]).call()
+                        if (ec.message.hasError() || !created.kotId) return
+                        ticket=ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('kotId',created.kotId).one()
+                    }
+                    quote.items.eachWithIndex { item,index ->
+                        ec.service.sync().name('create#zenith.erp.pos.KotItem').parameters([kotId:ticket.kotId,
+                            kotItemSeqId:String.format('%05d',index+1),productId:item.productId,productName:item.name,quantity:item.qty]).call()
+                    }
+                }
+                if (ec.message.hasError()) return
+                def bill=[:]
+                if (operation=='checkout') {
+                    bill=ec.service.sync().name('zenith.pos.KotServices.complete#KotBill').parameters([sessionId:sessionId,kotId:ticket.kotId,
+                        confirmedTotal:expectedTotal.toPlainString(),confirmedTax:expectedTax,paymentMethod:method,cashAmount:tenders.Cash?.toPlainString(),
+                        cardAmount:tenders.Card?.toPlainString(),upiAmount:tenders.UPI?.toPlainString(),
+                        customerName:customerName,customerPhone:customerPhone,
+                        referenceNumber:(sale.referenceNumber ?: 'KOT-OFFLINE:'+sale.offlineId).toString().take(120)]).call().checkout
+                    if (!bill || ec.message.hasError()) return
+                    if (amount(bill.changeAmount)!=change) { reject('Recorded change differs from the offline order.'); return }
+                } else {
+                    def display=ec.service.sync().name('zenith.pos.KotServices.get#KitchenDisplayPolicy').parameter('facilityId',terminal.facilityId).call()
+                    if (display.enabled!=true) { reject('Kitchen Display is disabled for this shop.'); return }
+                    ticket.set('statusId','KotNew').update()
+                    if (table) table.set('statusId','TblOccupied').update()
+                }
+                def receipt=[offlineId:sale.offlineId,kotId:ticket.kotId,kotNumber:ticket.kotNumber,
+                    billNumber:bill.billNumber,changeAmount:bill.changeAmount ?: 0G]
+                ec.service.sync().name('create#zenith.erp.pos.KotOfflineSaleSync')
+                    .parameters(key+receipt+[sessionId:sessionId,operation:operation,transactionId:bill.transactionId,
+                        offlineDate:new java.sql.Timestamp(issuedAt),syncedDate:ec.user.nowTimestamp]).call()
+                if (!ec.message.hasError()) syncedOrder=receipt+[success:true]
+            ]]></script>
+        </actions>
+    </service>
+</services>

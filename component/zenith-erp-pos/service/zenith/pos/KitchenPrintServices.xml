@@ -73,7 +73,8 @@
                     if(mp.isFixed) price=mp.unitPrice
                     else if(mode) {
                         def priced=ec.service.sync().name('zenith.pricing.PricingServices.calculate#Price')
-                            .parameters([productId:p.productId,quantity:qty,organizationPartyId:scope.organizationPartyId,salesChannelEnumId:'ScPos']).call()
+                            .parameters([productId:p.productId,quantity:qty,organizationPartyId:scope.organizationPartyId,
+                                regionGeoId:billing?.terminal?.regionGeoId,salesChannelEnumId:'ScPos']).call()
                         if(priced?.unitPrice>0) price=priced.unitPrice
                     }
                     def manualPrice=item.manualPrice=='Y'
@@ -94,8 +95,13 @@
                 if(billing && selected.table && selected.table.facilityId!=facilityId) { ec.message.addError('Choose a table at this terminal shop.'); return }
                 def tpl=templates.find { facilityId && it.facilityId==facilityId } ?: templates.find { !it.facilityId }
                 def receiptTaxReg=tpl?.taxRegistrationNumber ?: ''
-                def state=receiptTaxReg.size()==15 ? receiptTaxReg.substring(0,2) : null
-                if(!state) {
+                def state=billing?.terminal?.stateCode ?: billing?.terminal?.regionGeoId
+                if (!state && billing?.terminal) state=ec.entity.find('zenith.erp.india.IndiaGstConfig')
+                    .condition('organizationPartyId',scope.organizationPartyId).limit(1).one()?.stateCode
+                if (!billing?.terminal) {
+                    state=receiptTaxReg.size()==15 ? receiptTaxReg.substring(0,2) : null
+                }
+                if(!state && !billing?.terminal) {
                     def terminals=ec.entity.find('zenith.erp.pos.PosTerminal').condition('organizationPartyId',scope.organizationPartyId).condition('isActive','Y')
                     if(facilityId)terminals.condition('facilityId',facilityId)
                     def states=terminals.list().collect { it.stateCode ?: it.regionGeoId }.findAll { it }.unique()

@@ -178,6 +178,6 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   const response=await post(kit,'kot/KotBilling/printRecord',{kotId:foreignId,kind:'kot'});
   const foreignBody=await response.json().catch(()=>({}));
   check('a KOT-only clerk cannot retrieve another organization’s ticket',response.status()===403||foreignBody.success===false,{status:response.status(),success:foreignBody.success});
-  await require('./verify-kot-offline-drafts.cjs')({foreign,base,check,q,out});
+  await require('./verify-kot-offline-drafts.cjs')({a,foreign,base,check,q,out});
  } finally { await clerk.close(); await page.close(); }
 };

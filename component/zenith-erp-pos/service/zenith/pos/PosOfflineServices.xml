@@ -16,17 +16,17 @@
         </actions>
     </service>
     <service verb="export" noun="Workspace">
-        <in-parameters><parameter name="terminalId" required="true"/></in-parameters>
+        <in-parameters><parameter name="terminalId" required="true"/><parameter name="kotWorkspace" type="Boolean" default="false"/></in-parameters>
         <out-parameters><parameter name="workspace" type="Map"/></out-parameters>
         <actions>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[terminalId:terminalId]" out-map="access"/>
             <if condition="!access.allowed"><return/></if>
-            <service-call name="zenith.pos.PosServices.export#PosCatalog" in-map="[terminalId:terminalId,includeCustomers:false]" out-map="catalog"/>
+            <service-call name="zenith.pos.PosServices.export#PosCatalog" in-map="[terminalId:terminalId,includeCustomers:false,productTypeEnumId:kotWorkspace ? 'PtAsset' : null]" out-map="catalog"/>
             <service-call name="zenith.pos.PosModeServices.get#TerminalModes" in-map="[terminalId:terminalId]" out-map="offered"/>
-            <service-call name="zenith.pos.PosPriceServices.get#PriceOverrideAccess" out-map="priceAccess"/>
+            <if condition="!kotWorkspace"><service-call name="zenith.pos.PosPriceServices.get#PriceOverrideAccess" out-map="priceAccess"/></if>
             <script><![CDATA[
                 def org=access.organizationPartyId
-                def discountSetting=ec.entity.find('moqui.security.UserPreference').condition('userId',org).condition('preferenceKey','POS_DISC_LIMIT').one()?.preferenceValue
+                def discountSetting=kotWorkspace ? null : ec.entity.find('moqui.security.UserPreference').condition('userId',org).condition('preferenceKey','POS_DISC_LIMIT').one()?.preferenceValue
                 def terminal=ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',terminalId).one()
                 def modes=offered.modes.collect { [id:it.salesModeId,name:it.modeName,inclusive:it.isTaxInclusive=='Y',disc:it.discountPercent ?: 0,source:it.priceSource] }
                 def rules=ec.entity.find('zenith.erp.pos.PosSalesModeOrgConfig').condition('organizationPartyId',org).list()
@@ -37,7 +37,7 @@
                     .findAll { !it.organizationPartyId || it.organizationPartyId == org }
                     .collectEntries { [(it.productId+'\u0000'+it.salesModeId):it.price] } : [:]
                 def region=terminal.stateCode ?: terminal.regionGeoId ?: ec.entity.find('zenith.erp.india.IndiaGstConfig').condition('organizationPartyId',org).limit(1).one()?.stateCode
-                def other=region ? ec.entity.find('zenith.erp.india.IndiaState').condition('stateCode','not-equals',region).limit(1).one()?.stateCode : null
+                def other=!kotWorkspace && region ? ec.entity.find('zenith.erp.india.IndiaState').condition('stateCode','not-equals',region).limit(1).one()?.stateCode : null
                 def interstate=other && productIds ? ec.service.sync().name('zenith.tax.TaxServices.calculate#Tax').parameters([organizationPartyId:org,
                     items:productIds.collect { id -> def p=productRows[id];[productId:id,productTaxCode:p.productTaxCode,taxCategoryId:p.taxCategoryId,quantity:1,unitAmount:100,isTaxInclusive:'N'] },
                     originRegionGeoId:region,destinationRegionGeoId:other,transactionType:'SALE']).call() : null
@@ -49,30 +49,35 @@
                         def price=override != null ? override : p.mrpAmount
                         prices[mode.id]=[price:price,disc:override == null && mode.source in ['PpsDiscountMrp','PpsDiscountList'] ? mode.disc : 0,blocked:price==null]
                     }
-                    product+[printName:p.printName ?: p.productName,prices:prices,
-                        interstateRates:interstate?.taxedItems ? (interstate.taxedItems[index].taxBreakdowns?.collect { it.taxRate ?: 0 } ?: []) : null]
+                    product+[printName:p.printName ?: p.productName,prices:prices] +
+                        (kotWorkspace ? [amountUomId:p.amountUomId] :
+                            [interstateRates:interstate?.taxedItems ? (interstate.taxedItems[index].taxBreakdowns?.collect { it.taxRate ?: 0 } ?: []) : null])
                 }
                 def customerIds=ec.entity.find('mantle.party.Party').condition('ownerPartyId',org).list()*.partyId
                 def customers=[]
-                if (customerIds) ec.entity.find('mantle.party.PartyRole').condition('partyId','in',customerIds).condition('roleTypeId','Customer').list().each { role ->
+                if (customerIds) ec.entity.find('mantle.party.PartyRole').condition('partyId','in',customerIds)
+                    .condition('roleTypeId','in',kotWorkspace ? ['Customer','CustomerBillTo'] : ['Customer']).list().unique { it.partyId }.each { role ->
                     def detail=ec.entity.find('mantle.party.PartyDetailAndRole').condition('partyId',role.partyId).limit(1).list()
                     def person=detail ? detail[0] : null
                     def name=person?.organizationName ?: [person?.firstName,person?.lastName].findAll { it }.join(' ')
-                    def party=ec.entity.find('mantle.party.Party').condition('partyId',role.partyId).one()
-                    def phone='', state=''
+                    def phone=''
                     ec.entity.find('mantle.party.contact.PartyContactMech').condition('partyId',role.partyId).conditionDate('fromDate','thruDate',ec.user.nowTimestamp).list().each { link ->
                         def tel=ec.entity.find('mantle.party.contact.TelecomNumber').condition('contactMechId',link.contactMechId).one()
                         if (!phone && tel) phone=[tel.countryCode,tel.areaCode,tel.contactNumber].findAll { it }.join('')
-                        def address=ec.entity.find('mantle.party.contact.PostalAddress').condition('contactMechId',link.contactMechId).one()
-                        if (!state && address) state=address.stateProvinceGeoId ?: ''
                     }
-                    def registration=ec.service.sync().name('zenith.tax.TaxServices.get#PartyTaxRegistration').parameter('partyId',role.partyId).call()
-                    if (name) customers.add([partyId:role.partyId,name:name,phone:phone,creditDays:party.creditDays,state:registration?.regionGeoId ?: '',gstin:registration?.registrationNumber ?: ''])
+                    if (!name) return
+                    def customer=[partyId:role.partyId,name:name,phone:phone]
+                    if (!kotWorkspace) {
+                        def party=ec.entity.find('mantle.party.Party').condition('partyId',role.partyId).one()
+                        def registration=ec.service.sync().name('zenith.tax.TaxServices.get#PartyTaxRegistration').parameter('partyId',role.partyId).call()
+                        customer += [creditDays:party.creditDays,state:registration?.regionGeoId ?: '',gstin:registration?.registrationNumber ?: '']
+                    }
+                    customers.add(customer)
                 }
                 def templates=ec.entity.find('zenith.erp.pos.PosReceiptTemplate').condition('organizationPartyId',org).condition('isActive','Y').orderBy('-isDefault,templateId').list()
                 def template=templates.find { it.facilityId==terminal.facilityId } ?: templates.find { !it.facilityId }
                 workspace=[version:2,userId:ec.user.userId,organizationPartyId:org,terminalId:terminalId,cachedAt:ec.user.nowTimestamp.time,
-                    products:products,customers:customers,modes:modes,canOverride:priceAccess.canOverride==true,
+                    products:products,customers:customers,modes:modes,canOverride:kotWorkspace || priceAccess?.canOverride==true,
                     rules:rules.collect { [mode:it.salesModeId,customer:it.requireCustomer=='Y',minimum:it.minOrderAmount ?: 0] },
                     discountLimit:discountSetting?.trim() ? new BigDecimal(discountSetting) : null,
                     state:terminal.stateCode ?: terminal.regionGeoId ?: ec.entity.find('zenith.erp.india.IndiaGstConfig').condition('organizationPartyId',org).limit(1).one()?.stateCode,

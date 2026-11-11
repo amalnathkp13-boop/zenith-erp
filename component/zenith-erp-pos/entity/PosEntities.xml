@@ -584,6 +584,26 @@
         </index>
     </entity>
 
+    <entity entity-name="KotOfflineSaleSync" package="zenith.erp.pos">
+        <description>Receipt for a KOT order synced from a device.</description>
+        <field name="organizationPartyId" type="id" is-pk="true"/>
+        <field name="terminalId" type="id" is-pk="true"/>
+        <field name="userId" type="id" is-pk="true"/>
+        <field name="offlineId" type="text-short" is-pk="true"/>
+        <field name="sessionId" type="id"/>
+        <field name="operation" type="text-short"/>
+        <field name="kotId" type="id"/>
+        <field name="transactionId" type="id"/>
+        <field name="kotNumber" type="text-short"/>
+        <field name="billNumber" type="text-short"/>
+        <field name="changeAmount" type="currency-amount"/>
+        <field name="syncedDate" type="date-time"/>
+        <field name="offlineDate" type="date-time"/>
+        <index name="KOT_OFF_SALE_DATE">
+            <index-field name="organizationPartyId"/><index-field name="terminalId"/><index-field name="syncedDate"/>
+        </index>
+    </entity>
+
     <entity entity-name="KotItem" package="zenith.erp.pos" short-alias="KotItem">
         <field name="kotId" type="id" is-pk="true"/>
         <field name="kotItemSeqId" type="id" is-pk="true"/>
@@ -635,6 +655,7 @@
         <member-entity entity-alias="KOT" entity-name="zenith.erp.pos.KitchenOrderTicket" join-from-alias="PX">
             <key-map field-name="transactionId"/>
             <key-map field-name="organizationPartyId"/>
+            <entity-condition><econdition field-name="orderReceiptJson" operator="is-not-null"/></entity-condition>
         </member-entity>
         <alias entity-alias="PX" name="transactionId"/>
         <alias entity-alias="PX" name="organizationPartyId"/>
@@ -684,6 +705,12 @@
             <key-map field-name="sessionId"/></member-entity>
         <member-entity entity-alias="PT" entity-name="zenith.erp.pos.PosTerminal" join-from-alias="PS">
             <key-map field-name="terminalId"/></member-entity>
+        <!-- KOT Billing stores its own order snapshot. Retail tickets sent to the kitchen have no snapshot. -->
+        <member-entity entity-alias="KOT" entity-name="zenith.erp.pos.KitchenOrderTicket" join-from-alias="PX" join-optional="true">
+            <key-map field-name="transactionId"/>
+            <key-map field-name="organizationPartyId"/>
+            <entity-condition><econdition field-name="orderReceiptJson" operator="is-not-null"/></entity-condition>
+        </member-entity>
         <alias-all entity-alias="PX"/>
         <alias entity-alias="PT" name="terminalName"/>
         <alias entity-alias="PT" name="terminalId"/>
@@ -692,6 +719,7 @@
         <!-- expose member orgs so ZTF_POSSESS / ZTF_POSTERMINAL tenant filters apply to this view -->
         <alias entity-alias="PS" name="ztfSessionOrg" field="organizationPartyId"/>
         <alias entity-alias="PT" name="ztfTerminalOrg" field="organizationPartyId"/>
+        <entity-condition><econdition entity-alias="KOT" field-name="kotId" operator="is-null"/></entity-condition>
     </view-entity>
 
     <view-entity entity-name="KotTransactionDetailView" package="zenith.erp.pos">
@@ -703,6 +731,7 @@
         <member-entity entity-alias="KOT" entity-name="zenith.erp.pos.KitchenOrderTicket" join-from-alias="PX">
             <key-map field-name="transactionId"/>
             <key-map field-name="organizationPartyId"/>
+            <entity-condition><econdition field-name="orderReceiptJson" operator="is-not-null"/></entity-condition>
         </member-entity>
         <alias-all entity-alias="PX"/>
         <alias entity-alias="PS" name="operatorPartyId"/>

@@ -54,6 +54,132 @@
         </actions>
     </service>
 
+    <service verb="complete" noun="KotBill">
+        <in-parameters>
+            <parameter name="sessionId" required="true"/><parameter name="kotId" required="true"/>
+            <parameter name="confirmedTotal"/><parameter name="confirmedTax" type="BigDecimal"/><parameter name="paymentMethod"/>
+            <parameter name="cashAmount"/><parameter name="cardAmount"/><parameter name="upiAmount"/>
+            <parameter name="customerName"/><parameter name="customerPhone"/><parameter name="referenceNumber"/>
+        </in-parameters>
+        <out-parameters><parameter name="checkout" type="Map"/></out-parameters>
+        <actions>
+            <script><![CDATA[
+                def sid=sessionId, kid=kotId
+                def reject={ String reason -> ec.message.addError(reason) }
+                if(!sid || !kid) { reject('Choose an open terminal session and a saved order.'); return }
+                def scope=ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess').parameters([sessionId:sid,kotId:kid]).call()
+                def access=ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId',((ec.web?.request?.requestURI ?: '') ==~ /\/(apps|qapps)\/zenith\/kot\/.+/) ? 'kot' : 'pos').call()
+                if(!scope.allowed || access.canWrite!=true) { reject('You do not have access to bill this order.'); return }
+                // Checkout and offline replay lock the session before any ticket or table.
+                def session=ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',sid).forUpdate(true).one()
+                def kot=ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('kotId',kid).forUpdate(true).one()
+                def terminal=ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',session?.terminalId).one()
+                def billing=ec.service.sync().name('zenith.pos.KotServices.get#BillingSession').parameter('sessionId',sid).call()
+                if(!billing.terminal || ec.message.hasError()) {
+                    def error = ec.message.errorsString?.trim() ?: 'Choose your open terminal session in this shop.'
+                    if (!ec.message.hasError()) reject(error)
+                    return
+                }
+                def shop=ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call().activeShopId
+                if(!kot || (!kot.terminalId && scope.terminalRestricted) || session?.operatorPartyId!=ec.user.userAccount?.partyId || !terminal || (shop && terminal.facilityId!=shop) || (kot.terminalId && kot.terminalId!=terminal.terminalId)) {
+                    reject('Choose your terminal session in this shop.'); return
+                }
+                if(!kot.transactionId) {
+                    def fromDraft=kot.statusId=='KotDraft'
+                    def kitchenActive=['KotNew','KotPreparing','KotReady']
+                    if(!(kot.statusId in (kitchenActive+['KotDraft','KotServed'])) || !kot.orderReceiptJson || session.statusId!='PsOpen' || terminal.isActive!='Y') {
+                        reject('This order or terminal session is no longer available for billing.'); return
+                    }
+                    def table=kot.tableId ? ec.entity.find('zenith.erp.pos.RestaurantTable').condition('tableId',kot.tableId).forUpdate(true).one() : null
+                    if(kot.tableId && (!table || table.facilityId!=terminal.facilityId || !(table.statusId in [null,'TblAvailable','TblOccupied']))) {
+                        reject('Choose an available or occupied table at the terminal shop.'); return
+                    }
+                    def quote=new groovy.json.JsonSlurper().parseText(kot.orderReceiptJson)
+                    if(confirmedTotal) {
+                        def amount=confirmedTotal.toString()
+                        if(!amount.isBigDecimal() || new BigDecimal(amount).compareTo(quote.summary.total as BigDecimal)!=0) {
+                            reject('The saved order total changed. Reopen it in History and review it before taking payment.'); return
+                        }
+                    }
+                    def tx=ec.service.sync().name('zenith.pos.PosServices.create#PosTransaction')
+                        .parameters([sessionId:sid,reuseOpenCart:false]).call()?.transactionId
+                    if(!tx) { reject(ec.message.errorsString ?: 'Could not create the bill.'); return }
+                    for(def item in quote.items) {
+                        ec.service.sync().name('zenith.pos.PosServices.add#PosTransactionItem')
+                            .parameters([transactionId:tx,productId:item.productId,quantity:item.qty,
+                                salesModeId:quote.bill.salesModeId,taxOn:quote.bill.taxOn,
+                                unitPrice:item.manualPrice=='Y' ? item.rate : null,manualUnitPrice:item.manualPrice=='Y']).call()
+                        if(ec.message.hasError()) return
+                    }
+                    def current=ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',tx).one()
+                    if((current.payableAmount as BigDecimal).compareTo(quote.summary.total as BigDecimal)!=0) {
+                        reject('The terminal total changed. Reopen the order to review its prices and tax before taking payment.'); return
+                    }
+                    // Attach the customer recorded on the validated order snapshot (never request-supplied here).
+                    def custPid=quote.bill?.customerPartyId
+                    if(custPid) ec.service.sync().name('update#zenith.erp.pos.PosTransaction')
+                        .parameters([transactionId:tx,customerPartyId:custPid,customerName:quote.bill.customer,
+                            customerPhone:quote.bill.customerPhone,customerTaxRegNumber:quote.bill.customerTaxRegNumber]).call()
+                    def method=paymentMethod
+                    if(method=='Credit') {
+                        ec.service.sync().name('zenith.pos.PosServices.complete#PosTransactionCredit')
+                            .parameters([transactionId:tx,customerPartyId:custPid,
+                                customerName:(custPid && quote.bill.customer) ? quote.bill.customer : customerName,
+                                customerPhone:(custPid && quote.bill.customerPhone) ? quote.bill.customerPhone : customerPhone,
+                                attachMissingCustomerPhone:true]).call()
+                    } else {
+                        if(!(method in ['Cash','UPI','Card','Split'])) { reject('Choose a valid payment method.'); return }
+                        def payments=[]
+                        try {
+                            if(method=='Split') {
+                                payments=[['Cash',cashAmount],['Card',cardAmount],['UPI',upiAmount]]
+                                    .collect { [it[0],new BigDecimal(it[1] ?: '0')] }
+                            } else {
+                                payments=[[method,method=='Cash' ? new BigDecimal(cashAmount ?: '0') : current.payableAmount]]
+                            }
+                        } catch(Exception ignored) { reject('Enter valid payment amounts.'); return }
+                        if(payments.any { it[1]<0 || it[1].scale()>2 } || (method=='Split' && payments.count { it[1]>0 }<2)) {
+                            reject('Enter valid amounts for the selected payment methods.'); return
+                        }
+                        for(def payment in payments.findAll { it[1]>0 }) {
+                            ec.service.sync().name('zenith.pos.PosServices.process#PosPayment')
+                                .parameters([transactionId:tx,paymentMethod:payment[0],amount:payment[1],referenceNumber:referenceNumber]).call()
+                            if(ec.message.hasError()) return
+                        }
+                        ec.service.sync().name('zenith.pos.PosServices.complete#PosTransaction').parameter('transactionId',tx).call()
+                    }
+                    if(ec.message.hasError()) return
+                    kot.setAll([transactionId:tx,terminalId:terminal.terminalId])
+                    if(fromDraft) {
+                        def display=ec.service.sync().name('zenith.pos.KotServices.get#KitchenDisplayPolicy').parameter('facilityId',terminal.facilityId).call()
+                        kot.setAll([statusId:display.enabled ? 'KotNew' : 'KotServed',kotDate:ec.user.nowTimestamp])
+                    }
+                    kot.update()
+                    if(table) {
+                        def cf=ec.entity.conditionFactory
+                        def openTickets=ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('organizationPartyId',scope.organizationPartyId)
+                            .condition('tableId',table.tableId).condition('kotId','!=',kid)
+                            .condition(cf.makeCondition([
+                                cf.makeCondition('statusId',org.moqui.entity.EntityCondition.IN,kitchenActive),
+                                cf.makeCondition([statusId:'KotDraft',transactionId:null]),
+                                cf.makeCondition([statusId:'KotServed',transactionId:null])
+                            ],org.moqui.entity.EntityCondition.OR)).count()
+                        if(kot.statusId in kitchenActive || openTickets || table.currentTransactionId) table.set('statusId','TblOccupied').update()
+                        else table.set('statusId','TblAvailable').update()
+                    }
+                }
+                def billScope=ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess').parameter('transactionId',kot.transactionId).call()
+                def bill=billScope.allowed ? ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',kot.transactionId)
+                    .condition('sessionId',sid).condition('statusId','PtCompleted').one() : null
+                if(!bill) { reject('This order was already billed on another session.'); return }
+                if (confirmedTax != null && confirmedTax.compareTo((bill.totalTaxAmount ?: 0) as BigDecimal) != 0) {
+                    reject('The terminal tax changed. Review this order before syncing payment.'); return
+                }
+                checkout=[success:true,kotId:kid,transactionId:bill.transactionId,billNumber:bill.transactionNumber,changeAmount:bill.changeAmount ?: 0G]
+            ]]></script>
+        </actions>
+    </service>
+
     <!-- Store the shop switch in the existing organization settings table; no global or per-user fallback. -->
     <service verb="get" noun="KitchenDisplayPolicy">
         <in-parameters><parameter name="facilityId"/></in-parameters>

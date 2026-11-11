@@ -945,6 +945,7 @@
             <parameter name="customerPartyId"/>
             <parameter name="upfrontAmount" type="BigDecimal"/>
             <parameter name="upfrontMethod"/>
+            <parameter name="attachMissingCustomerPhone" type="Boolean" default="false"/>
             <parameter name="creditDays" type="Integer"/><parameter name="termsReason"/>
         </in-parameters>
         <actions>
@@ -967,22 +968,28 @@
                 <return error="true" message="Upfront payment must be between zero and the remaining bill amount, with at most two decimal places."/></if>
             <if condition="upfront &gt; 0 &amp;&amp; !['Cash','Card','UPI'].contains(upfrontMethod)">
                 <return error="true" message="Choose Cash, Card, or UPI for the upfront payment."/></if>
+            <set field="_attachCapturedPhone" from="false"/>
             <if condition="customerPartyId">
                 <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_customerAccess"
                     in-map="[transactionId:transactionId, customerPartyId:customerPartyId]"/>
                 <if condition="!_customerAccess.allowed"><return/></if>
                 <script><![CDATA[
+                    if (attachMissingCustomerPhone) ec.entity.find('mantle.party.Party')
+                        .condition('partyId',customerPartyId).forUpdate(true).one()
                     def customer = ec.entity.find('mantle.party.PartyDetailAndRole').condition('partyId', customerPartyId).limit(1).list()
                     def detail = customer ? customer[0] : null
                     def canonicalName = detail?.organizationName ?: (((detail?.firstName ?: '') + ' ' + (detail?.lastName ?: '')).trim())
                     def phoneMechs = ec.entity.find('mantle.party.contact.PartyContactMech').condition('partyId', customerPartyId)
                         .conditionDate('fromDate', 'thruDate', ec.user.nowTimestamp).list()
-                    def matchesPhone = phoneMechs.any { pcm ->
+                    def phones = phoneMechs.collect { pcm ->
                         def number = ec.entity.find('mantle.party.contact.TelecomNumber').condition('contactMechId', pcm.contactMechId).one()
-                        def digits = ((number?.countryCode ?: '') + (number?.areaCode ?: '') + (number?.contactNumber ?: '')).replaceAll('[^0-9]', '')
+                        ((number?.countryCode ?: '') + (number?.areaCode ?: '') + (number?.contactNumber ?: '')).replaceAll('[^0-9]', '')
+                    }.findAll { it }
+                    def matchesPhone=phones.any { digits ->
                         digits && (digits == custDigits || (digits.length() > 10 && custDigits.length() == 10 && digits.endsWith(custDigits)))
                     }
-                    if (!canonicalName || !(matchesPhone || customerPartyId == ('POSCUST_' + txn.organizationPartyId + '_' + custDigits)))
+                    _attachCapturedPhone = attachMissingCustomerPhone && !phones
+                    if (!canonicalName || !(matchesPhone || _attachCapturedPhone || customerPartyId == ('POSCUST_' + txn.organizationPartyId + '_' + custDigits)))
                         ec.message.addError('Select a saved customer with a matching phone, or add a new customer.')
                     else customerName = canonicalName
                 ]]></script>
@@ -1008,7 +1015,7 @@
                 <service-call name="create#mantle.party.PartyRole"
                     in-map="[partyId:custPartyId, roleTypeId:'Customer']"/>
             </if>
-            <if condition="!existCust || (!customerPartyId &amp;&amp; !ec.entity.find('mantle.party.contact.PartyContactMech').condition('partyId', custPartyId).count())">
+            <if condition="_attachCapturedPhone || !existCust || (!customerPartyId &amp;&amp; !ec.entity.find('mantle.party.contact.PartyContactMech').condition('partyId', custPartyId).count())">
                 <service-call name="create#mantle.party.contact.ContactMech" out-map="_creditPhoneMech"
                     in-map="[contactMechTypeEnumId:'CmtTelecomNumber']"/>
                 <service-call name="create#mantle.party.contact.TelecomNumber"
@@ -1737,6 +1744,7 @@
         <description>Export full product catalog, prices, and customers for IndexedDB</description>
         <in-parameters>
             <parameter name="organizationPartyId"/><parameter name="terminalId"/><parameter name="includeCustomers" type="Boolean" default="true"/>
+            <parameter name="productTypeEnumId"/>
         </in-parameters>
         <out-parameters>
             <parameter name="products" type="List"/>
@@ -1755,6 +1763,7 @@
             <if condition="!organizationPartyId"><return/></if>
             <entity-find entity-name="mantle.product.Product" list="productList">
                 <econdition field-name="ownerPartyId" from="organizationPartyId"/>
+                <econdition field-name="productTypeEnumId" ignore-if-empty="true"/>
                 <date-filter from-field-name="salesIntroductionDate" thru-field-name="salesDiscontinuationDate"/>
             </entity-find>
             <entity-find-one entity-name="zenith.erp.pos.PosTerminal" value-field="_catalogTerminal"><field-map field-name="terminalId"/></entity-find-one>

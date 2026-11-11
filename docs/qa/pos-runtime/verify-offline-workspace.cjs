@@ -14,6 +14,13 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
   check('spaces within a product query do not trigger cash',await page.locator('#cartInlineSearch').inputValue()==='water  '&&await page.locator('#cartInlineSearch').evaluate(el=>el===document.activeElement));
   await page.locator('#cartInlineSearch').fill('');await page.locator('#cartInlineSearch').press('Space');
   check('empty-search Space also focuses Cash while online',await page.locator('#pos-pay-cash').evaluate(el=>el===document.activeElement));
+  // The fixture added this line through the server, so refresh through POS before taking the browser offline.
+  const snapshotResponse=page.waitForResponse(response=>response.url().endsWith('/ajaxCart')&&
+   new URLSearchParams(response.request().postData()||'').get('action')==='refresh');
+  await page.evaluate(()=>window._posRefreshCart());
+  const snapshot=await (await snapshotResponse).json();
+  check('POS has an authoritative snapshot of the fixture cart before disconnecting',
+   snapshot.success&&snapshot.transactionId===draft.transactionId&&!!snapshot.sourceRevision);
   await context.setOffline(true);
   await page.locator('#pos-offline-banner').waitFor();
   check('network loss preserves an editable existing bill instead of pausing it',!await page.evaluate(()=>window._posOffline.paused()));
