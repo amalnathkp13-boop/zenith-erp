@@ -64,6 +64,17 @@ module.exports = async ({a,base,check,out}) => {
       await page.goto(base+'/'+shell+'/zenith/Inventory/FindProduct',{waitUntil:'domcontentloaded'});
       await (shell==='apps'?page.locator('#CreateProductDialog-button'):page.getByRole('button',{name:'New Product',exact:true})).click();
       const blank=page.locator('#CreateProductForm[data-bound=true]');
+      const duplicateName='Duplicate Item Code QA '+suffix;
+      await blank.locator('[name=productName]').fill(duplicateName);
+      await blank.locator('[name=uqcEnumId]').selectOption('PCS',{force:true});
+      await blank.getByLabel('Item Code',{exact:true}).fill('  '+customCode+'  ');
+      await blank.locator('#CreateProductForm_submitButton').click();
+      const duplicateStatus=blank.locator('[data-pe-status][data-error=true]');
+      await duplicateStatus.waitFor();
+      check(shell+' rejects an existing Item Code after trimming and keeps the form open',
+        (await duplicateStatus.innerText()).includes('already used in this organization')&&
+        await blank.locator('[name=productName]').inputValue()===duplicateName);
+      await blank.getByLabel('Item Code',{exact:true}).fill('');
       await blank.locator('[name=productName]').fill('Blank MRP QA '+randomUUID().slice(0,8));
       await blank.locator('[name=uqcEnumId]').selectOption('PCS',{force:true});
       for(const input of await blank.locator('[data-pe-mode-id]').all()) await input.fill('4.5');
