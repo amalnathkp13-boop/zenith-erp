@@ -28,7 +28,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   check('KOT header shows a stationary terminal and bill data without removed controls',
    await page.locator('.kg-header .kg-chip').evaluate(el=>el.tagName==='BUTTON'&&!el.textContent.includes('⌄'))&&
    await page.locator('#kb-header-last-bill').count()===1&&
-   await page.locator('.kg-header #kb-customer-open').count()===0&&
+   await page.locator('.kg-header #kb-customer-open').isHidden()&&
    await page.locator('#kb-display-message').isHidden()&&
    !(await page.locator('.kg-header').innerText()).includes('KOT Mode'));
   const billingUrl=page.url();
@@ -72,12 +72,13 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await card.waitFor();
   check('Grid View shows a product catalogue with empty search',await search.inputValue()===''&&
    await page.locator('#kb-product-grid .kb-results-grid').isVisible());
-  check('Grid moves customer selection into the toolbar and gives the catalogue its own column',
-   await page.locator('.kg-header #kb-customer-open').count()===0&&
-   await page.locator('.kb-toolbar #kb-customer-open').isVisible()&&
+  const gridCustomer=page.locator('.kg-header #kb-customer-open');
+  check('Grid puts Walk-in Customer in the header and gives the catalogue its own column',
+   await gridCustomer.isVisible()&&(await gridCustomer.innerText()).trim()==='Walk-in Customer'&&
+   await page.locator('.kb-toolbar #kb-customer-open').count()===0&&
    await page.locator('#kb-product-grid').evaluate(panel=>panel.getBoundingClientRect().width>innerWidth*0.4));
-  await page.locator('.kb-toolbar #kb-customer-open').click();
-  check('Grid customer picker remains available',await page.locator('#kb-customer-dialog').isVisible());
+  await gridCustomer.click();
+  check('Grid opens the customer picker from the header',await page.getByRole('dialog',{name:'Customer for this bill'}).isVisible());
   await page.locator('#kb-customer-close').click();
   const catalogueRequests=[];
   const recordLookup=request=>{if(request.url().endsWith('/searchMenu'))catalogueRequests.push(request.postData());};

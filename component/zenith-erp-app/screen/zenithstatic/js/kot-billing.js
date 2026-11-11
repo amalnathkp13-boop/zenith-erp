@@ -350,12 +350,15 @@
   function renderCustomer() {
     const name=customer.name||'Walk-in Customer';
     $('customer-name').textContent=name;
+    const headerName=$('header-customer-name');
+    if(headerName)headerName.textContent=name;
     $('list-phone').textContent=customer.phone||'—';
   }
   function openCustomerDialog() {
     const dlg=$('customer-dialog');if(!dlg)return;
     $('customer-error').textContent='';$('customer-search').value='';
-    renderCustomerResults([]);dlg.showModal();
+    $('customer-tax').checked=taxOn==='Y';
+    $('customer-results').replaceChildren();dlg.showModal();
     searchCustomers('');$('customer-search').focus();
   }
   async function searchCustomers(term) {
@@ -378,6 +381,10 @@
   }
   function selectCustomer(el) {
     customer={id:el.dataset.custId,name:el.dataset.custName,phone:el.dataset.custPhone||''};
+    if(grid){
+      taxOn=$('customer-tax').checked?'Y':'N';
+      paintTax();
+    }
     $('customer-dialog')?.close();renderCustomer();quote();
   }
   function walkInCustomer() {

@@ -743,6 +743,7 @@
 <#elseif name=='box'><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.73Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>
 <#elseif name=='search'><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
 <#elseif name=='x'><path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+<#elseif name=='chevron'><path d="m6 9 6 6 6-6"/>
 <#elseif name=='plus'><path d="M5 12h14"/><path d="M12 5v14"/>
 <#elseif name=='minus'><path d="M5 12h14"/>
 <#elseif name=='trash'><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>
@@ -796,6 +797,11 @@
     <span class="kg-meta"><span class="kg-normal"><@ic 'calendar'/></span> ${ec.l10n.format(ec.user.nowTimestamp, 'dd-MM-yyyy')?html}</span>
     <span class="kg-meta"><@ic 'clock'/> <time id="kb-clock"></time></span>
     <div class="kg-bill-status"><span class="kg-bill-last"><@ic 'receipt'/> Last bill <strong id="kb-header-last-bill">${latestIssuedBillNo?html}</strong></span><span class="kg-bill-today">Today: <strong id="kb-header-today-bills">${todayBillCount!0}</strong> bills</span></div>
+    <#if modCanWrite>
+      <button type="button" class="kb-control kg-only" id="kb-customer-open" aria-haspopup="dialog" aria-controls="kb-customer-dialog">
+        <@ic 'user' 21/> <span id="kb-header-customer-name">Walk-in Customer</span> <@ic 'chevron' 17/>
+      </button>
+    </#if>
   </header>
   <div class="kb-toolbar">
     <a class="kb-control kg-back" href="KotHistory" aria-label="Back to KOT History">← Back</a>
@@ -822,7 +828,6 @@
     </div>
     <input type="hidden" id="kb-table" value="" data-labels="${tableLabelsJson?html}"/>
     <label class="kb-fld"><select id="kb-waiter" aria-label="Waiter"><option value="">Choose waiter</option><#list waiters as w><option value="${w.waiterId?html}">${w.waiterName?html}</option></#list></select></label>
-    <#if modCanWrite><button type="button" class="kb-control kg-only" id="kb-customer-open" aria-label="Choose customer" title="Attach a customer to this bill"><@ic 'user'/> Customer</button></#if>
     <div class="kb-toolbar-end">
       <#if modCanWrite><button type="button" class="kb-control" id="kb-close-session" aria-label="Close session" aria-keyshortcuts="C" title="Review cash and close this POS session"><@ic 'close-session' 22/> Close session <kbd aria-hidden="true">C</kbd></button></#if>
       <button type="button" class="kb-control" id="kb-fullscreen" title="Enter fullscreen"><@ic 'fullscreen'/><span id="kb-fullscreen-label">Enter fullscreen</span></button>
@@ -999,11 +1004,18 @@
     <p id="kb-print-error" role="alert"></p><button type="button" class="kb-control" id="kb-print-close">Done</button>
   </dialog></#if>
   <#if modCanWrite><dialog id="kb-customer-dialog" class="zk-history-view" aria-labelledby="kb-customer-title">
-    <h2 id="kb-customer-title">Choose Customer</h2>
-    <div class="kb-dialog-fields"><label>Search customers<input id="kb-customer-search" type="search" placeholder="Name, phone, or customer ID" autocomplete="off"></label></div>
+    <header class="kb-customer-heading">
+      <h2 id="kb-customer-title"><span class="kg-normal">Choose Customer</span><span class="kg-only"><@ic 'user' 19/> Customer for this bill</span></h2>
+      <button type="button" class="kb-control" id="kb-customer-close" aria-label="Close customer picker"><@ic 'x' 18/></button>
+    </header>
+    <div class="kb-dialog-fields kb-customer-search-row">
+      <label><span class="kg-normal">Search customers</span><input id="kb-customer-search" type="search" aria-label="Search customers" placeholder="Search name, phone, or customer ID…" autocomplete="off"></label>
+      <a class="kb-control kg-only" href="/apps/zenith/Contacts/Customers" target="_blank" rel="noopener" title="Add a new customer in Contacts (opens a new tab)">+ New</a>
+    </div>
+    <button type="button" class="kb-control" id="kb-customer-walkin"><span class="kg-normal">Use Walk-in Customer</span><span class="kg-only">Walk-in (no customer)</span></button>
+    <label class="kb-customer-tax kg-only"><input id="kb-customer-tax" type="checkbox"/> Tax bill for selected customer</label>
     <div id="kb-customer-results" class="kb-suggestions" aria-label="Matching customers"></div>
     <p id="kb-customer-error" role="alert"></p>
-    <div class="zk-history-actions"><button type="button" class="kb-control" id="kb-customer-walkin">Use Walk-in Customer</button><button type="button" class="kb-control" id="kb-customer-close">Close</button></div>
   </dialog></#if>
 
   <#function kbScriptVersion script>
