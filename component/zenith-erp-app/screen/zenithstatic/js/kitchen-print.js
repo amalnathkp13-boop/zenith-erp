@@ -6,8 +6,29 @@
   if(window.KitchenPrint)return;
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
   function kotHtml(record){
-    return '<!doctype html><html><head><meta charset="utf-8"><title>KOT</title><style>@page{size:80mm auto;margin:0}body{font:13px monospace;color:#000;width:74mm;padding:3mm;margin:0}table{width:100%;border-collapse:collapse}td{border-bottom:1px dashed #000;padding:4px 0}.q{text-align:right}</style></head><body><table><tbody>'+
-      (record.items||[]).map(it=>'<tr><td>'+esc(it.name)+'</td><td class="q">'+esc(it.qty)+'</td></tr>').join('')+'</tbody></table></body></html>';
+    const store=record.store||{}, options=record.options||{};
+    const width=store.receiptWidth==='58mm'?58:80;
+    const tone=section=>({darkGrey:'#333',lightGrey:'#707070'}[options[section+'Tone']]||'#000');
+    const align=section=>['left','center','right'].includes(options[section+'Align'])?options[section+'Align']:'center';
+    const block=(value,section,style='')=>value?'<div class="block" style="color:'+tone(section)+';text-align:'+align(section)+';'+style+'">'+esc(value)+'</div>':'';
+    const numberLabel=options.billNumberLabel&&options.billNumberLabel!=='Bill No:'?options.billNumberLabel:'KOT No:';
+    const weight=options.density==='dark'?700:(options.density==='standard'?600:400);
+    let header='';
+    if(options.openingPreset&&options.openingPreset!=='none')
+      header+=block(options.openingMessage,'greeting','font-weight:'+(options.greetingBold===false?400:700)+';font-size:'+({small:10,large:18}[options.greetingSize]||14)+'px');
+    if(store.showLogo==='Y'&&store.logoUrl&&/^(https:\/\/|\/(?!\/))/.test(store.logoUrl))
+      header+='<img src="'+esc(store.logoUrl)+'" alt="Company logo"/>';
+    header+=block(store.name,'company','font-weight:'+(options.companyBold===false?400:700));
+    header+=block(store.headerText,'header','font-weight:'+(options.headerBold?700:400));
+    if(record.store&&options.showBillNumber!==false&&record.number)header+=block(numberLabel+' '+record.number,'information');
+    if(record.store&&options.showDate!==false)header+=block(record.date,'information');
+    return '<!doctype html><html><head><meta charset="utf-8"><title>KOT</title><style>@page{size:'+width+'mm auto;margin:0}'+
+      'body{font:13px monospace;color:#000;width:'+(width-6)+'mm;padding:3mm;margin:0;font-weight:'+weight+'}'+
+      '.block{white-space:pre-line;overflow-wrap:anywhere}img{display:block;margin:2px auto;max-width:90%;max-height:60px}'+
+      'table{width:100%;border-collapse:collapse;color:'+tone('products')+'}td{border-bottom:1px dashed #000;padding:4px 0;overflow-wrap:anywhere}.q{text-align:right}'+
+      '</style></head><body>'+header+'<table><tbody>'+
+      (record.items||[]).map(it=>'<tr><td>'+esc(it.name)+'</td><td class="q">'+esc(it.qty)+'</td></tr>').join('')+
+      '</tbody></table>'+block(store.footerText,'footer','font-weight:'+(options.footerBold===false?400:700))+'</body></html>';
   }
   function open(){const w=window.open('','_blank','width=430,height=650');if(!w)throw Error('Allow pop-ups for this site, then retry printing.');return w;}
   async function browserPrint(w,html){

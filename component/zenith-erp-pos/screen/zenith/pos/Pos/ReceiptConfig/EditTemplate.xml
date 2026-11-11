@@ -6,15 +6,21 @@
     <parameter name="templateId" required="true"/>
     <parameter name="receiptDesign"/>
 
+    <always-actions>
+        <set field="receiptDesign" from="receiptDesign ?: 'normal'"/>
+        <script><![CDATA[
+            tpl = ec.entity.find('zenith.erp.pos.PosReceiptTemplate').condition('templateId',templateId)
+                .condition('organizationPartyId',posOrganizationPartyId ?: '__NO_ORGANIZATION__').one()
+            noAccess = !tpl || (kitchenModuleId == 'kot' ? !(tpl.printUse in ['kotBill','kotTicket']) : tpl.printUse != null) ||
+                !(receiptDesign in (tpl?.printUse == 'kotTicket' ? ['normal'] : ['normal','credit','revised']))
+        ]]></script>
+    </always-actions>
+
     <transition name="updateTemplate" method="post" begin-transaction="true">
         <actions>
-            <set field="receiptDesign" from="receiptDesign ?: 'normal'"/>
             <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:(kitchenModuleId ?: 'pos')]" out-map="_receiptWrite"/>
             <if condition="!_receiptWrite.canWrite"><return error="true" message="Receipt settings are view-only."/></if>
-            <if condition="!['normal','credit','revised'].contains(receiptDesign)"><return error="true" message="Choose a valid receipt design."/></if>
-            <!-- Cross-tenant write-IDOR guard: only the owning org (ADMIN exempt) may mutate this template. -->
-            <service-call name="zenith.base.SecurityServices.assert#RecordOrgAccess" in-map="[entityName:'zenith.erp.pos.PosReceiptTemplate', idField:'templateId', idValue:templateId, orgField:'organizationPartyId']" out-map="_acc"/>
-            <if condition="!_acc.allowed"><return error="true" message="You do not have access to this record."/></if>
+            <if condition="noAccess"><return error="true" message="That receipt template is not available in this module."/></if>
             <script><![CDATA[
                 def values = [templateId:templateId]
                 // Explicit fields preserve billing policies and organization ownership.
@@ -31,11 +37,13 @@
                 }
                 values.each { key,value -> if (value != null && value.toString().length()>255) ec.message.addError('Receipt field is too long: '+key) }
                 if (values.logoUrl && !(values.logoUrl.toString() ==~ /https:\/\/[^\s]+|\/(?!\/)[^\s]*/)) ec.message.addError('Use an HTTPS logo URL or an existing application image path.')
-                def tpl = ec.entity.find('zenith.erp.pos.PosReceiptTemplate').condition('templateId',templateId).one()
                 ec.entity.find('mantle.party.Party').condition('partyId',tpl.organizationPartyId).forUpdate(true).one()
+                def current = ec.entity.find('zenith.erp.pos.PosReceiptTemplate').condition('templateId',templateId)
+                    .condition('organizationPartyId',tpl.organizationPartyId).one()
+                if (!current) { ec.message.addError('This receipt template is no longer available.'); return }
                 if (ec.web.parameters.containsKey('optionsJson')) {
                     def resolved=ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#ReceiptOptions')
-                        .parameters([storedJson:tpl.receiptOptionsJson,receiptDesign:receiptDesign,changesJson:ec.web.parameters.optionsJson]).call()
+                        .parameters([storedJson:current.receiptOptionsJson,receiptDesign:receiptDesign,changesJson:ec.web.parameters.optionsJson]).call()
                     values.receiptOptionsJson=resolved?.optionsJson
                 }
                 if(values.containsKey('facilityId')) {
@@ -66,9 +74,7 @@
         <actions>
             <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:(kitchenModuleId ?: 'pos')]" out-map="_receiptWrite"/>
             <if condition="!_receiptWrite.canWrite"><return error="true" message="Receipt settings are view-only."/></if>
-            <!-- Cross-tenant write-IDOR guard: only the owning org (ADMIN exempt) may mutate this template. -->
-            <service-call name="zenith.base.SecurityServices.assert#RecordOrgAccess" in-map="[entityName:'zenith.erp.pos.PosReceiptTemplate', idField:'templateId', idValue:templateId, orgField:'organizationPartyId']" out-map="_acc"/>
-            <if condition="!_acc.allowed"><return error="true" message="You do not have access to this record."/></if>
+            <if condition="noAccess"><return error="true" message="That receipt template is not available in this module."/></if>
             <if condition="ec.entity.find('zenith.erp.pos.PrinterConfiguration').condition('organizationPartyId',posOrganizationPartyId)
                     .condition('posReceiptTemplateId',templateId).count() &gt; 0">
                 <return error="true" message="Unlink this receipt template from its printers before deleting it."/>
@@ -78,17 +84,11 @@
         <default-response url="../Templates"/></transition>
 
     <actions>
-        <set field="receiptDesign" from="receiptDesign ?: 'normal'"/>
-        <!-- Cross-tenant IDOR render guard: only the owning org (ADMIN exempt) may open a receipt template.
-             Load NOTHING when blocked; widgets show a plain no-access panel instead of another tenant's data. -->
-        <service-call name="zenith.base.SecurityServices.assert#RecordOrgAccess" out-map="_acc"
-                      in-map="[entityName:'zenith.erp.pos.PosReceiptTemplate', idField:'templateId', idValue:templateId, orgField:'organizationPartyId']"/>
-        <set field="noAccess" from="!_acc.allowed || !['normal','credit','revised'].contains(receiptDesign)"/>
         <if condition="!noAccess">
-        <entity-find-one entity-name="zenith.erp.pos.PosReceiptTemplate" value-field="tpl"/>
         <entity-find entity-name="mantle.facility.Facility" list="receiptFacilities"><econdition field-name="ownerPartyId" from="tpl.organizationPartyId"/><order-by field-name="facilityName"/></entity-find>
         <script><![CDATA[
-            receiptDesignLabel = [normal:'Normal Bill',credit:'Credit / Pay Later',revised:'Edited / Revised Bill'][receiptDesign]
+            receiptDesignLabel = tpl.printUse == 'kotTicket' ? 'Kitchen order ticket' :
+                [normal:tpl.printUse == 'kotBill' ? 'KOT customer bill' : 'Normal Bill',credit:'Credit / Pay Later',revised:'Edited / Revised Bill'][receiptDesign]
             editTpl = new LinkedHashMap(tpl)
             editTpl.receiptDesign = receiptDesign
             def textKeys = ['headerText','footerText','termsText']
@@ -99,7 +99,8 @@
         ]]></script>
         <service-call name="zenith.pos.ReceiptTemplateServices.resolve#ReceiptOptions" in-map="[storedJson:tpl.receiptOptionsJson,receiptDesign:receiptDesign]" out-map="_receiptOptions"/>
         <set field="normalTextJson" from="groovy.json.JsonOutput.toJson([headerText:tpl.headerText ?: '',footerText:tpl.footerText ?: '',termsText:tpl.termsText ?: ''])"/>
-        <set field="editorOptionsJson" from="groovy.json.JsonOutput.toJson(_receiptOptions.options)"/>
+        <set field="editorOptionsJson" from="groovy.json.JsonOutput.toJson(tpl.printUse == 'kotTicket' &amp;&amp; _receiptOptions.options.billNumberLabel == 'Bill No:' ?
+            _receiptOptions.options + [billNumberLabel:'KOT No:'] : _receiptOptions.options)"/>
         <set field="editorTemplateJson" from="groovy.json.JsonOutput.toJson(editTpl.findAll { k,v -> k in ['templateName','companyName','addressLine1','addressLine2','city','state','pincode','phone','email','taxRegistrationNumber','receiptWidth','showLogo','logoUrl','showTaxBreakdown','showDiscount','showCustomerInfo','showPaymentDetails','showItemTax','headerText','footerText','termsText'] })"/>
         </if>
     </actions>
@@ -119,23 +120,25 @@
 <label>${title?html}<select data-re-option="${key}"><#list values as value><option value="${value?html}"><#if value=='none'>No message<#elseif value=='custom'>Custom message<#else>${value?cap_first?html}</#if></option></#list></select></label>
 </#macro>
 <#macro toggle key title><label class="re-toggle"><input type="checkbox" data-re-option="${key}"/>${title?html}</label></#macro>
-<div id="receiptEditor" data-design="${receiptDesign}" data-write="${modCanWrite?c}">
+<#assign ticket = (tpl.printUse!'') == 'kotTicket'>
+<div id="receiptEditor" data-output="${(tpl.printUse!'')?html}" data-design="${receiptDesign}" data-write="${modCanWrite?c}">
  <textarea data-re-fallback hidden>${normalTextJson?html}</textarea><textarea data-re-initial hidden>${editorOptionsJson?html}</textarea><textarea data-re-template hidden>${editorTemplateJson?html}</textarea>
  <div class="re-top"><div><p>${((kitchenModuleId!'pos') == 'kot')?string('KOT','POS')} / Receipt templates / Edit template</p><h1>Edit receipt template</h1><p>Configure ${receiptDesignLabel?html} and preview your receipt.</p></div><div><a class="re-button" href="${sri.buildUrl('../Templates').url?html}">Back to templates</a> <#if modCanWrite><button class="re-primary" type="submit" form="receiptEditorForm">Save changes</button></#if></div></div>
- <nav class="re-tabs" aria-label="Receipt design"><#list ['normal','credit','revised'] as design><a class="re-button" data-re-leave href="${sri.buildUrl('.').url?html}?templateId=${templateId?url('UTF-8')}&amp;receiptDesign=${design}" <#if receiptDesign==design>aria-current="page"</#if>><#if design=='normal'>Normal bill<#elseif design=='credit'>Credit / Pay later<#else>Edited / Revised bill</#if></a></#list></nav>
+ <#if !ticket><nav class="re-tabs" aria-label="Receipt design"><#list ['normal','credit','revised'] as design><a class="re-button" data-re-leave href="${sri.buildUrl('.').url?html}?templateId=${templateId?url('UTF-8')}&amp;receiptDesign=${design}" <#if receiptDesign==design>aria-current="page"</#if>><#if design=='normal'>Normal bill<#elseif design=='credit'>Credit / Pay later<#else>Edited / Revised bill</#if></a></#list></nav></#if>
  <button type="button" class="re-mobile-preview" data-re-preview>Preview receipt</button>
  <form id="receiptEditorForm" method="post" action="${sri.buildUrl('updateTemplate').url?html}">
  <input type="hidden" name="moquiSessionToken" value="${(ec.web.sessionToken!'')?html}"/><input type="hidden" name="templateId" value="${templateId?html}"/><input type="hidden" name="receiptDesign" value="${receiptDesign}"/><input type="hidden" name="optionsJson"/>
  <div class="re-workspace"><div class="re-settings">
- <details open><summary>Template settings</summary><div class="re-fields"><@field key="templateName" title="Template name" required=true/><@choice key="isDefault" title="Default template" values=['Y','N']/><@choice key="isActive" title="Active" values=['Y','N']/><label>Shop<select name="facilityId"><option value="">All shops (fallback)</option><#list receiptFacilities as shop><option value="${shop.facilityId?html}" <#if (tpl.facilityId!'')==shop.facilityId>selected</#if>>${(shop.facilityName!shop.facilityId)?html}</option></#list></select></label><p class="re-wide">Company and print settings are shared by these three designs. Each design has its own text and appearance.</p></div></details>
+ <details open><summary>Template settings</summary><div class="re-fields"><@field key="templateName" title="Template name" required=true/><@choice key="isDefault" title="Default template" values=['Y','N']/><@choice key="isActive" title="Active" values=['Y','N']/><label>Shop<select name="facilityId"><option value="">All shops (fallback)</option><#list receiptFacilities as shop><option value="${shop.facilityId?html}" <#if (tpl.facilityId!'')==shop.facilityId>selected</#if>>${(shop.facilityName!shop.facilityId)?html}</option></#list></select></label><p class="re-wide"><#if ticket>Applies to KOT order prints from this shop. Set as default to prefer this design over other active tickets for the same shop.<#else>Company and print settings are shared by these three designs. Each design has its own text and appearance.</#if></p></div></details>
  <details open><summary>Opening message (optional)</summary><div class="re-fields"><@option key="openingPreset" title="Message selection" values=['none','Ayya Thunai','Praise the Lord','Mashallah','Bismillah','custom']/><label class="re-wide">Message<textarea data-re-option="openingMessage" maxlength="300" rows="2"></textarea></label><@option key="greetingAlign" title="Alignment" values=['left','center','right']/><@option key="greetingSize" title="Size" values=['small','medium','large']/><@toggle key="greetingBold" title="Bold greeting"/></div></details>
- <details open><summary>Company details</summary><div class="re-fields"><@field key="companyName" title="Company name" required=true/><@field key="phone" title="Phone"/><@field key="addressLine1" title="Address line 1"/><@field key="addressLine2" title="Address line 2"/><@field key="city" title="City"/><@field key="state" title="State"/><@field key="pincode" title="Pincode"/><@field key="taxRegistrationNumber" title="GSTIN"/><@field key="email" title="Email"/><@toggle key="companyBold" title="Bold company name"/></div></details>
- <details open><summary>Invoice / Receipt Information</summary><div class="re-fields"><@toggle key="showBillNumber" title="Show bill number"/><label>Bill number label<input data-re-option="billNumberLabel" maxlength="60"/></label><@toggle key="showDate" title="Show date"/><@toggle key="showCustomerRow" title="Show customer row"/><label>Customer label<input data-re-option="customerLabel" maxlength="60"/></label><@toggle key="showCustomerName" title="Show customer name"/><@toggle key="showCustomerPhone" title="Show customer phone"/><@toggle key="showCashier" title="Show cashier"/><label>Cashier label<input data-re-option="cashierLabel" maxlength="60"/></label><p class="re-wide">Bill numbers, dates, customer and cashier values come from the saved transaction. These controls never change invoice counters.</p></div></details>
- <details open><summary>Header &amp; footer</summary><div class="re-fields"><@field key="headerText" title="Header text" multiline=true/><@field key="footerText" title="Footer text" multiline=true/><@field key="termsText" title="Terms & conditions" multiline=true/><@option key="headerAlign" title="Header alignment" values=['left','center','right']/><@option key="footerAlign" title="Footer alignment" values=['left','center','right']/><@toggle key="headerBold" title="Bold header"/><@toggle key="footerBold" title="Bold footer"/><p class="re-wide">Blank credit/revised text inherits the normal bill text.</p></div></details>
+ <details open><summary>Company details</summary><div class="re-fields"><@field key="companyName" title="Company name" required=true/><#if !ticket><@field key="phone" title="Phone"/><@field key="addressLine1" title="Address line 1"/><@field key="addressLine2" title="Address line 2"/><@field key="city" title="City"/><@field key="state" title="State"/><@field key="pincode" title="Pincode"/><#if !tpl.printUse?has_content><@field key="taxRegistrationNumber" title="GSTIN"/></#if><@field key="email" title="Email"/></#if><@toggle key="companyBold" title="Bold company name"/></div></details>
+ <#if ticket><details open><summary>Kitchen order information</summary><div class="re-fields"><@toggle key="showBillNumber" title="Show order number"/><label>Order number label<input data-re-option="billNumberLabel" maxlength="60"/></label><@toggle key="showDate" title="Show date"/></div></details>
+ <#else><details open><summary>Invoice / Receipt Information</summary><div class="re-fields"><@toggle key="showBillNumber" title="Show bill number"/><label>Bill number label<input data-re-option="billNumberLabel" maxlength="60"/></label><@toggle key="showDate" title="Show date"/><@toggle key="showCustomerRow" title="Show customer row"/><label>Customer label<input data-re-option="customerLabel" maxlength="60"/></label><@toggle key="showCustomerName" title="Show customer name"/><@toggle key="showCustomerPhone" title="Show customer phone"/><@toggle key="showCashier" title="Show cashier"/><label>Cashier label<input data-re-option="cashierLabel" maxlength="60"/></label><p class="re-wide">Bill numbers, dates, customer and cashier values come from the saved transaction. These controls never change invoice counters.</p></div></details></#if>
+ <details open><summary>Header &amp; footer</summary><div class="re-fields"><@field key="headerText" title="Header text" multiline=true/><@field key="footerText" title="Footer text" multiline=true/><#if !ticket><@field key="termsText" title="Terms & conditions" multiline=true/></#if><@option key="headerAlign" title="Header alignment" values=['left','center','right']/><@option key="footerAlign" title="Footer alignment" values=['left','center','right']/><@toggle key="headerBold" title="Bold header"/><@toggle key="footerBold" title="Bold footer"/><#if !ticket><p class="re-wide">Blank credit/revised text inherits the normal bill text.</p></#if></div></details>
  <details open><summary>Print settings</summary><div class="re-fields"><@choice key="receiptWidth" title="Paper width" values=['80mm','58mm']/><@choice key="showLogo" title="Show logo" values=['N','Y']/><@field key="logoUrl" title="Existing image path / HTTPS logo URL"/><p class="re-wide">Use an existing uploaded image or HTTPS image URL. No new file storage or raw printer commands are introduced.</p></div></details>
- <details><summary>Text Style &amp; Print Appearance</summary><div class="re-fields"><#list ['greeting','company','header','information','products','amounts','tax','payments','footer'] as section><label class="re-tone">${section?cap_first}<select data-re-option="${section}Tone"><option value="black">Black</option><option value="darkGrey">Dark grey</option><option value="lightGrey">Light grey</option></select></label></#list><@option key="density" title="Print emphasis" values=['light','standard','dark']/><p class="re-wide">Black and standard are the safe defaults. Important amounts and bill information always retain readable contrast.</p></div></details>
- <details><summary>Display options</summary><div class="re-fields"><@choice key="showTaxBreakdown" title="Tax breakdown" values=['Y','N']/><@choice key="showDiscount" title="Discount" values=['Y','N']/><@choice key="showCustomerInfo" title="Customer information" values=['Y','N']/><@choice key="showPaymentDetails" title="Payment details" values=['Y','N']/><@choice key="showItemTax" title="Per-item tax" values=['Y','N']/></div></details>
- </div><aside class="re-preview" id="receiptLivePreview"><div class="re-top"><h2>Receipt preview</h2><label>Paper size<select data-re-preview-width aria-label="Preview paper size"><option value="80mm">80mm</option><option value="58mm">58mm</option></select></label></div><p>Sample data — not a sale</p><iframe title="Live receipt preview" sandbox="allow-same-origin allow-modals"></iframe><button type="button" data-re-test>Browser sample print</button><p class="re-note">QZ prints through the installed printer driver. Grey tones and Unicode depend on its fonts and raster support. Density here adjusts text emphasis; hardware heat/density is set in the driver. Test on your printer before use. The thermal PDF uses bundled Latin fonts.</p><p data-re-error role="alert"></p></aside></div>
+ <details><summary>Text Style &amp; Print Appearance</summary><div class="re-fields"><#list (ticket?then(['greeting','company','header','information','products','footer'], ['greeting','company','header','information','products','amounts','tax','payments','footer'])) as section><label class="re-tone">${section?cap_first}<select data-re-option="${section}Tone"><option value="black">Black</option><option value="darkGrey">Dark grey</option><option value="lightGrey">Light grey</option></select></label></#list><@option key="density" title="Print emphasis" values=['light','standard','dark']/><p class="re-wide">Black and standard are the safe defaults. Important amounts and bill information always retain readable contrast.</p></div></details>
+ <#if !ticket><details><summary>Display options</summary><div class="re-fields"><@choice key="showTaxBreakdown" title="Tax breakdown" values=['Y','N']/><@choice key="showDiscount" title="Discount" values=['Y','N']/><@choice key="showCustomerInfo" title="Customer information" values=['Y','N']/><@choice key="showPaymentDetails" title="Payment details" values=['Y','N']/><@choice key="showItemTax" title="Per-item tax" values=['Y','N']/></div></details></#if>
+ </div><aside class="re-preview" id="receiptLivePreview"><div class="re-top"><h2><#if ticket>Kitchen ticket preview<#else>Receipt preview</#if></h2><label>Paper size<select data-re-preview-width aria-label="Preview paper size"><option value="80mm">80mm</option><option value="58mm">58mm</option></select></label></div><p>Sample data — not a sale</p><iframe title="Live receipt preview" sandbox="allow-same-origin allow-modals"></iframe><button type="button" data-re-test>Browser sample print</button><p class="re-note">QZ prints through the installed printer driver. Grey tones and Unicode depend on its fonts and raster support. Density here adjusts text emphasis; hardware heat/density is set in the driver. Test on your printer before use. The thermal PDF uses bundled Latin fonts.</p><p data-re-error role="alert"></p></aside></div>
  <div class="re-actions"><#if modCanWrite><button type="button" class="re-danger" data-re-delete>Delete template</button><#else><span>View-only access</span></#if><div><a class="re-button" data-re-leave href="${sri.buildUrl('../Templates').url?html}">Cancel</a> <#if modCanWrite><button class="re-primary" type="submit">Save changes</button></#if></div></div>
  </form>
  <form id="receiptDeleteForm" method="post" action="${sri.buildUrl('deleteTemplate').url?html}"><input type="hidden" name="moquiSessionToken" value="${(ec.web.sessionToken!'')?html}"/><input type="hidden" name="templateId" value="${templateId?html}"/></form>

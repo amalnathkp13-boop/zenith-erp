@@ -26,7 +26,13 @@
         if(data.isCredit){data.payments=[];data.change=0;}
         frame.style.width=template.receiptWidth==='58mm'?'230px':'320px';
         root.querySelector('[data-re-preview-width]').value=template.receiptWidth||'80mm';
-        frame.srcdoc=window.PosReceiptLayout.render(data,true,data.edited)+'</body></html>';
+        if(root.dataset.output==='kotTicket'){
+            frame.srcdoc=window.KitchenPrint.kotHtml({
+                store:data.store,options:options,number:'SAMPLE-0001',date:data.bill.date,items:data.items
+            });
+        }else{
+            frame.srcdoc=window.PosReceiptLayout.render(data,true,data.edited)+'</body></html>';
+        }
     }
     frame.addEventListener('load',function(){
         if(!frame.contentDocument)return;

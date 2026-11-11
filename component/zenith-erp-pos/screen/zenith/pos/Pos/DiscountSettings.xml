@@ -78,26 +78,12 @@
                 }
 
                 def orgId = scope.organizationPartyId
-                // Match billing and mode deletion lock order: terminals before the sales mode.
-                ec.entity.find('zenith.erp.pos.PosTerminal').condition('organizationPartyId',orgId)
-                    .orderBy('terminalId').forUpdate(true).list()
+                // Saving a KOT quote takes the same mode lock before reading the discount.
                 def mode = salesModeId ? ec.entity.find('zenith.erp.pos.PosSalesMode')
                     .condition('salesModeId',salesModeId).condition('organizationPartyId',orgId)
                     .condition('isActive','Y').condition('priceSource','PpsDiscountMrp').forUpdate(true).one() : null
                 if (!mode) { ec.message.addError('Choose an active discount mode owned by your organization.'); return }
 
-                def cartLines = ec.entity.find('zenith.erp.pos.PosTransactionItem')
-                cartLines.makeEntityDynamicView()
-                    .addMemberEntity('I','zenith.erp.pos.PosTransactionItem',null,null,null)
-                    .addMemberEntity('T','zenith.erp.pos.PosTransaction','I',false,[transactionId:'transactionId'])
-                    .addAlias('I','salesModeId').addAlias('T','organizationPartyId').addAlias('T','statusId')
-                def openStatuses = ['PtCreated','PtHeld']
-                if (ec.entity.find('zenith.erp.pos.PosTransaction').condition('organizationPartyId',orgId)
-                        .condition('salesModeId',salesModeId).condition('statusId','in',openStatuses).count() > 0 ||
-                    cartLines.condition('organizationPartyId',orgId).condition('salesModeId',salesModeId)
-                        .condition('statusId','in',openStatuses).count() > 0) {
-                    ec.message.addError('Finish or void open and held carts in this mode before changing it.'); return
-                }
                 // Unpaid KOTs carry a saved quote. Changing its pricing would block checkout.
                 def snapshots = ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('organizationPartyId',orgId)
                     .condition('transactionId',null).condition('statusId','in',['KotDraft','KotNew','KotPreparing','KotReady','KotServed'])
@@ -108,8 +94,10 @@
                     catch (groovy.json.JsonException ignored) { return false }
                 }
                 if (pendingKot) { ec.message.addError('Settle or cancel unpaid KOTs in this mode before changing it.'); return }
-                mode.set('discountPercent',percent).update()
-                ec.message.addMessage('Sales-mode discount saved.')
+                ec.entity.makeValue('zenith.erp.base.CompanySettings').setAll([
+                    organizationPartyId:orgId, settingKey:'KOT_MODE_DISCOUNT_'+salesModeId,
+                    settingValue:percent.stripTrailingZeros().toPlainString()]).createOrUpdate()
+                ec.message.addMessage('KOT discount saved.')
             ]]></script>
         </actions>
         <default-response url="."/>
@@ -123,6 +111,10 @@
                     .parameter('organizationPartyId',orgId).call().modes?.findAll {
                         it.organizationPartyId == orgId && it.priceSource == 'PpsDiscountMrp'
                     } : []
+                def keys = (kotDiscountModes ?: []).collect { 'KOT_MODE_DISCOUNT_'+it.salesModeId }
+                kotDiscounts = keys ? ec.entity.find('zenith.erp.base.CompanySettings')
+                    .condition('organizationPartyId',orgId).condition('settingKey','in',keys).list()
+                    .collectEntries { [(it.settingKey):(it.settingValue as BigDecimal)] } : [:]
                 kotCanManageDiscount = modCanWrite && ['ADMIN','ZENITH_ADMIN','ZENITH_STORE_MGR'].any { ec.user.isInGroup(it) }
                 return
             }
@@ -150,7 +142,7 @@
             <section class="zenith-card q-ma-md q-pa-md">
                 <h2 class="q-mt-none">KOT Discounts</h2>
                 <p>Set the discount percentage for each sales mode that uses Discount on MRP. Product price overrides take priority.</p>
-                <p>Sales modes are shared with POS when your organization uses both modules.</p>
+                <p>Saving here applies the discount to KOT Billing. Until you save a KOT discount, the sales mode’s existing rate is used.</p>
                 <#list (kotDiscountModes![]) as mode>
                 <form method="post" action="${sri.buildUrl('saveKotDiscount').url?html}" class="row items-end q-gutter-md q-mb-md">
                     <input type="hidden" name="moquiSessionToken" value="${(ec.web.sessionToken!'')?html}"/>
@@ -158,7 +150,7 @@
                     <label>
                         <span class="block text-weight-medium">${mode.modeName?html} discount (%)</span>
                         <input type="number" name="discountPercent" min="0" max="100" step="0.01" required
-                               value="${(mode.discountPercent!0)?c}" <#if !kotCanManageDiscount>readonly</#if>/>
+                               value="${(kotDiscounts["KOT_MODE_DISCOUNT_"+mode.salesModeId]!(mode.discountPercent!0))?c}" <#if !kotCanManageDiscount>readonly</#if>/>
                     </label>
                     <#if kotCanManageDiscount><button class="q-btn bg-primary text-white" type="submit">Save Discount</button></#if>
                 </form>

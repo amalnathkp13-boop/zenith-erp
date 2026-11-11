@@ -16,9 +16,9 @@
         ]]></script></actions><default-response type="none"/>
     </transition>
 
-    <transition name="goTerminal"><default-response url="${kitchenModuleId == 'kot' ? '../../pos/Terminal' : '../../Terminal'}"/></transition>
-    <transition name="goTransactions"><default-response url="${kitchenModuleId == 'kot' ? '../../pos/PosTransactions' : '../../PosTransactions'}"/></transition>
-    <transition name="goDashboard"><default-response url="${kitchenModuleId == 'kot' ? '../../pos/Dashboard' : '../../Dashboard'}"/></transition>
+    <transition name="goTerminal"><default-response url="${kitchenModuleId == 'kot' ? '../KotBilling' : '../../Terminal'}"/></transition>
+    <transition name="goTransactions"><default-response url="${kitchenModuleId == 'kot' ? '../PosTransactions' : '../../PosTransactions'}"/></transition>
+    <transition name="goDashboard"><default-response url="${kitchenModuleId == 'kot' ? '../KotDashboard' : '../../Dashboard'}"/></transition>
 
     <transition name="cancelKot" method="post" begin-transaction="true">
         <actions>

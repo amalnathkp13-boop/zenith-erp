@@ -164,6 +164,9 @@
                     checkedItems.add([productId:product.productId, productName:(product.productName ?: product.productId),
                                       quantity:quantity, specialInstructions:submitted.specialInstructions])
                 }
+                def quote=ec.service.sync().name('zenith.pos.KitchenPrintServices.get#CartReceipt')
+                    .parameters([sessionId:ec.context.sessionId,itemsJson:ec.context.itemsJson,tableId:tableIdVal,orderType:ec.context.orderType,taxOn:ec.context.taxOn ?: 'Y',salesModeId:ec.context.salesModeId,waiterId:ec.context.waiterId,customerPartyId:ec.context.customerPartyId,notes:ec.context.notes,lockDiscountMode:true]).call()?.receipt
+                if(ec.message.hasError()) return reply()
                 def dId = ec.context.loadedDraftId
                 if (dId) {
                     def draft = ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('kotId', dId).forUpdate(true).one()
@@ -172,9 +175,6 @@
                     }
                 }
 
-                def quote=ec.service.sync().name('zenith.pos.KitchenPrintServices.get#CartReceipt')
-                    .parameters([sessionId:ec.context.sessionId,itemsJson:ec.context.itemsJson,tableId:tableIdVal,orderType:ec.context.orderType,taxOn:ec.context.taxOn ?: 'Y',salesModeId:ec.context.salesModeId,waiterId:ec.context.waiterId,customerPartyId:ec.context.customerPartyId,notes:ec.context.notes]).call()?.receipt
-                if(ec.message.hasError()) return reply()
                 def nextNum = ec.service.sync().name('zenith.pos.KotServices.next#KotNumber').call()?.kotNumber
                 if (!nextNum) return reply()
                 quote.bill.number='KOT #'+nextNum
@@ -289,7 +289,7 @@
                 // replacing a resumed draft => delete the old one first
                 def draftReceipt=ec.service.sync().name('zenith.pos.KitchenPrintServices.get#CartReceipt')
                     .parameters([sessionId:ec.context.sessionId,itemsJson:ec.context.itemsJson,tableId:tableIdVal,orderType:ec.context.orderType,
-                                 taxOn:ec.context.taxOn ?: 'Y',salesModeId:ec.context.salesModeId,waiterId:ec.context.waiterId,customerPartyId:ec.context.customerPartyId,notes:ec.context.notes]).call()?.receipt
+                                 taxOn:ec.context.taxOn ?: 'Y',salesModeId:ec.context.salesModeId,waiterId:ec.context.waiterId,customerPartyId:ec.context.customerPartyId,notes:ec.context.notes,lockDiscountMode:true]).call()?.receipt
                 if(ec.message.hasError()) return reply()
                 def exId = ec.context.existingDraftId
                 if (exId) {

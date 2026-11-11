@@ -3268,7 +3268,7 @@
 
 
 
-                def rTpl = (terminal?.organizationPartyId ? ec.entity.find("zenith.erp.pos.PosReceiptTemplate").condition("organizationPartyId", terminal.organizationPartyId).condition("isActive", "Y").orderBy("-isDefault").limit(1).one() : null)
+                def rTpl = (terminal?.organizationPartyId ? ec.entity.find("zenith.erp.pos.PosReceiptTemplate").condition("organizationPartyId", terminal.organizationPartyId).condition("printUse", null).condition("isActive", "Y").orderBy("-isDefault").limit(1).one() : null)
 
 
 

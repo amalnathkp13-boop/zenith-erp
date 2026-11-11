@@ -12,8 +12,14 @@
             <if condition="receiptWidth &amp;&amp; !['58mm','80mm'].contains(receiptWidth)"><return error="true" message="Choose a supported receipt width."/></if>
             <if condition="!templateName?.trim() || !companyName?.trim()"><return error="true" message="Template name and company name are required."/></if>
             <if condition="facilityId &amp;&amp; !ec.entity.find('mantle.facility.Facility').condition('facilityId',facilityId).condition('ownerPartyId',organizationPartyId).one()"><return error="true" message="Choose a shop in your organization."/></if>
+            <set field="printUse" from="kitchenModuleId == 'kot' ? ec.web.parameters.printUse : null"/>
+            <if condition="kitchenModuleId == 'kot' &amp;&amp; !(printUse in ['kotBill','kotTicket'])"><return error="true" message="Choose a KOT print output."/></if>
             <entity-find-one entity-name="mantle.party.Party" value-field="_receiptOrgLock" for-update="true"><field-map field-name="partyId" from="organizationPartyId"/></entity-find-one>
-            <service-call name="create#zenith.erp.pos.PosReceiptTemplate" in-map="[organizationPartyId:organizationPartyId,templateName:templateName,companyName:companyName,phone:phone,facilityId:facilityId ?: null,receiptWidth:receiptWidth ?: '80mm']" out-map="context"/>
+            <set field="defaultKotTemplate" from="printUse &amp;&amp; !ec.entity.find('zenith.erp.pos.PosReceiptTemplate')
+                .condition('organizationPartyId',organizationPartyId).condition('facilityId',facilityId ?: null)
+                .condition('printUse',printUse).condition('isActive','Y').count()"/>
+            <service-call name="create#zenith.erp.pos.PosReceiptTemplate" in-map="[organizationPartyId:organizationPartyId,templateName:templateName,companyName:companyName,
+                phone:phone,facilityId:facilityId ?: null,receiptWidth:receiptWidth ?: '80mm',printUse:printUse,isDefault:defaultKotTemplate ? 'Y' : 'N']" out-map="context"/>
             <service-call name="zenith.pos.PosServices.enforce#SingleDefaultReceiptTemplate" in-map="[templateId:templateId]"/>
         </actions>
         <default-response url="."/></transition>
@@ -23,11 +29,12 @@
 
     <actions>
         <entity-find entity-name="mantle.facility.Facility" list="receiptFacilities"><econdition field-name="ownerPartyId" from="posOrganizationPartyId ?: '__NONE__'"/><order-by field-name="facilityName"/></entity-find>
-        <entity-find entity-name="zenith.erp.pos.PosReceiptTemplate" list="templateList">
-            <econdition field-name="organizationPartyId" from="posOrganizationPartyId ?: '__NO_ORGANIZATION__'"/>
-            <order-by field-name="templateName"/>
-        </entity-find>
         <script><![CDATA[
+            def templates = ec.entity.find('zenith.erp.pos.PosReceiptTemplate')
+                .condition('organizationPartyId',posOrganizationPartyId ?: '__NO_ORGANIZATION__')
+            if (kitchenModuleId == 'kot') templates.condition('printUse','in',['kotBill','kotTicket'])
+            else templates.condition('printUse',null)
+            templateList = templates.orderBy('templateName').list()
             totalTemplates = templateList.size()
             activeTemplates = templateList.count { it.isActive == 'Y' }
             defaultTemplates = templateList.count { it.isDefault == 'Y' }
@@ -47,8 +54,8 @@
                 <container style="row items-center no-wrap">
                     <container style="z-icobadge lg primary q-mr-md"><label text="description" type="span" style="material-icons"/></container>
                     <container style="column">
-                        <label text="Create Receipt Template" type="h3" style="text-primary text-weight-bold q-my-none"/>
-                        <label text="Set up and customize your receipt template for printing at the billing counter." type="p" style="text-grey-7 q-mt-sm q-mb-none"/>
+                        <label text="${kitchenModuleId == 'kot' ? 'KOT Print Templates' : 'Create Receipt Template'}" type="h3" style="text-primary text-weight-bold q-my-none"/>
+                        <label text="${kitchenModuleId == 'kot' ? 'Customize the kitchen order ticket and customer bill separately for KOT Billing.' : 'Set up and customize your receipt template for printing at the billing counter.'}" type="p" style="text-grey-7 q-mt-sm q-mb-none"/>
                     </container>
                 </container>
             </container>
@@ -114,10 +121,13 @@
 <link rel="stylesheet" href="/zenithstatic/css/pos-receipt-editor.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/pos-receipt-editor.css').getLastModified()?c}"/>
 <form id="CreateTemplate" class="receipt-create-form" method="post" action="${createUrl?html}">
 <input type="hidden" name="moquiSessionToken" value="${(ec.web.sessionToken!'')?html}"/>
+<#if (kitchenModuleId!'pos') == 'kot'>
+<div class="form-group q-ma-sm"><label for="receipt-create-output">Print output</label><select class="form-control" id="receipt-create-output" name="printUse" required><option value="">Choose a print output</option><option value="kotTicket">Kitchen order ticket</option><option value="kotBill">Customer bill</option></select></div>
+</#if>
 <div class="form-group q-ma-sm"><label for="receipt-create-name">Template Name</label><input class="form-control" id="receipt-create-name" name="templateName" maxlength="255" placeholder="Enter template name" required/></div>
 <div class="form-group q-ma-sm"><label for="receipt-create-company">Company Name</label><input class="form-control" id="receipt-create-company" name="companyName" maxlength="255" placeholder="Enter company name" required/></div>
 <div class="form-group q-ma-sm"><label for="receipt-create-shop">Shop</label><select class="form-control" id="receipt-create-shop" name="facilityId"><option value="">All shops (organization default)</option><#list receiptFacilities as facility><option value="${facility.facilityId?html}">${(facility.facilityName!facility.facilityId)?html}</option></#list></select></div>
-<div class="form-group q-ma-sm"><label for="receipt-create-phone">Phone</label><input class="form-control" id="receipt-create-phone" name="phone" maxlength="60" placeholder="Enter phone number"/></div>
+<#if (kitchenModuleId!'pos') != 'kot'><div class="form-group q-ma-sm"><label for="receipt-create-phone">Phone</label><input class="form-control" id="receipt-create-phone" name="phone" maxlength="60" placeholder="Enter phone number"/></div></#if>
 <div class="form-group q-ma-sm"><label for="receipt-create-width">Receipt Width</label><select class="form-control" id="receipt-create-width" name="receiptWidth"><option value="80mm">80mm (Standard)</option><option value="58mm">58mm (Compact)</option></select></div>
 <div class="q-ma-sm"><button type="submit" class="btn btn-primary">Create Template</button></div>
 </form>
@@ -147,6 +157,9 @@
                     <field name="rowNum"><header-field title="#"/>
                         <default-field><label text="${rowNum}" type="span" style="z-rownum"/></default-field></field>
                     <field name="templateName"><header-field title="Template"/>
+                        <conditional-field condition="kitchenModuleId == 'kot'">
+                            <link url="editTemplate" text="${tpl.templateName} · ${tpl.printUse == 'kotTicket' ? 'Kitchen order ticket' : 'Customer bill'}" parameter-map="[templateId:tpl.templateId]" link-type="anchor" style="z-vlink"/>
+                        </conditional-field>
                         <default-field>
                             <link url="editTemplate" text="${tpl.templateName}" parameter-map="[templateId:tpl.templateId]" link-type="anchor" style="z-vlink"/>
                         </default-field></field>
@@ -161,17 +174,17 @@
                         <default-field><label text="${actTxt}" type="span" style="${actCls}"/></default-field></field>
                     <field name="editBtn">
                         <conditional-field name="tpl_edit_write" condition="modCanWrite" title="Action">
-                        <link url="editTemplate" text="Edit Normal" icon="fa fa-pencil"
+                        <link url="editTemplate" text="${tpl.printUse == 'kotTicket' ? 'Edit ticket' : 'Edit Normal'}" icon="fa fa-pencil"
                               parameter-map="[templateId:tpl.templateId,receiptDesign:'normal']" link-type="anchor" style="z-obtn"/>
                         </conditional-field>
                         <default-field title="Action"><label text="" type="span"/></default-field></field>
                     <field name="editCreditBtn">
-                        <conditional-field name="tpl_credit_write" condition="modCanWrite" title="Credit / Pay Later">
+                        <conditional-field name="tpl_credit_write" condition="modCanWrite &amp;&amp; tpl.printUse != 'kotTicket'" title="Credit / Pay Later">
                         <link url="editTemplate" text="Edit Credit" icon="fa fa-pencil" parameter-map="[templateId:tpl.templateId,receiptDesign:'credit']" link-type="anchor" style="z-obtn"/>
                         </conditional-field>
                         <default-field title="Credit / Pay Later"><label text="" type="span"/></default-field></field>
                     <field name="editRevisedBtn">
-                        <conditional-field name="tpl_revised_write" condition="modCanWrite" title="Revised Bill">
+                        <conditional-field name="tpl_revised_write" condition="modCanWrite &amp;&amp; tpl.printUse != 'kotTicket'" title="Revised Bill">
                         <link url="editTemplate" text="Edit Revised" icon="fa fa-pencil" parameter-map="[templateId:tpl.templateId,receiptDesign:'revised']" link-type="anchor" style="z-obtn"/>
                         </conditional-field>
                         <default-field title="Revised Bill"><label text="" type="span"/></default-field></field>

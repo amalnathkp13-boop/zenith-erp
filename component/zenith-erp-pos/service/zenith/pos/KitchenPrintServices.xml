@@ -32,7 +32,7 @@
     <!-- Read-only quote: uses canonical product prices and the installed tax dispatcher.
          An unsent order has no legal invoice number, payment or sale to reprint. -->
     <service verb="get" noun="CartReceipt">
-        <in-parameters><parameter name="sessionId"/><parameter name="itemsJson" required="true" allow-html="any"/><parameter name="tableId"/><parameter name="orderType"/><parameter name="taxOn" default-value="Y"/><parameter name="salesModeId"/><parameter name="waiterId"/><parameter name="customerPartyId"/><parameter name="notes" allow-html="any"/></in-parameters>
+        <in-parameters><parameter name="sessionId"/><parameter name="itemsJson" required="true" allow-html="any"/><parameter name="tableId"/><parameter name="orderType"/><parameter name="taxOn" default-value="Y"/><parameter name="salesModeId"/><parameter name="waiterId"/><parameter name="customerPartyId"/><parameter name="notes" allow-html="any"/><parameter name="lockDiscountMode" type="Boolean" default="false"/></in-parameters>
         <out-parameters><parameter name="receipt" type="Map"/></out-parameters>
         <actions>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="scope"/>
@@ -53,6 +53,8 @@
                         : ec.service.sync().name('zenith.pos.PosModeServices.get#OrganizationModes').parameter('organizationPartyId',scope.organizationPartyId).call().modes
                     mode=offered?.find { it.salesModeId==salesModeId }
                     if(!mode) { ec.message.addError('Choose an available sales mode before continuing.'); return }
+                    if(lockDiscountMode && mode.priceSource=='PpsDiscountMrp' && mode.organizationPartyId==scope.organizationPartyId)
+                        ec.entity.find('zenith.erp.pos.PosSalesMode').condition('salesModeId',salesModeId).forUpdate(true).one()
                 }
                 def waiter=waiterId ? ec.entity.find('zenith.erp.pos.Waiter').condition('waiterId',waiterId)
                     .condition('organizationPartyId',scope.organizationPartyId).condition('isActive','Y').one() : null
@@ -86,7 +88,7 @@
                     taxInputs.add([productId:p.productId,productTaxCode:p.productTaxCode,taxCategoryId:p.taxCategoryId,quantity:qty,unitAmount:price,discountAmount:discount,isTaxInclusive:mode?.isTaxInclusive ?: 'N'])
                 }
                 def templates=ec.entity.find('zenith.erp.pos.PosReceiptTemplate').condition('organizationPartyId',scope.organizationPartyId)
-                    .condition('isActive','Y').orderBy('-isDefault,templateId').list()
+                    .condition('printUse',null).condition('isActive','Y').orderBy('-isDefault,templateId').list()
                 def customer=customerPartyId ? ec.service.sync().name('zenith.pos.KitchenPrintServices.get#KotCustomer')
                     .parameters([sessionId:sessionId,customerPartyId:customerPartyId]).call().customer : null
                 if(ec.message.hasError()) return
@@ -113,10 +115,13 @@
                         total:(ti?.taxableAmount != null ? ti.taxableAmount : row.price*row.qty-row.discount),tax:(ti?.totalTaxAmount ?: 0),discount:row.discount,
                         uom:['OTH_ea':'Nos','WT_kg':'kg','WT_g':'g','VLIQ_L':'L','VLIQ_ml':'ml'][row.product.amountUomId] ?: ''])
                 }
-                // Use the printer's design only for presentation; tax origin comes from the shop template above.
-                if (moduleId == 'kot' && billing?.terminal)
-                    tpl = ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#TerminalPrintTemplate')
-                        .parameter('terminalId',billing.terminal.terminalId).call().template ?: tpl
+                // Choose presentation after calculating tax from the shop's billing settings.
+                if (moduleId == 'kot' && billing?.terminal) {
+                    tpl = ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#KotPrintTemplate')
+                        .parameters([printUse:'kotBill',terminalId:billing.terminal.terminalId]).call().template ?:
+                        ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#TerminalPrintTemplate')
+                            .parameter('terminalId',billing.terminal.terminalId).call().template ?: tpl
+                }
                 def party=ec.entity.find('mantle.party.Organization').condition('partyId',scope.organizationPartyId).one()
                 def person=ec.entity.find('mantle.party.Person').condition('partyId',ec.user.userAccount?.partyId).one()
                 def options=ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#ReceiptOptions')
@@ -160,6 +165,21 @@
                         .parameters([transactionId:tx.transactionId,useTerminalPrintTemplate:moduleId=='kot']).call().receipt
                     else if(kind=='orderBill' && k.orderReceiptJson) {
                         record=new groovy.json.JsonSlurper().parseText(k.orderReceiptJson)
+                        if(moduleId=='kot') {
+                            def tpl=ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#KotPrintTemplate')
+                                .parameters([printUse:'kotBill',terminalId:k.terminalId]).call().template
+                            if(tpl) {
+                                // A layout change must not recalculate or overwrite the saved order amounts.
+                                record.store=(record.store ?: [:]) + [name:tpl.companyName ?: record.store?.name,
+                                    address:[tpl.addressLine1,tpl.addressLine2,tpl.city,tpl.state,tpl.pincode].findAll{it}.join(', '),
+                                    phone:tpl.phone ?: '',email:tpl.email ?: '',receiptWidth:tpl.receiptWidth,
+                                    headerText:tpl.headerText,footerText:tpl.footerText,termsText:tpl.termsText,
+                                    showLogo:tpl.showLogo,logoUrl:tpl.logoUrl,showTaxBreakdown:tpl.showTaxBreakdown,
+                                    showDiscount:tpl.showDiscount,showCustomerInfo:tpl.showCustomerInfo,showItemTax:tpl.showItemTax]
+                                record.options=ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#ReceiptOptions')
+                                    .parameters([storedJson:tpl.receiptOptionsJson,receiptDesign:'normal']).call().options
+                            }
+                        }
                         for(def item in record.items ?: []) {
                             def product=item.productId ? ec.entity.find('mantle.product.Product').condition('productId',item.productId)
                                 .condition('ownerPartyId',scope.organizationPartyId).one() : null
@@ -171,6 +191,16 @@
                     record=[number:k.kotNumber ?: k.kotId,date:ec.l10n.format(k.kotDate,'dd/MM/yyyy hh:mm a'),table:k.tableNumber ?: '-',
                         notes:k.notes ?: '',waiter:k.waiterName ?: '',items:ec.entity.find('zenith.erp.pos.KotItem').condition('kotId',k.kotId)
                             .orderBy('kotItemSeqId').list().collect { [name:it.productName ?: it.productId,qty:it.quantity,instructions:it.specialInstructions ?: ''] }]
+                    if(kind=='kot' && moduleId=='kot') {
+                        def tpl=ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#KotPrintTemplate')
+                            .parameters([printUse:'kotTicket',terminalId:k.terminalId]).call().template
+                        if(tpl) {
+                            record.store=[name:tpl.companyName,receiptWidth:tpl.receiptWidth,headerText:tpl.headerText,footerText:tpl.footerText,
+                                showLogo:tpl.showLogo,logoUrl:tpl.logoUrl]
+                            record.options=ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#ReceiptOptions')
+                                .parameters([storedJson:tpl.receiptOptionsJson,receiptDesign:'normal']).call().options
+                        }
+                    }
                 }
             ]]></script>
         </actions>
