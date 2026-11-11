@@ -375,10 +375,15 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     await page.locator('[data-kb-payment=Split]').click();
     await cash.fill('40');
     await page.locator('#kb-payment [name=upiAmount]').fill('49');
-    const confirmOther = page.locator('#kb-other-payment').getByRole('button',{name:'Confirm payment'});
+    const confirmOther = page.locator('#kb-other-payment button[type=submit]:visible');
+    const confirmUpi = async (print = true) => {
+      await page.locator('#posPayConfOk').click();
+      await page.locator(print ? '#posPaySavePrint' : '#posPaySave').click();
+    };
     await confirmOther.click();
     await page.locator('#kb-payment-error').getByText(/add up to the bill total/i).waitFor();
     await page.locator('#kb-payment [name=upiAmount]').fill('50');
+    await page.locator('#kb-payment [name=upiRef]').fill('KOT-QA-SPLIT-UPI');
     await confirmOther.click();
     await page.locator('#kb-print-close').click();
     check('Grid View finds multiword searches offline, uses Wholesale price, and validates split before checkout',
@@ -400,7 +405,11 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     await page.locator('#kb-customer-search').fill('Synthetic POS B SAME');
     await page.locator('[data-cust-id="POS_QA_B_CUST_SAME"]').click();
     await page.locator('[data-kb-payment=Credit]').click();
-    await page.locator('#kb-payment [name=customerPhone]').fill('9000000020');
+    const creditPhone = page.locator('#kb-payment [name=customerPhone]');
+    if (await creditPhone.isEditable()) await creditPhone.fill('9000000020');
+    await page.locator('#credit-upfront').fill('10');
+    await page.locator('#credit-days').fill('14');
+    await page.locator('#credit-terms-reason').fill('Disposable KOT checkout test');
     await confirmOther.click();
     await page.locator('#kb-print-close').click();
     check('A named-customer credit checkout is queued independently of the Split bill',
@@ -408,12 +417,13 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     await switchOffline(false);
     await page.waitForFunction(scope => window.KotOffline.createWorkspace(scope.org,scope.terminalId,scope.user).queue().length === 0,scope);
     const synchronized = matchingOrders();
-    const split = q("SELECT payment_method,amount FROM pos_payment WHERE transaction_id='" + synchronized[1]?.transaction_id + "' ORDER BY payment_method");
-    const credit = q("SELECT customer_party_id,payable_amount,paid_amount FROM pos_transaction WHERE transaction_id='" + synchronized[2]?.transaction_id + "'");
-    check('Reconnect settles Split once and keeps the credit bill outstanding for the selected customer',
+    const split = q("SELECT payment_method,amount,reference_number FROM pos_payment WHERE transaction_id='" + synchronized[1]?.transaction_id + "' ORDER BY payment_method");
+    const credit = q("SELECT customer_party_id,payable_amount,paid_amount,credit_days FROM pos_transaction WHERE transaction_id='" + synchronized[2]?.transaction_id + "'");
+    check('Reconnect preserves the Split reference and the selected customer, upfront payment, and term on Credit',
       synchronized.length === 3 && split.length === 2 && split[0].payment_method === 'Cash' && Number(split[0].amount) === 40 &&
-      split[1].payment_method === 'UPI' && Number(split[1].amount) === 50 && credit.length === 1 &&
-      credit[0].customer_party_id === 'POS_QA_B_CUST_SAME' && Number(credit[0].payable_amount) === 90 && Number(credit[0].paid_amount) === 0,
+      split[1].payment_method === 'UPI' && Number(split[1].amount) === 50 && split[1].reference_number === 'KOT-QA-SPLIT-UPI' &&
+      credit.length === 1 && credit[0].customer_party_id === 'POS_QA_B_CUST_SAME' &&
+      Number(credit[0].payable_amount) === 90 && Number(credit[0].paid_amount) === 10 && Number(credit[0].credit_days) === 14,
       {split,credit});
 
     const { transactionId:retailCreditId } = await invokePos('cart',{sessionId,reuseOpenCart:'false'});
@@ -485,7 +495,7 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
 
     await openSentPayment('UPI');
     assert.equal(await page.locator('#kb-payment-total').textContent(),sentTotal,'Reopening uses the original sent ticket total');
-    await confirmOther.click();
+    await confirmUpi();
     await page.locator('#kb-print-close').click();
     check('A disconnected dine-in kitchen ticket can be billed from ordinary History',
       await page.evaluate(deviceCount,scope) === 2 && matchingOrders().length === 3);
@@ -535,8 +545,9 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     const [savedTicket] = ticketRow();
     assert.ok(savedTicket && !savedTicket.transaction_id,'The server has acknowledged the ticket while the tender dialog stays open');
     assert.equal(await page.locator('#kb-payment-total').textContent(),pendingTotal);
-    await confirmOther.click();
-    await page.locator('#kb-print-close').click();
+    await confirmUpi(false);
+    await page.locator('#kb-payment').waitFor({state:'hidden'});
+    assert.equal(await page.locator('#kb-print-choice').isVisible(),false,'Save leaves the print dialog closed');
     await page.waitForFunction(scope => window.KotOffline.createWorkspace(scope.org,scope.terminalId,scope.user).queue().length === 0,scope);
     const linkedTicket = ticketRow();
     const linkedPayments = q("SELECT payment_method,amount FROM pos_payment WHERE transaction_id='" + linkedTicket[0]?.transaction_id + "'");

@@ -3161,10 +3161,7 @@ window.posPayDigital = function(form) {
         var methodI = form.querySelector('input[name="paymentMethod"]');
         var method = methodI ? methodI.value : 'Card';
         var isUpi = (method === 'UPI');
-        var icon = isUpi ? '&#128241;' : '&#128179;';
         var label = isUpi ? 'UPI Payment' : 'Card Payment';
-        var where = isUpi ? 'UPI / QR app' : 'card machine';
-        var accent = isUpi ? '#9c27b0' : '#2196f3';
         var old = document.getElementById('posPayConfirmOverlay');
         if (old) return false;
         var ov = document.createElement('div');
@@ -3173,14 +3170,7 @@ window.posPayDigital = function(form) {
         ov.setAttribute('aria-modal', 'true');
         ov.setAttribute('aria-label', label);
         ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.55);z-index:2147483600;display:flex;align-items:center;justify-content:center;padding:12px';
-        ov.innerHTML =
-            '<div style="background:#fff;border-radius:14px;max-width:420px;width:100%;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,0.4);font-family:inherit">'
-            + '<div style="font-size:18px;font-weight:800;color:#222;margin-bottom:14px">' + icon + ' ' + label + '</div>'
-            + '<div style="display:flex;justify-content:space-between;align-items:center;font-size:16px;margin-bottom:6px"><span style="color:#666">Amount</span><b style="color:#222;font-size:24px">&#8377; ' + due.toFixed(2) + '</b></div>'
-            + '<div style="font-size:14px;color:#5d4037;line-height:1.6;margin:12px 0 18px;padding:11px 13px;background:#fff8e1;border:1px solid #ffe082;border-radius:9px">Take the payment on the <b>' + where + '</b> first. Press <b>Confirm</b> only after it shows <b>approved</b>. If it failed or you tapped by mistake, press <b>Cancel</b> &mdash; no bill is created.</div>'
-            + '<div style="display:flex;gap:10px"><button type="button" id="posPayConfCancel" style="flex:1;padding:14px;font-size:15px;font-weight:700;border:1px solid #bbb;background:#f5f5f5;color:#444;border-radius:10px;cursor:pointer">Cancel</button>'
-            + '<button type="button" id="posPayConfOk" style="flex:2;padding:14px;font-size:16px;font-weight:800;border:none;background:' + accent + ';color:#fff;border-radius:10px;cursor:pointer">Confirm Payment Received</button></div>'
-            + '</div>';
+        ov.innerHTML = PosTillDialogs.digitalMarkup(method, due);
         document.body.appendChild(ov);
         function closeOv() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
         var okBtn = ov.querySelector('#posPayConfOk');
@@ -3207,11 +3197,7 @@ window.posPayDigital = function(form) {
             choosingReceipt = true;
             ov.setAttribute('aria-label', 'Save UPI bill');
             var panel = ov.firstElementChild;
-            panel.innerHTML = '<h2 style="font-size:18px;margin:0 0 12px">Save UPI bill</h2>'
-                + '<p style="color:#444;margin:0 0 18px">UPI payment received: &#8377; ' + due.toFixed(2) + '.</p>'
-                + '<div style="display:flex;gap:10px">'
-                + '<button type="button" id="posPaySave" style="flex:1;padding:14px;border:1px solid #bbb;background:#f5f5f5;color:#444;border-radius:10px;font-weight:700">Save</button>'
-                + '<button type="button" id="posPaySavePrint" style="flex:1;padding:14px;border:0;background:' + accent + ';color:#fff;border-radius:10px;font-weight:800">Save and print</button></div>';
+            panel.innerHTML = PosTillDialogs.upiReceiptMarkup(due);
             var save = panel.querySelector('#posPaySave');
             save.addEventListener('click', function() { completePayment(true); });
             panel.querySelector('#posPaySavePrint').addEventListener('click', function() { completePayment(false); });
@@ -3911,28 +3897,7 @@ window.posToggleFullscreen = function() {
             if (!TX) { showToast('Add items to the cart first', '#e53935'); return; }
             var ov = document.createElement('div');
             ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:999999;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center';
-            ov.innerHTML = '<div style="background:#fff;border-radius:16px;width:420px;max-width:90vw;max-height:90vh;overflow-y:auto;box-shadow:0 12px 48px rgba(0,0,0,0.3)">'
-                + '<div style="padding:18px 20px;background:#e65100;color:#fff;text-align:center;font-size:18px;font-weight:700">&#128196; Credit / Pay Later</div>'
-                + '<div style="padding:20px 24px">'
-                + '<div style="font-size:13px;color:#666;margin-bottom:14px">Choose a saved customer or add one below. Record any amount paid now; the balance remains in Credit Bills.</div>'
-                + '<label style="font-size:13px;font-weight:600;color:#555;display:block;margin-bottom:4px">Customer Name *</label>'
-                + '<div style="position:relative;margin-bottom:12px">'
-                + '<input id="credit-name" type="text" autocomplete="off" placeholder="Type to search your saved customers&hellip;" style="width:100%;padding:11px 14px;border:2px solid #ffb74d;border-radius:8px;font-size:15px;box-sizing:border-box;outline:none"/>'
-                + '<div id="credit-cust-results" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:20;background:#fff;border:1px solid #ccc;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,0.18);max-height:160px;overflow-y:auto;margin-top:4px"></div>'
-                + '</div>'
-                + '<label style="font-size:13px;font-weight:600;color:#555;display:block;margin-bottom:4px">Customer Phone *</label>'
-                + '<input id="credit-phone" type="tel" inputmode="tel" autocomplete="off" placeholder="10 to 15 digits" style="width:100%;padding:11px 14px;border:2px solid #ffb74d;border-radius:8px;font-size:15px;box-sizing:border-box;outline:none"/>'
-                + '<button id="credit-add-customer" type="button" style="margin-top:7px;padding:0;border:0;background:none;color:#7C3AED;font-weight:700;cursor:pointer">+ Add customer with this name and phone</button>'
-                + '<div style="display:flex;gap:10px;margin-top:15px"><label style="flex:1;font-size:13px;font-weight:600;color:#555">Paid now (₹)<input id="credit-upfront" type="number" min="0" step="0.01" inputmode="decimal" value="0" style="display:block;width:100%;margin-top:4px;padding:11px 14px;border:2px solid #ffb74d;border-radius:8px;font-size:15px;box-sizing:border-box"/></label>'
-                + '<label style="flex:1;font-size:13px;font-weight:600;color:#555">Method<select id="credit-upfront-method" style="display:block;width:100%;margin-top:4px;padding:11px 14px;border:2px solid #ffb74d;border-radius:8px;font-size:15px;box-sizing:border-box"><option value="Cash">Cash</option><option value="Card">Card</option><option value="UPI">UPI</option></select></label></div>'
-                + '<label style="display:block;margin-top:12px">Credit days for this bill<input id="credit-days" type="number" min="0" max="3650" step="1" placeholder="Customer term, e.g. 2 or 30" style="display:block;width:100%;padding:10px;border:1px solid #ddd6fe;border-radius:8px;box-sizing:border-box"></label>'
-                + '<p id="credit-date-preview" style="font-size:12px;color:#6b7280" aria-live="polite"></p>'
-                + '<label style="display:block">Reason if overriding customer terms (manager)<input id="credit-terms-reason" maxlength="255" style="display:block;width:100%;padding:10px;border:1px solid #ddd6fe;border-radius:8px;box-sizing:border-box"></label>'
-                + '<div id="credit-due-preview" aria-live="polite" style="margin-top:9px;font-size:13px;font-weight:700;color:#c62828"></div>'
-                + '<div style="display:flex;gap:12px;margin-top:20px">'
-                + '<button id="credit-cancel" style="flex:1;padding:14px;border:2px solid #ccc;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;background:#fff;color:#555">Cancel</button>'
-                + '<button id="credit-confirm" style="flex:1;padding:14px;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;background:#e65100;color:#fff">Complete Credit Sale</button>'
-                + '</div></div></div>';
+            ov.innerHTML = PosTillDialogs.creditMarkup();
             ov.id='posCreditOverlay'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-label','Credit sale');
             document.body.appendChild(ov);
             ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
@@ -4431,38 +4396,14 @@ window.posToggleFullscreen = function() {
                 + '<div class="pos-sum-total" style="background:#7C3AED;color:#fff;padding:clamp(5px,1vh,12px) 20px;border-radius:10px;display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
                 + '<span style="font-size:16px;font-weight:600">'+modeLabel+' TOTAL</span>'
                 + '<span style="font-size:28px;font-weight:800;letter-spacing:1px">'+CS+fmt(lastPay)+'</span></div>'
-                + '<div class="pos-split-panel" style="border:2px solid #7C3AED;border-radius:10px;padding:14px;background:#ECE8FB">'
-                + '<div style="text-align:center;font-size:17px;font-weight:700;color:#7C3AED;margin-bottom:6px">SPLIT PAYMENT</div>'
-                + '<div style="text-align:center;font-size:24px;font-weight:800;color:#333;margin-bottom:14px">Total: '+CS+fmt(lastPay)+'</div>'
-                + '<form method="post" action="Terminal/splitPayAndComplete" class="pos-split-form" style="margin:0">'
-                + '<input type="hidden" name="transactionId" value="'+TX+'"/>'
-                + '<input type="hidden" name="sessionId" value="'+SI+'"/>'
-                + '<input type="hidden" name="taxOn" value="'+TO+'"/>'
-                + '<input type="hidden" name="salesModeId" value="'+SM+'"/>'
-                + '<input type="hidden" name="customerPhone" value=""/>'
-                + '<input type="hidden" name="moquiSessionToken" value="'+TK+'"/>'
-                + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
-                + '<span style="min-width:55px;font-size:14px;font-weight:700;color:#2e7d32;text-align:right">&#128176; Cash</span>'
-                + '<input type="number" name="cashAmount" value="0" step="any" min="0" onfocus="this.select()" style="flex:1;padding:12px 10px;border:2px solid #4caf50;border-radius:8px;font-size:18px;text-align:right;box-sizing:border-box;outline:none"/>'
-                + '</div>'
-                + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'
-                + '<span style="min-width:55px;font-size:14px;font-weight:700;color:#7C3AED;text-align:right">&#128179; Card</span>'
-                + '<input type="number" name="cardAmount" value="0" step="any" min="0" onfocus="this.select()" style="flex:1;padding:12px 10px;border:2px solid #2196f3;border-radius:8px;font-size:18px;text-align:right;box-sizing:border-box;outline:none"/>'
-                + '</div>'
-                + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding-left:65px">'
-                + '<input type="text" name="cardRef" placeholder="Card reference #" style="flex:1;padding:8px 10px;border:1px solid #ccc;border-radius:6px;font-size:13px;box-sizing:border-box;outline:none"/>'
-                + '</div>'
-                + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'
-                + '<span style="min-width:55px;font-size:14px;font-weight:700;color:#7b1fa2;text-align:right">&#128241; UPI</span>'
-                + '<input type="number" name="upiAmount" value="0" step="any" min="0" onfocus="this.select()" style="flex:1;padding:12px 10px;border:2px solid #9c27b0;border-radius:8px;font-size:18px;text-align:right;box-sizing:border-box;outline:none"/>'
-                + '</div>'
-                + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-left:65px">'
-                + '<input type="text" name="upiRef" placeholder="UPI reference #" style="flex:1;padding:8px 10px;border:1px solid #ccc;border-radius:6px;font-size:13px;box-sizing:border-box;outline:none"/>'
-                + '</div>'
-                + '<button type="submit" style="width:100%;padding:16px;background:#7C3AED;color:#fff;border:none;border-radius:10px;font-size:17px;font-weight:700;cursor:pointer;margin-bottom:8px">&#10003; CONFIRM SPLIT</button>'
-                + '</form>'
-                + '<button type="button" class="pos-split-cancel" style="display:block;width:100%;text-align:center;padding:12px;background:#f5f5f5;border:none;border-radius:8px;color:#666;font-size:14px;font-weight:600;cursor:pointer">&#10006; CANCEL</button>'
-                + '</div>';
+                + PosTillDialogs.splitMarkup(lastPay,
+                    '<form method="post" action="Terminal/splitPayAndComplete" class="pos-split-form" style="margin:0">'
+                    + '<input type="hidden" name="transactionId" value="'+TX+'"/>'
+                    + '<input type="hidden" name="sessionId" value="'+SI+'"/>'
+                    + '<input type="hidden" name="taxOn" value="'+TO+'"/>'
+                    + '<input type="hidden" name="salesModeId" value="'+SM+'"/>'
+                    + '<input type="hidden" name="customerPhone" value=""/>'
+                    + '<input type="hidden" name="moquiSessionToken" value="'+TK+'"/>', '</form>');
         }
 
         function buildCashPanel() {
