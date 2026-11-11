@@ -14,10 +14,14 @@ module.exports = async ({a,base,check,out}) => {
       check(shell+' product creation only requires Name and Unit',
         (await form.locator('[required]').evaluateAll(fields=>fields.map(f=>f.name))).join(',')==='productName,uqcEnumId');
       const basic=form.locator('section[aria-labelledby="pe-create-basic"]');
-      check(shell+' Basic Info shows generated Item Code and Barcode',
-        await basic.getByLabel('Item Code',{exact:true}).inputValue()==='Generated on save'&&
+      const itemCode=basic.getByLabel('Item Code',{exact:true});
+      check(shell+' Basic Info accepts an optional Item Code and generates the Barcode on save',
+        await itemCode.isEditable()&&await itemCode.inputValue()===''&&
         await basic.getByLabel('Barcode',{exact:true}).inputValue()==='Generated on save');
-      const name='Mode form QA '+randomUUID().slice(0,8);
+      const suffix=randomUUID().slice(0,8);
+      const name='Mode form QA '+suffix;
+      const customCode='00QA-'+suffix;
+      await itemCode.fill(customCode);
       const nameField=form.locator('input[name=productName]');
       const print=form.locator('input[name=printName]');
       await nameField.fill(name);
@@ -41,7 +45,7 @@ module.exports = async ({a,base,check,out}) => {
       await submit.click();
       await form.locator('[data-pe-status][data-error=true]').waitFor();
       check(shell+' failed save leaves the typed product and override available',
-        await nameField.inputValue()===name+' Updated'&&await prices.first().inputValue()==='100');
+        await nameField.inputValue()===name+' Updated'&&await itemCode.inputValue()===customCode&&await prices.first().inputValue()==='100');
       await Promise.all([page.waitForURL('**/EditProduct?*'),submit.click()]);
       const edit=page.locator('#productEditorForm');
       await edit.locator('input[name=productName]').waitFor();
@@ -49,8 +53,8 @@ module.exports = async ({a,base,check,out}) => {
       const code=await edit.getByLabel('Item Code',{exact:true}).inputValue();
       const barcode=await edit.getByLabel('Barcode',{exact:true}).inputValue();
       const stored=edit.locator('[data-pe-mode-id]').first();
-      check(shell+' generated Item Code and Barcode and saved override survive navigation',
-        !!code&&barcode===code&&await stored.inputValue()==='100'&&
+      check(shell+' first save keeps the custom Item Code, matching Barcode and price override',
+        code===customCode&&barcode===customCode&&await stored.inputValue()==='100'&&
         await edit.locator('input[name=printName]').inputValue()==='Thermal '+name);
       await stored.fill('');
       await Promise.all([page.waitForURL(url=>url.searchParams.get('productSaved')==='Y'),
@@ -66,6 +70,9 @@ module.exports = async ({a,base,check,out}) => {
       await Promise.all([page.waitForURL('**/EditProduct?*'),blank.locator('#CreateProductForm_submitButton').click()]);
       const saved=page.locator('#productEditorForm');
       await saved.locator('[data-pe-mode-id]').first().waitFor();
+      const generatedCode=await saved.getByLabel('Item Code',{exact:true}).inputValue();
+      check(shell+' a blank Item Code generates a code and matching Barcode on first save',
+        generatedCode.startsWith('ZC-')&&await saved.getByLabel('Barcode',{exact:true}).inputValue()===generatedCode);
       check(shell+' creates a product with blank MRP, tax and stock and decimal mode prices',
         await saved.locator('[name=mrpAmount]').inputValue()===''&&
         await saved.locator('[data-pe-mode-id]').evaluateAll(inputs=>inputs.every(input=>Number(input.value)===4.5)));
