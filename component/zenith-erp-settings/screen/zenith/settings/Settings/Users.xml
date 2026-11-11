@@ -212,7 +212,7 @@
 
     <!-- ZE-ROLE-010: permanently delete a history-less user (frees the username). Org-scoped via
          check#UserInActiveOrg; the service refuses admins, self, and any user with activity. -->
-    <transition name="deleteUser">
+    <transition name="deleteUser" method="post">
         <actions>
             <service-call name="zenith.settings.SettingsServices.check#UserInActiveOrg" in-map="[userId:userId]"/>
             <if condition="!ec.message.hasError()">
@@ -278,9 +278,10 @@
             roleNamesById = allRolesList.collectEntries { [(it.userGroupId):it.description] }
             def visibleUserIds = userList.collect { it.userId }
             def memberships = visibleUserIds ? ec.entity.find('moqui.security.UserGroupMember')
-                .condition('userId','in',visibleUserIds).conditionDate('fromDate','thruDate',ec.user.nowTimestamp).list()
-                .findAll { roleNamesById.containsKey(it.userGroupId) }.unique { it.userId + ':' + it.userGroupId } : []
-            userRolesById = memberships.groupBy { it.userId }
+                .condition('userId','in',visibleUserIds).conditionDate('fromDate','thruDate',ec.user.nowTimestamp).list() : []
+            adminUserIds = memberships.findAll { it.userGroupId in ['ADMIN','ZENITH_ADMIN'] }*.userId as Set
+            userRolesById = memberships.findAll { roleNamesById.containsKey(it.userGroupId) }
+                .unique { it.userId + ':' + it.userGroupId }.groupBy { it.userId }
             userRoleIdsById = userRolesById.collectEntries { id, roles -> [(id):roles.collect { it.userGroupId }] }
             def shopOrg = ec.user.getPreference('ACTIVE_ORGANIZATION')
             userShopIdsById = shopOrg && visibleUserIds ? ec.entity.find('zenith.erp.base.OrganizationUserShopAccess')
@@ -409,8 +410,17 @@
                                 <button class="z-users-button" type="submit"><#if (disabled!'N')=='Y'>Enable account<#else>Disable account</#if></button>
                             </form>
                             ]]></text></render-mode>
-                            <container><link url="deleteUser" text="Delete account" btn-type="danger" confirmation="Permanently delete ${userFullName ?: username} (${username})? This cannot be undone. Accounts with activity must be disabled instead."><parameter name="userId"/></link></container>
-                            <render-mode><text type="html,vuet,qvt"><![CDATA[</div></details>]]></text></render-mode>
+                            <render-mode><text type="html,vuet,qvt"><![CDATA[
+                            </div></details>
+                            <#if userId != ec.user.userId && !adminUserIds?seq_contains(userId)>
+                            <form method="post" action="${ec.web.request.requestURI?replace('\\.(qvt|vuet|html)$','','r')?html}/deleteUser"
+                                  onsubmit="return confirm('Permanently delete this account? This cannot be undone. Accounts with activity must be disabled instead.')">
+                                <input type="hidden" name="moquiSessionToken" value="${ec.web.sessionToken?html}"/>
+                                <input type="hidden" name="userId" value="${userId?html}"/>
+                                <button class="z-users-button" type="submit">Delete account</button>
+                            </form>
+                            </#if>
+                            ]]></text></render-mode>
                         </container>
                     </default-field></field>
                 </form-list>
