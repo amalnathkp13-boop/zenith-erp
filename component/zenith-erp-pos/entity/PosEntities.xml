@@ -708,6 +708,22 @@
             <key-map field-name="sessionId"/></member-entity>
         <member-entity entity-alias="PT" entity-name="zenith.erp.pos.PosTerminal" join-from-alias="PS">
             <key-map field-name="terminalId"/></member-entity>
+        <alias-all entity-alias="PX"/>
+        <alias entity-alias="PT" name="terminalName"/>
+        <alias entity-alias="PT" name="terminalId"/>
+        <alias entity-alias="PT" name="facilityId"/>
+        <alias entity-alias="PS" name="operatorPartyId"/>
+        <!-- expose member orgs so ZTF_POSSESS / ZTF_POSTERMINAL tenant filters apply to this view -->
+        <alias entity-alias="PS" name="ztfSessionOrg" field="organizationPartyId"/>
+        <alias entity-alias="PT" name="ztfTerminalOrg" field="organizationPartyId"/>
+    </view-entity>
+
+    <view-entity entity-name="RetailPosTransactionView" package="zenith.erp.pos">
+        <member-entity entity-alias="PX" entity-name="zenith.erp.pos.PosTransaction"/>
+        <member-entity entity-alias="PS" entity-name="zenith.erp.pos.PosSession" join-from-alias="PX">
+            <key-map field-name="sessionId"/></member-entity>
+        <member-entity entity-alias="PT" entity-name="zenith.erp.pos.PosTerminal" join-from-alias="PS">
+            <key-map field-name="terminalId"/></member-entity>
         <!-- KOT Billing stores its own order snapshot. Retail tickets sent to the kitchen have no snapshot. -->
         <member-entity entity-alias="KOT" entity-name="zenith.erp.pos.KitchenOrderTicket" join-from-alias="PX" join-optional="true">
             <key-map field-name="transactionId"/>

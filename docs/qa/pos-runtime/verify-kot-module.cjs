@@ -204,7 +204,8 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
    beforeIds.every(id=>afterIds.includes(id)),{
    beforeIds,afterIds,afterText,transactionId,reportingDate,dashboardDate,shop
   });
-  check('POS dashboard includes the KOT bill once',await posTotal()===posBefore+100);
+  const posAfter = await posTotal();
+  check('POS dashboard includes the KOT bill once',posAfter===posBefore+100,{posBefore,posAfter});
   await page.goto(base+'/apps/zenith/pos/PosTransactions');
   const posRow = page.getByRole('row').filter({has:page.getByText(settled.billNumber,{exact:true})});
   check('POS Transactions displays the KOT bill once and identifies its source',

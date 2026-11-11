@@ -2396,7 +2396,7 @@
                         }
                         def curTerm = histTermId ? ec.entity.find("zenith.erp.pos.PosTerminal").condition("terminalId", histTermId).condition('organizationPartyId',posOrganizationPartyId).one() : null
                         if (!curTerm || (posTerminalRestricted && !(posAllowedTerminalIds ?: []).contains(curTerm.terminalId))) { ec.web.sendJsonResponse([success:true, action:'billHistory', bills:[], total:0, offset:0]); return }
-                        def txnBase = ec.entity.find("zenith.erp.pos.PosTransactionView")
+                        def txnBase = ec.entity.find("zenith.erp.pos.RetailPosTransactionView")
                             .condition("organizationPartyId",posOrganizationPartyId).condition("terminalId",curTerm.terminalId).condition("statusId", "PtCompleted")
                         if (posTerminalRestricted) {
                             txnBase.condition('operatorPartyId',ec.user.userAccount?.partyId)
@@ -3620,12 +3620,12 @@
             if (sessionId) {
                 // A recalled older cart may finish after a newer cart. Use completion
                 // time, retaining a creation-time fallback only for undated legacy bills.
-                def lastBill = ec.entity.find('zenith.erp.pos.PosTransactionView')
+                def lastBill = ec.entity.find('zenith.erp.pos.RetailPosTransactionView')
                     .condition('organizationPartyId', posOrg ?: '__NO_ORGANIZATION__')
                     .condition('sessionId', sessionId).condition('statusId', 'PtCompleted')
                     .condition('completedDate', org.moqui.entity.EntityCondition.NOT_EQUAL, null)
                     .useCache(false).orderBy('-completedDate,-lastUpdatedStamp').limit(1).list()[0]
-                if (!lastBill) lastBill = ec.entity.find('zenith.erp.pos.PosTransactionView')
+                if (!lastBill) lastBill = ec.entity.find('zenith.erp.pos.RetailPosTransactionView')
                     .condition('organizationPartyId', posOrg ?: '__NO_ORGANIZATION__')
                     .condition('sessionId', sessionId).condition('statusId', 'PtCompleted')
                     .useCache(false).orderBy('-entryDate,-lastUpdatedStamp').limit(1).list()[0]
@@ -3648,12 +3648,12 @@
             def _billStart = new java.sql.Timestamp(_billDay.getTimeInMillis())
             _billDay.add(java.util.Calendar.DATE, 1)
             def _billEnd = new java.sql.Timestamp(_billDay.getTimeInMillis())
-            def _billDayQuery = ec.entity.find('zenith.erp.pos.PosTransactionView')
+            def _billDayQuery = ec.entity.find('zenith.erp.pos.RetailPosTransactionView')
                 .condition('organizationPartyId', posOrg).condition('statusId', 'PtCompleted')
                 .condition('completedDate', org.moqui.entity.EntityCondition.GREATER_THAN_EQUAL_TO, _billStart)
                 .condition('completedDate', org.moqui.entity.EntityCondition.LESS_THAN, _billEnd)
             todayBillCount = _billDayQuery.count()
-            latestIssuedBillNo = ec.entity.find('zenith.erp.pos.PosTransactionView')
+            latestIssuedBillNo = ec.entity.find('zenith.erp.pos.RetailPosTransactionView')
                 .condition('organizationPartyId', posOrg).condition('statusId', 'PtCompleted')
                 .condition('completedDate', org.moqui.entity.EntityCondition.GREATER_THAN_EQUAL_TO, _billStart)
                 .condition('completedDate', org.moqui.entity.EntityCondition.LESS_THAN, _billEnd)

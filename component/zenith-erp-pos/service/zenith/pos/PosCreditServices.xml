@@ -41,7 +41,7 @@
                 .parameter('transactionId',transactionId).call()
             if (!access?.allowed) return
             def shop = ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call()?.activeShopId
-            def view = sourceModuleId == 'kot' ? 'zenith.erp.pos.KotTransactionDetailView' : 'zenith.erp.pos.PosTransactionView'
+            def view = sourceModuleId == 'kot' ? 'zenith.erp.pos.KotTransactionDetailView' : 'zenith.erp.pos.RetailPosTransactionView'
             def find = ec.entity.find(view).condition('organizationPartyId',access.organizationPartyId).condition('isCredit','Y')
                 .distinct(true)
             if (shop) find.condition('facilityId',shop)

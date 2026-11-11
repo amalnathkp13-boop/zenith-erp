@@ -187,7 +187,7 @@
             locOptions.each { it.url += chartQuery }
         ]]></script>
 
-        <entity-find entity-name="zenith.erp.pos.PosTransactionView" list="completedTxns">
+        <entity-find entity-name="zenith.erp.pos.PosTransaction" list="completedTxns">
             <econdition field-name="organizationPartyId" from="dashboardOrgId"/>
             <econdition field-name="statusId" value="PtCompleted"/>
             <econdition field-name="entryDate" operator="greater-equals" from="dayStart"/>
@@ -196,7 +196,7 @@
             <order-by field-name="entryDate"/>
         </entity-find>
 
-        <entity-find entity-name="zenith.erp.pos.PosTransactionView" list="voidedTxns">
+        <entity-find entity-name="zenith.erp.pos.PosTransaction" list="voidedTxns">
             <econdition field-name="organizationPartyId" from="dashboardOrgId"/>
             <econdition field-name="statusId" value="PtVoided"/>
             <econdition field-name="entryDate" operator="greater-equals" from="dayStart"/>
@@ -393,7 +393,7 @@
                 def _priorStart = new java.sql.Timestamp(dayStart.getTime() - _pDays*24L*60*60*1000)
                 def _priorSales = BigDecimal.ZERO
                 if (_orgH) {
-                    def _pq = ec.entity.find("zenith.erp.pos.PosTransactionView").condition("organizationPartyId", _orgH)
+                    def _pq = ec.entity.find("zenith.erp.pos.PosTransaction").condition("organizationPartyId", _orgH)
                         .condition("statusId","PtCompleted").condition("entryDate", org.moqui.entity.EntityCondition.GREATER_THAN_EQUAL_TO, _priorStart)
                         .condition("entryDate", org.moqui.entity.EntityCondition.LESS_THAN, dayStart)
                     if (_locSessionIds) _pq.condition("sessionId","in",_locSessionIds)  // only scope to a location when one is picked
@@ -424,7 +424,7 @@
                 def _c90 = java.util.Calendar.getInstance(); _c90.setTime(_nowH); _c90.add(java.util.Calendar.DAY_OF_MONTH, -90)
                 def _ref90 = BigDecimal.ZERO
                 if (_orgH) {
-                    def _rq = ec.entity.find("zenith.erp.pos.PosTransactionView").condition("organizationPartyId", _orgH)
+                    def _rq = ec.entity.find("zenith.erp.pos.PosTransaction").condition("organizationPartyId", _orgH)
                         .condition("statusId","PtCompleted").condition("entryDate", org.moqui.entity.EntityCondition.GREATER_THAN_EQUAL_TO, new java.sql.Timestamp(_c90.getTimeInMillis()))
                     if (_locSessionIds) _rq.condition("sessionId","in",_locSessionIds)
                     _ref90 = _rq.list().sum { (it.payableAmount ?: 0) as BigDecimal } ?: BigDecimal.ZERO
@@ -433,7 +433,7 @@
                 // 3) RECEIVABLES — outstanding on credit bills (payable - paid), current
                 def _creditOut = BigDecimal.ZERO
                 if (_orgH) {
-                    ec.entity.find("zenith.erp.pos.PosTransactionView").condition("organizationPartyId", _orgH)
+                    ec.entity.find("zenith.erp.pos.PosTransaction").condition("organizationPartyId", _orgH)
                         .condition("isCredit","Y").condition("statusId","PtCompleted").list().each {
                             def _py = (it.payableAmount ?: 0) as BigDecimal; def _pd = (it.paidAmount ?: 0) as BigDecimal
                             if (_py > _pd) _creditOut += (_py - _pd)
@@ -547,12 +547,12 @@
             def _pDays = (long)(((dayEnd.getTime() - dayStart.getTime()) / (1000L*60*60*24)) + 1)
             def _prevStart = new java.sql.Timestamp(dayStart.getTime() - _pDays*24L*60*60*1000)
             def _prevEnd = new java.sql.Timestamp(dayStart.getTime() - 1000)
-            def _pcq = ec.entity.find("zenith.erp.pos.PosTransactionView").condition("organizationPartyId",dashboardOrgId).condition("statusId","PtCompleted")
+            def _pcq = ec.entity.find("zenith.erp.pos.PosTransaction").condition("organizationPartyId",dashboardOrgId).condition("statusId","PtCompleted")
                 .condition("entryDate", org.moqui.entity.EntityCondition.GREATER_THAN_EQUAL_TO, _prevStart)
                 .condition("entryDate", org.moqui.entity.EntityCondition.LESS_THAN_EQUAL_TO, _prevEnd)
             if (_locSessionIds) _pcq.condition("sessionId","in",_locSessionIds)
             def _prevC = _pcq.list()
-            def _pvq = ec.entity.find("zenith.erp.pos.PosTransactionView").condition("organizationPartyId",dashboardOrgId).condition("statusId","PtVoided")
+            def _pvq = ec.entity.find("zenith.erp.pos.PosTransaction").condition("organizationPartyId",dashboardOrgId).condition("statusId","PtVoided")
                 .condition("entryDate", org.moqui.entity.EntityCondition.GREATER_THAN_EQUAL_TO, _prevStart)
                 .condition("entryDate", org.moqui.entity.EntityCondition.LESS_THAN_EQUAL_TO, _prevEnd)
             if (_locSessionIds) _pvq.condition("sessionId","in",_locSessionIds)
