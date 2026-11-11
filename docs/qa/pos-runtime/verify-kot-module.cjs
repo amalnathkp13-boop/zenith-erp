@@ -89,8 +89,15 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   check('KOT preserves the visibility of tabs saved under their previous POS paths',await migratedTab.isHidden());
   await post(a,'saveSubnavConfiguration',{module:'kot',payload:JSON.stringify({version:1,order:[],hidden:[]})});
   await page.goto(base+'/apps/zenith/kot/KotDashboard');
-  const before = Number(await completedOrders.innerText());
   const reportingDate = await page.locator('.kd-datepill input').inputValue();
+  const dayStart = new Date(reportingDate+'T00:00:00+05:30').getTime();
+  const sqlTime = epoch => new Date(epoch).toISOString().slice(0,19).replace('T',' ');
+  const completedKotIds = () => q(`SELECT DISTINCT t.transaction_id FROM pos_transaction t
+   JOIN kitchen_order_ticket k ON k.transaction_id=t.transaction_id AND k.organization_party_id=t.organization_party_id
+   WHERE t.organization_party_id='POS_QA_A' AND t.status_id='PtCompleted'
+     AND t.entry_date>=TIMESTAMP '${sqlTime(dayStart)}' AND t.entry_date<TIMESTAMP '${sqlTime(dayStart+86400000)}'`)
+   .map(row=>row.transaction_id);
+  const beforeIds = completedKotIds();
   const posBefore = await posTotal();
   const homeBefore = await homeTotal();
   await page.goto(base+'/apps/zenith/pos/Kitchen');
@@ -170,11 +177,14 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
    (await receipt.body()).subarray(0,4).toString()==='%PDF');
   await page.goto(base+'/apps/zenith/kot/KotDashboard?dashDate='+encodeURIComponent(reportingDate));
   const afterText = await completedOrders.innerText();
-  const after = Number(afterText);
   const dashboardDate = await page.locator('.kd-datepill input').inputValue();
-  check('standalone KOT dashboard counts the newly completed KOT sale once',after===before+1&&dashboardDate===reportingDate,{
-   before,after,afterText,transactionId,reportingDate,dashboardDate,
-   shop:await page.locator('#z-shopdata').getAttribute('data-active')
+  const shop = await page.locator('#z-shopdata').getAttribute('data-active');
+  const afterIds = completedKotIds();
+  check('standalone KOT dashboard counts the newly completed KOT sale once',
+   !shop&&dashboardDate===reportingDate&&Number(afterText)===afterIds.length&&
+   afterIds.length===beforeIds.length+1&&afterIds.includes(transactionId)&&!beforeIds.includes(transactionId)&&
+   beforeIds.every(id=>afterIds.includes(id)),{
+   beforeIds,afterIds,afterText,transactionId,reportingDate,dashboardDate,shop
   });
   check('POS dashboard includes the KOT bill once',await posTotal()===posBefore+100);
   await page.goto(base+'/apps/zenith/pos/PosTransactions');
