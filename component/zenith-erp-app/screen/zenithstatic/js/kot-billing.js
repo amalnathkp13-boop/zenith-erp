@@ -104,6 +104,7 @@
   }
   function controls() {
     const canPay=!busy&&!sessionLost&&cart.size>0&&total!==null&&editError.hidden;
+    $('display-message').textContent=cfg.displayEnabled==='true'?'Kitchen Display enabled.':'Kitchen Display disabled. Use printed KOTs.';
     for(const button of paymentButtons) {
       button.disabled=busy||sessionLost||!cart.size;
       button.setAttribute('aria-disabled',String(!canPay));
@@ -130,7 +131,7 @@
   }
   function renderCustomer() {
     const name=customer.name||'Walk-in Customer';
-    $('list-customer').textContent=name;
+    $('customer-name').textContent=name;
     $('list-phone').textContent=customer.phone||'—';
   }
   function openCustomerDialog() {
@@ -753,7 +754,7 @@
     else if(button.id==='kb-payment-close'||button.classList.contains('pos-cash-cancel'))$('payment').close();
     else if(button.dataset.kbPrint)printChoice(button.dataset.kbPrint);
     else if(button.id==='kb-print-close')$('print-choice').close();
-    else if(button.hasAttribute('data-kb-customer-change'))openCustomerDialog();
+    else if(button.id==='kb-customer-open'||button.hasAttribute('data-kb-customer-change'))openCustomerDialog();
     else if(button.id==='kb-customer-walkin')walkInCustomer();
     else if(button.id==='kb-customer-close')$('customer-dialog')?.close();
     else if(button.dataset.custId)selectCustomer(button);

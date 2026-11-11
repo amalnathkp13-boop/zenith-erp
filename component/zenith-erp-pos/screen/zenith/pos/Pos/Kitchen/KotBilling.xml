@@ -805,6 +805,7 @@
     </div>
     <input type="hidden" id="kb-table" value=""/>
     <label class="kb-fld"><select id="kb-waiter" aria-label="Waiter"><option value="">Choose waiter</option><#list waiters as w><option value="${w.waiterId?html}">${w.waiterName?html}</option></#list></select></label>
+    <#if modCanWrite><button type="button" class="kb-control kg-only" id="kb-customer-open" aria-label="Choose customer" title="Attach a customer to this bill"><@ic 'user'/> Customer</button></#if>
     <div class="kb-toolbar-end">
       <#if modCanWrite><button type="button" class="kb-control" id="kb-close-session" aria-label="Close session" aria-keyshortcuts="C" title="Review cash and close this POS session"><@ic 'close-session' 22/> Close session <kbd aria-hidden="true">C</kbd></button></#if>
       <button type="button" class="kb-control" id="kb-fullscreen" title="Enter fullscreen"><@ic 'fullscreen'/><span id="kb-fullscreen-label">Enter fullscreen</span></button>
@@ -842,12 +843,13 @@
     <div class="kb-sum kg-only"><div class="kb-sum__row"><span>Items</span><span id="kb-item-count">0</span></div><div class="kb-sum__row"><span>Subtotal</span><span id="kb-subtotal">&#8377;0.00</span></div><div id="kb-tax-rows"></div>
     </div>
     <p id="kb-edit-error" role="alert" hidden></p><p id="kb-quote-error" role="alert"></p><p id="kb-order-status" role="status"></p>
+    <p id="kb-display-message" hidden></p>
   </section>
   <aside class="kl-side kg-normal">
     <section class="kl-card" aria-label="Customer details">
       <div class="kl-card-title">
         <span class="kl-icon"><@ic 'user' 23/></span>
-        <div><h2 id="kb-list-customer">Walk-in Customer</h2><p>Customer</p></div>
+        <div><h2 id="kb-list-customer"><span id="kb-customer-name">Walk-in Customer</span></h2><p>Customer</p></div>
         <#if modCanWrite><button type="button" class="kb-control" data-kb-customer-change>Change</button></#if>
       </div>
       <dl class="kl-details">

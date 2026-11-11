@@ -11,7 +11,7 @@
   background:#fff;border-bottom:1px solid #edf0f6;
 }
 #kb-wrap:not(.kg-grid) .kg-header img{width:125px;height:36px;object-fit:contain;object-position:left center;margin-inline:4px 12px}
-#kb-wrap:not(.kg-grid) .kg-header :is(.kg-chip,#kb-customer-open){
+#kb-wrap:not(.kg-grid) .kg-header .kg-chip{
   display:inline-flex;align-items:center;gap:8px;min-height:42px;padding:0 11px;
   border:0;border-radius:10px;background:#f0f2f9;color:var(--kl-ink);font-size:15px;font-weight:700;text-decoration:none;
 }
