@@ -1,6 +1,4 @@
-/* Kitchen and customer receipts share presentation, never transaction side effects.
- * KOT uses its existing browser printer selection; customer bills use the configured
- * browser print workflow. Kitchen and bill printers are selected independently. */
+/* Kitchen and customer receipt templates and browser printing. */
 (function () {
   'use strict';
   if(window.KitchenPrint)return;
@@ -22,7 +20,7 @@
     header+=block(store.headerText,'header','font-weight:'+(options.headerBold?700:400));
     if(record.store&&options.showBillNumber!==false&&record.number)header+=block(numberLabel+' '+record.number,'information');
     if(record.store&&options.showDate!==false)header+=block(record.date,'information');
-    return '<!doctype html><html><head><meta charset="utf-8"><title>KOT</title><style>@page{size:'+width+'mm auto;margin:0}'+
+    return '<!doctype html><html data-paper-width="'+width+'"><head><meta charset="utf-8"><title>KOT</title><style>@page{size:'+width+'mm auto;margin:0}'+
       'body{font:13px monospace;color:#000;width:'+(width-6)+'mm;padding:3mm;margin:0;font-weight:'+weight+'}'+
       '.block{white-space:pre-line;overflow-wrap:anywhere}img{display:block;margin:2px auto;max-width:90%;max-height:60px}'+
       'table{width:100%;border-collapse:collapse;color:'+tone('products')+'}td{border-bottom:1px dashed #000;padding:4px 0;overflow-wrap:anywhere}.q{text-align:right}'+
@@ -67,12 +65,12 @@
     }
     w.print(); // Request accepted by the browser; physical output/cancellation is not observable.
   }
-  async function customer(w,data,options){
+  function customerHtml(data){
     if(!data||!data.success||!window.PosReceiptLayout)throw Error('The saved customer receipt could not be loaded.');
-    const html=PosReceiptLayout.render(data,Number(data.summary?.tax)>0,!!data.edited)+'</body></html>';
-    await browserPrint(w,html,options);
+    return PosReceiptLayout.render(data,Number(data.summary?.tax)>0,!!data.edited)+'</body></html>';
   }
-  window.KitchenPrint={open:open,kotHtml:kotHtml,browserPrint:browserPrint,customer:customer};
+  async function customer(w,data,options){await browserPrint(w,customerHtml(data),options);}
+  window.KitchenPrint={open,kotHtml,browserPrint,customer,customerHtml};
   var busy=false;
   function screen(){return location.pathname.replace(/\/$/,'').replace(/\.(qvt|html)$/,'');}
   function token(){return window.moqui?.webrootVue?.moquiSessionToken||document.querySelector('#kb-token,[name="moquiSessionToken"]')?.value||'';}
