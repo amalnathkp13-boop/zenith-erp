@@ -52,7 +52,12 @@ async function verifyKotCreditBills({ a, foreign, base, check, q, out, kotId, re
     const partial = await repay('UPI',40);
     check('KOT can record a partial repayment against its offline credit bill',
       partial.success === true && Number(partial.outstanding) === 50 && !partial.fullyPaid,partial);
+    const partialNotice = page.getByText('Payment recorded',{exact:false});
+    await partialNotice.waitFor();
     const final = await repay('Card',50);
+    await page.getByText('Bill fully settled',{exact:false}).waitFor();
+    check('The latest repayment confirmation replaces the previous notification',
+      await partialNotice.count() === 0);
     check('KOT can settle the remaining balance with exactly two persisted payments',
       final.success === true && final.fullyPaid === true && Number(final.outstanding) === 0 &&
       JSON.stringify(payments(kotId).map(p => [p.payment_method,Number(p.amount)])) === JSON.stringify([['Card',50],['UPI',40]]) &&

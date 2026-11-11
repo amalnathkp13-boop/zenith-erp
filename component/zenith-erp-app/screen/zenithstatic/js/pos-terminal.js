@@ -1818,13 +1818,22 @@ window._posOffline = (function () {
         if (any && any.value) return any.value;
         return '';
     }
+    var historyToast;
     function histToast(msg, bg) {
-        var t = document.createElement('div');
-        t.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:999999;padding:18px 36px;border-radius:12px;font-size:20px;font-weight:700;color:#fff;background:'+(bg||'#2e7d32')+';box-shadow:0 6px 32px rgba(0,0,0,0.3);opacity:0;transition:opacity 0.3s;white-space:nowrap;letter-spacing:0.5px';
+        if (historyToast) historyToast.remove();
+        var t = historyToast = document.createElement('div');
+        t.setAttribute('role', 'status');
+        t.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:999999;max-width:calc(100% - 24px);box-sizing:border-box;padding:18px 36px;border-radius:12px;font-size:20px;font-weight:700;color:#fff;background:'+(bg||'#2e7d32')+';box-shadow:0 6px 32px rgba(0,0,0,0.3);opacity:0;transition:opacity 0.3s;text-align:center;overflow-wrap:anywhere;letter-spacing:0.5px';
         t.textContent = msg;
         document.body.appendChild(t);
         setTimeout(function() { t.style.opacity = '1'; }, 30);
-        setTimeout(function() { t.style.opacity = '0'; setTimeout(function() { t.remove(); }, 400); }, 3500);
+        setTimeout(function() {
+            t.style.opacity = '0';
+            setTimeout(function() {
+                t.remove();
+                if (historyToast === t) historyToast = null;
+            }, 400);
+        }, 3500);
     }
         /* === Bill History Panel === */
         var historyOverlay = null, historyCriteria = {}, historyRequest, historyVersion = 0;
