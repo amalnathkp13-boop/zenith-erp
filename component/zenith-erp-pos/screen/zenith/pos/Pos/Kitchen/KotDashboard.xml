@@ -64,7 +64,8 @@
                     .selectFields(['transactionId', 'entryDate', 'statusId', 'customerPartyId', 'payableAmount', 'grandTotal'])
                 if (completedOnly) f.condition('statusId', 'PtCompleted')
                 if (kotOnly) {
-                    f.distinct(true) // Several tickets may be linked to one sale.
+                    // Moqui omits view members with no selected or filtered aliases.
+                    f.condition('kotOrganizationPartyId',org ?: '__NO_ORGANIZATION__').distinct(true)
                     if (terminals != null) f.condition('terminalId','in',terminals ?: ['__NONE__'])
                     if (terminalRestricted) f.condition('operatorPartyId',ec.user.userAccount?.partyId ?: '__NONE__')
                 }

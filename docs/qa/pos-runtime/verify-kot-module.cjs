@@ -191,12 +191,15 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
    const historical=await homeTotal('apps',historicalDate);
    const nextDay=await homeTotal('qapps','2040-02-02');
    check('Home sales counts KOT before sync and finalization, deduplicates the finalized mirror, and excludes the cancelled mirror',
-    historical.amount===130&&historical.chart===130&&nextDay.amount===0&&nextDay.chart===0,
+    historical.amount===133&&historical.chart===133&&nextDay.amount===0&&nextDay.chart===0,
     {historical,nextDay});
+   await page.goto(base+'/apps/zenith/kot/KotDashboard?dashDate='+historicalDate);
+   check('KOT Dashboard excludes ordinary POS and counts a sale with two kitchen tickets once',
+    Number(await completedOrders.innerText())===4);
   } finally {
    const cleaned=await fixture('clean');
    check('disposable KOT reporting records are removed',cleaned.ok()&&(await cleaned.json()).success&&
-    q("SELECT transaction_id FROM pos_transaction WHERE transaction_id IN ('POS_QA_KOT_REPORT_UNSYNCED','POS_QA_KOT_REPORT_SYNCED','POS_QA_KOT_REPORT_DRAFT','POS_QA_KOT_REPORT_CANCELLED')").length===0);
+    q("SELECT transaction_id FROM pos_transaction WHERE transaction_id IN ('POS_QA_KOT_REPORT_UNSYNCED','POS_QA_KOT_REPORT_SYNCED','POS_QA_KOT_REPORT_DRAFT','POS_QA_KOT_REPORT_CANCELLED','POS_QA_KOT_REPORT_POS')").length===0);
   }
   const unchanged=q("SELECT setting_value FROM company_settings WHERE organization_party_id='POS_QA_A' AND setting_key='KITCHEN_DISPLAY_POS_QA_A_FAC'");
   await post(kit,'kot/KitchenDisplay/saveDisplayPolicy',{facilityId:'POS_QA_A_FAC',enabled:'N'});

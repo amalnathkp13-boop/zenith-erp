@@ -644,6 +644,7 @@
         <alias entity-alias="PX" name="customerPartyId"/>
         <alias entity-alias="PX" name="payableAmount"/>
         <alias entity-alias="PX" name="grandTotal"/>
+        <alias entity-alias="KOT" name="kotOrganizationPartyId" field="organizationPartyId"/>
     </view-entity>
 
     <view-entity entity-name="KotView" package="zenith.erp.pos">
