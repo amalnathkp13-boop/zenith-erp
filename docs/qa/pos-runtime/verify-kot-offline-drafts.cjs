@@ -459,8 +459,10 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
       await history.locator('[data-kb-bill-local]').click();
       await page.locator('#kb-payment').waitFor();
       const methodPicker = page.locator('#kb-payment-method');
-      if (await methodPicker.isVisible()) await methodPicker.selectOption(method);
-      else assert.equal(await methodPicker.inputValue(),method);
+      if (await methodPicker.isVisible()) {
+        await methodPicker.selectOption(method);
+        await page.locator('#kb-payment-continue').click();
+      } else assert.equal(await methodPicker.inputValue(),method);
     };
     await openSentPayment('Cash');
     const sentTotal = await page.locator('#kb-payment-total').textContent();
