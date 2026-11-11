@@ -95,19 +95,38 @@
             homeShopSessions = scope?.sessionIds
             def bySession = { query -> homeShopId ? query.condition('sessionId','in',homeShopSessions ?: ['__NONE__']) : query }
             homeInvoiceScope = { query -> homeShopId ? query.condition('facilityId',homeShopId) : query }
+            def finalized = ['InvoiceFinalized','InvoicePmtRecvd']
             homeSales = _read('Sales', { homeInvoiceScope(ec.entity.find('mantle.account.invoice.Invoice').condition('fromPartyId',activeOrgId)
-                .condition('invoiceTypeEnumId','InvoiceSales').condition('statusId','in',['InvoiceFinalized','InvoicePmtRecvd'])).disableAuthz().list() })
+                .condition('invoiceTypeEnumId','InvoiceSales').condition('statusId','in',finalized)).disableAuthz().list() })
             homePurchases = _read('Vendor bills', { ec.entity.find('mantle.account.invoice.Invoice').condition('toPartyId',activeOrgId)
                 .condition('invoiceTypeEnumId','InvoicePurchase').condition('statusId',EC.NOT_IN,['InvoiceInProcess','InvoiceCancelled','InvoicePmtSent','InvoicePmtRecvd','InvoiceWriteOff']).disableAuthz().list() })
             homePos = _read('POS balances', { bySession(ec.entity.find('zenith.erp.pos.PosTransaction').condition('organizationPartyId',activeOrgId)
                 .condition('statusId','PtCompleted')).disableAuthz().list() })
             homeInRange = { date -> date != null && (dayStart == null || (!date.before(dayStart) && date.before(dayEndExcl))) }
-            def _salesBetween = { a, b -> homeSales.findAll { it.invoiceDate != null && !it.invoiceDate.before(a) && it.invoiceDate.before(b) }.sum { homeInvoiceTotal(it) } ?: BigDecimal.ZERO }
-            def _finSales = homeSales.findAll { homeInRange(it.invoiceDate) }.sum { homeInvoiceTotal(it) } ?: BigDecimal.ZERO
+            // POS and KOT sales count from completion while their Sales Invoice is syncing.
+            def finalizedInvoiceIds = homeSales*.invoiceId as Set
+            def pendingSales = homePos.findAll { it.transactionType != 'Return' && !finalizedInvoiceIds.contains(it.linkedInvoiceId) }
+            def missingLinks = pendingSales*.linkedInvoiceId.findAll { it }.unique()
+            def excludedLinks = _read('Sales', {
+                missingLinks.collate(500).collectMany { ids ->
+                    ec.entity.find('mantle.account.invoice.Invoice').condition('fromPartyId',activeOrgId)
+                        .condition('invoiceTypeEnumId','InvoiceSales').condition('invoiceId','in',ids)
+                        .selectFields(['invoiceId','statusId','facilityId']).disableAuthz().list().findAll {
+                            it.statusId in ['InvoiceCancelled','InvoiceWriteOff'] ||
+                                (homeShopId && it.facilityId && it.facilityId != homeShopId && it.statusId in finalized)
+                        }*.invoiceId
+                }
+            }) as Set
+            homeSaleEntries = homeSales.collect { [date:it.invoiceDate, amount:homeInvoiceTotal(it)] }
+            pendingSales.findAll { !excludedLinks.contains(it.linkedInvoiceId) }.each {
+                homeSaleEntries.add([date:it.completedDate ?: it.entryDate, amount:homeBd(it.grandTotal != null ? it.grandTotal : it.payableAmount)])
+            }
+            homeSalesBetween = { a, b -> homeSaleEntries.findAll { it.date != null && !it.date.before(a) && it.date.before(b) }.sum(BigDecimal.ZERO) { it.amount } }
+            def _finSales = homeSaleEntries.findAll { homeInRange(it.date) }.sum(BigDecimal.ZERO) { it.amount }
             def _trendEnd = dayEndExcl ?: _n
             def _trendStart = dayStart ?: _w1
             def _trendPrior = new java.sql.Timestamp(_trendStart.time - (_trendEnd.time-_trendStart.time))
-            def _sCur = _salesBetween(_trendStart, _trendEnd); def _sPrev = _salesBetween(_trendPrior, _trendStart)
+            def _sCur = homeSalesBetween(_trendStart, _trendEnd); def _sPrev = homeSalesBetween(_trendPrior, _trendStart)
             def _salesTrend = _sPrev > 0 ? [dir:(_sCur>=_sPrev?'up':'down'), pct:(int)Math.round(Math.abs((_sCur-_sPrev).doubleValue()*100/_sPrev.doubleValue()))] : null
             homePendingInvoices = homePurchases.findAll { homeUnpaid(it)>0 }
             def _finPay = homePendingInvoices.sum { homeUnpaid(it) } ?: BigDecimal.ZERO
@@ -195,7 +214,7 @@
             })
             def invoiceCount = homeSales.findAll { homeInRange(it.invoiceDate) }*.invoiceId.unique().size()
             kpiCards = [
-                [lab:'Total Sales', disp:homeMoney(_finSales), icon:'trending_up', tintBg:'#FEF3C7', tintFg:'#D97706', url:'/apps/zenith/sales/FindInvoice', trend:_salesTrend, extra:'', footer:[label:'Total invoices', icon:'receipt_long', value:(activeOrgId && !homeDataErrors.contains('Sales') ? invoiceCount.toString() : 'Unavailable')], source:['Sales']],
+                [lab:'Total Sales', disp:homeMoney(_finSales), icon:'trending_up', tintBg:'#FEF3C7', tintFg:'#D97706', url:'/apps/zenith/sales/FindInvoice', trend:_salesTrend, extra:'', footer:[label:'Total invoices', icon:'receipt_long', value:(activeOrgId && !homeDataErrors.contains('Sales') ? invoiceCount.toString() : 'Unavailable')], source:['Sales','POS balances']],
                 [lab:'Total Payables', disp:homeMoney(_finPay), icon:'receipt_long', tintBg:'#FEE2E2', tintFg:'#DC2626', url:'/apps/zenith/Purchase/PurchaseInvoices', trend:null, extra:(homeShopId ? 'Organization-wide vendor balances' : 'Outstanding vendor balances'), source:['Vendor bills']],
                 [lab:'Total Receivables', disp:homeMoney(_finRecv), icon:'account_balance_wallet', tintBg:'#DBEAFE', tintFg:'#3B82F6', url:'/apps/zenith/pos/CreditBills', trend:null, extra:'POS credits and sales invoices', source:['Sales','POS balances']],
                 [lab:'Cash in Hand', disp:homeMoney(_finCash), icon:'payments', tintBg:'#D1FAE5', tintFg:'#059669', url:'/apps/zenith/pos/CashEntry', trend:null, extra:'Net cash sales and cash entries', footer:[label:'Online payment', icon:'credit_card', value:(_online instanceof BigDecimal && !homeDataErrors.contains('Sales') ? '₹'+homeMoney(_online) : 'Unavailable'), hint:'Net recorded digital receipts for the selected period. Separate from physical cash.'], source:['POS balances','Cash receipts','Cash entries']]
@@ -382,10 +401,7 @@
                 homeNextRangeUrl = '?dateMode=custom&dashDate=' + _from.plusDays(_rangeDays) + '&dashDateTo=' + _to.plusDays(_rangeDays)
             }
 
-            // ZE-DASH SALES ANALYST (2026-08): two client-switchable views — Weekly (sales ₹ per day, current week)
-            // and Today Hourly (sales ₹ per hour today). Metric = finalised InvoiceSales invoiceTotal (SAME basis as
-            // the Total Sales KPI above), org-scoped. Empty -> flat zero line + a "No sales" subtitle (never blank).
-            def _saSum = { a, b -> homeSales.findAll { it.invoiceDate != null && !it.invoiceDate.before(a) && it.invoiceDate.before(b) }.sum { homeInvoiceTotal(it) } ?: BigDecimal.ZERO }
+            // The period and hourly charts use the same sales basis as the Total Sales card.
             def _wkCal = java.util.Calendar.getInstance(ec.user.timeZone); _wkCal.setTime(_now)
             _wkCal.set(java.util.Calendar.DAY_OF_WEEK, _wkCal.firstDayOfWeek)
             _wkCal.set(java.util.Calendar.HOUR_OF_DAY,0); _wkCal.set(java.util.Calendar.MINUTE,0); _wkCal.set(java.util.Calendar.SECOND,0); _wkCal.set(java.util.Calendar.MILLISECOND,0)
@@ -406,7 +422,7 @@
                 def next=(java.util.Calendar)_bucket.clone(); next.add(_bucketField,_bucketStep)
                 def a=new java.sql.Timestamp(Math.max(_bucket.timeInMillis,_chartStart.time))
                 def b=new java.sql.Timestamp(Math.min(next.timeInMillis,_chartEnd.time))
-                def v=_saSum(a,b); _labels.add(_labelFmt.format(_bucket.time)); _values.add(v); _total+=v; _bucket=next
+                def v=homeSalesBetween(a,b); _labels.add(_labelFmt.format(_bucket.time)); _values.add(v); _total+=v; _bucket=next
             }
             baWeekLabelsJson = groovy.json.JsonOutput.toJson(_labels); baWeekDataJson = groovy.json.JsonOutput.toJson(_values)
             baWeekTotal = _total; baWeekTotalFmt = homeMoney(_total)
@@ -415,8 +431,8 @@
             def _tomorrowCal=java.util.Calendar.getInstance(ec.user.timeZone); _tomorrowCal.setTime(_today); _tomorrowCal.add(java.util.Calendar.DAY_OF_MONTH,1)
             def _tomorrow=new java.sql.Timestamp(_tomorrowCal.timeInMillis)
             def _hours=(0..<24).collect { BigDecimal.ZERO }
-            homeSales.findAll { it.invoiceDate != null && !it.invoiceDate.before(_today) && it.invoiceDate.before(_tomorrow) }.each {
-                def c=java.util.Calendar.getInstance(ec.user.timeZone); c.setTime(it.invoiceDate); _hours[c.get(java.util.Calendar.HOUR_OF_DAY)]+=homeInvoiceTotal(it)
+            homeSaleEntries.findAll { it.date != null && !it.date.before(_today) && it.date.before(_tomorrow) }.each {
+                def c=java.util.Calendar.getInstance(ec.user.timeZone); c.setTime(it.date); _hours[c.get(java.util.Calendar.HOUR_OF_DAY)]+=it.amount
             }
             baHourLabelsJson=groovy.json.JsonOutput.toJson((0..<24).collect { h -> (h%12==0?12:h%12).toString()+(h<12?'AM':'PM') })
             baHourDataJson=groovy.json.JsonOutput.toJson(_hours); baHourTotal=_hours.sum(); baHourTotalFmt=homeMoney(baHourTotal)
@@ -465,10 +481,8 @@
             def _wMs = _wEnd.getTime() - _wStart.getTime()
             def _pStart = new java.sql.Timestamp(_wStart.getTime() - _wMs)
 
-            // finalised sales total in [a,b)
-            def _salesIn = { a,b -> homeSales.findAll { it.invoiceDate != null && !it.invoiceDate.before(a) && it.invoiceDate.before(b) }.sum { homeInvoiceTotal(it) } ?: BigDecimal.ZERO }
-            def _salesCur = _salesIn(_wStart, _wEnd)
-            def _salesPrior = _salesIn(_pStart, _wStart)
+            def _salesCur = homeSalesBetween(_wStart, _wEnd)
+            def _salesPrior = homeSalesBetween(_pStart, _wStart)
             def _salesGrowth = _salesPrior > 0 ? ((_salesCur.doubleValue()-_salesPrior.doubleValue())*100.0/_salesPrior.doubleValue()) : (_salesCur>0?100.0:0.0)
 
             // receivables + overdue from POS credit bills (honest source), + any real credit invoices past due date

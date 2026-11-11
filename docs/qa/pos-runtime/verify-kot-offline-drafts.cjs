@@ -351,8 +351,8 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
       posTransactions.ok() && posHistory.ok() && kotTransactions.ok() && inPos && inPosHistory && !inKot && afterRetail === beforeRetail,
       {retailNumber,inPos,inPosHistory,inKot,beforeRetail,afterRetail});
     const number = payment[0].transaction_number;
-    check('The synced offline bill is in KOT Transactions and stays out of POS Transactions and POS Bill History',
-      kotTransactions.ok() && kotList.includes(number) && posTransactions.ok() && !posList.includes(number) &&
+    check('The synced offline bill is in KOT Transactions and the consolidated POS report, with retail Bill History kept separate',
+      kotTransactions.ok() && kotList.includes(number) && posTransactions.ok() && posList.includes(number) &&
       posHistory.ok() && !historyList.includes(number),
       {kotStatus:kotTransactions.status(),posStatus:posTransactions.status(),historyStatus:posHistory.status(),number});
     await page.reload();

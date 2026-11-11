@@ -45,7 +45,17 @@
 
             // Limit standalone KOT reporting to sales linked to a ticket in the same organization.
             def kotOnly = kitchenModuleId == 'kot'
-            def salesEntity = kotOnly ? 'zenith.erp.pos.KotTransactionView' : 'zenith.erp.pos.PosTransaction'
+            def shop = kotOnly ? ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope')
+                .parameter('includePosScope',true).call() : null
+            def terminals = shop?.activeShopId ? (shop.terminalIds ?: []) : null
+            def terminalRestricted = kotOnly && posTerminalRestricted &&
+                !['ZENITH_STORE_MGR','ZENITH_MULTI_SHOP_MANAGER'].any { ec.user.isInGroup(it) }
+            if (terminalRestricted) {
+                def shopTerminals = terminals
+                terminals = (posAllowedTerminalIds ?: []).findAll { shopTerminals == null || shopTerminals.contains(it) }
+            }
+            def salesEntity = !kotOnly ? 'zenith.erp.pos.PosTransaction' :
+                (terminals != null ? 'zenith.erp.pos.KotTransactionDetailView' : 'zenith.erp.pos.KotTransactionView')
             def amt = { t -> (t.payableAmount ?: t.grandTotal ?: 0) as BigDecimal }
             def findOrders = { s, e, completedOnly ->
                 def f = ec.entity.find(salesEntity)
@@ -53,7 +63,12 @@
                     .condition('organizationPartyId', org ?: '__NO_ORGANIZATION__')
                     .selectFields(['transactionId', 'entryDate', 'statusId', 'customerPartyId', 'payableAmount', 'grandTotal'])
                 if (completedOnly) f.condition('statusId', 'PtCompleted')
-                if (kotOnly) f.distinct(true) // Several tickets may be linked to one sale.
+                if (kotOnly) {
+                    // Moqui omits view members with no selected or filtered aliases.
+                    f.condition('kotOrganizationPartyId',org ?: '__NO_ORGANIZATION__').distinct(true)
+                    if (terminals != null) f.condition('terminalId','in',terminals ?: ['__NONE__'])
+                    if (terminalRestricted) f.condition('operatorPartyId',ec.user.userAccount?.partyId ?: '__NONE__')
+                }
                 return f.orderBy('entryDate').list()
             }
 
@@ -72,6 +87,7 @@
 
             def akf = ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('statusId', 'in', ['KotNew', 'KotPreparing', 'KotReady'])
             akf.condition('organizationPartyId', org ?: '__NO_ORGANIZATION__')
+            if (terminals != null) akf.condition('terminalId','in',terminals ?: ['__NONE__'])
             ordersInProgress = akf.count() as int
 
             // yesterday

@@ -54,10 +54,28 @@
                 def ids = printers.collect { it.posReceiptTemplateId ?: it.receiptTemplateId }.findAll { it }.unique()
                 if (!ids) return
                 def templates = ec.entity.find('zenith.erp.pos.PosReceiptTemplate').condition('organizationPartyId',scope.organizationPartyId)
-                    .condition('templateId','in',ids).condition('isActive','Y').list().findAll {
+                    .condition('templateId','in',ids).condition('printUse',null).condition('isActive','Y').list().findAll {
                         !it.facilityId || it.facilityId == terminal.facilityId
                     }.collectEntries { [(it.templateId):it] }
                 template = ids.findResult { templates[it]?.getMap() }
+            ]]></script>
+        </actions>
+    </service>
+
+    <service verb="resolve" noun="KotPrintTemplate" authenticate="true">
+        <in-parameters><parameter name="printUse" required="true"/><parameter name="terminalId"/><parameter name="facilityId"/></in-parameters>
+        <out-parameters><parameter name="template" type="Map"/></out-parameters>
+        <actions>
+            <if condition="!(printUse in ['kotBill','kotTicket'])"><return error="true" message="Choose a KOT print output."/></if>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[terminalId:terminalId,facilityId:facilityId]" out-map="scope"/>
+            <if condition="!scope.allowed"><return/></if>
+            <script><![CDATA[
+                def shop = terminalId ? ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',terminalId)
+                    .condition('organizationPartyId',scope.organizationPartyId).one()?.facilityId : facilityId
+                def templates = ec.entity.find('zenith.erp.pos.PosReceiptTemplate')
+                    .condition('organizationPartyId',scope.organizationPartyId)
+                    .condition('printUse',printUse).condition('isActive','Y').orderBy('-isDefault,templateId').list()
+                template = (templates.find { shop && it.facilityId == shop } ?: templates.find { !it.facilityId })?.getMap()
             ]]></script>
         </actions>
     </service>

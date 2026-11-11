@@ -28,7 +28,11 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    check(shell+' preview uses selected paper width',await page.frameLocator('iframe').locator('.rcpt').getAttribute('data-paper-width')==='58');
    for(const width of [1440,1024,768,390]){
     await page.setViewportSize({width,height:900});
-    check(shell+' editor fits '+width+'px',await page.locator('#receiptEditor').evaluate(el=>el.scrollWidth<=el.clientWidth+1));
+    const fits=await page.waitForFunction(()=>{
+     const editor=document.getElementById('receiptEditor');
+     return editor && editor.scrollWidth<=editor.clientWidth+1;
+    },null,{timeout:3000}).then(()=>true,()=>false);
+    check(shell+' editor fits '+width+'px',fits);
    }
    await page.setViewportSize({width:1440,height:1000});
    if(out)await page.screenshot({path:path.join(out,shell+'-receipt-editor.png'),fullPage:true});

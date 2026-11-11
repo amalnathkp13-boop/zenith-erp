@@ -17,9 +17,9 @@
         </actions>
         <default-response url="." parameter-map="[filterStatus:filterStatus]"/>
     </transition>
-    <transition name="goTerminal"><default-response url="${kitchenModuleId == 'kot' ? '../../pos/Terminal' : '../../Terminal'}"/></transition>
-    <transition name="goTransactions"><default-response url="${kitchenModuleId == 'kot' ? '../../pos/PosTransactions' : '../../PosTransactions'}"/></transition>
-    <transition name="goDashboard"><default-response url="${kitchenModuleId == 'kot' ? '../../pos/Dashboard' : '../../Dashboard'}"/></transition>
+    <transition name="goTerminal"><default-response url="${kitchenModuleId == 'kot' ? '../KotBilling' : '../../Terminal'}"/></transition>
+    <transition name="goTransactions"><default-response url="${kitchenModuleId == 'kot' ? '../PosTransactions' : '../../PosTransactions'}"/></transition>
+    <transition name="goDashboard"><default-response url="${kitchenModuleId == 'kot' ? '../KotDashboard' : '../../Dashboard'}"/></transition>
 
     <actions>
         <set field="filterStatus" from="filterStatus ?: ''"/>

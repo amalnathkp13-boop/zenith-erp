@@ -174,7 +174,7 @@
                                       quantity:quantity, specialInstructions:submitted.specialInstructions])
                 }
                 def quote=ec.service.sync().name('zenith.pos.KitchenPrintServices.get#CartReceipt')
-                    .parameters([sessionId:ec.context.sessionId,itemsJson:ec.context.itemsJson,tableId:tableIdVal,orderType:ec.context.orderType,taxOn:ec.context.taxOn ?: 'Y',salesModeId:ec.context.salesModeId,waiterId:ec.context.waiterId,customerPartyId:ec.context.customerPartyId,notes:ec.context.notes]).call()?.receipt
+                    .parameters([sessionId:ec.context.sessionId,itemsJson:ec.context.itemsJson,tableId:tableIdVal,orderType:ec.context.orderType,taxOn:ec.context.taxOn ?: 'Y',salesModeId:ec.context.salesModeId,waiterId:ec.context.waiterId,customerPartyId:ec.context.customerPartyId,notes:ec.context.notes,lockDiscountMode:true]).call()?.receipt
                 if(ec.message.hasError()) return reply()
                 def nextNum = ec.service.sync().name('zenith.pos.KotServices.next#KotNumber').call()?.kotNumber
                 if (!nextNum) return reply()
@@ -296,7 +296,7 @@
                 // replacing a resumed draft => delete the old one first
                 def draftReceipt=ec.service.sync().name('zenith.pos.KitchenPrintServices.get#CartReceipt')
                     .parameters([sessionId:ec.context.sessionId,itemsJson:ec.context.itemsJson,tableId:tableIdVal,orderType:ec.context.orderType,
-                                 taxOn:ec.context.taxOn ?: 'Y',salesModeId:ec.context.salesModeId,waiterId:ec.context.waiterId,customerPartyId:ec.context.customerPartyId,notes:ec.context.notes]).call()?.receipt
+                                 taxOn:ec.context.taxOn ?: 'Y',salesModeId:ec.context.salesModeId,waiterId:ec.context.waiterId,customerPartyId:ec.context.customerPartyId,notes:ec.context.notes,lockDiscountMode:true]).call()?.receipt
                 if(ec.message.hasError()) return reply()
                 if (draft) {
                     ec.entity.find('zenith.erp.pos.KotItem').condition('kotId', exId).deleteAll()
