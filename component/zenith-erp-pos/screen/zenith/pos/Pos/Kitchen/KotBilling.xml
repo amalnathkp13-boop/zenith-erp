@@ -967,8 +967,8 @@
   <#if modCanWrite><dialog id="kb-print-choice" class="zk-history-view" aria-labelledby="kb-print-title">
     <h2 id="kb-print-title">Payment complete</h2><p id="kb-print-summary"></p>
     <div class="zk-history-actions kb-print-options" role="group" aria-label="Print options">
-      <button type="button" class="kb-control" data-kb-print="kot">KOT Print</button>
       <button type="button" class="kb-control" data-kb-print="bill">Bill Print</button>
+      <button type="button" class="kb-control" data-kb-print="kot">KOT Print</button>
       <button type="button" class="kb-control" data-kb-print="both">Print both</button>
     </div>
     <p id="kb-print-error" role="alert"></p><button type="button" class="kb-control" id="kb-print-close">Done</button>
