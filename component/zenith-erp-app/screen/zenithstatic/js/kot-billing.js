@@ -11,6 +11,8 @@
   const paymentButtons=Array.from(root.querySelectorAll('[data-kb-payment]'));
   const cartRows=$('cart'), editError=$('edit-error');
   const cfg=$('data').dataset;
+  const deviceDrafts=$('offline') && window.KotOfflineDrafts?.createStore(cfg.org,cfg.terminal,cfg.user);
+  const disconnected=()=>cfg.kotModule==='kot' && !navigator.onLine;
   const shell=location.pathname.startsWith('/qapps/')?'/qapps':'/apps';
   const billingPath='/zenith'+(cfg.kotModule==='kot'?'/kot':'/pos/Kitchen')+'/KotBilling';
   const base=shell+billingPath;
@@ -27,15 +29,25 @@
   let customer=JSON.parse(cfg.draftcustomer||'{}'), custVersion=0, custTimer, custAbort;
   let invalidEdit, pendingTender, sessionLost=false, completedKotId='';
   let historyTender, paymentAmount;
+  let unconfirmedOrder=false;
   const signInMessage='Sign in again to continue billing.';
+  const unconfirmedMessage='The last order submission could not be confirmed. Check Order History after reconnecting before saving it again.';
   if(cfg.draftmode && Array.from($('mode').options).some(o=>o.value===cfg.draftmode)) salesModeId=$('mode').value=cfg.draftmode;
   if(cfg.draftwaiter) $('waiter').value=cfg.draftwaiter;
   $('table').value=cfg.drafttable||cfg.selectedTable||'';
 
   async function request(action,data,signal) {
     if(sessionLost)throw Error(signInMessage);
-    const response=await fetch(base+'/'+action,{method:'POST',credentials:'same-origin',signal,
-      body:new URLSearchParams({...data,sessionId:cfg.session,moquiSessionToken:token()})});
+    const createsOrder=deviceDrafts&&!draftId&&(action==='createKot'||(action==='saveDraft'&&!data.offlineDraftId));
+    let response;
+    try {
+      response=await fetch(base+'/'+action,{method:'POST',credentials:'same-origin',signal,
+        body:new URLSearchParams({...data,sessionId:cfg.session,moquiSessionToken:token()})});
+    } catch (error) {
+      if(!createsOrder)throw error;
+      unconfirmedOrder=true;
+      throw Error(unconfirmedMessage);
+    }
     if(response.status===401||/\/Login\/?$/i.test(new URL(response.url,location.href).pathname)) {
       if(root.isConnected&&!sessionLost) {
         sessionLost=true;
@@ -46,6 +58,10 @@
       throw Error(signInMessage);
     }
     const result=await response.json().catch(()=>null);
+    if(createsOrder&&(response.status>=500||!result)) {
+      unconfirmedOrder=true;
+      throw Error(unconfirmedMessage);
+    }
     if(!response.ok||!result?.success) throw Error(result?.error||'The request could not be completed. Check your connection and try again.');
     return result;
   }
@@ -56,7 +72,7 @@
       const response=await fetch('/apps'+billingPath+'?sessionId='+encodeURIComponent(cfg.session),{cache:'no-store'});
       const page=new DOMParser().parseFromString(await response.text(),'text/html');
       const fresh=page.getElementById('kb-data')?.dataset, freshToken=page.getElementById('kb-token')?.value;
-      if(!response.ok||!freshToken||fresh?.session!==cfg.session||fresh.user!==cfg.user||
+      if(!response.ok||!freshToken||fresh?.session!==cfg.session||fresh.user!==cfg.user||fresh.org!==cfg.org||fresh.terminal!==cfg.terminal||
           page.getElementById('kb-search')?.disabled!==search.disabled) {
         $('session-message').textContent='Sign in with the same account and shop, then try Resume billing again.';
         return;
@@ -100,23 +116,27 @@
     b.textContent=on?'Tax: ON':'Tax: OFF';b.classList.toggle('is-on',on);b.setAttribute('aria-checked',on);
   }
   function controls() {
-    const canPay=!busy&&!sessionLost&&cart.size>0&&total!==null&&editError.hidden;
+    const online=!disconnected();
+    const canPay=!busy&&!sessionLost&&!unconfirmedOrder&&online&&cart.size>0&&total!==null&&editError.hidden;
     for(const button of paymentButtons) {
-      button.disabled=busy||sessionLost||!cart.size;
+      button.disabled=busy||sessionLost||unconfirmedOrder||!online||!cart.size;
       button.setAttribute('aria-disabled',String(!canPay));
     }
     $('clear').disabled=busy||!cart.size;
-    if($('close-session')) $('close-session').disabled=busy||sessionLost;
+    if($('close-session')) $('close-session').disabled=busy||sessionLost||!online;
+    if($('offline-save')) $('offline-save').disabled=!deviceDrafts||busy||unconfirmedOrder||!!draftId||!cart.size||cart.size>100||!editError.hidden;
+    if($('offline-held')) $('offline-held').disabled=!online||sessionLost||busy;
     for(const id of ['draft','bill']) if($(id)) $(id).disabled=!canPay;
     if($('send')) {
       const displayDisabled=cfg.displayEnabled==='false';
       root.classList.toggle('kb-display-disabled',displayDisabled);
       $('send').style.display=displayDisabled?'none':'';
-      $('send').disabled=busy||sessionLost||!cart.size||displayDisabled||!editError.hidden;
+      $('send').disabled=busy||sessionLost||unconfirmedOrder||!online||!cart.size||displayDisabled||!editError.hidden;
       $('send').title=displayDisabled?'Kitchen Display is disabled for this shop. Use KOT printing.':'Press Shift by itself';
     }
   }
   function resetOrder() {
+    unconfirmedOrder=false;
     cart.clear();
     browsePage=null;
     setEditError('');
@@ -124,6 +144,62 @@
     $('badge').textContent='New KOT';$('instr').value='';
     renderCustomer();
     quote();
+  }
+  function renderDeviceDrafts() {
+    const list=$('offline-list');
+    try {
+      if(!deviceDrafts) throw Error('Offline drafts are unavailable in this browser.');
+      const drafts=deviceDrafts.list();
+      list.innerHTML=drafts.length?drafts.map(draft=>'<li class="q-mb-sm"><span>'+esc(KotOfflineDrafts.describe(draft))+
+        '</span> <button class="kb-control" type="button" data-kb-sync-draft="'+draft.id+'"'+
+        (busy||disconnected()||sessionLost?' disabled':'')+'>Sync</button> <button class="kb-control" type="button" data-kb-discard-draft="'+
+        draft.id+'"'+(busy?' disabled':'')+'>Discard</button></li>').join(''):'<li>No drafts saved on this device for this counter.</li>';
+    } catch {
+      list.innerHTML='<li>This browser could not read its saved drafts.</li>';
+    }
+  }
+  function saveDeviceDraft() {
+    const status=$('offline-status');
+    try {
+      deviceDrafts.save(orderData());
+      resetOrder();
+      renderDeviceDrafts();
+      status.textContent='Order saved on this device.';
+    } catch {
+      status.textContent='Could not save on this device. Your current order is still open.';
+    }
+  }
+  function discardDeviceDraft(id) {
+    if(!confirm('Discard this draft from this device?'))return;
+    try {
+      deviceDrafts.remove(id);
+      renderDeviceDrafts();
+      $('offline-status').textContent='Draft removed from this device.';
+    } catch {
+      $('offline-status').textContent='Could not remove the draft from this device.';
+    }
+  }
+  async function syncDeviceDraft(id) {
+    const status=$('offline-status');
+    const identity={offlineDraftId:id,offlineOrganizationId:cfg.org,offlineTerminalId:cfg.terminal,offlineUserId:cfg.user};
+    busy=true;controls();renderDeviceDrafts();
+    status.textContent='Syncing draft…';
+    try {
+      const draft=deviceDrafts.read(id);
+      if(!draft) throw Error('This draft is no longer on this device.');
+      const signal=AbortSignal.timeout?.(12000);
+      const saved=await request('saveDraft',{...draft.order,...identity,wantJson:'Y'},signal);
+      const receipt=await request('confirmOfflineDraft',identity,signal);
+      if(saved.offlineDraftId!==id||receipt.offlineDraftId!==id||!receipt.kotId||receipt.kotId!==saved.kotId)
+        throw Error('The server did not confirm this draft.');
+      deviceDrafts.remove(id);
+      refreshOpenHistory();
+      status.textContent='Draft #'+receipt.kotNumber+' synced to Held Orders.';
+    } catch(error) {
+      status.textContent=(error.name==='TimeoutError'?'The server took too long to respond.':error.message)+' Refresh or retry without creating another order.';
+    } finally {
+      busy=false;controls();renderDeviceDrafts();
+    }
   }
   function renderCustomer() {
     const label=$('customer-name');
@@ -220,10 +296,10 @@
     listTotals(cart.size?null:{});
     $('quote-error').textContent='';
     $('tax-rows').replaceChildren();
-    $('grand').textContent=cart.size?(sessionLost?'Sign in to price':'Calculating…'):money.format(0);
+    $('grand').textContent=cart.size?(sessionLost?'Sign in to price':disconnected()?'Offline':'Calculating…'):money.format(0);
     if(!cart.size){$('subtotal').textContent=money.format(0);return;}
     $('subtotal').textContent='—';
-    if(sessionLost)return;
+    if(sessionLost||disconnected())return;
     quoteTimer=setTimeout(async()=>{
       try{
         const {receipt}=await request('cartReceipt',orderData());
@@ -532,7 +608,7 @@
   });
 
   function openPayment(method='Cash', order=null) {
-    if(!$('bill')||busy||sessionLost||$('payment').open||(!order&&$('bill').disabled))return;
+    if(!$('bill')||busy||sessionLost||disconnected()||$('payment').open||(!order&&$('bill').disabled))return;
     $('payment-form').reset();
     historyTender=order;
     paymentAmount=order?.total??total;
@@ -601,9 +677,28 @@
       for(const button of root.querySelectorAll('[data-kb-print]'))button.disabled=false;
     }
   }
+  async function holdOrder() {
+    busy=true;controls();
+    const status=$('order-status');
+    try {
+      const saved=await request('saveDraft',{...orderData(),existingDraftId:draftId,wantJson:'Y'});
+      resetOrder();
+      refreshOpenHistory();
+      status.textContent='Saved as Draft #'+saved.kotNumber+'.';
+    } catch(error) {
+      status.textContent=error.message;
+    } finally {
+      busy=false;controls();
+    }
+  }
   async function pay(e) {
     e.preventDefault();
+    if(disconnected()) {
+      $('payment-error').textContent='Reconnect before taking payment.';
+      return;
+    }
     const existingOrder=historyTender;
+    if(!existingOrder&&unconfirmedOrder)return;
     const confirmedTotal=paymentAmount;
     if(busy||sessionLost||!$('payment-method').value||confirmedTotal===null||(!existingOrder&&total!==confirmedTotal))return;
     const form=e.currentTarget, cash=$('payment-method').value==='Cash';
@@ -722,10 +817,21 @@
     else if(button.dataset.kbPayment)openPayment(button.dataset.kbPayment);
     else if(button.id==='kb-fullscreen')toggleFullscreen();
     else if(button.id==='kb-close-session')openSessionClose();
-    else if(button.id==='kb-clear'&&confirm('Clear the unsent items from this order?')){cart.clear();setEditError('');quote();}
+    else if(button.id==='kb-clear'&&confirm('Clear the unsent items from this order?')){cart.clear();unconfirmedOrder=false;setEditError('');quote();}
     else if(button.id==='kb-history-open'||button.id==='kb-history-retry')showHistory();
+    else if(button.id==='kb-offline-open'){
+      $('offline-status').textContent=unconfirmedOrder?unconfirmedMessage:draftId?'This held order is already saved on the server.':'';
+      controls();renderDeviceDrafts();$('offline').showModal();
+    }
+    else if(button.id==='kb-offline-save')saveDeviceDraft();
+    else if(button.id==='kb-offline-close')$('offline').close();
+    else if(button.id==='kb-offline-held'){
+      $('offline').close();$('history-status').value='draft';showHistory();
+    }
+    else if(button.dataset.kbSyncDraft)syncDeviceDraft(button.dataset.kbSyncDraft);
+    else if(button.dataset.kbDiscardDraft)discardDeviceDraft(button.dataset.kbDiscardDraft);
     else if(button.dataset.kbBillOrder){
-      if(sessionLost)return;
+      if(sessionLost||disconnected())return;
       $('history').close();
       openPayment('',{id:button.dataset.kbBillOrder,total:Number(button.dataset.kbBillTotal)});
     }
@@ -733,8 +839,11 @@
     else if(button.id==='kb-bill')openPayment();
     else if(button.id==='kb-send')sendToKitchen();
     else if(button.id==='kb-draft'){
-      busy=true;controls();
-      post('saveDraft',{...orderData(),existingDraftId:draftId});
+      if(deviceDrafts)holdOrder();
+      else {
+        busy=true;controls();
+        post('saveDraft',{...orderData(),existingDraftId:draftId});
+      }
     }
     else if(button.classList.contains('pos-cash-quick')){
       const slot=$('cash-slot');
@@ -857,6 +966,19 @@
   }
   if(draftId){$('badge').textContent='Editing Held Order';$('instr').value=cfg.draftinstr||'';}
   updateHeader();setType(orderType);paintTax();renderCustomer();quote();
+  if(cfg.kotModule==='kot') {
+    const updateConnection=()=>{
+      if(!root.isConnected){
+        window.removeEventListener('online',updateConnection);
+        window.removeEventListener('offline',updateConnection);
+        return;
+      }
+      updateHeader();quote(false);
+      if($('offline')?.open)renderDeviceDrafts();
+    };
+    window.addEventListener('online',updateConnection);
+    window.addEventListener('offline',updateConnection);
+  }
   if($('send')) {
     const keepSessionOpen=()=>{
       if(!root.isConnected) {

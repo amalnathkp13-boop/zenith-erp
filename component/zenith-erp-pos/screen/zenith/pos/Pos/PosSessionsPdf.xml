@@ -11,11 +11,17 @@
         <script>context.zinr = com.zenith.Fmt.INSTANCE</script>
         <script><![CDATA[
             generatedStr = ec.l10n.format(ec.user.nowTimestamp, 'dd MMM yyyy HH:mm')
-            def _org = ec.user.getPreference('ACTIVE_ORGANIZATION')
+            boolean kot = kitchenModuleId == 'kot'
+            sessionReportTitle = kot ? 'KOT Sessions' : 'POS Sessions'
+            def _org = kot ? (_printAccess.organizationPartyId ?: '__NO_ORGANIZATION__') : ec.user.getPreference('ACTIVE_ORGANIZATION')
             def _activeShop = null; try { def _sc = ec.service.sync().name("zenith.base.ShopServices.get#ActiveShopScope").call(); _activeShop = _sc?.activeShopId } catch (Exception _e) {}
             def ef = ec.entity.find("zenith.erp.pos.PosSessionView").orderBy("-openDate").limit(1000)
             if (_org && _org != '_NA_') ef.condition("organizationPartyId", _org)
             if (_activeShop) ef.condition("facilityId", _activeShop)
+            if (kot && _printAccess.terminalRestricted) {
+                ef.condition("terminalId", "in", _printAccess.allowedTerminalIds ?: ['__NONE__'])
+                ef.condition("operatorPartyId", ec.user.userAccount?.partyId ?: '__NONE__')
+            }
             def raw = ef.list()
             def num = { v -> ec.l10n.format((v ?: 0) as BigDecimal, '#,##0.00') }
             def dt = { v -> v == null ? '' : ec.l10n.format(v, 'dd-MM-yyyy HH:mm') }
@@ -47,7 +53,7 @@
     </fo:layout-master-set>
     <fo:page-sequence master-reference="a4l">
         <fo:flow flow-name="xsl-region-body">
-            <fo:block font-size="16pt" font-weight="bold" color="#111827">POS Sessions</fo:block>
+            <fo:block font-size="16pt" font-weight="bold" color="#111827">${sessionReportTitle}</fo:block>
             <fo:block font-size="8pt" color="#6B7280" space-before="1mm" space-after="4mm">Generated: ${generatedStr} &#8226; ${rowCountStr} sessions &#8226; amounts in Rs.</fo:block>
             <fo:table table-layout="fixed" width="100%">
                 <fo:table-column column-width="proportional-column-width(1.1)"/>

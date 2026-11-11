@@ -10,6 +10,8 @@
     <transition name="saveAssignment" method="post" begin-transaction="true">
         <actions>
             <if condition="!ec.web.parameters.moquiSessionToken || ec.web.parameters.moquiSessionToken != ec.web.sessionToken"><return error="true" message="Submit the assignment form with a valid session token."/></if>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:kitchenModuleId ?: 'pos']" out-map="_writeAccess"/>
+            <if condition="_writeAccess.canWrite != true"><return error="true" message="Module write access is required to assign a terminal."/></if>
             <service-call name="zenith.pos.PosAccessServices.save#TerminalAssignment" in-map="[userId:userId,terminalId:terminalId]"/>
         </actions><default-response url="."/>
     </transition>
@@ -18,8 +20,8 @@
         <actions>
             <!-- Let Quasar resolve the form target; enforce POST and CSRF before every write. -->
             <if condition="ec.web.request.method != 'POST' || !ec.web.parameters.moquiSessionToken || ec.web.parameters.moquiSessionToken != ec.web.sessionToken"><return error="true" message="Submit the terminal form with a valid session token."/></if>
-            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'pos']" out-map="_writeAccess"/>
-            <if condition="_writeAccess.canWrite != true"><return error="true" message="POS write access is required to create a terminal."/></if>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:kitchenModuleId ?: 'pos']" out-map="_writeAccess"/>
+            <if condition="_writeAccess.canWrite != true"><return error="true" message="Module write access is required to create a terminal."/></if>
             <!-- Pos.xml has already verified active-org membership and the submitted facility.
                  Reject a forged organization field, including for an admin with an active org. -->
             <if condition="organizationPartyId &amp;&amp; organizationPartyId != posOrganizationPartyId"><return error="true" message="The selected organization does not match your active organization."/></if>
@@ -37,8 +39,8 @@
         <actions>
             <!-- Let Quasar resolve the form target; enforce POST and CSRF before every write. -->
             <if condition="ec.web.request.method != 'POST' || !ec.web.parameters.moquiSessionToken || ec.web.parameters.moquiSessionToken != ec.web.sessionToken"><return error="true" message="Submit the terminal form with a valid session token."/></if>
-            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'pos']" out-map="_writeAccess"/>
-            <if condition="_writeAccess.canWrite != true"><return error="true" message="POS write access is required to edit a terminal."/></if>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:kitchenModuleId ?: 'pos']" out-map="_writeAccess"/>
+            <if condition="_writeAccess.canWrite != true"><return error="true" message="Module write access is required to edit a terminal."/></if>
             <entity-find-one entity-name="zenith.erp.pos.PosTerminal" value-field="_existingTerminal">
                 <field-map field-name="terminalId" from="terminalId"/>
             </entity-find-one>
@@ -67,7 +69,7 @@
         <default-response url="."/>
     </transition>
     <actions>
-        <set field="activeOrgId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
+        <set field="activeOrgId" from="posOrganizationPartyId ?: ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
         <set field="hasActiveOrg" from="activeOrgId != null &amp;&amp; activeOrgId != '_NA_'"/>
         <entity-find entity-name="zenith.erp.pos.PosTerminal" list="terminalList">
             <!-- ZE-POS-TERM-VIS: explicit org scope (belt-and-suspenders with ZTF_POSTERMINAL). -->
@@ -111,7 +113,7 @@
             <!-- Page header: title + subtitle (left), Add Terminal solid CTA (right) -->
             <container style="zsec-hdr row items-center justify-between q-mb-lg">
                 <container style="column">
-                    <label text="POS Terminals" type="h3" style="text-primary text-weight-bold q-my-none"/>
+                    <label text="${kitchenModuleId == 'kot' ? 'KOT Terminals' : 'POS Terminals'}" type="h3" style="text-primary text-weight-bold q-my-none"/>
                     <label text="Manage and configure all POS terminals in your outlet" type="p" style="text-grey-7 q-mt-sm q-mb-none"/>
                     <label text="Invoice seller: ${invoiceSeller?.organizationName ?: activeOrgId ?: 'No organization selected'}. A facility selection does not change the legal seller or GSTIN." type="p" style="text-grey-7 q-mt-xs q-mb-none"/>
                 </container>
@@ -134,10 +136,10 @@
                         </form-single>
                     </container-dialog>
                 </container>
-                <render-mode><text type="html,qvt"><![CDATA[
+                <render-mode><text type="html,qvt" template="true"><![CDATA[
                     <details class="pos-terminals-reference__menu">
                       <summary aria-label="More terminal options"><span class="material-icons">expand_more</span></summary>
-                      <div><a href="#pos-terminals-table">View terminals</a><a href="/apps/zenith/pos/PosTerminals">Refresh list</a></div>
+                      <div><a href="#pos-terminals-table">View terminals</a><a href="${sri.buildUrl('.').url?html}">Refresh list</a></div>
                     </details>
                 ]]></text></render-mode>
                 </container>
@@ -192,11 +194,15 @@
             <container style="zenith-card bg-white q-pa-md q-mb-lg">
                 <label text="Billing login assignments" type="h4"/>
                 <label text="Only administrators assign terminals. Billing logins are locked to the assigned terminal and its shop. Close the user's sessions before reassigning." type="p"/>
-                <form-single name="AssignTerminalForm" transition="saveAssignment">
-                    <field name="userId"><default-field title="Billing login"><drop-down><list-options list="assignmentUsers" key="${userId}" text="${username}"/></drop-down></default-field></field>
-                    <field name="terminalId"><default-field title="Assigned terminal"><drop-down allow-empty="true"><list-options list="terminalList" key="${terminalId}" text="${terminalName ?: terminalId}"/></drop-down></default-field></field>
-                    <field name="submitButton"><default-field><submit text="Save terminal assignment"/></default-field></field>
-                </form-single>
+                <section name="AssignTerminalWrite" condition="modCanWrite">
+                    <widgets>
+                        <form-single name="AssignTerminalForm" transition="saveAssignment">
+                            <field name="userId"><default-field title="Billing login"><drop-down><list-options list="assignmentUsers" key="${userId}" text="${username}"/></drop-down></default-field></field>
+                            <field name="terminalId"><default-field title="Assigned terminal"><drop-down allow-empty="true"><list-options list="terminalList" key="${terminalId}" text="${terminalName ?: terminalId}"/></drop-down></default-field></field>
+                            <field name="submitButton"><default-field><submit text="Save terminal assignment"/></default-field></field>
+                        </form-single>
+                    </widgets>
+                </section>
                 <form-list name="TerminalAssignmentList" list="assignmentRows" skip-form="true">
                     <field name="username"><default-field title="Billing login"><display/></default-field></field>
                     <field name="terminalName"><default-field title="Assigned terminal"><display/></default-field></field>

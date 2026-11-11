@@ -43,6 +43,7 @@
                     // hundreds of unrelated actions and makes first-time role creation unresponsive.
                     ec.screen.getScreenDefinition(mod.location).subscreensItemsSorted.each { child ->
                         if (id == 'pos' && !posTabs.contains(child.name)) return
+                        if (id == 'kot' && child.name in ['EditSession','PosSessionsPdf','EditTransaction','ReceiptPdf']) return
                         screens.add([id:'/' + mod.name + '/' + child.name,
                             name:child.menuTitle ?: child.name, location:child.location])
                     }
@@ -233,10 +234,16 @@
                     if (selections.pos.contains('/pos/' + tab) && !selections.pos.contains(route)) selections.pos.add(route)
                 }
             }
+            if (selections.kot) {
+                [EditSession:'PosSessions', PosSessionsPdf:'PosSessions', EditTransaction:'PosTransactions',
+                 ReceiptPdf:'PosTransactions'].each { screen, tab ->
+                    if (selections.kot.contains('/kot/' + tab)) selections.kot.add('/kot/' + screen)
+                }
+            }
             // Preserve saved Kitchen access for roles created before KOT had its own module.
             if ((selections.pos ?: []).contains('/pos/Kitchen')) {
-                def kotScreen = ec.screen.getScreenDefinition('component://zenith-erp-pos/screen/zenith/pos/Kot.xml')
-                selections.kot = ((selections.kot ?: []) + kotScreen.subscreensItemsSorted.collect { '/kot/' + it.name }).unique()
+                def kitchenTabs = ['KotDashboard','KitchenDisplay','KotBilling','Tables','KotHistory','WaiterManagement']
+                selections.kot = ((selections.kot ?: []) + kitchenTabs.collect { '/kot/' + it }).unique()
             }
             def builtin = groups.findAll { it != 'ZENITH_ALL' && !it.startsWith('ZENITH_ORG_') }
             if (builtin) {
@@ -259,7 +266,7 @@
             def uri = (ec.web?.request?.requestURI ?: '').replaceFirst(/^\/menuData(?=\/(apps|qapps)\/zenith(?:\/|$))/, '')
             // Quasar fetches the shell template before fetching the selected child screen.
             if (uri ==~ /\/(apps|qapps)\/zenith\.qvt/) return
-            def match = uri =~ /^\/(?:qapps|apps|fop)\/zenith(\/[^?]*)?$/
+            def match = uri =~ /^\/(?:qapps|apps|fop(?:\/apps)?)\/zenith(\/[^?]*)?$/
             if (!match.matches()) { allowed = false; return }
             def route = (match[0][1] ?: '').replaceFirst(/\.(qvt|vuet|html|pdf)$/, '')
             def mod = route.tokenize('/').find()?.toLowerCase()
@@ -290,7 +297,7 @@
                     (uri == '/rest/s1/mantle/my/userOrgInfo' && ec.web.request.method == 'GET'))) {
                 authzTypeEnumId = 'AUTHZT_ALLOW'; return
             }
-            def match = uri =~ /^\/(?:qapps|apps|fop)\/zenith(\/[^?]*)?$/
+            def match = uri =~ /^\/(?:qapps|apps|fop(?:\/apps)?)\/zenith(\/[^?]*)?$/
             if (!match.matches()) return
             def route = (match[0][1] ?: '').replaceFirst(/\.(qvt|vuet|html|pdf)$/, '')
             def mod = route.tokenize('/').find()?.toLowerCase()

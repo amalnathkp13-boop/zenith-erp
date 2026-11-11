@@ -93,7 +93,8 @@
                 def facilityId=billing?.terminal?.facilityId ?: selected.table?.facilityId
                 if(billing && selected.table && selected.table.facilityId!=facilityId) { ec.message.addError('Choose a table at this terminal shop.'); return }
                 def tpl=templates.find { facilityId && it.facilityId==facilityId } ?: templates.find { !it.facilityId }
-                def state=tpl?.taxRegistrationNumber?.size()==15 ? tpl.taxRegistrationNumber.substring(0,2) : null
+                def receiptTaxReg=tpl?.taxRegistrationNumber ?: ''
+                def state=receiptTaxReg.size()==15 ? receiptTaxReg.substring(0,2) : null
                 if(!state) {
                     def terminals=ec.entity.find('zenith.erp.pos.PosTerminal').condition('organizationPartyId',scope.organizationPartyId).condition('isActive','Y')
                     if(facilityId)terminals.condition('facilityId',facilityId)
@@ -112,6 +113,10 @@
                         total:(ti?.taxableAmount != null ? ti.taxableAmount : row.price*row.qty-row.discount),tax:(ti?.totalTaxAmount ?: 0),discount:row.discount,
                         uom:['OTH_ea':'Nos','WT_kg':'kg','WT_g':'g','VLIQ_L':'L','VLIQ_ml':'ml'][row.product.amountUomId] ?: ''])
                 }
+                // Use the printer's design only for presentation; tax origin comes from the shop template above.
+                if (moduleId == 'kot' && billing?.terminal)
+                    tpl = ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#TerminalPrintTemplate')
+                        .parameter('terminalId',billing.terminal.terminalId).call().template ?: tpl
                 def party=ec.entity.find('mantle.party.Organization').condition('partyId',scope.organizationPartyId).one()
                 def person=ec.entity.find('mantle.party.Person').condition('partyId',ec.user.userAccount?.partyId).one()
                 def options=ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#ReceiptOptions')
@@ -122,7 +127,7 @@
                 def payable=grand.setScale(0,java.math.RoundingMode.HALF_UP)
                 receipt=[success:true,preview:true,store:[name:tpl?.companyName ?: party?.organizationName ?: 'Store',
                     address:tpl ? [tpl.addressLine1,tpl.addressLine2,tpl.city,tpl.state,tpl.pincode].findAll{it}.join(', ') : '',
-                    phone:tpl?.phone ?: '',email:tpl?.email ?: '',taxReg:tpl?.taxRegistrationNumber ?: '',receiptWidth:tpl?.receiptWidth ?: '80mm',
+                    phone:tpl?.phone ?: '',email:tpl?.email ?: '',taxReg:receiptTaxReg,receiptWidth:tpl?.receiptWidth ?: '80mm',
                     headerText:tpl?.headerText ?: '',footerText:tpl?.footerText ?: '',termsText:tpl?.termsText ?: '',
                     showLogo:tpl?.showLogo ?: 'N',logoUrl:tpl?.logoUrl ?: '',showTaxBreakdown:tpl?.showTaxBreakdown ?: 'Y',
                     showDiscount:tpl?.showDiscount ?: 'Y',showCustomerInfo:tpl?.showCustomerInfo ?: 'Y',showPaymentDetails:'N',showItemTax:tpl?.showItemTax ?: 'N'],
@@ -151,7 +156,8 @@
                 if(kind in ['bill','orderBill']) {
                     def tx=k.transactionId ? ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',k.transactionId)
                         .condition('organizationPartyId',scope.organizationPartyId).condition('statusId','PtCompleted').one() : null
-                    if(tx && tx.transactionNumber) record=ec.service.sync().name('zenith.pos.PosServices.get#PosReceiptData').parameter('transactionId',tx.transactionId).call().receipt
+                    if(tx && tx.transactionNumber) record=ec.service.sync().name('zenith.pos.PosServices.get#PosReceiptData')
+                        .parameters([transactionId:tx.transactionId,useTerminalPrintTemplate:moduleId=='kot']).call().receipt
                     else if(kind=='orderBill' && k.orderReceiptJson) {
                         record=new groovy.json.JsonSlurper().parseText(k.orderReceiptJson)
                         for(def item in record.items ?: []) {

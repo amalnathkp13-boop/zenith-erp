@@ -1803,6 +1803,7 @@
     <service verb="get" noun="PosReceiptData">
         <in-parameters>
             <parameter name="transactionId" required="true"/>
+            <parameter name="useTerminalPrintTemplate" type="Boolean" default="false"/>
         </in-parameters>
         <out-parameters>
             <parameter name="receipt" type="Map"/>
@@ -1822,6 +1823,10 @@
                 def rTplList = ec.entity.find("zenith.erp.pos.PosReceiptTemplate")
                     .condition("organizationPartyId",txn.organizationPartyId).condition("isActive","Y").orderBy("-isDefault,templateId").list()
                 def rTpl = rTplList.find { it.facilityId && it.facilityId==terminal?.facilityId } ?: rTplList.find { !it.facilityId }
+                def receiptTaxReg = rTpl?.taxRegistrationNumber ?: terminal?.taxRegistrationNumber ?: ''
+                if (useTerminalPrintTemplate && terminal)
+                    rTpl = ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#TerminalPrintTemplate')
+                        .parameter('terminalId',terminal.terminalId).call().template ?: rTpl
                 def isRevised = ec.entity.find('zenith.erp.pos.PosTransactionAmendment').condition('transactionId',rTxId).count() > 0
                 def receiptDesign = isRevised ? 'revised' : (txn.isCredit == 'Y' ? 'credit' : '')
                 def receiptText = { key ->
@@ -1844,7 +1849,7 @@
                 }
                 receipt = [success:true, action:'receiptData',
                     store:[name:storeName, address:storeAddr, phone:rTpl?.phone ?: '', email:rTpl?.email ?: '',
-                        taxReg:rTpl?.taxRegistrationNumber ?: terminal?.taxRegistrationNumber ?: '',
+                        taxReg:receiptTaxReg,
                         headerText:receiptText('headerText'), footerText:receiptText('footerText'), termsText:receiptText('termsText'),receiptWidth:rTpl?.receiptWidth ?: '80mm',
                         showLogo:rTpl?.showLogo ?: 'N',logoUrl:rTpl?.logoUrl ?: '',showTaxBreakdown:rTpl?.showTaxBreakdown ?: 'Y',
                         showDiscount:rTpl?.showDiscount ?: 'Y',showCustomerInfo:rTpl?.showCustomerInfo ?: 'Y',

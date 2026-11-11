@@ -5,9 +5,9 @@
 
     <transition name="createTemplate" method="post" begin-transaction="true">
         <actions>
-            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'pos']" out-map="_receiptWrite"/>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:(kitchenModuleId ?: 'pos')]" out-map="_receiptWrite"/>
             <if condition="!_receiptWrite.canWrite"><return error="true" message="Receipt settings are view-only."/></if>
-            <set field="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
+            <set field="organizationPartyId" from="posOrganizationPartyId"/>
             <if condition="!organizationPartyId || organizationPartyId == '_NA_'"><return error="true" message="Choose your organization before creating a template."/></if>
             <if condition="receiptWidth &amp;&amp; !['58mm','80mm'].contains(receiptWidth)"><return error="true" message="Choose a supported receipt width."/></if>
             <if condition="!templateName?.trim() || !companyName?.trim()"><return error="true" message="Template name and company name are required."/></if>
@@ -22,9 +22,9 @@
     </transition>
 
     <actions>
-        <entity-find entity-name="mantle.facility.Facility" list="receiptFacilities"><econdition field-name="ownerPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION') ?: '__NONE__'"/><order-by field-name="facilityName"/></entity-find>
+        <entity-find entity-name="mantle.facility.Facility" list="receiptFacilities"><econdition field-name="ownerPartyId" from="posOrganizationPartyId ?: '__NONE__'"/><order-by field-name="facilityName"/></entity-find>
         <entity-find entity-name="zenith.erp.pos.PosReceiptTemplate" list="templateList">
-            <econdition field-name="organizationPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
+            <econdition field-name="organizationPartyId" from="posOrganizationPartyId ?: '__NO_ORGANIZATION__'"/>
             <order-by field-name="templateName"/>
         </entity-find>
         <script><![CDATA[
@@ -48,7 +48,7 @@
                     <container style="z-icobadge lg primary q-mr-md"><label text="description" type="span" style="material-icons"/></container>
                     <container style="column">
                         <label text="Create Receipt Template" type="h3" style="text-primary text-weight-bold q-my-none"/>
-                        <label text="Set up and customize your receipt template for printing at the POS." type="p" style="text-grey-7 q-mt-sm q-mb-none"/>
+                        <label text="Set up and customize your receipt template for printing at the billing counter." type="p" style="text-grey-7 q-mt-sm q-mb-none"/>
                     </container>
                 </container>
             </container>
@@ -61,7 +61,7 @@
                         <container style="z-statmeta">
                             <label text="Total Templates" type="span" style="z-statlabel"/>
                             <label text="${totalTemplates ?: 0}" type="span" style="z-statnum z-txt-primary"/>
-                            <label text="Across all companies" type="span" style="z-statdesc"/>
+                            <label text="In your organization" type="span" style="z-statdesc"/>
                         </container>
                     </container>
                 </container>

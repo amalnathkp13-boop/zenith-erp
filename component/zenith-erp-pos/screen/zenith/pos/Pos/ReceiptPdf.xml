@@ -10,6 +10,13 @@
         <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[transactionId:transactionId]" out-map="_printAccess"/>
         <if condition="!_printAccess.allowed"><script>throw new org.moqui.context.ArtifactAuthorizationException('POS print access denied.')</script></if>
 
+        <if condition="kitchenModuleId == 'kot'">
+            <entity-find-count entity-name="zenith.erp.pos.KitchenOrderTicket" count-field="_kotTicketCount">
+                <econdition field-name="transactionId" from="transactionId"/>
+                <econdition field-name="organizationPartyId" from="_printAccess.organizationPartyId ?: '__NO_ORGANIZATION__'"/>
+            </entity-find-count>
+            <if condition="!_kotTicketCount"><script>throw new org.moqui.context.ArtifactAuthorizationException('KOT transaction not found.')</script></if>
+        </if>
         <!-- ZE-INR: this screen is standalone="true" (renders OUTSIDE ZenithApp), so it does NOT inherit the
              shared `zinr` regrouper set in ZenithApp pre-actions. Set it locally so the zinr.inr(...) calls
              below (and in the template) work — otherwise the receipt NPEs and POS printing breaks. -->
@@ -34,6 +41,13 @@
         </entity-find>
         <set field="rTpl" from="receiptTemplates.find { it.facilityId &amp;&amp; it.facilityId==terminal?.facilityId } ?: receiptTemplates.find { !it.facilityId }"/>
 
+        <set field="taxReg" from="rTpl?.taxRegistrationNumber ?: terminal?.taxRegistrationNumber ?: ''"/>
+        <if condition="kitchenModuleId == 'kot' &amp;&amp; terminal">
+            <service-call name="zenith.pos.ReceiptTemplateServices.resolve#TerminalPrintTemplate"
+                          in-map="[terminalId:terminal.terminalId]" out-map="_printTemplate"/>
+            <set field="rTpl" from="_printTemplate.template ?: rTpl"/>
+        </if>
+
         <service-call name="zenith.tax.TaxServices.get#TaxSummary" in-map="[referenceType:'PosTransactionItem',referenceId:transactionId]" out-map="receiptTaxSummary"/>
         <!-- Operator name -->
         <script><![CDATA[
@@ -52,7 +66,6 @@
             storeName = rTpl?.companyName ?: terminal?.terminalName ?: 'Store'
             storePhone = rTpl?.phone ?: ''
             storeEmail = rTpl?.email ?: ''
-            taxReg = rTpl?.taxRegistrationNumber ?: terminal?.taxRegistrationNumber ?: ''
             isRevisedBill = ec.entity.find('zenith.erp.pos.PosTransactionAmendment').condition('transactionId',transactionId).count() > 0
             def receiptDesign = isRevisedBill ? 'revised' : (txn.isCredit == 'Y' ? 'credit' : '')
             def receiptText = { key ->

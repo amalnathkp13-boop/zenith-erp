@@ -4,7 +4,24 @@
         default-menu-title="Sessions" default-menu-index="6">
 
     <transition name="openSession" begin-transaction="true">
-        <service-call name="zenith.pos.PosServices.open#PosSession"/>
+        <actions>
+            <if condition="kitchenModuleId == 'kot'">
+                <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'kot']" out-map="_writeAccess"/>
+                <if condition="ec.web.request.method != 'POST' || !_writeAccess.canWrite">
+                    <return error="true" message="KOT write access is required to open a session."/>
+                </if>
+                <service-call name="zenith.pos.KotServices.get#BillingScope" in-map="[terminalId:terminalId]" out-map="_billingScope"/>
+                <if condition="!_billingScope.scope?.allowed"><return/></if>
+                <service-call name="zenith.base.ShopServices.get#ActiveShopScope" in-map="[:]" out-map="_openShop"/>
+                <entity-find-one entity-name="zenith.erp.pos.PosTerminal" value-field="_counter">
+                    <field-map field-name="terminalId" from="terminalId"/>
+                </entity-find-one>
+                <if condition="!_counter?.facilityId || (_openShop.activeShopId &amp;&amp; _counter.facilityId != _openShop.activeShopId)">
+                    <return error="true" message="Choose an active terminal in this shop."/>
+                </if>
+            </if>
+            <service-call name="zenith.pos.PosServices.open#PosSession" in-map="[terminalId:terminalId,openingCash:openingCash]" out-map="context"/>
+        </actions>
         <default-response url="../EditSession"/>
     </transition>
     <transition name="editSession"><default-response url="../EditSession"/></transition>
@@ -18,8 +35,13 @@
                 def _activeShop = null; try { def _sc = ec.service.sync().name("zenith.base.ShopServices.get#ActiveShopScope").call(); _activeShop = _sc?.activeShopId } catch (Exception _e) {}
                 def ef = ec.entity.find("zenith.erp.pos.PosSessionView").orderBy("-openDate")
                 // org-isolate (standalone CSV render bypasses the MANTLE_ACTIVE_ORG authz filter)
-                def _org = ec.user.getPreference('ACTIVE_ORGANIZATION')
+                boolean kot = kitchenModuleId == 'kot'
+                def _org = kot ? (posOrganizationPartyId ?: '__NO_ORGANIZATION__') : ec.user.getPreference('ACTIVE_ORGANIZATION')
                 if (_org) ef.condition("organizationPartyId", _org)
+                if (kot && posTerminalRestricted) {
+                    ef.condition("terminalId", "in", posAllowedTerminalIds ?: ['__NONE__'])
+                    ef.condition("operatorPartyId", ec.user.userAccount?.partyId ?: '__NONE__')
+                }
                 if (_activeShop) ef.condition("facilityId", _activeShop)
                 def rows = ef.list()
                 def esc = { v -> if (v == null) return ""; String s = v.toString().trim(); (s.contains(",")||s.contains("\"")||s.contains("\n")) ? "\"" + s.replace("\"","\"\"") + "\"" : s }
@@ -27,7 +49,7 @@
                 def dt = { v -> v == null ? "" : ec.l10n.format(v, 'dd-MM-yyyy HH:mm') }
                 def slMap = [PsClosed:'Closed', PsOpen:'Open']
                 StringBuilder csv = new StringBuilder()
-                csv.append("ZetaERP - POS Sessions\n")
+                csv.append("ZetaERP - ${kot ? 'KOT' : 'POS'} Sessions\n")
                 csv.append("Generated on: ${ec.l10n.format(ec.user.nowTimestamp, 'dd MMM yyyy HH:mm')}\n\n")
                 csv.append("Session,Terminal,Operator,Opened,Closed,Status,Opening,Sales,Returns,Trans,Closing,Diff\n")
                 rows.each { r ->
@@ -35,14 +57,14 @@
                     def state = unverified ? 'Auto-closed (cash not counted)' : (r.closeReason == 'IdleReviewed' ? 'Auto-closed (cash reviewed)' : (slMap[r.statusId] ?: esc(r.statusId)))
                     csv.append("${esc(r.sessionId)},${esc(r.terminalName)},${esc(r.operatorPartyId)},${dt(r.openDate)},${dt(r.closeDate)},${state},${num(r.openingCash)},${num(r.totalSales)},${num(r.totalReturns)},${(long)((r.totalTransactions ?: 0) as double)},${unverified ? '' : num(r.closingCash)},${unverified ? '' : num(r.cashDifference)}\n")
                 }
-                ec.web.sendTextResponse(csv.toString(), "text/csv", "POS_Sessions_${ec.l10n.format(ec.user.nowTimestamp, 'yyyyMMdd_HHmm')}.csv")
+                ec.web.sendTextResponse(csv.toString(), "text/csv", "${kot ? 'KOT' : 'POS'}_Sessions_${ec.l10n.format(ec.user.nowTimestamp, 'yyyyMMdd_HHmm')}.csv")
             ]]></script>
         </actions>
         <default-response type="none"/>
     </transition>
 
     <transition name="downloadPdf" read-only="true">
-        <default-response url="${ec.web.getWebappRootUrl(false, null)}/fop/apps/zenith/pos/PosSessionsPdf" url-type="plain"/>
+        <default-response url="${ec.web.getWebappRootUrl(false, null)}/fop/apps/zenith${kitchenModulePath ?: '/pos'}/PosSessionsPdf" url-type="plain"/>
     </transition>
 
     <transition name="saveIdlePolicy" begin-transaction="true">
@@ -51,7 +73,7 @@
     </transition>
 
     <actions>
-        <set field="idleCanManage" from="ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN')"/>
+        <set field="idleCanManage" from="(ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN')) &amp;&amp; (kitchenModuleId != 'kot' || modCanWrite)"/>
         <entity-find-one entity-name="zenith.erp.pos.PosOrgBillingConfig" value-field="idlePolicy">
             <field-map field-name="organizationPartyId" from="posOrganizationPartyId ?: '__NO_ORGANIZATION__'"/>
         </entity-find-one>
@@ -65,11 +87,16 @@
         <script>context.zinr = com.zenith.Fmt.INSTANCE</script>
         <!-- ZE-SHOP: scope sessions to the selected shop's facility (null = All Shops) -->
         <script>_activeShop = null; try { def _sc = ec.service.sync().name("zenith.base.ShopServices.get#ActiveShopScope").call(); _activeShop = _sc?.activeShopId } catch (Exception _e) {}</script>
+        <if condition="kitchenModuleId == 'kot'">
+            <service-call name="zenith.pos.KotServices.get#BillingScope" in-map="[:]" out-map="_billingScope"/>
+        </if>
         <entity-find entity-name="zenith.erp.pos.PosSessionView" list="sessionList">
             <search-form-inputs skip-fields="organizationPartyId,ownerPartyId" default-order-by="-openDate"/>
             <!-- org-isolate (standalone CSV/PDF render bypasses the MANTLE_ACTIVE_ORG authz filter) -->
-            <econdition field-name="organizationPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
-            <econdition field-name="facilityId" from="_activeShop" ignore-if-empty="true"/><!-- ZE-SHOP -->
+            <econdition field-name="organizationPartyId" from="(kitchenModuleId == 'kot' ? posOrganizationPartyId : ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
+            <econdition field-name="facilityId" from="_activeShop" ignore-if-empty="true"/>
+            <econdition field-name="terminalId" operator="in" from="kitchenModuleId == 'kot' &amp;&amp; posTerminalRestricted ? (posAllowedTerminalIds ?: ['__NONE__']) : null" ignore-if-empty="true"/>
+            <econdition field-name="operatorPartyId" from="kitchenModuleId == 'kot' &amp;&amp; posTerminalRestricted ? (ec.user.userAccount?.partyId ?: '__NONE__') : null" ignore-if-empty="true"/>
         </entity-find>
     </actions>
 
@@ -79,8 +106,8 @@
             <!-- Page header: title + subtitle | Open New Session CTA -->
             <container style="zsec-hdr row items-center justify-between q-mb-md">
                 <container style="column">
-                    <label text="POS Sessions" type="h5" style="text-weight-bold q-mt-none q-mb-xs"/>
-                    <label text="View and manage all POS sessions" type="span" style="z-statdesc"/>
+                    <label text="${kitchenModuleId == 'kot' ? 'KOT Sessions' : 'POS Sessions'}" type="h5" style="text-weight-bold q-mt-none q-mb-xs"/>
+                    <label text="${kitchenModuleId == 'kot' ? 'View cashier shifts and reconcile the shared billing drawer' : 'View and manage all POS sessions'}" type="span" style="z-statdesc"/>
                 </container>
                 <container style="z-newbtn-wrap">
                     <section name="OpenSession_write"><condition><expression>modCanWrite</expression></condition><widgets>
@@ -90,6 +117,9 @@
                                     <drop-down><entity-options key="${terminalId}" text="${terminalName}">
                                         <entity-find entity-name="zenith.erp.pos.PosTerminal">
                                             <econdition field-name="isActive" value="Y"/>
+                                            <econdition field-name="organizationPartyId" from="kitchenModuleId == 'kot' ? (posOrganizationPartyId ?: '__NO_ORGANIZATION__') : null" ignore-if-empty="true"/>
+                                            <econdition field-name="facilityId" from="kitchenModuleId == 'kot' ? _activeShop : null" ignore-if-empty="true"/>
+                                            <econdition field-name="terminalId" operator="in" from="_billingScope?.scope?.terminalRestricted ? (_billingScope.scope.allowedTerminalIds ?: ['__NONE__']) : null" ignore-if-empty="true"/>
                                         </entity-find></entity-options></drop-down></default-field></field>
                                 <field name="openingCash"><default-field title="Opening Cash (${currSymbol})">
                                     <text-line size="12" default-value="0"/></default-field></field>

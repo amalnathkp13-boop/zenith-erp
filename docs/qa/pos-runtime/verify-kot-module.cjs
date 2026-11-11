@@ -10,6 +10,21 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   ['KotHistory', 'KOT History', '#zk-history-toolbar'],
   ['WaiterManagement', 'Waiters', '#wf-search']
  ];
+ const tools = [
+  ['PosTransactions', 'Transactions'],
+  ['PosSessions', 'Sessions'],
+  ['PosTerminals', 'Terminals'],
+  ['Wastage', 'Wastage'],
+  ['ProductPricing', 'Product Prices'],
+  ['DiscountSettings', 'Discount'],
+  ['SalesMode', 'Sales Mode'],
+  ['ProductImport', 'Import'],
+  ['ReceiptConfig', 'Receipts'],
+  ['PrinterConfig', 'Printers'],
+  ['BillNumberRegister', 'Bill Register'],
+  ['OfflineMode', 'Offline Mode']
+ ];
+ const sharedPosLinks = new Set(tools.map(([seg])=>'/pos/'+seg));
  const page = await a.c.newPage();
  const clerk = await browser.newContext({ viewport:{ width:1366, height:768 } });
  const post = (actor, route, values) => actor.c.request.post(base+'/apps/zenith/'+route,{
@@ -30,8 +45,9 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
    await activeSidebar.waitFor();
    check(shell+' opens KOT as its own sidebar module',await activeSidebar.isVisible(),{url:page.url()});
    const kotLinks = await links.evaluateAll(anchors=>anchors.map(a=>a.getAttribute('data-match')));
-   check(shell+' keeps the six KOT tabs and adds every visible POS tab in order',
-    kotLinks.join('|')===[...tabs.map(([seg])=>'/kot/'+seg),...posLinks].join('|'),{kotLinks});
+   check(shell+' lists the KOT tools under KOT and keeps the other entitled POS links',
+    kotLinks.join('|')===[...tabs.concat(tools).map(([seg])=>'/kot/'+seg),
+     ...posLinks.filter(link=>!sharedPosLinks.has(link))].join('|'),{kotLinks});
    const shellSelector=shell==='apps'?'#z-sidebar':'#kitchen-page-frame';
    await page.evaluate(selector=>{window.qaKotShell=document.querySelector(selector);},shellSelector);
    for (const [seg,name,content] of tabs.slice(1)) {
@@ -41,6 +57,13 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
     check(shell+' keeps its shell mounted on '+name,await page.evaluate(selector=>window.qaKotShell===document.querySelector(selector),shellSelector));
    }
    if(out) await page.screenshot({path:path.join(out,shell+'-standalone-kot.png')});
+   for (const [seg,name] of tools) {
+    const response=await page.goto(base+'/'+shell+'/zenith/kot/'+seg);
+    const active=strip.locator('a.on[data-match="/kot/'+seg+'"]');
+    await active.waitFor();
+    check(shell+' opens the KOT '+name+' screen',response.ok()&&
+     new URL(page.url()).pathname.includes('/kot/'+seg),{url:page.url(),status:response.status()});
+   }
    await strip.getByRole('link',{name:'KOT Billing',exact:true}).click();
    await page.locator('#kot-terminal-entry').waitFor();
    await strip.locator('a[data-match="/pos/Dashboard"]').click();
@@ -56,9 +79,13 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
    await strip.locator('a[data-match="/pos/Dashboard"]').waitFor();
    check(shell+' can leave the KOT terminal gateway using the sidebar',await page.locator('#zk-route-status').count()===0);
   }
-  const preference = JSON.stringify({version:1,order:['/kot/KotBilling','/pos/Reports'],hidden:[]});
+  const preference = JSON.stringify({version:1,order:['/kot/KotBilling','/pos/Reports'],hidden:['/pos/SalesMode']});
   const saved = await post(a,'saveSubnavConfiguration',{module:'kot',payload:preference});
   check('KOT preferences accept both KOT and POS tabs',saved.ok()&&JSON.parse((await saved.json()).preference).order[1]==='/pos/Reports');
+  await page.goto(base+'/apps/zenith/kot/KotDashboard');
+  const migratedTab=page.locator('#z-subnav .zsub-grp.show [data-match="/kot/SalesMode"]');
+  await migratedTab.locator('xpath=self::*[@hidden]').waitFor({state:'attached'});
+  check('KOT preserves the visibility of tabs saved under their previous POS paths',await migratedTab.isHidden());
   await post(a,'saveSubnavConfiguration',{module:'kot',payload:JSON.stringify({version:1,order:[],hidden:[]})});
   await page.goto(base+'/apps/zenith/kot/KotDashboard');
   const before = Number(await completedOrders.innerText());
@@ -98,7 +125,8 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   await clerkPage.locator('#z-subnav').waitFor({state:'hidden'});
   check('KOT-only clerk has a full-screen billing workspace without module navigation',
    await clerkPage.locator('#z-subnav:visible,#z-sidebar:visible').count()===0);
-  for(const route of ['pos/Terminal','pos/Reports','kot/KotHistory','pos/Kitchen/KotHistory']){
+  for(const route of ['pos/Terminal','pos/Reports','kot/KotHistory','pos/Kitchen/KotHistory',
+   ...tools.map(([seg])=>'kot/'+seg),'kot/EditSession','kot/EditTransaction','kot/ReceiptPdf','kot/PosSessionsPdf']){
    const denied=await clerk.request.get(base+'/apps/zenith/'+route,{maxRedirects:0});
    check('KOT-only grant does not allow '+route,[302,303,403].includes(denied.status()),{status:denied.status()});
   }
@@ -118,7 +146,18 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   const draftResponse=await post(kit,'kot/KotBilling/saveDraft',{sessionId,itemsJson:JSON.stringify([{productId:'POS_QA_A_P18',quantity:1}]),orderType:'Take Away',taxOn:'N',salesModeId:'RETAIL',wantJson:'Y'});
   const draft=await draftResponse.json();
   const paid=await post(kit,'kot/KotBilling/checkoutKot',{sessionId,kotId:draft.kotId,paymentMethod:'Cash',cashAmount:'100'});
-  check('KOT-only clerk can complete a bill on the assigned terminal',draft.success&&(await paid.json()).success===true);
+  const settled=await paid.json();
+  check('KOT-only clerk can complete a bill on the assigned terminal',draft.success&&settled.success===true);
+  const transactionId=q("SELECT transaction_id FROM kitchen_order_ticket WHERE kot_id='"+draft.kotId+"'")[0]?.transaction_id;
+  check('the paid KOT has a linked transaction and bill number',!!transactionId&&!!settled.billNumber);
+  for (const route of ['PosTransactions','EditTransaction?transactionId='+transactionId,'BillNumberRegister/printDoc']) {
+   const report=await a.c.request.get(base+'/apps/zenith/kot/'+route);
+   check('owner can find the issued KOT bill in '+route.split('?')[0],report.ok()&&
+    (await report.text()).includes(settled.billNumber),{status:report.status()});
+  }
+  const receipt=await a.c.request.get(base+'/fop/apps/zenith/kot/ReceiptPdf?transactionId='+transactionId);
+  check('owner can generate the linked KOT receipt PDF',receipt.ok()&&
+   (await receipt.body()).subarray(0,4).toString()==='%PDF');
   await page.goto(base+'/apps/zenith/kot/KotDashboard');
   check('standalone KOT dashboard counts the newly completed KOT sale once',Number(await completedOrders.innerText())===before+1);
   const unchanged=q("SELECT setting_value FROM company_settings WHERE organization_party_id='POS_QA_A' AND setting_key='KITCHEN_DISPLAY_POS_QA_A_FAC'");
@@ -133,5 +172,6 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   const response=await post(kit,'kot/KotBilling/printRecord',{kotId:foreignId,kind:'kot'});
   const foreignBody=await response.json().catch(()=>({}));
   check('a KOT-only clerk cannot retrieve another organization’s ticket',response.status()===403||foreignBody.success===false,{status:response.status(),success:foreignBody.success});
+  await require('./verify-kot-offline-drafts.cjs')({foreign,base,check,q,out});
  } finally { await clerk.close(); await page.close(); }
 };

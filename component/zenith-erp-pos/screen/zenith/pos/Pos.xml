@@ -5,6 +5,8 @@
 
     <always-actions>
         <set field="html_title" value="Point of Sale"/>
+        <set field="kitchenModuleId" value="pos"/>
+        <set field="kitchenModulePath" value="/pos"/>
         <script><![CDATA[
             // Protect direct JSON/transition and detail requests before child actions can read or write.
             // The separately installed disposable fixture initializer has its own platform-admin gate.
@@ -17,12 +19,14 @@
                 // are still checked below; all other transitions keep the terminal ownership probe.
                 def creatingTerminal = 'POST'.equalsIgnoreCase(ec.web.request.method) &&
                     ec.web.request.pathInfo?.endsWith('/PosTerminals/createTerminal')
+                def creatingPrinter = 'POST'.equalsIgnoreCase(ec.web.request.method) &&
+                    ec.web.request.pathInfo?.endsWith('/PrinterConfig/createPrinter')
                 def access = ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess').parameters([
                     transactionId:p.editTxId ?: p.settleTxId ?: p.transactionId ?: p.lastCompletedId,
                     sessionId:p.sessionId, terminalId:creatingTerminal ? null : p.terminalId, heldId:p.heldId,
                     productId:p.productId, customerPartyId:p.customerPartyId,
                     templateId:p.templateId, cashEntryId:p.cashEntryId,
-                    expenseId:p.expenseId, wastageId:p.wastageId, facilityId:p.facilityId, printerId:p.printerId, kotId:p.kotId, waiterId:p.waiterId, qrPaymentId:p.qrPaymentId]).call()
+                    expenseId:p.expenseId, wastageId:p.wastageId, facilityId:p.facilityId, printerId:creatingPrinter ? null : p.printerId, kotId:p.kotId, waiterId:p.waiterId, qrPaymentId:p.qrPaymentId]).call()
                 if (!access?.allowed) throw new org.moqui.context.ArtifactAuthorizationException('You do not have access to this POS organization or record.')
                 context.posOrganizationPartyId = access.organizationPartyId
                 context.posTerminalRestricted = access.terminalRestricted

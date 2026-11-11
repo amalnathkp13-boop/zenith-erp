@@ -3,7 +3,7 @@
     <service verb="get" noun="ManagerApprovalAccess" authenticate="true">
         <out-parameters><parameter name="canApprove" type="Boolean"/></out-parameters>
         <actions>
-            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'pos']" out-map="permission"/>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:((ec.web?.request?.pathInfo ?: '').matches('(/(apps|qapps|vapps))?/zenith/kot/DiscountSettings/[^/]+/?') ? 'kot' : 'pos')]" out-map="permission"/>
             <set field="canApprove" from="permission.canWrite == true &amp;&amp; ['ADMIN','ZENITH_ADMIN','ZENITH_STORE_MGR'].any { ec.user.isInGroup(it) }"/>
         </actions>
     </service>

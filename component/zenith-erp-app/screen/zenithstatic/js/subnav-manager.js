@@ -16,11 +16,17 @@
         item.type = 'button'; item.addEventListener('click', action); return item;
     }
     function icon(name) { return el('span', 'material-icons', name); }
-    function normalize(raw, links) {
+    function normalize(raw, links, module) {
         var ids = links.map(function (link) { return link.id; });
         function unique(values) {
             var seen = {};
-            return (Array.isArray(values) ? values : []).filter(function (id) {
+            return (Array.isArray(values) ? values : []).map(function (id) {
+                if (module === 'kot' && typeof id === 'string' && id.indexOf('/pos/') === 0) {
+                    var kotId = '/kot/' + id.slice('/pos/'.length);
+                    if (ids.indexOf(kotId) >= 0) return kotId;
+                }
+                return id;
+            }).filter(function (id) {
                 if (ids.indexOf(id) < 0 || seen[id]) return false;
                 seen[id] = true; return true;
             });
@@ -36,7 +42,7 @@
     }
     function apply() {
         if (!current || !current.settings) return;
-        var settings = normalize(current.settings, current.links);
+        var settings = normalize(current.settings, current.links, current.module);
         ordered(current.links, settings).forEach(function (link) {
             link.node.hidden = settings.hidden.indexOf(link.id) >= 0;
             current.strip.appendChild(link.node);
@@ -93,7 +99,7 @@
             if (data.error) throw new Error(data.error);
             var parsed = {};
             try { parsed = JSON.parse(data.preference || '{}'); } catch (_e) { /* invalid old preference: defaults */ }
-            cache[view.module] = normalize(parsed, links);
+            cache[view.module] = normalize(parsed, links, view.module);
             if (current === view) { view.settings = cache[view.module]; apply(); trigger.disabled = false; }
         }).catch(function () {
             if (current === view) {

@@ -5,8 +5,19 @@
 
     <parameter name="transactionId" required="true"/>
 
+    <always-actions>
+        <if condition="kitchenModuleId == 'kot'">
+            <entity-find-count entity-name="zenith.erp.pos.KitchenOrderTicket" count-field="_kotTicketCount">
+                <econdition field-name="transactionId" from="transactionId"/>
+                <econdition field-name="organizationPartyId" from="posOrganizationPartyId ?: '__NO_ORGANIZATION__'"/>
+            </entity-find-count>
+            <if condition="!_kotTicketCount"><script>throw new org.moqui.context.ArtifactAuthorizationException('KOT transaction not found.')</script></if>
+        </if>
+    </always-actions>
+
     <transition name="addItem" begin-transaction="true">
         <actions>
+            <if condition="kitchenModuleId == 'kot'"><return error="true" message="Use KOT Billing to change a bill."/></if>
             <!-- Cross-tenant write-IDOR guard: only the owning org (ADMIN exempt) may mutate this transaction. -->
             <service-call name="zenith.base.SecurityServices.assert#RecordOrgAccess" in-map="[entityName:'zenith.erp.pos.PosTransaction', idField:'transactionId', idValue:transactionId, orgField:'organizationPartyId']" out-map="_acc"/>
             <if condition="!_acc.allowed"><return error="true" message="You do not have access to this record."/></if>
@@ -16,6 +27,7 @@
     </transition>
     <transition name="removeItem" begin-transaction="true">
         <actions>
+            <if condition="kitchenModuleId == 'kot'"><return error="true" message="Use KOT Billing to change a bill."/></if>
             <!-- Cross-tenant write-IDOR guard: only the owning org (ADMIN exempt) may mutate this transaction. -->
             <service-call name="zenith.base.SecurityServices.assert#RecordOrgAccess" in-map="[entityName:'zenith.erp.pos.PosTransaction', idField:'transactionId', idValue:transactionId, orgField:'organizationPartyId']" out-map="_acc"/>
             <if condition="!_acc.allowed"><return error="true" message="You do not have access to this record."/></if>
@@ -25,6 +37,7 @@
     </transition>
     <transition name="processPayment" begin-transaction="true">
         <actions>
+            <if condition="kitchenModuleId == 'kot'"><return error="true" message="Use KOT Billing to change a bill."/></if>
             <!-- Cross-tenant write-IDOR guard: only the owning org (ADMIN exempt) may mutate this transaction. -->
             <service-call name="zenith.base.SecurityServices.assert#RecordOrgAccess" in-map="[entityName:'zenith.erp.pos.PosTransaction', idField:'transactionId', idValue:transactionId, orgField:'organizationPartyId']" out-map="_acc"/>
             <if condition="!_acc.allowed"><return error="true" message="You do not have access to this record."/></if>
@@ -34,6 +47,7 @@
     </transition>
     <transition name="completeTxn" begin-transaction="true">
         <actions>
+            <if condition="kitchenModuleId == 'kot'"><return error="true" message="Use KOT Billing to change a bill."/></if>
             <!-- Cross-tenant write-IDOR guard: only the owning org (ADMIN exempt) may mutate this transaction. -->
             <service-call name="zenith.base.SecurityServices.assert#RecordOrgAccess" in-map="[entityName:'zenith.erp.pos.PosTransaction', idField:'transactionId', idValue:transactionId, orgField:'organizationPartyId']" out-map="_acc"/>
             <if condition="!_acc.allowed"><return error="true" message="You do not have access to this record."/></if>
@@ -43,6 +57,7 @@
     </transition>
     <transition name="voidTxn" begin-transaction="true">
         <actions>
+            <if condition="kitchenModuleId == 'kot'"><return error="true" message="Use KOT Billing to change a bill."/></if>
             <!-- Cross-tenant write-IDOR guard: only the owning org (ADMIN exempt) may mutate this transaction. -->
             <service-call name="zenith.base.SecurityServices.assert#RecordOrgAccess" in-map="[entityName:'zenith.erp.pos.PosTransaction', idField:'transactionId', idValue:transactionId, orgField:'organizationPartyId']" out-map="_acc"/>
             <if condition="!_acc.allowed"><return error="true" message="You do not have access to this record."/></if>
@@ -52,6 +67,7 @@
     </transition>
     <transition name="generateUpi" begin-transaction="true">
         <actions>
+            <if condition="kitchenModuleId == 'kot'"><return error="true" message="Use KOT Billing to change a bill."/></if>
             <!-- Cross-tenant write-IDOR guard: only the owning org (ADMIN exempt) may act on this transaction. -->
             <service-call name="zenith.base.SecurityServices.assert#RecordOrgAccess" in-map="[entityName:'zenith.erp.pos.PosTransaction', idField:'transactionId', idValue:transactionId, orgField:'organizationPartyId']" out-map="_acc"/>
             <if condition="!_acc.allowed"><return error="true" message="You do not have access to this record."/></if>
@@ -60,10 +76,10 @@
         <default-response url="."/>
     </transition>
     <transition name="goTransactions"><default-response url="../PosTransactions"/></transition>
-    <transition name="goTerminal"><default-response url="../Terminal"/></transition>
+    <transition name="goTerminal"><default-response url="${kitchenModuleId == 'kot' ? '../KotBilling' : '../Terminal'}"/></transition>
     <transition name="goDailySummary"><default-response url="../DailySummary"/></transition>
     <transition name="goReports"><default-response url="../Reports"/></transition>
-    <transition name="goDashboard"><default-response url="../Dashboard"/></transition>
+    <transition name="goDashboard"><default-response url="${kitchenModuleId == 'kot' ? '../KotDashboard' : '../Dashboard'}"/></transition>
     <transition name="goPriceOverrides"><default-response url="../PriceOverrides"/></transition>
     <!-- ZE-POS-0210: download the server-generated XSL-FO receipt PDF (same content as the printed receipt). -->
     <transition name="downloadReceiptPdf" read-only="true">
@@ -72,7 +88,7 @@
             <service-call name="zenith.base.SecurityServices.assert#RecordOrgAccess" in-map="[entityName:'zenith.erp.pos.PosTransaction', idField:'transactionId', idValue:transactionId, orgField:'organizationPartyId']" out-map="_acc"/>
         </actions>
         <conditional-response url="."><condition>!_acc.allowed</condition></conditional-response>
-        <default-response url="${ec.web.getWebappRootUrl(false, null)}/fop/apps/zenith/pos/ReceiptPdf" url-type="plain">
+        <default-response url="${ec.web.getWebappRootUrl(false, null)}/fop/apps/zenith${kitchenModulePath ?: '/pos'}/ReceiptPdf" url-type="plain">
             <parameter name="transactionId"/>
             <parameter name="filename" value="Receipt-${transactionId}.pdf"/>
         </default-response>
@@ -133,9 +149,13 @@
         <container style="row items-center justify-end q-px-md q-pt-md q-gutter-sm">
             <link url="goTerminal" text="Billing" icon="fa fa-calculator" btn-type="success" style="q-btn--dense"/>
             <link url="goTransactions" text="Transactions" icon="fa fa-list" btn-type="primary" style="q-btn--dense"/>
-            <link url="goDailySummary" text="Daily Summary" icon="fa fa-calendar" btn-type="info" style="q-btn--dense"/>
-            <link url="goReports" text="Reports" icon="fa fa-bar-chart" btn-type="warning" style="q-btn--dense"/>
-            <link url="goPriceOverrides" text="Price Overrides" icon="fa fa-exchange" btn-type="danger" style="q-btn--dense"/>
+            <section name="PosTransactionLinks" condition="kitchenModuleId != 'kot'">
+                <widgets>
+                    <link url="goDailySummary" text="Daily Summary" icon="fa fa-calendar" btn-type="info" style="q-btn--dense"/>
+                    <link url="goReports" text="Reports" icon="fa fa-bar-chart" btn-type="warning" style="q-btn--dense"/>
+                    <link url="goPriceOverrides" text="Price Overrides" icon="fa fa-exchange" btn-type="danger" style="q-btn--dense"/>
+                </widgets>
+            </section>
             <link url="goDashboard" text="Dashboard" icon="fa fa-dashboard" style="q-btn--dense"/>
             <link url="downloadReceiptPdf" text="Download PDF" parameter-map="[transactionId:transactionId]"
                   target-window="_blank" icon="fa fa-file-pdf-o" btn-type="danger" style="q-btn--dense"/>
@@ -194,7 +214,7 @@
                         <field name="paidAmount"><default-field title="Paid"><display format="₹#,##,##0.00"/></default-field></field>
                         <field name="changeAmount"><default-field title="Change"><display format="₹#,##,##0.00"/></default-field></field>
                     </form-single>
-                    <section name="TxnActions" condition="txn.statusId == 'PtCreated' &amp;&amp; modCanWrite">
+                    <section name="TxnActions" condition="kitchenModuleId != 'kot' &amp;&amp; txn.statusId == 'PtCreated' &amp;&amp; modCanWrite">
                         <widgets>
                             <container-dialog id="PayDialog" button-text="Add Payment">
                                 <form-single name="PayForm" transition="processPayment">
@@ -227,7 +247,7 @@
         <container-box>
             <box-header title="Items"/>
             <box-toolbar>
-                <section name="AddItemSection" condition="txn.statusId == 'PtCreated' &amp;&amp; modCanWrite">
+                <section name="AddItemSection" condition="kitchenModuleId != 'kot' &amp;&amp; txn.statusId == 'PtCreated' &amp;&amp; modCanWrite">
                     <widgets>
                         <container-dialog id="AddItemDialog" button-text="Add Item">
                             <form-single name="AddItemForm" transition="addItem">
@@ -267,7 +287,7 @@
                     <field name="igstAmount"><default-field title="IGST"><display format="#,##0.00"/></default-field></field>
                     <field name="lineTotal"><default-field title="Total"><display format="#,##0.00"/></default-field></field>
                     <field name="removeBtn"><default-field title="">
-                        <section name="RemoveItemBtn" condition="txn.statusId == 'PtCreated' &amp;&amp; modCanWrite"><widgets>
+                        <section name="RemoveItemBtn" condition="kitchenModuleId != 'kot' &amp;&amp; txn.statusId == 'PtCreated' &amp;&amp; modCanWrite"><widgets>
                             <link url="removeItem" text="X"
                                   parameter-map="[transactionId:transactionId, itemSeqId:itemSeqId]"
                                   confirmation="Remove this item?"/>

@@ -71,7 +71,7 @@
     <service verb="delete" noun="SalesMode">
         <in-parameters><parameter name="salesModeId" required="true"/></in-parameters>
         <actions>
-            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'pos']" out-map="permission"/>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:((ec.web?.request?.pathInfo ?: '').matches('(/(apps|qapps|vapps))?/zenith/kot/SalesMode/[^/]+/?') ? 'kot' : 'pos')]" out-map="permission"/>
             <if condition="permission.canWrite != true || !(ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN'))">
                 <return error="true" message="POS administrator access is required to delete sales modes."/>
             </if>
@@ -110,7 +110,7 @@
             <parameter name="restore" type="Boolean" default="false"/>
         </in-parameters>
         <actions>
-            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'pos']" out-map="permission"/>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:((ec.web?.request?.pathInfo ?: '').matches('(/(apps|qapps|vapps))?/zenith/kot/SalesMode/[^/]+/?') ? 'kot' : 'pos')]" out-map="permission"/>
             <if condition="permission.canWrite != true || !(ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN'))">
                 <return error="true" message="POS administrator access is required to change shop modes."/>
             </if>

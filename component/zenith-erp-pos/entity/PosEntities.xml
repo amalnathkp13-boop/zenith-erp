@@ -468,10 +468,13 @@
         <field name="port" type="number-integer"/>
         <field name="terminalId" type="id"/>
         <field name="receiptTemplateId" type="id"/>
+        <field name="posReceiptTemplateId" type="id"><description>Current receipt design; legacy receiptTemplateId is retained.</description></field>
         <field name="isActive" type="text-indicator" default="'Y'"/>
         <relationship type="one" related="zenith.erp.pos.PosTerminal"/>
         <relationship type="one" related="zenith.erp.pos.ReceiptTemplate">
             <key-map field-name="receiptTemplateId" related="templateId"/></relationship>
+        <relationship type="one" related="zenith.erp.pos.PosReceiptTemplate">
+            <key-map field-name="posReceiptTemplateId" related="templateId"/></relationship>
         <seed-data>
             <moqui.basic.EnumerationType enumTypeId="PrinterType" description="Printer Type"/>
             <moqui.basic.Enumeration enumId="PrtThermal" enumTypeId="PrinterType" description="Thermal Receipt" sequenceNum="1"/>
@@ -551,6 +554,7 @@
         <field name="notes" type="text-long"/>
         <relationship type="one" related="zenith.erp.pos.PosTransaction" short-alias="transaction"/>
         <relationship type="one" related="zenith.erp.pos.PosTerminal" short-alias="terminal"/>
+        <index name="KOT_TXN_ORG"><index-field name="transactionId"/><index-field name="organizationPartyId"/></index>
         <seed-data>
             <moqui.basic.StatusType statusTypeId="KotStatus" description="KOT Status"/>
             <moqui.basic.StatusItem statusId="KotDraft" statusTypeId="KotStatus" description="Draft" sequenceNum="0"/>
@@ -564,6 +568,20 @@
             <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="KotReady" toStatusId="KotServed" transitionName="Served"/>
             <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="KotNew" toStatusId="KotCancelled" transitionName="Cancel"/>
         </seed-data>
+    </entity>
+
+    <entity entity-name="KotOfflineDraftSync" package="zenith.erp.pos">
+        <description>Receipt for a device draft imported into Held Orders. Survives editing or discarding the held order.</description>
+        <field name="organizationPartyId" type="id" is-pk="true"/>
+        <field name="terminalId" type="id" is-pk="true"/>
+        <field name="userId" type="id" is-pk="true"/>
+        <field name="offlineDraftId" type="text-short" is-pk="true"/>
+        <field name="kotId" type="id"/>
+        <field name="kotNumber" type="text-short"/>
+        <field name="syncedDate" type="date-time"/>
+        <index name="KOT_OFF_SYNC_DATE">
+            <index-field name="organizationPartyId"/><index-field name="terminalId"/><index-field name="syncedDate"/>
+        </index>
     </entity>
 
     <entity entity-name="KotItem" package="zenith.erp.pos" short-alias="KotItem">
@@ -674,6 +692,26 @@
         <!-- expose member orgs so ZTF_POSSESS / ZTF_POSTERMINAL tenant filters apply to this view -->
         <alias entity-alias="PS" name="ztfSessionOrg" field="organizationPartyId"/>
         <alias entity-alias="PT" name="ztfTerminalOrg" field="organizationPartyId"/>
+    </view-entity>
+
+    <view-entity entity-name="KotTransactionDetailView" package="zenith.erp.pos">
+        <member-entity entity-alias="PX" entity-name="zenith.erp.pos.PosTransaction"/>
+        <member-entity entity-alias="PS" entity-name="zenith.erp.pos.PosSession" join-from-alias="PX">
+            <key-map field-name="sessionId"/></member-entity>
+        <member-entity entity-alias="PT" entity-name="zenith.erp.pos.PosTerminal" join-from-alias="PS">
+            <key-map field-name="terminalId"/></member-entity>
+        <member-entity entity-alias="KOT" entity-name="zenith.erp.pos.KitchenOrderTicket" join-from-alias="PX">
+            <key-map field-name="transactionId"/>
+            <key-map field-name="organizationPartyId"/>
+        </member-entity>
+        <alias-all entity-alias="PX"/>
+        <alias entity-alias="PS" name="operatorPartyId"/>
+        <alias entity-alias="PT" name="terminalId"/>
+        <alias entity-alias="PT" name="terminalName"/>
+        <alias entity-alias="PT" name="facilityId"/>
+        <alias entity-alias="PS" name="ztfSessionOrg" field="organizationPartyId"/>
+        <alias entity-alias="PT" name="ztfTerminalOrg" field="organizationPartyId"/>
+        <alias entity-alias="KOT" name="kotOrganizationPartyId" field="organizationPartyId"/>
     </view-entity>
 
     <!-- ========== POS Bill Amendment Audit View (amendment -> txn -> session -> terminal) ========== -->

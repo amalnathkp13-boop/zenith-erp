@@ -185,32 +185,64 @@
     <transition name="saveDraft" method="post" begin-transaction="true">
         <actions>
             <script><![CDATA[
+                def reply = { Map result = [:] ->
+                    if (ec.context.wantJson == 'Y')
+                        ec.web.sendJsonResponse(result + [success:!!result,error:ec.message.errorsString])
+                }
                 def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess')
                     .parameter('moduleId', ec.context.kitchenModuleId ?: 'pos').call()
                 def scope=ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess').call()
                 org=scope.organizationPartyId
-                if (access?.canWrite != true || !scope.allowed) { ec.message.addError('POS write access and an active shop are required.'); return }
+                if (access?.canWrite != true || !scope.allowed) { ec.message.addError('Write access and an active shop are required.'); return reply() }
+
+                def offlineDraftId = ec.context.offlineDraftId
+                if (offlineDraftId) {
+                    if (ec.context.kitchenModuleId != 'kot' || ec.context.wantJson != 'Y' ||
+                        ec.context.existingDraftId || !(offlineDraftId ==~ /[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}/) ||
+                        ec.context.offlineOrganizationId != org || ec.context.offlineUserId != ec.user.userId) {
+                        ec.message.addError('Sign in to the original organization, account and counter to sync this draft.')
+                        return reply()
+                    }
+                    // Serialize import retries and use the same tenant lock as KOT capacity changes.
+                    def tenant = ec.entity.isEntityDefined('zenith.erp.saas.SaasTenant') ?
+                        ec.entity.find('zenith.erp.saas.SaasTenant').condition('organizationPartyId',org).disableAuthz().forUpdate(true).one() : null
+                    if (!tenant && !ec.entity.find('mantle.party.Organization').condition('partyId',org).forUpdate(true).one()) {
+                        ec.message.addError('Choose an active organization before syncing.')
+                        return reply()
+                    }
+                }
 
                 def billing=ec.service.sync().name('zenith.pos.KotServices.get#BillingSession').parameter('sessionId',ec.context.sessionId).call()
-                if(ec.message.hasError() || !billing.terminal) return
+                if(ec.message.hasError() || !billing.terminal) return reply()
+                def offlineKey
+                if (offlineDraftId) {
+                    if (ec.context.offlineTerminalId != billing.terminal.terminalId) {
+                        ec.message.addError('Open the original counter to sync this draft.')
+                        return reply()
+                    }
+                    offlineKey = [organizationPartyId:org, terminalId:billing.terminal.terminalId,
+                                  userId:ec.user.userId, offlineDraftId:offlineDraftId]
+                    def prior = ec.entity.find('zenith.erp.pos.KotOfflineDraftSync').condition(offlineKey).one()
+                    if (prior) return reply([offlineDraftId:offlineDraftId,kotId:prior.kotId,kotNumber:prior.kotNumber])
+                }
 
                 def selected = ec.service.sync().name('zenith.pos.KotServices.resolve#KotTable')
                     .parameters([tableId:ec.context.tableId,tableNumber:ec.context.tableNumber]).call()?.table
-                if (ec.message.hasError()) return
+                if (ec.message.hasError()) return reply()
                 if(ec.context.orderType=='Take Away') selected=null
                 if(selected) {
                     selected=ec.entity.find('zenith.erp.pos.RestaurantTable').condition('tableId',selected.tableId).forUpdate(true).one()
-                    if(!selected || !(selected.statusId in [null,'TblAvailable','TblOccupied'])) { ec.message.addError('Choose an available or occupied table.'); return }
+                    if(!selected || !(selected.statusId in [null,'TblAvailable','TblOccupied'])) { ec.message.addError('Choose an available or occupied table.'); return reply() }
                 }
                 def shop=ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call().activeShopId
-                if(shop && selected && selected.facilityId!=shop) { ec.message.addError('Choose a table in the selected shop.'); return }
-                if(selected && selected.facilityId!=billing.terminal.facilityId) { ec.message.addError('Choose a table at this terminal shop.'); return }
+                if(shop && selected && selected.facilityId!=shop) { ec.message.addError('Choose a table in the selected shop.'); return reply() }
+                if(selected && selected.facilityId!=billing.terminal.facilityId) { ec.message.addError('Choose a table at this terminal shop.'); return reply() }
                 def tableIdVal = ec.context.orderType == 'Take Away' ? null : selected?.tableId
                 def tableLabel = ec.context.orderType == 'Take Away' ? null : (selected?.tableNumber ?: ec.context.tableNumber)
 
                 def items = []
                 try { if (ec.context.itemsJson) items = new groovy.json.JsonSlurper().parseText(ec.context.itemsJson) } catch (e) { items = [] }
-                if (!(items instanceof List) || !items || items.size() > 100) { ec.message.addError('Choose 1 to 100 valid menu items before saving.'); return }
+                if (!(items instanceof List) || !items || items.size() > 100) { ec.message.addError('Choose 1 to 100 valid menu items before saving.'); return reply() }
                 def checkedItems = []
                 for (def submitted in items) {
                     def productId = submitted instanceof Map ? submitted.productId : null
@@ -218,7 +250,7 @@
                     BigDecimal quantity = null
                     try { quantity = new BigDecimal(String.valueOf(submitted instanceof Map ? submitted.quantity : null)) } catch (ignored) { }
                     if (!product || product.ownerPartyId != org || product.productTypeEnumId != 'PtAsset' || quantity == null || quantity <= 0) {
-                        ec.message.addError('The draft contains an invalid item or quantity. Refresh the menu and try again.'); return
+                        ec.message.addError('The draft contains an invalid item or quantity. Refresh the menu and try again.'); return reply()
                     }
                     checkedItems.add([productId:product.productId, productName:(product.productName ?: product.productId),
                                       quantity:quantity, specialInstructions:submitted.specialInstructions])
@@ -228,19 +260,19 @@
                 def draftReceipt=ec.service.sync().name('zenith.pos.KitchenPrintServices.get#CartReceipt')
                     .parameters([sessionId:ec.context.sessionId,itemsJson:ec.context.itemsJson,tableId:tableIdVal,orderType:ec.context.orderType,
                                  taxOn:ec.context.taxOn ?: 'Y',salesModeId:ec.context.salesModeId,waiterId:ec.context.waiterId,customerPartyId:ec.context.customerPartyId,notes:ec.context.notes]).call()?.receipt
-                if(ec.message.hasError()) return
+                if(ec.message.hasError()) return reply()
                 def exId = ec.context.existingDraftId
                 if (exId) {
                     def ex = ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('kotId', exId).forUpdate(true).one()
                     if (!ex || ex.statusId != 'KotDraft' || ex.organizationPartyId != org || (!ex.terminalId && scope.terminalRestricted) || (ex.terminalId && ex.terminalId!=billing.terminal.terminalId)) {
-                        ec.message.addError('This draft is no longer available in this shop.'); return
+                        ec.message.addError('This draft is no longer available in this shop.'); return reply()
                     }
                     ec.entity.find('zenith.erp.pos.KotItem').condition('kotId', exId).deleteAll()
                     ex.delete()
                 }
 
                 def nextNum = ec.service.sync().name('zenith.pos.KotServices.next#KotNumber').call()?.kotNumber
-                if (!nextNum) return
+                if (!nextNum) return reply()
 
                 def notesVal = (ec.context.orderType ? ('[' + ec.context.orderType + '] ') : '') + (ec.context.notes ?: '')
                 def kr = ec.service.sync().name('create#zenith.erp.pos.KitchenOrderTicket')
@@ -248,6 +280,7 @@
                                  tableId:tableIdVal, tableNumber:tableLabel, waiterName:draftReceipt.bill.waiter, orderReceiptJson:groovy.json.JsonOutput.toJson(draftReceipt), statusId:'KotDraft', printCount:0,
                                  kotDate:ec.user.nowTimestamp, notes:notesVal]).call()
                 def newKotId = kr.kotId
+                if (ec.message.hasError() || !newKotId) return reply()
                 def seq = 0
                 checkedItems.each { it2 ->
                     seq++
@@ -259,12 +292,40 @@
                 }
                 def display=ec.service.sync().name('zenith.pos.KotServices.get#KitchenDisplayPolicy').parameter('facilityId',billing.terminal.facilityId).call()
                 if(selected && !display.enabled && !ec.message.hasError()) selected.set('statusId','TblOccupied').update()
-                if(ec.context.wantJson=='Y') ec.web.sendJsonResponse([success:true,kotId:newKotId,total:draftReceipt.summary.total])
+                if (ec.message.hasError()) return reply()
+                if (offlineKey) {
+                    ec.entity.makeValue('zenith.erp.pos.KotOfflineDraftSync')
+                        .setAll(offlineKey + [kotId:newKotId,kotNumber:nextNum,syncedDate:ec.user.nowTimestamp]).create()
+                }
+                if(ec.context.wantJson=='Y') reply([kotId:newKotId,kotNumber:nextNum,total:draftReceipt.summary.total,offlineDraftId:offlineDraftId])
                 else ec.message.addMessage('Saved as Draft #' + nextNum + '.')
             ]]></script>
         </actions>
         <conditional-response type="none"><condition><expression>ec.context.wantJson == 'Y'</expression></condition></conditional-response>
         <default-response url="." parameter-map="[sessionId:sessionId]"/>
+    </transition>
+
+    <transition name="confirmOfflineDraft" method="post">
+        <actions><script><![CDATA[
+            def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess')
+                .parameter('moduleId', 'kot').call()
+            def draftId = ec.context.offlineDraftId
+            if (ec.context.kitchenModuleId != 'kot' || access?.canWrite != true ||
+                !(draftId ==~ /[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}/) || ec.context.offlineUserId != ec.user.userId) {
+                ec.web.sendJsonResponse([success:false,error:'Sign in to the original counter to confirm the draft.']); return
+            }
+            def billing = ec.service.sync().name('zenith.pos.KotServices.get#BillingSession')
+                .parameter('sessionId',ec.context.sessionId).call()
+            if (ec.message.hasError() || !billing.terminal || ec.context.offlineOrganizationId != billing.terminal.organizationPartyId ||
+                ec.context.offlineTerminalId != billing.terminal.terminalId) {
+                ec.web.sendJsonResponse([success:false,error:ec.message.errorsString ?: 'Open the original counter to confirm the draft.']); return
+            }
+            def receipt = ec.entity.find('zenith.erp.pos.KotOfflineDraftSync').condition([organizationPartyId:billing.terminal.organizationPartyId,
+                terminalId:billing.terminal.terminalId,userId:ec.user.userId,offlineDraftId:draftId]).one()
+            ec.web.sendJsonResponse([success:!!receipt,offlineDraftId:receipt?.offlineDraftId,kotId:receipt?.kotId,kotNumber:receipt?.kotNumber,
+                error:receipt ? null : 'The draft has not been confirmed. Retry when connected.'])
+        ]]></script></actions>
+        <default-response type="none"/>
     </transition>
 
     <!-- Discard a saved draft (KotDraft only, org-guarded). -->
@@ -550,13 +611,21 @@
             def IN=EntityCondition.ComparisonOperator.IN
             def cf=ec.entity.conditionFactory
             billingSession=null; billingTerminal=null
+            entryTerminals=[]
+            if(!org) return
             if(ec.context.sessionId) {
                 def billing=ec.service.sync().name('zenith.pos.KotServices.get#BillingSession').parameter('sessionId',ec.context.sessionId).call()
+                if(!billing?.session || !billing?.terminal) {
+                    kotSessionUnavailable=true
+                    return
+                }
                 billingSession=billing.session; billingTerminal=billing.terminal
             }
             if(!billingSession) {
-                def shop=ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call().activeShopId
-                def terminals=ec.entity.find('zenith.erp.pos.PosTerminal').condition('organizationPartyId',org ?: '__NO_ORGANIZATION__').condition('isActive','Y')
+                def shopScope=ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call()
+                if(shopScope==null || ec.message.hasError()) return
+                def shop=shopScope.activeShopId
+                def terminals=ec.entity.find('zenith.erp.pos.PosTerminal').condition('organizationPartyId',org).condition('isActive','Y')
                 if(shop) terminals.condition('facilityId',shop)
                 entryTerminals=terminals.list().findAll { !scope.terminalRestricted || it.terminalId in (scope.allowedTerminalIds ?: []) }
                 return
@@ -745,6 +814,7 @@
     <label>Opening Cash<input name="openingCash" type="number" min="0" step="0.01" value="0" required/></label>
     <button type="submit" class="kb-action-bill">Open / Resume Session</button>
   </form><#elseif kotCounterNeedsSetup!false><p>KOT Plan requires exactly one active billing counter. Ask your administrator to check the counter setup.</p>
+  <#elseif kotSessionUnavailable!false><p>This session is unavailable. <a href="${ec.web.request.requestURI?html}">Choose your counter again</a> to continue.</p>
   <#else><p>Your administrator must assign an active terminal and shop before you can bill.</p></#if>
 </section>
 <#else>
@@ -753,7 +823,7 @@
   <link rel="stylesheet" href="/zenithstatic/css/pos-checkout.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/pos-checkout.css').getLastModified()?c}"/>
   <link rel="stylesheet" href="/zenithstatic/css/kot-list.css?v=8"/>
   <input type="hidden" id="kb-token" value="${(ec.web.sessionToken)!''}"/>
-  <div id="kb-data" style="display:none" data-session="${billingSession.sessionId?html}" data-user="${(ec.user.userId!'')?html}" data-display-enabled="${kitchenDisplayEnabled?c}" data-kot-module="${(kitchenModuleId!'pos')?html}" data-stock-session="${billingSession.sessionId?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftcustomer="${draftCustomerJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}"></div>
+  <div id="kb-data" style="display:none" data-session="${billingSession.sessionId?html}" data-user="${(ec.user.userId!'')?html}" data-org="${billingTerminal.organizationPartyId?html}" data-terminal="${billingTerminal.terminalId?html}" data-display-enabled="${kitchenDisplayEnabled?c}" data-kot-module="${(kitchenModuleId!'pos')?html}" data-stock-session="${billingSession.sessionId?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftcustomer="${draftCustomerJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}"></div>
 
 
   <header class="kg-header">
@@ -776,6 +846,7 @@
     </details>
     <button type="button" class="kb-control kb-tax-toggle is-on" id="kb-tax-toggle" role="switch" aria-label="Tax" aria-checked="true">Tax: ON</button>
     <button type="button" class="kb-control" id="kb-history-open"><@ic 'clock'/> History <kbd class="kg-only">F10</kbd></button>
+    <#if kitchenModuleId == 'kot' && modCanWrite><button type="button" class="kb-control" id="kb-offline-open">Offline Drafts</button></#if>
     <div class="kb-otype" role="group" aria-label="Service type">
       <button type="button" class="kb-otbtn is-active" data-ot="Dine In"><@ic 'bag'/> Dine In</button>
       <button type="button" class="kb-otbtn" data-ot="Take Away"><@ic 'box'/> Take Away</button>
@@ -879,6 +950,17 @@
       </#if>
     </div><p id="kb-history-empty" hidden>No matching orders.</p><form method="dialog"><button class="kb-control">Close</button></form>
   </dialog>
+  <#if kitchenModuleId == 'kot' && modCanWrite><dialog id="kb-offline" class="zk-history-view" aria-labelledby="kb-offline-title">
+    <h2 id="kb-offline-title">Offline Drafts</h2>
+    <p>Save the current unpaid order on this device. When connected, sync it to Held Orders to review prices and take payment.</p>
+    <ul id="kb-offline-list" class="q-pl-md" aria-label="Drafts saved on this device"></ul>
+    <p id="kb-offline-status" role="status"></p>
+    <div class="zk-history-actions">
+      <button type="button" class="kb-control" id="kb-offline-save" disabled>Save Current Order</button>
+      <button type="button" class="kb-control" id="kb-offline-held">View Held Orders</button>
+      <button type="button" class="kb-control" id="kb-offline-close">Close</button>
+    </div>
+  </dialog></#if>
   <#if modCanWrite><dialog id="kb-payment" class="zk-history-view" aria-labelledby="kb-payment-title">
     <div id="kb-payment-heading"><h2 id="kb-payment-title">Bill Out</h2><p id="kb-payment-total"></p></div>
     <form id="kb-payment-form">
@@ -916,7 +998,7 @@
   </dialog></#if>
 
   <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" style="display:none"
-       onload="(function(){function boot(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=keypad-5';document.head.appendChild(s);}if(window.PosTillDialogs){boot();return;}var shared=document.createElement('script');shared.src='/zenithstatic/js/pos-till-dialogs.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-till-dialogs.js').getLastModified()?c}';shared.onload=boot;document.head.appendChild(shared);})()"/>
+       onload="(function(){function boot(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/kot-billing.js').getLastModified()?c}';document.head.appendChild(s);}function billing(){<#if kitchenModuleId == 'kot' && modCanWrite>if(!window.KotOfflineDrafts){var offline=document.createElement('script');offline.src='/zenithstatic/js/kot-offline.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/kot-offline.js').getLastModified()?c}';offline.onload=offline.onerror=boot;document.head.appendChild(offline);return;}</#if>boot();}if(window.PosTillDialogs){billing();return;}var shared=document.createElement('script');shared.src='/zenithstatic/js/pos-till-dialogs.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-till-dialogs.js').getLastModified()?c}';shared.onload=billing;document.head.appendChild(shared);})()"/>
 </div>
 </#if>
         ]]></text></render-mode>

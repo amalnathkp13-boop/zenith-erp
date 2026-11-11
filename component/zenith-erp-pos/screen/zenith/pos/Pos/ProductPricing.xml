@@ -18,7 +18,7 @@
                 def p = ec.web.parameters
                 try {
                     if (!p.productId) { ec.web.sendJsonResponse([success:false, error:'Missing product']); return }
-                    def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId','pos').call()
+                    def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId',kitchenModuleId ?: 'pos').call()
                     if (access?.canWrite != true) { ec.web.sendJsonResponse([success:false, error:'You cannot change POS prices.']); return }
                     def scope = ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess')
                         .parameter('productId',p.productId).call()
@@ -349,7 +349,7 @@
                     </select>
                 </div>
               </form>
-              <a href="${appBase!''}/zenith/pos/ProductPricing/exportCsv?searchTerm=${(searchTerm!'')?url('UTF-8')}&catId=${(catId!'')?url('UTF-8')}&pricingStatus=${(pricingStatus!'')?url('UTF-8')}&gstFilter=${(gstFilter!'')?url('UTF-8')}&modeIds=${selectedModeIdsCsv?url('UTF-8')}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border:1px solid #E5E7EB;border-radius:8px;background:#fff;color:#374151;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap"><span class="material-icons" style="font-size:16px">download</span>Export</a>
+              <a href="${sri.buildUrl('exportCsv').url?html}?searchTerm=${(searchTerm!'')?url('UTF-8')}&catId=${(catId!'')?url('UTF-8')}&pricingStatus=${(pricingStatus!'')?url('UTF-8')}&gstFilter=${(gstFilter!'')?url('UTF-8')}&modeIds=${selectedModeIdsCsv?url('UTF-8')}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border:1px solid #E5E7EB;border-radius:8px;background:#fff;color:#374151;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap"><span class="material-icons" style="font-size:16px">download</span>Export</a>
               <a href="${appBase!''}/zenith/Inventory/FindProduct" style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;background:#7C3AED;color:#fff;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap"><span class="material-icons" style="font-size:16px">add</span>Add Product</a>
             </div>
 

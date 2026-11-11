@@ -375,10 +375,10 @@
             html_stylesheets.add('https://fonts.googleapis.com/icon?family=Material+Icons')
             if (footer_scripts == null) footer_scripts = []
             footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=14')
-            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=52')
+            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=53')
             footer_scripts.add('/zenithstatic/js/profile-menu.js?v=1')
             footer_scripts.add('/zenithstatic/js/sidebar-manager.js?v=3')
-            footer_scripts.add('/zenithstatic/js/subnav-manager.js?v=4')
+            footer_scripts.add('/zenithstatic/js/subnav-manager.js?v=5')
             footer_scripts.add('/zenithstatic/js/pricing-price-lists.js?v=1')
             footer_scripts.add('/zenithstatic/js/purchase-rfq.js?v=1')
             footer_scripts.add('/zenithstatic/js/purchase-job-work.js?v=1')
@@ -388,7 +388,7 @@
             footer_scripts.add('/zenithstatic/js/crm-tracking.js?v=1')
             footer_scripts.add('/zenithstatic/js/pricing-history.js?v=1')
             footer_scripts.add('/zenithstatic/js/pos-product-pricing.js?v=2')
-            footer_scripts.add('/zenithstatic/js/pos-wastage.js?v=2')
+            footer_scripts.add('/zenithstatic/js/pos-wastage.js?v=3')
             footer_scripts.add('/zenithstatic/js/pos-report-date-picker.js?v=3')
             footer_scripts.add('/zenithstatic/js/purchase-vendor-evaluation.js?v=1')
             footer_scripts.add('/zenithstatic/js/pricing-dashboard.js?v=2')
@@ -402,7 +402,7 @@
             html_stylesheets.add('/zenithstatic/css/barcode-reference.css?v=1')
             if (html_scripts == null) html_scripts = []
             html_scripts.add('/zenithstatic/js/qapps-shell-boot.js?v=1')
-            html_scripts.add('/zenithstatic/js/kitchen-display.js?v=6')
+            html_scripts.add('/zenithstatic/js/kitchen-display.js?v=7')
             html_scripts.add('/zenithstatic/js/pos-receipt-layout.js?v=3')
             html_scripts.add('/zenithstatic/js/kitchen-print.js?v=4')
             html_stylesheets.add('/zenithstatic/css/kitchen-display.css?v=5')
@@ -974,7 +974,8 @@
           </div>
 ]]></text></render-mode>
         <render-mode><text type="html" template="true"><![CDATA[
-          <#macro posSubnavTabs>
+          <#macro posSubnavTabs module="pos" kotGroup=false>
+            <#local kotTools = ["PosTransactions", "PosSessions", "PosTerminals", "Wastage", "ProductPricing", "DiscountSettings", "SalesMode", "ProductImport", "ReceiptConfig", "PrinterConfig", "BillNumberRegister", "OfflineMode"]>
             <#list [
               ["Dashboard", "Dashboard"],
               ["Terminal", "Billing Terminal"],
@@ -1001,7 +1002,9 @@
               ["BillNumberRegister", "Bill Register"],
               ["OfflineMode", "Offline Mode"]
             ] as tab>
-              <a class="zsub-tab" data-match="/pos/${tab[0]}" href="/apps/zenith/pos/${tab[0]}">${tab[1]}</a>
+              <#if !kotGroup || (kotTools?seq_contains(tab[0]) == (module == "kot"))>
+                <a class="zsub-tab" data-match="/${module}/${tab[0]}" href="/apps/zenith/${module}/${tab[0]}">${tab[1]}</a>
+              </#if>
             </#list>
           </#macro>
           <div class="zsub-grp" data-match="/pos"><span class="zsub-title">POS</span>
@@ -1014,7 +1017,8 @@
             <a class="zsub-tab" data-match="/kot/Tables" href="/apps/zenith/kot/Tables">Tables</a>
             <a class="zsub-tab" data-match="/kot/KotHistory" href="/apps/zenith/kot/KotHistory">KOT History</a>
             <a class="zsub-tab" data-match="/kot/WaiterManagement" href="/apps/zenith/kot/WaiterManagement">Waiters</a>
-            <#if (navShow["pos"])!false><@posSubnavTabs/></#if>
+            <@posSubnavTabs module="kot" kotGroup=true/>
+            <#if (navShow["pos"])!false><@posSubnavTabs kotGroup=true/></#if>
           </div>
 ]]></text></render-mode>
         <render-mode><text type="html"><![CDATA[
@@ -1170,7 +1174,7 @@
                   }}catch(_e){}
                 /* ZE-NAV-ALIAS: a detail/edit screen (menu-include=false, e.g. EditStockTransfer) shares no URL prefix
                    with its list tab, so map it to the parent list route for active-state only (group resolved above). */
-                var relA=rel==='/kot'||rel==='/kot/'?'/kot/KotDashboard':rel,_NA={'/Inventory/EditStockTransfer':'/Inventory/StockTransfers','/Inventory/EditStockAdjustment':'/Inventory/StockAdjustments','/Inventory/EditFacility':'/Inventory/FindFacility'};
+                var relA=rel==='/kot'||rel==='/kot/'?'/kot/KotDashboard':rel,_NA={'/kot/EditSession':'/kot/PosSessions','/kot/PosSessionsPdf':'/kot/PosSessions','/kot/EditTransaction':'/kot/PosTransactions','/kot/ReceiptPdf':'/kot/PosTransactions','/Inventory/EditStockTransfer':'/Inventory/StockTransfers','/Inventory/EditStockAdjustment':'/Inventory/StockAdjustments','/Inventory/EditFacility':'/Inventory/FindFacility'};
                 for(var _ak in _NA){if(rel.indexOf(_ak)===0){relA=_NA[_ak]+rel.slice(_ak.length);break;}}
                 var tabs=[].slice.call(g.querySelectorAll('.zsub-tab')),t=null,tLen=-1;
                 tabs.forEach(function(a){var m=a.getAttribute('data-match')||'';if(m&&relA.indexOf(m)===0&&m.length>tLen){t=a;tLen=m.length;}});

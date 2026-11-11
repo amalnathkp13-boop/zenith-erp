@@ -5,12 +5,13 @@
 
     <transition name="saveDiscountSettings" method="post" begin-transaction="true">
         <actions>
+            <if condition="kitchenModuleId == 'kot'"><return error="true" message="Use the sales-mode discount rules for KOT billing."/></if>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="scope"/>
             <if condition="!scope.allowed"><return/></if>
             <service-call name="zenith.pos.PosFreeItemServices.get#ManagerApprovalAccess" out-map="manager"/>
             <if condition="!manager.canApprove"><return error="true" message="A POS manager must configure discount and approval rules."/></if>
             <script><![CDATA[
-                def orgId = ec.user.getPreference('ACTIVE_ORGANIZATION')
+                def orgId = scope.organizationPartyId
                 if (!orgId || orgId == '_NA_') {
                     ec.message.addError("No active shop selected. Open the POS for your shop first, then set the discount rules.")
                     return
@@ -61,13 +62,70 @@
         <default-response url="."/>
     </transition>
 
+    <transition name="saveKotDiscount" method="post" begin-transaction="true">
+        <actions>
+            <if condition="kitchenModuleId != 'kot'"><return error="true" message="Open KOT Discount to change this setting."/></if>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="scope"/>
+            <if condition="!scope.allowed"><return/></if>
+            <service-call name="zenith.pos.PosFreeItemServices.get#ManagerApprovalAccess" out-map="manager"/>
+            <if condition="!manager.canApprove"><return error="true" message="A KOT manager must configure sales-mode discounts."/></if>
+            <script><![CDATA[
+                BigDecimal percent
+                try { percent = new BigDecimal((discountPercent ?: '').toString().trim()) }
+                catch (NumberFormatException ignored) { ec.message.addError('Enter a discount from 0 to 100%.'); return }
+                if (percent < 0 || percent > 100 || percent.stripTrailingZeros().scale() > 2) {
+                    ec.message.addError('Enter a discount from 0 to 100% with up to two decimal places.'); return
+                }
+
+                def orgId = scope.organizationPartyId
+                // Match billing and mode deletion lock order: terminals before the sales mode.
+                ec.entity.find('zenith.erp.pos.PosTerminal').condition('organizationPartyId',orgId)
+                    .orderBy('terminalId').forUpdate(true).list()
+                def mode = salesModeId ? ec.entity.find('zenith.erp.pos.PosSalesMode')
+                    .condition('salesModeId',salesModeId).condition('organizationPartyId',orgId)
+                    .condition('isActive','Y').condition('priceSource','PpsDiscountMrp').forUpdate(true).one() : null
+                if (!mode) { ec.message.addError('Choose an active discount mode owned by your organization.'); return }
+
+                def cartLines = ec.entity.find('zenith.erp.pos.PosTransactionItem')
+                cartLines.makeEntityDynamicView()
+                    .addMemberEntity('I','zenith.erp.pos.PosTransactionItem',null,null,null)
+                    .addMemberEntity('T','zenith.erp.pos.PosTransaction','I',false,[transactionId:'transactionId'])
+                    .addAlias('I','salesModeId').addAlias('T','organizationPartyId').addAlias('T','statusId')
+                def openStatuses = ['PtCreated','PtHeld']
+                if (ec.entity.find('zenith.erp.pos.PosTransaction').condition('organizationPartyId',orgId)
+                        .condition('salesModeId',salesModeId).condition('statusId','in',openStatuses).count() > 0 ||
+                    cartLines.condition('organizationPartyId',orgId).condition('salesModeId',salesModeId)
+                        .condition('statusId','in',openStatuses).count() > 0) {
+                    ec.message.addError('Finish or void open and held carts in this mode before changing it.'); return
+                }
+                // Unpaid KOTs carry a saved quote. Changing its pricing would block checkout.
+                def snapshots = ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('organizationPartyId',orgId)
+                    .condition('transactionId',null).condition('statusId','in',['KotDraft','KotNew','KotPreparing','KotReady','KotServed'])
+                    .selectField('orderReceiptJson').list()
+                def pendingKot = snapshots.any { ticket ->
+                    if (!ticket.orderReceiptJson?.contains(salesModeId)) return false
+                    try { return new groovy.json.JsonSlurper().parseText(ticket.orderReceiptJson)?.bill?.salesModeId == salesModeId }
+                    catch (groovy.json.JsonException ignored) { return false }
+                }
+                if (pendingKot) { ec.message.addError('Settle or cancel unpaid KOTs in this mode before changing it.'); return }
+                mode.set('discountPercent',percent).update()
+                ec.message.addMessage('Sales-mode discount saved.')
+            ]]></script>
+        </actions>
+        <default-response url="."/>
+    </transition>
+
     <actions>
         <script><![CDATA[
-            def _uri = (ec.web?.request?.requestURI ?: '')
-            def _zi = _uri.indexOf('/zenith/')
-            appBase = _zi > 0 ? _uri.substring(0, _zi) : ''
-
-            def orgId = ec.user.getPreference('ACTIVE_ORGANIZATION')
+            def orgId = posOrganizationPartyId
+            if (kitchenModuleId == 'kot') {
+                kotDiscountModes = orgId ? ec.service.sync().name('zenith.pos.PosModeServices.get#OrganizationModes')
+                    .parameter('organizationPartyId',orgId).call().modes?.findAll {
+                        it.organizationPartyId == orgId && it.priceSource == 'PpsDiscountMrp'
+                    } : []
+                kotCanManageDiscount = modCanWrite && ['ADMIN','ZENITH_ADMIN','ZENITH_STORE_MGR'].any { ec.user.isInGroup(it) }
+                return
+            }
             hasOrg = (orgId && orgId != '_NA_')
             def rd = { k -> hasOrg ? ec.entity.find("moqui.security.UserPreference")
                 .condition("userId", orgId).condition("preferenceKey", k).one()?.preferenceValue : null }
@@ -87,6 +145,31 @@
     </actions>
 
     <widgets>
+        <section name="KotDiscount"><condition><expression>kitchenModuleId == 'kot'</expression></condition><widgets>
+            <render-mode><text type="html,qvt" template="true"><![CDATA[
+            <section class="zenith-card q-ma-md q-pa-md">
+                <h2 class="q-mt-none">KOT Discounts</h2>
+                <p>Set the discount percentage for each sales mode that uses Discount on MRP. Product price overrides take priority.</p>
+                <p>Sales modes are shared with POS when your organization uses both modules.</p>
+                <#list (kotDiscountModes![]) as mode>
+                <form method="post" action="${sri.buildUrl('saveKotDiscount').url?html}" class="row items-end q-gutter-md q-mb-md">
+                    <input type="hidden" name="moquiSessionToken" value="${(ec.web.sessionToken!'')?html}"/>
+                    <input type="hidden" name="salesModeId" value="${mode.salesModeId?html}"/>
+                    <label>
+                        <span class="block text-weight-medium">${mode.modeName?html} discount (%)</span>
+                        <input type="number" name="discountPercent" min="0" max="100" step="0.01" required
+                               value="${(mode.discountPercent!0)?c}" <#if !kotCanManageDiscount>readonly</#if>/>
+                    </label>
+                    <#if kotCanManageDiscount><button class="q-btn bg-primary text-white" type="submit">Save Discount</button></#if>
+                </form>
+                <#else>
+                <p>No discount modes are available. A sales mode with Discount on MRP appears here once it is set up.</p>
+                </#list>
+                <#if !kotCanManageDiscount && (kotDiscountModes![])?has_content><p>You have view-only access to these discounts.</p></#if>
+            </section>
+            ]]></text></render-mode>
+        </widgets></section>
+        <section name="PosDiscount"><condition><expression>kitchenModuleId != 'kot'</expression></condition><widgets>
         <render-mode><text type="html,qvt" template="true"><![CDATA[<details id="posHelp_discount" style="background:#EEF2FF;border:1px solid #C7D2FE;border-left:5px solid #6366F1;border-radius:10px;padding:9px 16px;margin:8px 16px 0 16px;font-family:Segoe UI,Arial,sans-serif"><summary style="cursor:pointer;font-weight:700;font-size:14px;color:#3730A3;outline:none">&#127991; Discount rules &mdash; quick help <span style="font-weight:500;color:#6B7280;font-size:12px">(click to hide / show)</span></summary><div style="font-size:13px;color:#202124;line-height:1.9;margin-top:8px">Control how much discount your cashiers can give at the billing counter.<br><b>1</b>&nbsp;<b>Discount limit</b> &mdash; the biggest discount a cashier may give without approval (e.g. 10%). Leave blank to allow any amount.<br><b>2</b>&nbsp;<b>Manager PIN</b> &mdash; a secret code needed to go above the limit. It is hidden &mdash; we never show it back on screen.<br><b>3</b>&nbsp;<b>Round-off</b> &mdash; round the final amount to a neat figure (e.g. nearest &#8377;5).</div></details>]]></text></render-mode>
 
         <render-mode><text type="html,qvt" template="true"><![CDATA[
@@ -154,7 +237,7 @@
 
                     <#if (modCanWrite!false)>
                     <div style="display:flex;gap:12px">
-                        <button id="disc-save" type="button" style="display:inline-flex;align-items:center;gap:7px;padding:11px 20px;background:#7C3AED;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer"><span class="material-icons" style="font-size:18px">save</span>Save Discount Rules</button>
+                        <button id="disc-save" type="button" data-save-url="${sri.buildUrl('saveDiscountSettings').url?html}" data-token="${(ec.web.sessionToken!'')?html}" style="display:inline-flex;align-items:center;gap:7px;padding:11px 20px;background:#7C3AED;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer"><span class="material-icons" style="font-size:18px">save</span>Save Discount Rules</button>
                         <button id="disc-reset" type="button" style="display:inline-flex;align-items:center;gap:6px;padding:11px 18px;background:#fff;color:#374151;border:1px solid #E5E7EB;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer"><span class="material-icons" style="font-size:16px">restart_alt</span>Reset</button>
                     </div>
                     <#else>
@@ -209,7 +292,6 @@
         <#if (hasOrg && (modCanWrite!false))>
         <script>
         (function(){
-            function tok(){ try{ if(window.moqui&&window.moqui.webrootVue&&window.moqui.webrootVue.moquiSessionToken) return window.moqui.webrootVue.moquiSessionToken; }catch(e){} return ''; }
             var eye=document.getElementById('disc-eye'), pin=document.getElementById('disc-pin');
             if(eye&&pin) eye.addEventListener('click',function(){ pin.type = (pin.type==='password'?'text':'password'); var g=eye.querySelector('.material-icons'); if(g) g.textContent = (pin.type==='password'?'visibility':'visibility_off'); });
             var reset=document.getElementById('disc-reset'); if(reset) reset.addEventListener('click',function(){ location.reload(); });
@@ -220,8 +302,8 @@
                     roundOffStep:(document.getElementById('disc-round')||{}).value||'0',
                     managerPin:(document.getElementById('disc-pin')||{}).value||'',
                     clearPin:(document.getElementById('disc-clear')&&document.getElementById('disc-clear').checked)?'Y':'',
-                    moquiSessionToken:tok() });
-                fetch('${appBase!''}/zenith/pos/DiscountSettings/saveDiscountSettings',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body,credentials:'same-origin'})
+                    moquiSessionToken:save.dataset.token });
+                fetch(save.dataset.saveUrl,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body,credentials:'same-origin'})
                     .then(function(){ location.reload(); })
                     .catch(function(){ save.disabled=false; save.innerHTML=o; var r=document.getElementById('disc-result'); if(r){ r.textContent='Save failed — please try again.'; r.style.color='#DC2626'; } });
             });
@@ -229,5 +311,6 @@
         </script>
         </#if>
         ]]></text></render-mode>
+        </widgets></section>
     </widgets>
 </screen>

@@ -35,6 +35,7 @@
         '/pricing': ['Pricing', 'PricingDashboard:Dashboard', 'FindPriceList:Price Lists', 'FindPricingRule:Pricing Rules', 'PriceChangeHistory:Price History'],
         '/barcode': ['Barcode', 'BarcodeDashboard:Dashboard', 'FindBarcode:Product Barcodes', 'LabelTemplates:Label Templates', 'PrintJobs:Print Jobs']
     };
+    var KOT_TOOLS = new Set(["PosTransactions", "PosSessions", "PosTerminals", "Wastage", "ProductPricing", "DiscountSettings", "SalesMode", "ProductImport", "ReceiptConfig", "PrinterConfig", "BillNumberRegister", "OfflineMode"]);
     // the "Dashboards" hub shown on the Home/Dashboard landing — [label, href, matchPrefix, planModule] across
     // the ERP. A tab is shown only if its planModule is in the tenant's plan (null = always shown).
     var DASHBOARDS = [
@@ -113,6 +114,8 @@
         if (!a || a.target || a.hasAttribute('download')) return;
         var url = new URL(a.href, location.href);
         if (url.origin !== location.origin || !url.pathname.startsWith('/qapps/zenith') || url.hash) return;
+        // Let the framework build the nested KOT shell on entry; keep tab switches inside it in-place.
+        if (a.getAttribute('data-match') === '/kot' && !/^\/qapps\/zenith\/kot(?:\/|$)/.test(location.pathname)) return;
         if (!window.moqui || !moqui.webrootVue) return;
         e.preventDefault();
         moqui.webrootVue.setUrl(url.pathname + url.search);
@@ -446,7 +449,7 @@
         // ZE-NAV-ALIAS: a detail/edit screen (menu-include=false, e.g. EditStockTransfer) shares no URL prefix with its
         // list tab, so no tab would highlight. Map it to the parent list route for active-state matching only (the group
         // still resolves via the /<module> prefix above, so this doesn't change which subnav renders).
-        var relA = rel === '/kot' || rel === '/kot/' ? '/kot/KotDashboard' : rel, _NAV_ALIAS = { '/Inventory/EditStockTransfer': '/Inventory/StockTransfers', '/Inventory/EditStockAdjustment': '/Inventory/StockAdjustments', '/Inventory/EditFacility': '/Inventory/FindFacility' };
+        var relA = rel === '/kot' || rel === '/kot/' ? '/kot/KotDashboard' : rel, _NAV_ALIAS = { '/kot/EditSession':'/kot/PosSessions','/kot/PosSessionsPdf':'/kot/PosSessions','/kot/EditTransaction':'/kot/PosTransactions','/kot/ReceiptPdf':'/kot/PosTransactions', '/Inventory/EditStockTransfer': '/Inventory/StockTransfers', '/Inventory/EditStockAdjustment': '/Inventory/StockAdjustments', '/Inventory/EditFacility': '/Inventory/FindFacility' };
         for (var _ak in _NAV_ALIAS) { if (rel.indexOf(_ak) === 0) { relA = _NAV_ALIAS[_ak] + rel.slice(_ak.length); break; } }
         // ZE-POS-NAV-ROLE: a POS-only cashier (posOnlyUser -> data-pos-only) sees only till-operational POS submodules;
         // hide the rest (visibility-only). Same cashier set as the /apps #z-subnav filter (ZenithApp.xml). Admin / Store
@@ -457,9 +460,14 @@
         subBar.appendChild(el('span', 'zqsub-title', SUBNAV[key][0]));
         var active = null, alen = -1;
         groups.forEach(function (group) {
-            SUBNAV[group].slice(1).forEach(function (pair) {
+            var tabs = SUBNAV[group].slice(1);
+            if (group === '/kot') tabs = tabs.concat(SUBNAV['/pos'].slice(1).filter(function (pair) {
+                return KOT_TOOLS.has(pair.slice(0, pair.indexOf(':')));
+            }));
+            tabs.forEach(function (pair) {
                 var ci = pair.indexOf(':'), seg = pair.slice(0, ci), label = pair.slice(ci + 1);
                 var match = group + '/' + seg;
+                if (key === '/kot' && group === '/pos' && KOT_TOOLS.has(seg)) return;
                 if ((group === '/pos' && posCash && !posCash[seg]) || !roleAllows(match)) return;
                 var a = el('a', 'zqsub-tab', label);
                 a.href = match === '/pos/Terminal' ? '/apps/zenith' + match : '/qapps/zenith' + match;

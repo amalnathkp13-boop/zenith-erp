@@ -9,7 +9,12 @@
         Tables:'#tm-wrap',KotHistory:'#zk-history-toolbar',WaiterManagement:'#wf-search'};
     function url(value) { try { return new URL(value, location.href); } catch (_) { return null; } }
     function key(value) { var u=url(value); return u ? u.pathname.replace(/^\/(apps|qapps)/,'').replace(/\.(qvt|html)$/,'').replace(/\/$/,'') : ''; }
-    function kitchen(value) { return /^\/zenith\/(?:kot|pos\/Kitchen)(?:\/|$)/.test(key(value)); }
+    function kitchen(value) {
+        var path = key(value);
+        if (/^\/zenith\/pos\/Kitchen(?:\/|$)/.test(path)) return true;
+        var route = /^\/zenith\/kot(?:\/([^/]+))?$/.exec(path);
+        return !!route && (path === '/zenith/kot' || Object.hasOwn(tabContent, route[1]));
+    }
     function billing(value) { return key(value).endsWith('/KotBilling'); }
     function appsKotTab(target) {
         return target && target.origin===location.origin && !target.hash &&
@@ -162,9 +167,13 @@
         if(!billing(pending) && !document.getElementById('zk-route-status'))show('Loading '+title(pending)+'…',false);
         var frame=document.getElementById('kitchen-page-frame');
         var ready=frame&&!staleNodes.has(frame)&&key(frame.dataset.kitchenRoute)===key(pending);
-        if(frame) {
-            var destination=key(pending).split('/').pop(), selector=tabContent[destination==='kot'?'KotDashboard':destination==='Kitchen'?'KitchenDisplay':destination];
-            if(selector){var content=frame.querySelector(selector);ready=!!content&&!staleNodes.has(content);}
+        var destination=key(pending).split('/').pop(), selector=tabContent[destination==='kot'?'KotDashboard':destination==='Kitchen'?'KitchenDisplay':destination];
+        if(selector) {
+            var content=frame ? frame.querySelector(selector) : null;
+            // Quasar can mount the selected child without the parent frame when switching modules.
+            if(!frame && location.pathname.startsWith('/qapps/') && key(location.href)===key(pending))
+                content=document.querySelector('.q-page')?.querySelector(selector);
+            ready=!!content&&!staleNodes.has(content);
         }
         var shellReady=location.pathname.indexOf('/qapps/')===0 ? document.documentElement.classList.contains('zq-nav-ready') :
             !!document.querySelector('#z-subnav.show')&&document.getElementById('z-sidebar')?.parentElement===document.body;

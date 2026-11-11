@@ -4,7 +4,7 @@
         default-menu-title="Summary" default-menu-index="2">
 
     <transition name="downloadPdf" read-only="true">
-        <default-response url="${ec.web.getWebappRootUrl(false, null)}/fop/apps/zenith/pos/Wastage/WastageSummaryPdf" url-type="plain">
+        <default-response url="${ec.web.getWebappRootUrl(false, null)}/fop/apps/zenith${kitchenModulePath ?: '/pos'}/Wastage/WastageSummaryPdf" url-type="plain">
             <parameter name="fromDate"/>
             <parameter name="thruDate"/>
         </default-response>
@@ -21,11 +21,15 @@
                 def dStart = ec.l10n.parseTimestamp(fromD + ' 00:00:00', 'yyyy-MM-dd HH:mm:ss')
                 def dEnd = ec.l10n.parseTimestamp(thruD + ' 23:59:59.999', 'yyyy-MM-dd HH:mm:ss.SSS')
 
-                def _org = ec.user.getPreference("ACTIVE_ORGANIZATION")
+                def _org = kitchenModuleId == 'kot' ? (posOrganizationPartyId ?: '__NO_ORGANIZATION__') : ec.user.getPreference("ACTIVE_ORGANIZATION")
                 def wf = ec.entity.find("zenith.erp.pos.PosStockWastage")
                     .condition("wastageDate", "greater-equals", dStart)
                     .condition("wastageDate", "less-equals", dEnd)
                 if (_org) wf.condition("organizationPartyId", _org)
+                if (kitchenModuleId == 'kot') {
+                    def shopId = ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call().activeShopId
+                    if (shopId) wf.condition('facilityId', shopId)
+                }
                 def wastages = wf.list()
 
                 def reasonMap = new LinkedHashMap(); def productMap = new LinkedHashMap()
@@ -86,11 +90,15 @@
         <script><![CDATA[
             def zinr = context.zinr ?: com.zenith.Fmt.INSTANCE
             // ZE-SALES-014 f/u: org-isolate (standalone render skips the authz filter)
-            def _org = ec.user.getPreference("ACTIVE_ORGANIZATION")
+            def _org = kitchenModuleId == 'kot' ? (posOrganizationPartyId ?: '__NO_ORGANIZATION__') : ec.user.getPreference("ACTIVE_ORGANIZATION")
             def _wastageFind = ec.entity.find("zenith.erp.pos.PosStockWastage")
                 .condition("wastageDate", "greater-equals", dayStart)
                 .condition("wastageDate", "less-equals", dayEnd)
             if (_org) _wastageFind.condition("organizationPartyId", _org)
+            if (kitchenModuleId == 'kot') {
+                def shopId = ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call().activeShopId
+                if (shopId) _wastageFind.condition('facilityId', shopId)
+            }
             def wastages = _wastageFind.list()
 
             grandTotalLoss = BigDecimal.ZERO

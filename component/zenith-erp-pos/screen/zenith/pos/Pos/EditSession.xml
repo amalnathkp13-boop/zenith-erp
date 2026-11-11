@@ -7,6 +7,7 @@
 
     <transition name="createTransaction" begin-transaction="true">
         <actions>
+            <if condition="kitchenModuleId == 'kot'"><return error="true" message="Use KOT Billing to change a bill."/></if>
             <!-- Cross-tenant write-IDOR guard: only the owning org (ADMIN exempt) may mutate this session. -->
             <service-call name="zenith.base.SecurityServices.assert#RecordOrgAccess" in-map="[entityName:'zenith.erp.pos.PosSession', idField:'sessionId', idValue:sessionId, orgField:'organizationPartyId']" out-map="_acc"/>
             <if condition="!_acc.allowed"><return error="true" message="You do not have access to this record."/></if>
@@ -45,9 +46,12 @@
     </transition>
     <transition name="editTransaction"><default-response url="../EditTransaction"/></transition>
     <transition name="goSessions"><default-response url="../PosSessions"/></transition>
-    <transition name="goTerminal"><default-response url="../Terminal"/></transition>
+    <transition name="goTerminal">
+        <conditional-response url="../KotBilling" parameter-map="[sessionId:sessionId]"><condition>kitchenModuleId == 'kot'</condition></conditional-response>
+        <default-response url="../Terminal"/>
+    </transition>
     <transition name="goTransactions"><default-response url="../PosTransactions"/></transition>
-    <transition name="goDashboard"><default-response url="../Dashboard"/></transition>
+    <transition name="goDashboard"><default-response url="${kitchenModuleId == 'kot' ? '../KotDashboard' : '../Dashboard'}"/></transition>
 
     <actions>
         <!-- Cross-tenant IDOR render guard: only the owning org (ADMIN exempt) may open a session.
@@ -59,10 +63,19 @@
         <entity-find-one entity-name="zenith.erp.pos.PosSession" value-field="session"/>
         <entity-find-one entity-name="zenith.erp.pos.PosTerminal" value-field="terminal">
             <field-map field-name="terminalId" from="session.terminalId"/></entity-find-one>
-        <entity-find entity-name="zenith.erp.pos.PosTransaction" list="txnList">
-            <econdition field-name="sessionId"/>
-            <order-by field-name="-entryDate"/>
-        </entity-find>
+        <if condition="kitchenModuleId == 'kot'">
+            <entity-find entity-name="zenith.erp.pos.KotTransactionDetailView" list="txnList" distinct="true">
+                <econdition field-name="sessionId" from="sessionId"/>
+                <econdition field-name="kotOrganizationPartyId" from="posOrganizationPartyId ?: '__NO_ORGANIZATION__'"/>
+                <order-by field-name="-entryDate"/>
+            </entity-find>
+            <else>
+                <entity-find entity-name="zenith.erp.pos.PosTransaction" list="txnList">
+                    <econdition field-name="sessionId"/>
+                    <order-by field-name="-entryDate"/>
+                </entity-find>
+            </else>
+        </if>
         <entity-find entity-name="zenith.erp.pos.CashDenomination" list="denomList">
             <econdition field-name="sessionId"/>
             <order-by field-name="-denomination"/>
@@ -151,17 +164,21 @@
                 <box-body>
                     <section name="OpenSessionActions" condition="session.statusId == 'PsOpen' &amp;&amp; modCanWrite">
                         <widgets>
-                            <container-dialog id="NewTxnDialog" button-text="New Transaction">
-                                <form-single name="NewTxnForm" transition="createTransaction">
-                                    <field name="sessionId"><default-field><hidden/></default-field></field>
-                                    <field name="transactionType"><default-field title="Type">
-                                        <drop-down><option key="Sale"/><option key="Return"/></drop-down></default-field></field>
-                                    <field name="customerName"><default-field title="Customer Name"><text-line size="25"/></default-field></field>
-                                    <field name="customerGstin"><default-field title="Customer GSTIN (B2B)"><text-line size="18"/></default-field></field>
-                                    <field name="placeOfSupplyStateCode"><default-field title="Place of Supply State Code"><text-line size="4"/></default-field></field>
-                                    <field name="submitButton"><default-field title="Create"><submit/></default-field></field>
-                                </form-single>
-                            </container-dialog>
+                            <section name="NewPosTransaction" condition="kitchenModuleId != 'kot'">
+                                <widgets>
+                                    <container-dialog id="NewTxnDialog" button-text="New Transaction">
+                                        <form-single name="NewTxnForm" transition="createTransaction">
+                                            <field name="sessionId"><default-field><hidden/></default-field></field>
+                                            <field name="transactionType"><default-field title="Type">
+                                                <drop-down><option key="Sale"/><option key="Return"/></drop-down></default-field></field>
+                                            <field name="customerName"><default-field title="Customer Name"><text-line size="25"/></default-field></field>
+                                            <field name="customerGstin"><default-field title="Customer GSTIN (B2B)"><text-line size="18"/></default-field></field>
+                                            <field name="placeOfSupplyStateCode"><default-field title="Place of Supply State Code"><text-line size="4"/></default-field></field>
+                                            <field name="submitButton"><default-field title="Create"><submit/></default-field></field>
+                                        </form-single>
+                                    </container-dialog>
+                                </widgets>
+                            </section>
                             <container-dialog id="CloseSessionDialog" button-text="Close Session">
                                 <form-single name="CloseSessionForm" transition="closeSession">
                                     <field name="sessionId"><default-field><hidden/></default-field></field>
@@ -188,7 +205,7 @@
 
         <!-- Transactions -->
         <container-box>
-            <box-header title="Transactions"/>
+            <box-header title="${kitchenModuleId == 'kot' ? 'KOT Transactions' : 'Transactions'}"/>
             <box-body>
                 <form-list name="TxnList" list="txnRows" skip-form="true">
                     <field name="transactionId"><default-field title="ID">

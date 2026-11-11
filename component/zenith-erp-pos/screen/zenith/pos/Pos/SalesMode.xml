@@ -6,7 +6,7 @@
     <transition name="createMode" method="post" begin-transaction="true">
         <actions>
             <script><![CDATA[
-                def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId','pos').call()
+                def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId',kitchenModuleId ?: 'pos').call()
                 def org = posOrganizationPartyId
                 if (access?.canWrite != true || !(ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN')) || !org) { ec.message.addError('Select a shop with POS administrator access first.'); return }
                 def name = (modeName ?: '').toString().trim()
@@ -53,7 +53,7 @@
     <transition name="updateMode" method="post" begin-transaction="true">
         <actions>
             <script><![CDATA[
-                def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId','pos').call()
+                def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId',kitchenModuleId ?: 'pos').call()
                 def org = posOrganizationPartyId
                 def mode = salesModeId ? ec.entity.find('zenith.erp.pos.PosSalesMode').condition('salesModeId',salesModeId).forUpdate(true).one() : null
                 if (access?.canWrite != true || !(ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN')) || !org || mode?.organizationPartyId != org || mode.isActive != 'Y') { ec.message.addError('This shop cannot edit that sales mode.'); return }
@@ -107,7 +107,7 @@
     <transition name="assignTerminal" method="post" begin-transaction="true">
         <actions><script><![CDATA[
             def org = posOrganizationPartyId
-            def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId','pos').call()
+            def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId',kitchenModuleId ?: 'pos').call()
             def terminal = terminalId ? ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',terminalId).one() : null
             if (access?.canWrite != true || !(ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN')) || !org || terminal?.organizationPartyId != org) { ec.message.addError('Choose a terminal and active mode from this shop.'); return }
             def availableModes = ec.service.sync().name('zenith.pos.PosModeServices.get#OrganizationModes')
@@ -120,7 +120,7 @@
     <transition name="removeTerminal" method="post" begin-transaction="true">
         <actions><script><![CDATA[
             def org = posOrganizationPartyId
-            def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId','pos').call()
+            def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId',kitchenModuleId ?: 'pos').call()
             def terminal = terminalId ? ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',terminalId).one() : null
             if (access?.canWrite != true || !(ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN')) || !org || org == '_NA_' || terminal?.organizationPartyId != org) { ec.message.addError('This shop cannot change that terminal.'); return }
             ec.service.sync().name('delete#zenith.erp.pos.PosTerminalSalesMode').parameters([terminalId:terminalId,salesModeId:salesModeId]).call()
@@ -168,6 +168,7 @@
         </entity-find>
         <set field="supportedPriceSourceList" from="priceSourceList.findAll { ['PpsMrp','PpsDiscountMrp','PpsFixedProduct'].contains(it.enumId) }"/>
 
+        <set field="_salesModeBase" from="(ec.web?.request?.requestURI ?: '').with { it.take(Math.max(0,it.indexOf('/zenith/'))) } + '/zenith' + (kitchenModulePath ?: '/pos') + '/SalesMode'"/>
         <set field="_activeOrg" from="posOrganizationPartyId"/>
         <set field="hasActiveOrg" from="!!_activeOrg"/>
         <set field="modeCanManage" from="modCanWrite &amp;&amp; (ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN'))"/>
@@ -232,7 +233,7 @@
                     if (!isDef && modeShopScope.shopList) _tiles.append('<button type="button" onclick="this.closest(&quot;details&quot;).open=false;this.closest(&quot;.smode-tile&quot;).querySelector(&quot;.smode-shop-dialog&quot;).showModal()">Remove from selected shops</button>')
                     _tiles.append('</div></details>')
                     if (!isDef) {
-                        _tiles.append('<form method="post" action="SalesMode/deleteMode" onsubmit="return confirm(&quot;Delete this sales mode from your organization? It will disappear from Sales Mode and all billing terminals. Existing bills remain unchanged.&quot;)"><input type="hidden" name="salesModeId" value="').append(_esc(m.salesModeId)).append('"/><input type="hidden" name="moquiSessionToken" value="').append(_esc(ec.web.sessionToken)).append('"/><button type="submit" class="smode-delete" aria-label="Delete ').append(_esc(m.modeName)).append('" title="Delete sales mode from your organization">').append(svgTrash).append('</button></form>')
+                        _tiles.append('<form method="post" action="').append(_esc(_salesModeBase)).append('/deleteMode" onsubmit="return confirm(&quot;Delete this sales mode from your organization? It will disappear from Sales Mode and all billing terminals. Existing bills remain unchanged.&quot;)"><input type="hidden" name="salesModeId" value="').append(_esc(m.salesModeId)).append('"/><input type="hidden" name="moquiSessionToken" value="').append(_esc(ec.web.sessionToken)).append('"/><button type="submit" class="smode-delete" aria-label="Delete ').append(_esc(m.modeName)).append('" title="Delete sales mode from your organization">').append(svgTrash).append('</button></form>')
                     } else {
                         _tiles.append('<button type="button" class="smode-delete" disabled aria-label="Delete ').append(_esc(m.modeName)).append('" title="The default sales mode cannot be deleted">').append(svgTrash).append('</button>')
                     }
@@ -248,7 +249,7 @@
                 def removedCount = removedShopModes.count { it.salesModeId == m.salesModeId }
                 if (removedCount) _tiles.append('<p class="smode-menu-note">Removed from ').append(removedCount).append(' shop(s). <a href="#smode-removed-shops">View or restore</a></p>')
                 if (modeCanManage && m.organizationPartyId && m.organizationPartyId == _activeOrg) {
-                    _tiles.append('<dialog class="smode-edit-dialog"><div class="smode-dialog-head"><h3>Customize ').append(_esc(m.modeName)).append('</h3><button type="button" aria-label="Close" onclick="this.closest(&quot;dialog&quot;).close()">&times;</button></div><form method="post" action="SalesMode/updateMode"><input type="hidden" name="salesModeId" value="').append(_esc(m.salesModeId)).append('"/><input type="hidden" name="moquiSessionToken" value="').append(_esc(ec.web.sessionToken)).append('"/>')
+                    _tiles.append('<dialog class="smode-edit-dialog"><div class="smode-dialog-head"><h3>Customize ').append(_esc(m.modeName)).append('</h3><button type="button" aria-label="Close" onclick="this.closest(&quot;dialog&quot;).close()">&times;</button></div><form method="post" action="').append(_esc(_salesModeBase)).append('/updateMode"><input type="hidden" name="salesModeId" value="').append(_esc(m.salesModeId)).append('"/><input type="hidden" name="moquiSessionToken" value="').append(_esc(ec.web.sessionToken)).append('"/>')
                     _tiles.append('<label>Mode name<input name="modeName" maxlength="100" required value="').append(_esc(m.modeName)).append('"/></label><label>Code<input name="modeCode" maxlength="12" pattern="[A-Za-z0-9_]{2,12}" required value="').append(_esc(m.modeCode)).append('"/></label><label>Price source<select name="priceSource">')
                     (supportedPriceSourceList ?: []).each { opt -> _tiles.append('<option value="').append(_esc(opt.enumId)).append('"').append(m.priceSource == opt.enumId ? ' selected' : '').append('>').append(_esc(opt.description)).append('</option>') }
                     _tiles.append('</select></label><div class="smode-edit-pair"><label>Discount %<input name="discountPercent" type="number" min="0" max="100" step="0.01" value="').append(_esc(disc)).append('"/></label><label>Markup %<input name="markupPercent" type="number" min="0" step="0.01" value="').append(_esc(markup)).append('"/></label></div>')
@@ -257,7 +258,7 @@
                     _tiles.append('<div class="smode-dialog-actions"><button type="button" onclick="this.closest(&quot;dialog&quot;).close()">Cancel</button><button type="submit">Save changes</button></div></form></dialog>')
                 }
                 if (modeCanManage && hasActiveOrg && !isDef) {
-                    _tiles.append('<dialog class="smode-edit-dialog smode-shop-dialog"><div class="smode-dialog-head"><h3>Remove ').append(_esc(m.modeName)).append(' from shops</h3><button type="button" aria-label="Close" onclick="this.closest(&quot;dialog&quot;).close()">&times;</button></div><p>Select the shops where this mode should stop appearing. Other shops, prices and existing bills stay unchanged.</p><form method="post" action="SalesMode/removeFromShops"><input type="hidden" name="salesModeId" value="').append(_esc(m.salesModeId)).append('"/><input type="hidden" name="moquiSessionToken" value="').append(_esc(ec.web.sessionToken)).append('"/>')
+                    _tiles.append('<dialog class="smode-edit-dialog smode-shop-dialog"><div class="smode-dialog-head"><h3>Remove ').append(_esc(m.modeName)).append(' from shops</h3><button type="button" aria-label="Close" onclick="this.closest(&quot;dialog&quot;).close()">&times;</button></div><p>Select the shops where this mode should stop appearing. Other shops, prices and existing bills stay unchanged.</p><form method="post" action="').append(_esc(_salesModeBase)).append('/removeFromShops"><input type="hidden" name="salesModeId" value="').append(_esc(m.salesModeId)).append('"/><input type="hidden" name="moquiSessionToken" value="').append(_esc(ec.web.sessionToken)).append('"/>')
                     modeShopScope.shopList.each { shop ->
                         if (!removedShopModes.any { it.salesModeId == m.salesModeId && it.facilityId == shop.id }) {
                             _tiles.append('<label class="smode-shop-choice"><input type="checkbox" name="facilityIds" value="').append(_esc(shop.id)).append('"').append(modeShopScope.activeShopId == shop.id || modeShopScope.shopList.size() == 1 ? ' checked' : '').append('/><span>').append(_esc(shop.name)).append('</span></label>')
@@ -273,7 +274,7 @@
                 def shop = modeShopScope.shopList.find { it.id == removed.facilityId }
                 def mode = activeModeList.find { it.salesModeId == removed.salesModeId }
                 if (shop && mode && (!modeShopScope.activeShopId || modeShopScope.activeShopId == shop.id)) {
-                    restores.append('<form method="post" action="SalesMode/restoreForShop" class="smode-restore-row"><span>').append(_esc(mode.modeName)).append(' — ').append(_esc(shop.name)).append('</span><input type="hidden" name="salesModeId" value="').append(_esc(mode.salesModeId)).append('"/><input type="hidden" name="facilityId" value="').append(_esc(shop.id)).append('"/><input type="hidden" name="moquiSessionToken" value="').append(_esc(ec.web.sessionToken)).append('"/><button type="submit">Restore for this shop</button></form>')
+                    restores.append('<form method="post" action="').append(_esc(_salesModeBase)).append('/restoreForShop" class="smode-restore-row"><span>').append(_esc(mode.modeName)).append(' — ').append(_esc(shop.name)).append('</span><input type="hidden" name="salesModeId" value="').append(_esc(mode.salesModeId)).append('"/><input type="hidden" name="facilityId" value="').append(_esc(shop.id)).append('"/><input type="hidden" name="moquiSessionToken" value="').append(_esc(ec.web.sessionToken)).append('"/><button type="submit">Restore for this shop</button></form>')
                 }
             }
             context.shopRestoreHtml = restores.length() ? '<section id="smode-removed-shops" class="smode-card"><h2 class="smode-card-title">Removed from shops</h2>' + restores + '</section>' : ''

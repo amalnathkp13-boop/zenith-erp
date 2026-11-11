@@ -5,6 +5,12 @@
 
     <transition name="createWastage">
         <actions>
+            <if condition="kitchenModuleId == 'kot'">
+                <service-call name="zenith.base.ShopServices.get#ActiveShopScope" in-map="[:]" out-map="_writeShop"/>
+                <if condition="_writeShop.shopAccessRestricted &amp;&amp; !_writeShop.shopList?.any { it.id == facilityId }">
+                    <return error="true" message="Choose a stock location assigned to this login."/>
+                </if>
+            </if>
             <service-call name="zenith.pos.PosStockServices.record#PosWastage" in-map="context"/>
         </actions>
         <default-response url="."/>
@@ -12,11 +18,11 @@
     <transition name="deleteWastage"><actions>
         <return error="true" message="Wastage is a stock audit record and cannot be deleted. Use an authorized inventory adjustment to correct stock."/>
     </actions><default-response url="."/></transition>
-    <transition name="searchProducts">
+    <transition name="searchProducts" read-only="true">
         <actions>
             <entity-find entity-name="mantle.product.Product" list="exactList" limit="1">
                 <econdition field-name="productId" from="term"/>
-                <econdition field-name="ownerPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
+                <econdition field-name="ownerPartyId" from="(kitchenModuleId == 'kot' ? posOrganizationPartyId : ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
             </entity-find>
             <if condition="exactList"><then>
                 <set field="options" from="exactList.collect { [value:it.productId, label:(it.productName ?: it.pseudoId) + ' (' + (it.pseudoId ?: '') + ')'] }"/>
@@ -24,7 +30,7 @@
             </then><else>
                 <entity-find entity-name="mantle.product.Product" list="prodList" limit="20">
                     <econdition field-name="productTypeEnumId" value="PtAsset"/>
-                    <econdition field-name="ownerPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
+                    <econdition field-name="ownerPartyId" from="(kitchenModuleId == 'kot' ? posOrganizationPartyId : ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
                     <econditions combine="or">
                         <econdition field-name="productName" operator="like" value="%${term}%" ignore-case="true"/>
                         <econdition field-name="pseudoId" operator="like" value="%${term}%" ignore-case="true"/>
@@ -38,11 +44,11 @@
         <default-response type="none"/>
     </transition>
 
-    <transition name="expiringProductsJson">
+    <transition name="expiringProductsJson" read-only="true">
         <actions><script><![CDATA[
             def todayMs = java.sql.Date.valueOf(ec.l10n.format(ec.user.nowTimestamp, 'yyyy-MM-dd')).getTime()
             def soonMs = todayMs + 7L*24*60*60*1000
-            def _weOrg = ec.user.getPreference('ACTIVE_ORGANIZATION')
+            def _weOrg = kitchenModuleId == 'kot' ? posOrganizationPartyId : ec.user.getPreference('ACTIVE_ORGANIZATION')
             def _wePf = ec.entity.find("mantle.product.Product").condition("productTypeEnumId","PtAsset").condition("isPerishable","Y")
             _wePf.condition("ownerPartyId", _weOrg ?: '__NO_ORGANIZATION__')
             def list = _wePf.orderBy("expiryDate").list()
@@ -63,6 +69,14 @@
 
     <transition name="recordExpiredWastage">
         <actions><script><![CDATA[
+            if (kitchenModuleId == 'kot') {
+                def shop = ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call()
+                if (shop.shopAccessRestricted && !shop.shopList?.any { it.id == ec.web.parameters.facilityId }) {
+                    ec.web.response.setStatus(403)
+                    ec.web.sendJsonResponse([success:false, error:'Choose a stock location assigned to this login.'])
+                    return
+                }
+            }
             def result = ec.service.sync().name('zenith.pos.PosStockServices.record#PosWastage').parameters([
                 productId:ec.web.parameters.productId, facilityId:ec.web.parameters.facilityId,
                 requestId:ec.web.parameters.requestId, quantity:ec.web.parameters.quantity, unitCost:ec.web.parameters.unitCost,
@@ -83,9 +97,13 @@
             <script><![CDATA[
                 import org.moqui.context.ExecutionContext
                 ExecutionContext ec = context.ec
-                def _org = ec.user.getPreference("ACTIVE_ORGANIZATION")
+                def _org = kitchenModuleId == 'kot' ? (posOrganizationPartyId ?: '__NO_ORGANIZATION__') : ec.user.getPreference("ACTIVE_ORGANIZATION")
                 def ef = ec.entity.find("zenith.erp.pos.PosStockWastageView").orderBy("-wastageDate").limit(500)
                 ef.condition("organizationPartyId", _org ?: '__NO_ORGANIZATION__')
+                if (kitchenModuleId == 'kot') {
+                    def shopId = ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call().activeShopId
+                    if (shopId) ef.condition('facilityId', shopId)
+                }
                 def rows = ef.list()
                 def reasonNames = [:]
                 ec.entity.find("moqui.basic.Enumeration").condition("enumTypeId","PosWastageReason").list().each { reasonNames[it.enumId] = it.description }
@@ -108,7 +126,7 @@
     </transition>
 
     <transition name="downloadPdf" read-only="true">
-        <default-response url="${ec.web.getWebappRootUrl(false, null)}/fop/apps/zenith/pos/Wastage/WastageEntryPdf" url-type="plain"/>
+        <default-response url="${ec.web.getWebappRootUrl(false, null)}/fop/apps/zenith${kitchenModulePath ?: '/pos'}/Wastage/WastageEntryPdf" url-type="plain"/>
     </transition>
 
     <actions>
@@ -118,10 +136,11 @@
         <set field="wasteRequestId" from="java.util.UUID.randomUUID().toString()"/>
 
 
-        <!-- Recent wastage entries (org-scoped, latest first) -->
+        <!-- Recent wastage entries (latest first) -->
         <entity-find entity-name="zenith.erp.pos.PosStockWastageView" list="wastageList" limit="20">
             <order-by field-name="-wastageDate"/>
-            <econdition field-name="organizationPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
+            <econdition field-name="facilityId" from="kitchenModuleId == 'kot' ? wasteScope.activeShopId : null" ignore-if-empty="true"/>
+            <econdition field-name="organizationPartyId" from="(kitchenModuleId == 'kot' ? posOrganizationPartyId : ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
         </entity-find>
         <set field="entryCount" from="wastageList.size()"/>
 
@@ -140,9 +159,13 @@
             def mc = cal(); mc.set(java.util.Calendar.DAY_OF_MONTH, 1); def month0 = midnight(mc)
             def dayOfMonth = cal().get(java.util.Calendar.DAY_OF_MONTH)
 
-            def _org = ec.user.getPreference("ACTIVE_ORGANIZATION")
+            def _org = kitchenModuleId == 'kot' ? (posOrganizationPartyId ?: '__NO_ORGANIZATION__') : ec.user.getPreference("ACTIVE_ORGANIZATION")
             def mf = ec.entity.find("zenith.erp.pos.PosStockWastage").condition("wastageDate","greater-equals",month0)
             mf.condition("organizationPartyId", _org ?: '__NO_ORGANIZATION__')
+            if (kitchenModuleId == 'kot') {
+                def shopId = ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call().activeShopId
+                if (shopId) mf.condition('facilityId', shopId)
+            }
             def monthRows = mf.list()
 
             def tLoss = 0.0G; def tN = 0
@@ -177,7 +200,7 @@
         <entity-find entity-name="mantle.product.Product" list="perishableList">
             <econdition field-name="productTypeEnumId" value="PtAsset"/>
             <econdition field-name="isPerishable" value="Y"/>
-            <econdition field-name="ownerPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
+            <econdition field-name="ownerPartyId" from="(kitchenModuleId == 'kot' ? posOrganizationPartyId : ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
             <order-by field-name="expiryDate"/>
         </entity-find>
     </actions>
@@ -336,7 +359,7 @@
             <!-- Expiring / expired products helper (kept below the mockup layout; JS-driven) -->
             <label text="&#9201; Expiring &amp; Expired Products" type="h6" style="text-weight-bold q-mb-sm"/>
             <container style="zenith-card bg-white shadow-2 q-pa-md q-mb-lg border-radius-lg">
-                <render-mode><text type="html,qvt" template="true"><![CDATA[<input type="hidden" id="wastage-facility" value="${wasteFacilityId!''}"/><div id="wastage-expiring-root" style="min-height:60px">Loading…</div><script src="/zenithstatic/js/pos-wastage.js?v=2"></script>]]></text></render-mode>
+                <render-mode><text type="html,qvt" template="true"><![CDATA[<input type="hidden" id="wastage-facility" value="${wasteFacilityId!''}"/><div id="wastage-expiring-root" data-can-write="<#if modCanWrite!true>Y<#else>N</#if>" style="min-height:60px">Loading…</div><script src="/zenithstatic/js/pos-wastage.js?v=3"></script>]]></text></render-mode>
             </container>
         </container>
     </widgets>

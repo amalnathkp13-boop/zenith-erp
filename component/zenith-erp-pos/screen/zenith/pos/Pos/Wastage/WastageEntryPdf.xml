@@ -12,9 +12,13 @@
         <script><![CDATA[
             generatedStr = ec.l10n.format(ec.user.nowTimestamp, 'dd MMM yyyy HH:mm')
             // standalone (fop) path outside the authz filter — scope org explicitly
-            def _org = ec.user.getPreference("ACTIVE_ORGANIZATION")
+            def _org = kitchenModuleId == 'kot' ? (_printAccess.organizationPartyId ?: '__NO_ORGANIZATION__') : ec.user.getPreference("ACTIVE_ORGANIZATION")
             def ef = ec.entity.find("zenith.erp.pos.PosStockWastageView").orderBy("-wastageDate").limit(200)
             ef.condition("organizationPartyId", _org ?: '__NO_ORGANIZATION__')
+            if (kitchenModuleId == 'kot') {
+                def shopId = ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call().activeShopId
+                if (shopId) ef.condition('facilityId', shopId)
+            }
             def rowsRaw = ef.list()
             def reasonNames = [:]
             ec.entity.find("moqui.basic.Enumeration").condition("enumTypeId","PosWastageReason").list().each { reasonNames[it.enumId] = it.description }

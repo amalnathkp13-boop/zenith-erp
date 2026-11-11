@@ -9,7 +9,7 @@
     <transition name="updateTemplate" method="post" begin-transaction="true">
         <actions>
             <set field="receiptDesign" from="receiptDesign ?: 'normal'"/>
-            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'pos']" out-map="_receiptWrite"/>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:(kitchenModuleId ?: 'pos')]" out-map="_receiptWrite"/>
             <if condition="!_receiptWrite.canWrite"><return error="true" message="Receipt settings are view-only."/></if>
             <if condition="!['normal','credit','revised'].contains(receiptDesign)"><return error="true" message="Choose a valid receipt design."/></if>
             <!-- Cross-tenant write-IDOR guard: only the owning org (ADMIN exempt) may mutate this template. -->
@@ -64,12 +64,16 @@
         <default-response url="."><parameter name="templateId"/><parameter name="receiptDesign"/></default-response></transition>
     <transition name="deleteTemplate" method="post" begin-transaction="true">
         <actions>
-            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:'pos']" out-map="_receiptWrite"/>
+            <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:(kitchenModuleId ?: 'pos')]" out-map="_receiptWrite"/>
             <if condition="!_receiptWrite.canWrite"><return error="true" message="Receipt settings are view-only."/></if>
             <!-- Cross-tenant write-IDOR guard: only the owning org (ADMIN exempt) may mutate this template. -->
             <service-call name="zenith.base.SecurityServices.assert#RecordOrgAccess" in-map="[entityName:'zenith.erp.pos.PosReceiptTemplate', idField:'templateId', idValue:templateId, orgField:'organizationPartyId']" out-map="_acc"/>
             <if condition="!_acc.allowed"><return error="true" message="You do not have access to this record."/></if>
-            <service-call name="delete#zenith.erp.pos.PosReceiptTemplate" in-map="context"/>
+            <if condition="ec.entity.find('zenith.erp.pos.PrinterConfiguration').condition('organizationPartyId',posOrganizationPartyId)
+                    .condition('posReceiptTemplateId',templateId).count() &gt; 0">
+                <return error="true" message="Unlink this receipt template from its printers before deleting it."/>
+            </if>
+            <service-call name="delete#zenith.erp.pos.PosReceiptTemplate" in-map="[templateId:templateId]"/>
         </actions>
         <default-response url="../Templates"/></transition>
 
@@ -117,7 +121,7 @@
 <#macro toggle key title><label class="re-toggle"><input type="checkbox" data-re-option="${key}"/>${title?html}</label></#macro>
 <div id="receiptEditor" data-design="${receiptDesign}" data-write="${modCanWrite?c}">
  <textarea data-re-fallback hidden>${normalTextJson?html}</textarea><textarea data-re-initial hidden>${editorOptionsJson?html}</textarea><textarea data-re-template hidden>${editorTemplateJson?html}</textarea>
- <div class="re-top"><div><p>POS / Receipt templates / Edit template</p><h1>Edit receipt template</h1><p>Configure ${receiptDesignLabel?html} and preview your receipt.</p></div><div><a class="re-button" href="${sri.buildUrl('../Templates').url?html}">Back to templates</a> <#if modCanWrite><button class="re-primary" type="submit" form="receiptEditorForm">Save changes</button></#if></div></div>
+ <div class="re-top"><div><p>${((kitchenModuleId!'pos') == 'kot')?string('KOT','POS')} / Receipt templates / Edit template</p><h1>Edit receipt template</h1><p>Configure ${receiptDesignLabel?html} and preview your receipt.</p></div><div><a class="re-button" href="${sri.buildUrl('../Templates').url?html}">Back to templates</a> <#if modCanWrite><button class="re-primary" type="submit" form="receiptEditorForm">Save changes</button></#if></div></div>
  <nav class="re-tabs" aria-label="Receipt design"><#list ['normal','credit','revised'] as design><a class="re-button" data-re-leave href="${sri.buildUrl('.').url?html}?templateId=${templateId?url('UTF-8')}&amp;receiptDesign=${design}" <#if receiptDesign==design>aria-current="page"</#if>><#if design=='normal'>Normal bill<#elseif design=='credit'>Credit / Pay later<#else>Edited / Revised bill</#if></a></#list></nav>
  <button type="button" class="re-mobile-preview" data-re-preview>Preview receipt</button>
  <form id="receiptEditorForm" method="post" action="${sri.buildUrl('updateTemplate').url?html}">

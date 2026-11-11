@@ -8,6 +8,7 @@
     <service verb="get" noun="BillNumberRegister">
         <in-parameters>
             <parameter name="organizationPartyId"/>
+            <parameter name="kotOnly" type="Boolean" default="false"/>
             <parameter name="viewMode" default-value="all"/>
             <parameter name="period" default-value="all"/><!-- all | thisMonth | lastMonth | custom -->
             <parameter name="fromDate"/><!-- yyyy-MM-dd when period=custom -->
@@ -64,9 +65,27 @@
                     return true
                 }
                 def gapsOnly = (viewMode == 'gaps')
+                Set kotTransactionIds = []
+                if (kotOnly) {
+                    def access = ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess').call()
+                    if (!access?.allowed || !access.organizationPartyId) return
+                    organizationPartyId = access.organizationPartyId
+                    def shopId = ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call().activeShopId
+                    def linked = ec.entity.find('zenith.erp.pos.KotTransactionDetailView')
+                        .condition('kotOrganizationPartyId', organizationPartyId)
+                        .condition('transactionNumber', 'like', 'POS/%/%')
+                        .selectField('transactionId').distinct(true)
+                    if (shopId) linked.condition('facilityId', shopId)
+                    if (access.terminalRestricted) {
+                        linked.condition('terminalId', 'in', access.allowedTerminalIds ?: ['__NONE__'])
+                        linked.condition('operatorPartyId', ec.user.userAccount?.partyId ?: '__NONE__')
+                    }
+                    kotTransactionIds.addAll(linked.list()*.transactionId)
+                    if (!kotTransactionIds) return
+                }
                 def finder = ec.entity.find("zenith.erp.pos.PosTransaction").condition("transactionNumber", "like", "POS/%/%")
                 if (organizationPartyId) finder.condition("organizationPartyId", organizationPartyId)
-                def txns = finder.selectField("transactionNumber").selectField("statusId").selectField("entryDate").selectField("completedDate")
+                def txns = finder.selectField("transactionId").selectField("transactionNumber").selectField("statusId").selectField("entryDate").selectField("completedDate")
                     .selectField("grandTotal").selectField("organizationPartyId").list()
                 // Group by (organization + prefix) so two stores reusing the same number never collide.
                 def groups = [:]
@@ -92,7 +111,10 @@
                 for (key in groups.keySet().sort()) {
                     def g = groups[key]; def numMap = g.nums; def orgNm = orgNameOf(g.org)
                     // Numbers issued inside the date window define the block to show. No window => all issued.
-                    def inRange = numMap.keySet().findAll { n -> inWindow(numMap[n].completedDate ?: numMap[n].entryDate) }
+                    def inRange = numMap.keySet().findAll { n ->
+                        def t = numMap[n]
+                        (!kotOnly || kotTransactionIds.contains(t.transactionId)) && inWindow(t.completedDate ?: t.entryDate)
+                    }
                     if (!inRange) continue
                     def mn = inRange.min(); def mx = inRange.max()
                     def big = (mx - mn) > 2000
@@ -100,6 +122,8 @@
                     def seqSales = 0G
                     for (int n = mn; n <= mx; n++) {
                         def t = numMap[n]
+                        // Retail or another shop can consume a number in this same sequence.
+                        if (kotOnly && t && !kotTransactionIds.contains(t.transactionId)) continue
                         def status = t ? t.statusId : 'GAP'
                         if (status == 'PtCompleted') { c.sale++; seqSales += ((t.grandTotal ?: 0) as BigDecimal) }
                         else if (status == 'PtHeld') c.held++
@@ -114,7 +138,7 @@
                     }
                     grandSalesValue += seqSales
                     seqList.add([orgName:orgNm, prefix:g.prefix, rangeText:String.format('%05d',mn) + ' to ' + String.format('%05d',mx),
-                        total:(mx - mn + 1), sale:c.sale, held:c.held, inc:c.inc, voided:c.voided, gap:c.gap, salesValue:seqSales,
+                        total:(kotOnly ? c.values().sum() : mx - mn + 1), sale:c.sale, held:c.held, inc:c.inc, voided:c.voided, gap:c.gap, salesValue:seqSales,
                         note:(big ? 'Large sequence: individual sales not listed below' : '')])
                 }
             ]]></script>

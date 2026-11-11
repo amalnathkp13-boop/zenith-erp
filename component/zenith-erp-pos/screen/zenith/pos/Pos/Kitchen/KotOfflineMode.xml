@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
+        default-menu-title="Offline Mode">
+    <actions>
+        <script><![CDATA[
+            def scope = ec.service.sync().name('zenith.pos.KotServices.get#BillingScope').call()?.scope
+            offlineCounters = []
+            offlineReceipts = []
+            if (!scope?.allowed) return
+            offlineOrganizationId = scope.organizationPartyId
+            def shopScope = ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call()
+            if (shopScope==null || ec.message.hasError()) return
+            def shop = shopScope.activeShopId
+            def terminals = ec.entity.find('zenith.erp.pos.PosTerminal')
+                .condition([organizationPartyId:offlineOrganizationId,isActive:'Y'])
+            if (shop) terminals.condition('facilityId',shop)
+            offlineCounters = terminals.orderBy('terminalName,terminalId').list()
+            if (scope.terminalRestricted) offlineCounters = offlineCounters.findAll { it.terminalId in scope.allowedTerminalIds }
+            offlineCounterNames = offlineCounters.collectEntries { [(it.terminalId):it.terminalName ?: it.terminalId] }
+            if (offlineCounterNames) offlineReceipts = ec.entity.find('zenith.erp.pos.KotOfflineDraftSync')
+                .condition('organizationPartyId',offlineOrganizationId)
+                .condition('terminalId','in',offlineCounterNames.keySet() as List)
+                .orderBy('-syncedDate').limit(20).list()
+            def shell = ec.web.request.requestURI.startsWith('/qapps/') ? '/qapps' : '/apps'
+            offlineBillingPath = shell + '/zenith/kot/KotBilling'
+        ]]></script>
+    </actions>
+    <widgets>
+        <container style="q-pa-md">
+            <render-mode><text type="html,qvt" template="true"><![CDATA[
+<section aria-labelledby="kot-offline-title">
+  <h1 id="kot-offline-title" class="text-h5 q-my-sm">Offline Mode</h1>
+  <p>From an open KOT Billing screen, save an unpaid order on this device if the connection drops. Reconnect and open Offline Drafts at the same counter to sync it into Held Orders. Checkout requires a connection.</p>
+  <#if offlineCounters?has_content>
+    <a class="btn btn-primary q-mb-md" href="${offlineBillingPath?html}">Open KOT Billing</a>
+    <div class="zenith-card q-pa-md q-mb-md">
+      <h2 class="text-h6 q-mt-none">Drafts on this device</h2>
+      <#list offlineCounters as counter>
+      <h3 class="text-subtitle1">${offlineCounterNames[counter.terminalId]?html}</h3>
+      <ul class="q-pl-md" data-kot-device-drafts data-organization="${offlineOrganizationId?html}" data-terminal="${counter.terminalId?html}" data-user="${(ec.user.userId!'')?html}">
+        <li>Open Offline Drafts in KOT Billing to check this counter.</li>
+      </ul>
+      </#list>
+    </div>
+    <div class="zenith-card q-pa-md">
+      <h2 class="text-h6 q-mt-none">Recently synced drafts</h2>
+      <#if offlineReceipts?has_content>
+      <p>The list records when a draft reached Held Orders. Use KOT Billing history for its current status.</p>
+      <div class="table-responsive"><table class="table">
+        <thead><tr><th scope="col">KOT number</th><th scope="col">Counter</th><th scope="col">Synced</th></tr></thead>
+        <tbody><#list offlineReceipts as receipt><tr>
+          <td>${receipt.kotNumber?html}</td><td>${offlineCounterNames[receipt.terminalId]?html}</td>
+          <td>${ec.l10n.format(receipt.syncedDate,'dd MMM yyyy HH:mm')?html}</td>
+        </tr></#list></tbody>
+      </table></div>
+      <#else><p>No drafts have synced from these counters.</p></#if>
+    </div>
+    <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" hidden
+         onload="var s=document.createElement('script');s.src='/zenithstatic/js/kot-offline.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/kot-offline.js').getLastModified()?c}';document.head.appendChild(s);"/>
+  <#else><p>No active KOT counter is available for this shop and account.</p></#if>
+</section>
+            ]]></text></render-mode>
+        </container>
+    </widgets>
+</screen>

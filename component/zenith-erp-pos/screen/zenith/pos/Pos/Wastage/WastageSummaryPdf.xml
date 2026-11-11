@@ -22,11 +22,15 @@
             def dEnd = ec.l10n.parseTimestamp(thruD + ' 23:59:59.999', 'yyyy-MM-dd HH:mm:ss.SSS')
 
             // ZE-INV-IV-035 pattern: this is a standalone (fop) path outside the authz filter — scope org explicitly
-            def _org = ec.user.getPreference("ACTIVE_ORGANIZATION")
+            def _org = kitchenModuleId == 'kot' ? (_printAccess.organizationPartyId ?: '__NO_ORGANIZATION__') : ec.user.getPreference("ACTIVE_ORGANIZATION")
             def wf = ec.entity.find("zenith.erp.pos.PosStockWastage")
                 .condition("wastageDate", "greater-equals", dStart)
                 .condition("wastageDate", "less-equals", dEnd)
             if (_org && _org != '_NA_') wf.condition("organizationPartyId", _org)
+            if (kitchenModuleId == 'kot') {
+                def shopId = ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call().activeShopId
+                if (shopId) wf.condition('facilityId', shopId)
+            }
             def wastages = wf.list()
 
             def reasonMap = new LinkedHashMap(); def productMap = new LinkedHashMap()

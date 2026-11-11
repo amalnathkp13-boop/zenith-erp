@@ -5,13 +5,17 @@
     function wEsc(x){return String(x==null?'':x).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 
     function wtok(){ try{ if(window.moqui&&window.moqui.webrootVue&&window.moqui.webrootVue.moquiSessionToken) return window.moqui.webrootVue.moquiSessionToken; }catch(e){} var el=document.querySelector('[name=moquiSessionToken]');return el?el.value:''; }
-    // Build an absolute URL to a Wastage transition (works whether the page URL is
-    // /pos/Wastage or /pos/Wastage/WastageEntry — a relative path would resolve wrong).
-    function wurl(rel){ var p=window.location.pathname; var i=p.indexOf('/pos/'); var base=i>=0?p.substring(0,i+5):'/qapps/zenith/pos/'; return base+rel; }
+    // Keep the current shell and module on both the parent route and the explicit entry route.
+    function wurl(rel){
+        var path = window.location.pathname;
+        var module = /\/zenith\/(?:pos|kot)\//.exec(path);
+        return (module ? path.slice(0, module.index + module[0].length) : '/qapps/zenith/pos/') + rel;
+    }
     function wpost(rel,params){ var p=new URLSearchParams(); for(var k in params){ p.append(k, params[k]==null?'':params[k]); } p.append('moquiSessionToken', wtok()); return fetch(wurl(rel),{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:p,credentials:'same-origin'}).then(function(r){if(!r.ok)throw new Error('Wastage request failed');return r.json();}).catch(function(){return {success:false,error:'Unable to load wastage information. Refresh and retry.'};}); }
     function wfmt(n){ return Number(n||0).toFixed(2); }
     function renderExpiring(){
         var root=document.getElementById('wastage-expiring-root'); if(!root) return;
+        var canWrite = root.dataset.canWrite === 'Y';
         wpost('Wastage/WastageEntry/expiringProductsJson',{}).then(function(d){
             shops = (d && d.shops) || []; activeShop = (d && d.activeShop) || '';
             if(!d||!d.success){root.textContent=(d&&d.error)||'Unable to load wastage information. Refresh and retry.';return;} if(!d.rows||!d.rows.length){ root.innerHTML='<div style="padding:14px;color:#999">No perishable products with expiry dates.</div>'; return; }
@@ -21,7 +25,7 @@
             d.rows.forEach(function(r,i){
                 var c=r.status==='EXPIRED'?'#c62828':(r.status==='SOON'?'#e65100':'#2e7d32');
                 var lbl=r.status==='EXPIRED'?'EXPIRED':(r.status==='SOON'?'EXPIRING SOON':'OK');
-                h+='<tr style="border-bottom:1px solid #f0f0f0"><td style="padding:6px"><span style="color:'+c+';font-weight:700">'+lbl+'</span></td><td style="padding:6px">'+wEsc(r.sku)+'</td><td style="padding:6px">'+wEsc(r.productName)+'</td><td style="padding:6px">'+wEsc(r.expiry)+'</td><td style="padding:6px;text-align:right">'+wfmt(r.cost)+'</td><td style="padding:6px;text-align:right"><button class="wexp-btn" data-i="'+i+'" style="padding:6px 10px;background:#c62828;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700">Record Wastage</button></td></tr>';
+                h+='<tr style="border-bottom:1px solid #f0f0f0"><td style="padding:6px"><span style="color:'+c+';font-weight:700">'+lbl+'</span></td><td style="padding:6px">'+wEsc(r.sku)+'</td><td style="padding:6px">'+wEsc(r.productName)+'</td><td style="padding:6px">'+wEsc(r.expiry)+'</td><td style="padding:6px;text-align:right">'+wfmt(r.cost)+'</td><td style="padding:6px;text-align:right">'+(canWrite?'<button class="wexp-btn" data-i="'+i+'" style="padding:6px 10px;background:#c62828;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700">Record Wastage</button>':'')+'</td></tr>';
             });
             h+='</tbody></table>';
             root.innerHTML=h;
