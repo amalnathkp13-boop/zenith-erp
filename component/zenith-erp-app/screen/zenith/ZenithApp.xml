@@ -11,8 +11,10 @@
             if (ec.user.userId && (ec.user.userGroupIdSet ?: []).any { it?.startsWith('ZENITH_ORG_') }) {
                 def roleRoute = ec.service.sync().name('zenith.base.RoleAccessServices.check#RoleRouteAccess').disableAuthz().call()
                 if (!roleRoute?.allowed) {
-                    if (!sri.screenUrlInfo?.targetTransitionActualName && roleRoute?.landingPath)
+                    if (!sri.screenUrlInfo?.targetTransitionActualName && roleRoute?.landingPath) {
                         sri.sendRedirectAndStopRender(roleRoute.landingPath)
+                        return
+                    }
                     throw new org.moqui.context.ArtifactAuthorizationException('Your role does not include this module or submodule.')
                 }
             }
@@ -259,7 +261,7 @@
                 result.modules = navigation.moduleIds ?: []
                 result.navRestricted = navigation.moduleIds != null
                 result.roleRestricted = navigation.roleRestricted ?: false
-                result.roleScope = ec.service.sync().name('zenith.base.RoleAccessServices.get#AssignedRoleScope').disableAuthz().call()
+                result.roleScope = (navigation.roleScope ?: [:]) + [sections:navigation.roleSections ?: []]
                 ec.web.sendJsonResponse(result)
             ]]></script>
         </actions>
@@ -321,7 +323,8 @@
                     'helpdesk','marketing','ecommerce','events','subscriptions','documents','approvals','integrations',
                     'website','studio','plm','fieldservice','discuss','sign','project','timesheets','tax','pricing','barcode'] as Set
                 if (_rm && _gate.contains(_rm)) {
-                    def _r = ec.service.sync().name("zenith.base.SecurityServices.check#ModuleWriteAccess").parameter("moduleId", _rm).call()
+                    // Quasar also evaluates this flag while building menu metadata, outside the module's artifact stack.
+                    def _r = ec.service.sync().name("zenith.base.SecurityServices.check#ModuleWriteAccess").parameter("moduleId", _rm).disableAuthz().call()
                     modCanWrite = (_r?.canWrite != false)
                 }
             } catch (Throwable e) { modCanWrite = true }
@@ -375,7 +378,7 @@
             html_stylesheets.add('https://fonts.googleapis.com/icon?family=Material+Icons')
             if (footer_scripts == null) footer_scripts = []
             footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=14')
-            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=55')
+            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=56')
             footer_scripts.add('/zenithstatic/js/profile-menu.js?v=1')
             footer_scripts.add('/zenithstatic/js/sidebar-manager.js?v=3')
             footer_scripts.add('/zenithstatic/js/subnav-manager.js?v=5')
@@ -586,8 +589,10 @@
 
             def navigation = ec.service.sync().name("zenith.base.SecurityServices.get#ModuleNavigation")
                 .parameter("planModules", context.saasAllowedModules != null ? context.saasAllowedModules as List : null).disableAuthz().call()
-            def roleNav = ec.service.sync().name('zenith.base.RoleAccessServices.get#AssignedRoleScope').disableAuthz().call()
-            context.roleNavJson = groovy.json.JsonOutput.toJson(roleNav)
+            def roleNav = navigation.roleScope ?: [:]
+            context.customRoleNavigation = roleNav.restricted ?: false
+            context.roleNavSections = navigation.roleSections ?: []
+            context.roleNavJson = groovy.json.JsonOutput.toJson(roleNav + [sections:context.roleNavSections])
             context.saasVisibleModules = navigation.moduleIds
             context.navRestricted = navigation.moduleIds != null
             context.saasVisibleModulesJson = new groovy.json.JsonBuilder(navigation.moduleIds ?: []).toString()
@@ -874,6 +879,12 @@
              are never emitted (no flash, no JS dependency). Dashboard / Shops / More Modules carry no module id and
              always show. Fail-OPEN (default true). The data-mod attrs + client JS below remain as a fallback. -->
         <render-mode><text type="html" template="true"><![CDATA[
+            <#if customRoleNavigation!false>
+            <div class="zs-cat">YOUR MODULES</div>
+            <#list roleNavSections as section>
+            <a class="zs-link" data-match="${section.mount?html}" href="/apps/zenith${section.screens[0].id?html}"><span class="material-icons">apps</span><span class="t">${section.name?html}</span></a>
+            </#list>
+            <#else>
             <div class="zs-cat">OVERVIEW</div>
             <a class="zs-link" data-match="/Dashboard" href="/apps/zenith"><span class="material-icons">dashboard</span><span class="t">Dashboard</span></a>
             <#if (navShow['contacts'])!true><a class="zs-link" data-mod="contacts" data-match="/Contacts" href="/apps/zenith/Contacts/ContactsDashboard"><span class="material-icons">groups</span><span class="t">Contacts</span></a></#if>
@@ -898,6 +909,7 @@
             <#if (navShow['expenses'])!true><a class="zs-link" data-mod="expenses" data-match="/expenses" href="/apps/zenith/expenses/MyExpenses"><span class="material-icons">savings</span><span class="t">Expenses</span></a></#if>
             <div class="zs-cat">OTHER</div>
             <a class="zs-link" data-match="/__more" href="/apps/zenith#dashAllModules"><span class="material-icons">more_horiz</span><span class="t">More Modules</span></a>
+            </#if>
 ]]></text></render-mode>
         <!-- ZE-NAV: super-admin-only entry to the platform SaaS Admin panel. SaasAdmin.xml itself gates on the
              ADMIN group (403 otherwise); this link is rendered ONLY when isSuperAdmin so tenants never see it.
@@ -1110,6 +1122,19 @@
             <a class="zsub-tab" data-match="/barcode/LabelTemplates" href="/apps/zenith/barcode/LabelTemplates">Label Templates</a>
             <a class="zsub-tab" data-match="/barcode/PrintJobs" href="/apps/zenith/barcode/PrintJobs">Print Jobs</a>
           </div>
+]]></text></render-mode>
+        <render-mode><text type="html" template="true"><![CDATA[
+          <#if customRoleNavigation!false>
+          <#list roleNavSections as section>
+          <div class="zsub-grp" data-role-nav="true" data-match="${section.mount?html}"><span class="zsub-title">${section.name?html}</span>
+            <#list section.screens as tab>
+            <a class="zsub-tab" data-match="${tab.id?html}" href="/apps/zenith${tab.id?html}">${tab.name?html}</a>
+            </#list>
+          </div>
+          </#list>
+          </#if>
+]]></text></render-mode>
+        <render-mode><text type="html"><![CDATA[
         </nav>
         <script>(function(){try{
           if(window.__zSide)return;window.__zSide=1;
@@ -1155,13 +1180,9 @@
                 }}catch(_e){}
               var _roleCfg=document.getElementById('zenith-saas-cfg');
               var _roleScope=JSON.parse((_roleCfg&&_roleCfg.getAttribute('data-role-scope'))||'{}');
-              if(_roleScope.restricted){[].slice.call(sub.querySelectorAll('.zsub-tab')).forEach(function(a){
-                var path=new URL(a.href,location.href).pathname.replace(/^\/(apps|qapps)\/zenith/,'');
-                var mod=path.split('/')[1]||'', choices=(_roleScope.selections||{})[mod.toLowerCase()]||[];
-                if((_roleScope.legacyModules||[]).indexOf(mod.toLowerCase())<0&&!choices.some(function(r){return path===r||path.indexOf(r+'/')===0;}))a.style.display='none';
-              });}
+              if(_roleScope.restricted){sub.querySelectorAll('.zsub-grp:not([data-role-nav])').forEach(function(group){group.remove();});}
               var grps=[].slice.call(sub.querySelectorAll('.zsub-grp')),g=null,gLen=-1;
-              grps.forEach(function(x){var m=x.getAttribute('data-match')||'';if(m==='/__dash')return;if(m&&rel.indexOf(m)===0&&m.length>gLen){g=x;gLen=m.length;}});
+              grps.forEach(function(x){var m=x.getAttribute('data-match')||'';if(m==='/__dash')return;if(m&&(rel===m||rel.indexOf(m+'/')===0)&&m.length>gLen){g=x;gLen=m.length;}});
               if(!g&&(rel==='/'||rel==='/Dashboard'||rel==='')){g=sub.querySelector('.zsub-grp[data-match="/__dash"]');}  /* Home → Dashboards hub */
               if(g){sub.classList.add('show');g.classList.add('show');
                 sub.classList.toggle('z-contacts-nav',g.getAttribute('data-match')==='/Contacts');

@@ -5,17 +5,26 @@
     <!-- Navigation uses the same authenticated role grants on initial render and SPA config requests. -->
     <service verb="get" noun="ModuleNavigation" authenticate="true">
         <in-parameters><parameter name="planModules" type="List"/></in-parameters>
-        <out-parameters><parameter name="moduleIds" type="List"/><parameter name="roleRestricted" type="Boolean"/></out-parameters>
+        <out-parameters><parameter name="moduleIds" type="List"/><parameter name="roleRestricted" type="Boolean"/>
+            <parameter name="roleScope" type="Map"/><parameter name="roleSections" type="List"/></out-parameters>
         <actions><script><![CDATA[
             roleRestricted = !ec.user.isInGroup('ADMIN') && !ec.user.isInGroup('ZENITH_ADMIN')
             def plan = planModules != null && !planModules.contains('all') ? planModules : null
             if (plan?.contains('pos')) plan = (plan + 'kot').unique()
             if (!roleRestricted) { moduleIds = plan; return }
             def customScope = ec.service.sync().name('zenith.base.RoleAccessServices.get#AssignedRoleScope').disableAuthz().call()
+            roleScope = customScope
             if (customScope.restricted) {
                 def scoped = customScope.selections.findAll { module, routes -> module != 'pos' || routes.any { it != '/pos/Kitchen' } }
                 def granted = (scoped.keySet() + customScope.legacyModules).unique()
                 moduleIds = (plan == null ? granted : granted.findAll { plan.contains(it) }) as List
+                def catalogue = ec.service.sync().name('zenith.base.RoleAccessServices.get#RoleCatalogue')
+                    .parameter('moduleIds', moduleIds).disableAuthz().call()
+                roleSections = (catalogue.modules ?: []).collect { module ->
+                    def routes = scoped[module.id] ?: []
+                    def screens = module.screens.findAll { screen -> customScope.legacyModules.contains(module.id) || routes.contains(screen.id) }
+                    [mount:module.mount, name:module.name, screens:screens.collect { [id:it.id, name:it.name] }]
+                }.findAll { it.screens }
                 return
             }
             def groups = (ec.user.userGroupIdSet ?: []) as List
