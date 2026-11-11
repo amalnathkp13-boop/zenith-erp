@@ -91,6 +91,8 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
     await page.locator('#kb-search').fill('POS_QA_A_P18');
     await page.locator('#kb-suggestions [data-result]').first().click();
     await page.locator('#kb-quote-error').filter({hasText:/\S/}).waitFor();
+    check(shell+' remains online when only the price preview request fails',
+     !await page.locator('#kb-online.is-offline').isVisible());
     await page.locator('#kb-instr').fill(note);
     if(!grid) {
      await policy('N');

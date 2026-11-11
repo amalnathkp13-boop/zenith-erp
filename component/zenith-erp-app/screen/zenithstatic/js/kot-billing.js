@@ -21,7 +21,7 @@
   const lockName='zenith-kot-cart:'+JSON.stringify([cfg.org,cfg.terminal,cfg.user,cfg.session]);
   const syncingHeld=new Set();
   const needsLocalOrder=()=>disconnected()||!!localOrderId;
-  let transportDown=false, reconnectTimer;
+  let transportDown=false, transportProbe, reconnectTimer;
   const disconnected=()=>cfg.kotModule==='kot'&&(!navigator.onLine||transportDown);
   const shell=location.pathname.startsWith('/qapps/')?'/qapps':'/apps';
   const billingPath='/zenith'+(cfg.kotModule==='kot'?'/kot':'/pos/Kitchen')+'/KotBilling';
@@ -50,18 +50,30 @@
   if(cfg.draftwaiter) $('waiter').value=cfg.draftwaiter;
   $('table').value=cfg.drafttable||cfg.selectedTable||'';
 
+  function postRequest(path,action,data,signal) {
+    return fetch(path+'/'+action,{method:'POST',credentials:'same-origin',signal,
+      body:new URLSearchParams({...data,sessionId:cfg.session,moquiSessionToken:token()})});
+  }
+  const transportError=error=>error.name==='TypeError'||error.name==='TimeoutError';
+  function probeConnection() {
+    if(!transportProbe)transportProbe=postRequest(base,'touchSession',{},AbortSignal.timeout?.(2500))
+      .then(()=>true,()=>false).finally(()=>{transportProbe=null;});
+    return transportProbe;
+  }
   async function request(action,data,signal,path=base) {
     if(sessionLost)throw Error(signInMessage);
     const changesOrder=deviceDrafts&&(action==='checkoutKot'||action==='createKot'||(action==='saveDraft'&&!data.offlineDraftId));
     let response;
     try {
-      response=await fetch(path+'/'+action,{method:'POST',credentials:'same-origin',signal:signal??AbortSignal.timeout?.(15000),
-        body:new URLSearchParams({...data,sessionId:cfg.session,moquiSessionToken:token()})});
+      response=await postRequest(path,action,data,signal??AbortSignal.timeout?.(15000));
     } catch (error) {
       if(changesOrder)unconfirmedOrder=true;
-      if(catalogue&&['TypeError','TimeoutError'].includes(error.name)&&!transportDown) {
-        transportDown=true;
-        if(root.isConnected)connectionChanged();
+      if(catalogue&&transportError(error)&&!transportDown) {
+        const down=!navigator.onLine||action==='touchSession'||!await probeConnection();
+        if(down&&!transportDown&&root.isConnected) {
+          transportDown=true;
+          connectionChanged();
+        }
       }
       if(changesOrder)throw Error(unconfirmedMessage);
       throw error;
@@ -616,10 +628,13 @@
     if(!append)renderMatches(searching?'Searching…':'Loading products…');
     const version=searchVersion;
     searchAbort=new AbortController();
-    const fetchMatches=offline?Promise.resolve().then(()=>{
+    const cachedMatches=()=>{
       if(!catalogue)throw Error('Reconnect briefly to load this counter’s offline catalogue.');
       return KotOffline.lookup(catalogue,value,salesModeId,category,pageOffset);
-    }):request('searchMenu',{term:value,salesModeId,offset:pageOffset,categoryId:category,stockSessionId:cfg.stockSession||''},searchAbort.signal);
+    };
+    const fetchMatches=offline?Promise.resolve().then(cachedMatches)
+      :request('searchMenu',{term:value,salesModeId,offset:pageOffset,categoryId:category,stockSessionId:cfg.stockSession||''},searchAbort.signal)
+        .catch(error=>{if(catalogue&&transportError(error))return cachedMatches();throw error;});
     const promise=fetchMatches
       .then(data=>{
         if(version!==searchVersion||!root.isConnected||search.value!==value)return false;

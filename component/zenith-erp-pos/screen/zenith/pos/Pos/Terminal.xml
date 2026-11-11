@@ -2334,60 +2334,10 @@
                         ec.web.sendJsonResponse(result)
                         return
                     } else if (action == 'creditBills') {
-                        def shopScope = ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call()
-                        def creditFind = ec.entity.find('zenith.erp.pos.PosTransactionView')
-                            .condition('organizationPartyId', posOrganizationPartyId).condition('isCredit', 'Y')
-                        if (shopScope?.activeShopId) creditFind.condition('facilityId', shopScope.activeShopId)
-                        if (posTerminalRestricted && posAllowedTerminalIds) {
-                            creditFind.condition('terminalId', 'in', posAllowedTerminalIds)
-                                .condition('operatorPartyId', ec.user.userAccount?.partyId)
-                        }
-                        def crTxns = posTerminalRestricted && !posAllowedTerminalIds ? [] : creditFind.orderBy('-entryDate').list()
-                        def crSearch = (p.search ?: '').toLowerCase()
-                        // ---- all-time stats (across every credit bill, before the search filter) ----
-                        def _nowCr = ec.user.nowTimestamp
-                        def _cCr = java.util.Calendar.getInstance(); _cCr.setTime(_nowCr); _cCr.set(java.util.Calendar.DAY_OF_MONTH, 1); _cCr.set(java.util.Calendar.HOUR_OF_DAY,0); _cCr.set(java.util.Calendar.MINUTE,0); _cCr.set(java.util.Calendar.SECOND,0)
-                        def _crMonthStart = new java.sql.Timestamp(_cCr.getTimeInMillis())
-                        def creditState = { tx, due ->
-                            if(tx.statusId!='PtCompleted') return 'Cancelled'
-                            if(due<=0) return 'Settled'
-                            if(!tx.creditDueDate){def _t=_nowCr.toInstant().atZone(java.time.ZoneId.of(ec.user.timeZone.ID)).toLocalDate(); return (tx.entryDate && java.time.temporal.ChronoUnit.DAYS.between(tx.entryDate.toInstant().atZone(java.time.ZoneId.of(ec.user.timeZone.ID)).toLocalDate(), _t) > 30) ? 'Overdue' : 'Open'}
-                            def today=_nowCr.toInstant().atZone(java.time.ZoneId.of(tx.creditTimeZone ?: ec.user.timeZone.ID)).toLocalDate()
-                            def remaining=java.time.temporal.ChronoUnit.DAYS.between(today,tx.creditDueDate.toLocalDate())
-                            remaining<0?'Overdue':remaining<=2?'Due soon':'Open'
-                        }
-                        def crAllCount = crTxns.size(); def crOutCount = 0; def crOutSum = 0 as BigDecimal; def crOverdue = 0
-                        def creditTxnIds = crTxns.collect { it.transactionId }
-                        def creditPayments = creditTxnIds ? ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId','in',creditTxnIds).orderBy('paymentDate,paymentId').list().groupBy { it.transactionId } : [:]
-
-                        crTxns.each { tx -> def _o = ((tx.payableAmount ?: 0) as BigDecimal) - ((tx.paidAmount ?: 0) as BigDecimal); if (_o > 0) { crOutCount++; crOutSum += _o; if (creditState(tx,_o)=='Overdue') crOverdue++ } }
-                        def crPaidMonthAmt = 0 as BigDecimal; def crPaidMonthCount = 0
-                        if (creditTxnIds) {
-                            def _pm = ec.entity.find("zenith.erp.pos.PosPayment").condition("transactionId","in",creditTxnIds).condition("paymentDate","greater-equals",_crMonthStart).list()
-                            crPaidMonthAmt = _pm.sum { (it.amount ?: 0) as BigDecimal } ?: (0 as BigDecimal)
-                            crPaidMonthCount = _pm.collect { it.transactionId }.unique().size()
-                        }
-                        // ---- list (search-filtered) ----
-                        def crBills = []
-                        crTxns.each { tx ->
-                            if (crSearch && !((tx.transactionNumber ?: '').toLowerCase().contains(crSearch) || (tx.customerName ?: '').toLowerCase().contains(crSearch) || (tx.customerPhone ?: '').toLowerCase().contains(crSearch))) return
-                            def items = ec.entity.find("zenith.erp.pos.PosTransactionItem").condition("transactionId", tx.transactionId).list()
-                            def payable = (tx.payableAmount ?: 0) as BigDecimal
-                            def paid = (tx.paidAmount ?: 0) as BigDecimal
-                            def payments = creditPayments[tx.transactionId] ?: []
-                            def lastPayment = payments ? payments[-1].paymentDate : null
-                            def state = creditState(tx,payable-paid)
-                            crBills.add([dueDate:tx.creditDueDate?.toString(),creditStatus:state,
-                                lastPayment:lastPayment ? ec.l10n.format(lastPayment,'dd MMM yyyy, hh:mm a z') : null,
-                                settledOn:state=='Settled' && lastPayment ? ec.l10n.format(lastPayment,'dd MMM yyyy, hh:mm a z') : null,txId: tx.transactionId, billNo: tx.transactionNumber ?: tx.transactionId,
-                                date: ec.l10n.format(tx.entryDate, 'dd/MM/yyyy hh:mm a'), ts: (tx.entryDate ? tx.entryDate.getTime() : 0L),
-                                customer: tx.customerName ?: 'Walk-In', phone: tx.customerPhone ?: '',
-                                grand: payable, paid: paid, outstanding: payable - paid, itemCount: items.size()])
-                        }
-                        def crTotalOutstanding = 0 as BigDecimal
-                        crBills.each { crTotalOutstanding += (it.outstanding as BigDecimal) }
-                        ec.web.sendJsonResponse([success:true, action:'creditBills', bills:crBills, total:crBills.size(), totalOutstanding:crTotalOutstanding,
-                            allCount:crAllCount, outCount:crOutCount, outSum:crOutSum, overdueCount:crOverdue, paidMonthAmt:crPaidMonthAmt, paidMonthCount:crPaidMonthCount])
+                        def credit = ec.service.sync().name('zenith.pos.PosCreditServices.list#PosCreditBills')
+                            .parameter('search',p.search).call()
+                        if (ec.message.hasError()) { def error = ec.message.errorsString; ec.message.clearErrors(); ec.web.sendJsonResponse([success:false,error:error]); return }
+                        ec.web.sendJsonResponse(credit.creditList)
                         return
                     } else if (action == 'settleCredit') {
                         def stxId = p.settleTxId
@@ -2396,7 +2346,7 @@
                         def sref = p.settleRef
                         if (!stxId || !smethod || samt <= BigDecimal.ZERO) { ec.web.sendJsonResponse([success:false, error:'Missing settlement details']); return }
                         try {
-                            def rOut = ec.service.sync().name("zenith.pos.PosServices.settle#PosCredit")
+                            def rOut = ec.service.sync().name("zenith.pos.PosCreditServices.settle#ScopedPosCredit")
                                 .parameters([transactionId:stxId, paymentMethod:smethod, amount:samt, referenceNumber:sref, collectionSessionId:sessionId]).call()
                             if (ec.message.hasError()) { def em = ec.message.errorsString; ec.message.clearErrors(); ec.web.sendJsonResponse([success:false, error:em]); return }
                             ec.web.sendJsonResponse([success:true, outstanding:rOut.outstanding, fullyPaid:rOut.fullyPaid, paidAmount:rOut.paidAmount])

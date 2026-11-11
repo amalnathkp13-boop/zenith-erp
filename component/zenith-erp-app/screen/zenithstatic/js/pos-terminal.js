@@ -1945,7 +1945,12 @@ window._posOffline = (function () {
             }
             params.moquiSessionToken = histToken();
             var send = params.action === 'amendBill' ? function(url, options) { return window.PosFreeItems.amendmentFetch(url, options, params, histToken()); } : fetch;
-            return send(ajaxCartUrl(), {   // ZE-POS-0211: absolute (was relative 'Terminal/ajaxCart' -> broke on a trailing-slash page URL)
+            var url = ajaxCartUrl();
+            if ((params.action === 'creditBills' || params.action === 'settleCredit') && creditModulePath() === '/apps/zenith/kot') {
+                var transition = params.action === 'creditBills' ? 'listCreditBills' : 'settleCredit';
+                url = '/apps/zenith/kot/CreditBills/' + transition;
+            }
+            return send(url, {   // ZE-POS-0211: absolute (was relative 'Terminal/ajaxCart' -> broke on a trailing-slash page URL)
                 method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'},
                 body: new URLSearchParams(params), credentials: 'same-origin', signal: signal
             }).then(function(r) {
@@ -2696,6 +2701,10 @@ window._posOffline = (function () {
     }
 
     /* === Credit Bills screen: list outstanding credit bills + settle (partial allowed) === */
+    function creditModulePath() {
+        var root = document.getElementById('credit-bills-root');
+        return root && root.dataset.creditModule === 'kot' ? '/apps/zenith/kot' : '/apps/zenith/pos';
+    }
     function creditFmt(n) { return Number(n||0).toFixed(2); }
     // credit-bills mockup (ZE-CBILLS): header + 4 stat cards + toolbar + card rows w/ a 3-step progress tracker
     function creditProgress(settled) {
@@ -2770,14 +2779,16 @@ window._posOffline = (function () {
         try { var blob=new Blob([lines.join('\n')],{type:'text/csv'}); var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='CreditBills_'+new Date().toISOString().slice(0,10)+'.csv'; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },100); } catch(_e){}
     }
     function creditRowKebab(i){
+        var root = document.getElementById('credit-bills-root');
+        var canUseTransactions = root.dataset.creditTransactions !== 'false';
         return '<div style="position:relative;flex:0 0 auto">'
             + '<button class="cb-kebab" data-i="'+i+'" style="width:32px;height:32px;border:none;background:transparent;border-radius:8px;cursor:pointer;color:#9CA3AF;font-size:18px;line-height:1">&#8942;</button>'
             + '<div class="cb-menu" style="display:none;position:absolute;right:0;top:36px;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 6px 20px rgba(17,24,39,.12);z-index:50;overflow:hidden;min-width:160px">'
-            +   '<div class="cb-item" data-i="'+i+'" data-act="view" style="'+CBI+'">View / Edit Bill</div>'
-            +   '<div class="cb-item" data-i="'+i+'" data-act="print" style="'+CBI+'">Print Receipt</div>'
+            +   (canUseTransactions ? '<div class="cb-item" data-i="'+i+'" data-act="view" style="'+CBI+'">View / Edit Bill</div>'
+                + '<div class="cb-item" data-i="'+i+'" data-act="print" style="'+CBI+'">Print Receipt</div>' : '')
             +   '<div class="cb-item" data-i="'+i+'" data-act="copy" style="'+CBI+'">Copy Bill No.</div>'
-            +   '<div style="height:1px;background:#F1F5F9"></div>'
-            +   '<div class="cb-item" data-i="'+i+'" data-act="cancel" style="'+CBI+';color:#DC2626">Cancel Bill</div>'
+            +   (canUseTransactions ? '<div style="height:1px;background:#F1F5F9"></div>'
+                + '<div class="cb-item" data-i="'+i+'" data-act="cancel" style="'+CBI+';color:#DC2626">Cancel Bill</div>' : '')
             + '</div></div>';
     }
     function creditPaintList(){
@@ -2824,9 +2835,9 @@ window._posOffline = (function () {
         host.querySelectorAll('.cb-item').forEach(function(it){
             it.addEventListener('click', function(e){ e.stopPropagation(); creditCloseMenus();
                 var b=_creditPainted[+it.dataset.i]; if(!b) return; var act=it.dataset.act;
-                var et='/apps/zenith/pos/EditTransaction?transactionId='+encodeURIComponent(b.txId);
+                var et=creditModulePath()+'/EditTransaction?transactionId='+encodeURIComponent(b.txId);
                 if (act==='view' || act==='cancel') location.href=et;
-                else if (act==='print') window.open('/fop/apps/zenith/pos/ReceiptPdf?transactionId='+encodeURIComponent(b.txId),'_blank');
+                else if (act==='print') window.open('/fop'+creditModulePath()+'/ReceiptPdf?transactionId='+encodeURIComponent(b.txId),'_blank');
                 else if (act==='copy') { try { navigator.clipboard.writeText(''+b.billNo); } catch(_e){} }
             });
         });
@@ -2834,6 +2845,8 @@ window._posOffline = (function () {
     function renderCreditBills(search) {
         var root = document.getElementById('credit-bills-root');
         if (!root) return;
+        var modulePath = creditModulePath();
+        var billingPath = modulePath + (modulePath.endsWith('/kot') ? '/KotBilling' : '/Terminal');
         if (!window.__cbDocClose) { window.__cbDocClose = true; document.addEventListener('click', creditCloseMenus); }
         root.innerHTML = '<div style="text-align:center;padding:40px;color:#999">Loading credit bills…</div>';
         historyPost({action:'creditBills', search: search||''}).then(function(d) {
@@ -2849,7 +2862,7 @@ window._posOffline = (function () {
                 + '<div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:18px">'
                 +   '<div><h1 style="font-size:22px;line-height:1.3;font-weight:700;color:#20213A;margin:0 0 5px">Credit Bills</h1><div style="font-size:13px;color:#6B7280">Track and manage all credit bills and outstanding dues</div></div>'
                 +   '<div style="display:flex;gap:10px;align-items:center">'
-                +     '<a href="/apps/zenith/pos/Terminal" style="display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;background:#7C3AED;color:#fff;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none">+ New Credit Bill</a>'
+                +     (root.dataset.creditBilling !== 'false' ? '<a href="'+billingPath+'" style="display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;background:#7C3AED;color:#fff;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none">+ New Credit Bill</a>' : '')
                 +     '<div style="position:relative"><button id="credit-hdr-kebab" style="width:40px;height:40px;border:1px solid #7C3AED;border-radius:8px;background:#fff;color:#7C3AED;cursor:pointer;font-size:18px;line-height:1">&#8942;</button>'
                 +       '<div class="cb-menu" style="display:none;position:absolute;right:0;top:44px;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 6px 20px rgba(17,24,39,.12);z-index:50;overflow:hidden;min-width:150px">'
                 +         '<div class="cb-hdr-item" data-act="export" style="'+CBI+'">Export CSV</div>'
@@ -2988,20 +3001,32 @@ window._posOffline = (function () {
             btn.disabled = true; btn.textContent = 'Processing…';
             // Record each payment sequentially; the service clears credit when fully paid
             var chain = Promise.resolve(null);
+            var recorded = false;
             pays.forEach(function(p){
                 chain = chain.then(function(prev){
-                    if (prev && prev.error) return prev; // stop on first error
-                    return historyPost({action:'settleCredit', settleTxId:bill.txId, settleMethod:p.method, settleAmount:String(p.amount)});
+                    if (prev && !prev.success) return prev;
+                    return historyPost({action:'settleCredit', settleTxId:bill.txId, settleMethod:p.method, settleAmount:String(p.amount)})
+                        .then(function(result) { recorded = recorded || !!result.success; return result; });
                 });
             });
+            function refreshBalance() {
+                ov.remove();
+                var si = document.getElementById('credit-search');
+                renderCreditBills(si ? si.value : '');
+            }
             chain.then(function(last){
                 if (last && last.success) {
-                    ov.remove();
+                    refreshBalance();
                     if (last.fullyPaid) histToast('✔ Bill fully settled', '#2e7d32');
                     else histToast('✔ Payment recorded — ₹'+creditFmt(last.outstanding)+' remaining', '#e65100');
-                    var si = document.getElementById('credit-search');
-                    renderCreditBills(si ? si.value : '');
-                } else { histToast((last && last.error) || 'Error settling', '#e53935'); btn.disabled = false; btn.textContent = 'Confirm Payment'; }
+                } else {
+                    histToast((last && last.error) || 'Error settling', '#e53935');
+                    if (recorded) refreshBalance();
+                    else { btn.disabled = false; btn.textContent = 'Confirm Payment'; }
+                }
+            }).catch(function(){
+                refreshBalance();
+                histToast('Could not confirm payment. Check repayment history before retrying.', '#e53935');
             });
         });
     }

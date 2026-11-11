@@ -2,6 +2,71 @@ const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
 const { join } = require('node:path');
 
+async function verifyKotCreditBills({ a, foreign, base, check, q, out, kotId, retailId }) {
+  const page = await foreign.c.newPage();
+  const posPath = '/apps/zenith/pos/CreditBills';
+  const kotPath = '/apps/zenith/kot/CreditBills';
+  const row = id => page.locator('.credit-history-btn[data-tx="' + id + '"]');
+  const settle = page.locator('.credit-settle-btn[data-tx="' + kotId + '"]');
+  const post = (actor, path, fields) => actor.c.request.post(base + path,{
+    maxRedirects:0, form:{moquiSessionToken:actor.t,...fields}
+  });
+  const denied = async (actor, path, fields) => {
+    const response = await post(actor,path,fields);
+    return response.status() === 403 || (await response.json().catch(() => null))?.success === false;
+  };
+  const payments = id => q("SELECT payment_method,amount FROM pos_payment WHERE transaction_id='" + id + "' ORDER BY payment_method");
+  const repay = async (method, amount) => {
+    await settle.click();
+    await page.locator('#settle-single [data-m="' + method + '"]').click();
+    await page.locator('#settle-amt').fill(String(amount));
+    const completed = page.waitForResponse(response => new URL(response.url()).pathname === kotPath+'/settleCredit');
+    await page.locator('#settle-confirm').click();
+    const response = await completed;
+    await page.locator('#settle-confirm').waitFor({state:'detached'});
+    return response.json();
+  };
+  try {
+    await page.goto(base + posPath);
+    await row(retailId).waitFor();
+    check('POS Credit Bills lists its own credit and excludes the synced KOT credit',await row(kotId).count() === 0);
+    const response = await page.goto(base + kotPath);
+    assert.ok(response.ok(),'KOT has a dedicated Credit Bills screen');
+    await row(kotId).waitFor();
+    check('KOT Credit Bills lists the synced KOT credit and excludes ordinary POS credit',
+      await row(retailId).count() === 0 && await settle.isVisible());
+    if (out) await page.screenshot({path:join(out,'kot-credit-list.png')});
+
+    const blocked = await Promise.all([
+      denied(foreign,posPath+'/history',{transactionId:kotId}),
+      denied(foreign,kotPath+'/history',{transactionId:retailId}),
+      denied(a,kotPath+'/history',{transactionId:kotId}),
+      denied(foreign,posPath+'/settleCredit',{settleTxId:kotId,settleMethod:'UPI',settleAmount:'1'}),
+      denied(foreign,'/apps/zenith/pos/Terminal/ajaxCart',{action:'settleCredit',settleTxId:kotId,settleMethod:'UPI',settleAmount:'1'}),
+      denied(foreign,kotPath+'/settleCredit',{settleTxId:retailId,settleMethod:'UPI',settleAmount:'1'}),
+      denied(a,kotPath+'/settleCredit',{settleTxId:kotId,settleMethod:'UPI',settleAmount:'1'})
+    ]);
+    check('Credit detail and repayment enforce the module and organization boundary',
+      blocked.every(Boolean) && payments(kotId).length === 0 && payments(retailId).length === 0,blocked);
+
+    const partial = await repay('UPI',40);
+    check('KOT can record a partial repayment against its offline credit bill',
+      partial.success === true && Number(partial.outstanding) === 50 && !partial.fullyPaid,partial);
+    const final = await repay('Card',50);
+    check('KOT can settle the remaining balance with exactly two persisted payments',
+      final.success === true && final.fullyPaid === true && Number(final.outstanding) === 0 &&
+      JSON.stringify(payments(kotId).map(p => [p.payment_method,Number(p.amount)])) === JSON.stringify([['Card',50],['UPI',40]]) &&
+      payments(retailId).length === 0,final);
+    await row(kotId).click();
+    const dialog = page.locator('#pos-credit-history');
+    await dialog.getByText('Balance after payment',{exact:true}).waitFor();
+    check('KOT repayment history shows both saved payments',await dialog.locator('tbody tr').count() === 2);
+    if (out) await page.screenshot({path:join(out,'kot-credit-settlement.png')});
+  } finally {
+    await page.close();
+  }
+}
+
 module.exports = async ({ a, foreign, base, check, q, out }) => {
   const context = foreign.c;
   const page = await context.newPage();
@@ -310,6 +375,11 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
       credit[0].customer_party_id === 'POS_QA_B_CUST_SAME' && Number(credit[0].payable_amount) === 90 && Number(credit[0].paid_amount) === 0,
       {split,credit});
 
+    const { transactionId:retailCreditId } = await invokePos('cart',{sessionId,reuseOpenCart:'false'});
+    await invokePos('add',{transactionId:retailCreditId,productId:product,quantity:'1',taxOn:'N'});
+    await invokePos('credit',{transactionId:retailCreditId,customerName:'Disposable POS B retail credit',customerPhone:'9000000052'});
+    await verifyKotCreditBills({a,foreign,base,check,q,out,kotId:synchronized[2].transaction_id,retailId:retailCreditId});
+
     const tableNumber = 'OFFLINE-' + randomUUID().slice(0,8);
     const tableResponse = await context.request.post(base + '/apps/zenith/kot/Tables/createTable', {
       form:{moquiSessionToken:foreign.t,facilityId:'POS_QA_B_FAC',tableNumber,seatingCapacity:'2'},maxRedirects:0
@@ -381,15 +451,31 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
       matchingOrders().filter(order => order.status_id === 'KotDraft' && !order.transaction_id).length === 1);
 
     const catalogRoute = '**/kot/KotBilling/searchMenu';
-    const blockSearch = route => route.abort('failed');
-    await page.route(catalogRoute,blockSearch);
+    const healthRoute = '**/kot/KotBilling/touchSession';
+    const blockRequest = route => route.abort('failed');
+    const clearCart = async () => {
+      page.once('dialog',dialog => dialog.accept());
+      await page.locator('#kb-clear').click();
+    };
+    await page.route(catalogRoute,blockRequest);
+    const isolatedSearch = page.waitForRequest(request => request.url().endsWith('/searchMenu'));
+    const healthy = page.waitForResponse(response => response.url().endsWith('/touchSession') && response.ok());
+    await addItem('disposable pos b p5','POS_QA_B_P5');
+    await isolatedSearch;
+    await healthy;
+    check('An isolated KOT search failure falls back to cached products without taking billing offline',
+      await page.locator('#kb-online.is-offline').isHidden());
+    await clearCart();
+
+    await page.route(healthRoute,blockRequest);
     await addItem('disposable pos b p18',product);
+    await page.locator('#kb-online.is-offline').waitFor();
     check('Cached search continues during an ERP connection failure with the network adapter still online',
       await page.evaluate(() => navigator.onLine) && await page.locator('#kb-online.is-offline').isVisible());
-    await page.unroute(catalogRoute,blockSearch);
+    await page.unroute(catalogRoute,blockRequest);
+    await page.unroute(healthRoute,blockRequest);
     await page.locator('#kb-online.is-offline').waitFor({state:'hidden'});
-    page.once('dialog',dialog => dialog.accept());
-    await page.locator('#kb-clear').click();
+    await clearCart();
 
     await page.locator('[data-ot="Take Away"]').click();
     await addItem(product, product);

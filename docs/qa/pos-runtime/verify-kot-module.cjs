@@ -14,6 +14,7 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   ['PosTransactions', 'Transactions'],
   ['PosSessions', 'Sessions'],
   ['PosTerminals', 'Terminals'],
+  ['CreditBills', 'Credit Bills'],
   ['Wastage', 'Wastage'],
   ['ProductPricing', 'Product Prices'],
   ['DiscountSettings', 'Discount'],
@@ -24,7 +25,6 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   ['BillNumberRegister', 'Bill Register'],
   ['OfflineMode', 'Offline Mode']
  ];
- const sharedPosLinks = new Set(tools.map(([seg])=>'/pos/'+seg));
  const page = await a.c.newPage();
  const clerk = await browser.newContext({ viewport:{ width:1366, height:768 } });
  const post = (actor, route, values) => actor.c.request.post(base+'/apps/zenith/'+route,{
@@ -45,9 +45,8 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
    await activeSidebar.waitFor();
    check(shell+' opens KOT as its own sidebar module',await activeSidebar.isVisible(),{url:page.url()});
    const kotLinks = await links.evaluateAll(anchors=>anchors.map(a=>a.getAttribute('data-match')));
-   check(shell+' lists the KOT tools under KOT and keeps the other entitled POS links',
-    kotLinks.join('|')===[...tabs.concat(tools).map(([seg])=>'/kot/'+seg),
-     ...posLinks.filter(link=>!sharedPosLinks.has(link))].join('|'),{kotLinks});
+   check(shell+' keeps the KOT navigation within the KOT module',
+    kotLinks.join('|')===tabs.concat(tools).map(([seg])=>'/kot/'+seg).join('|'),{kotLinks});
    const shellSelector=shell==='apps'?'#z-sidebar':'#kitchen-page-frame';
    await page.evaluate(selector=>{window.qaKotShell=document.querySelector(selector);},shellSelector);
    for (const [seg,name,content] of tabs.slice(1)) {
@@ -66,18 +65,12 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
    }
    await strip.getByRole('link',{name:'KOT Billing',exact:true}).click();
    await page.locator('#kot-terminal-entry').waitFor();
-   await strip.locator('a[data-match="/pos/Dashboard"]').click();
-   await page.waitForURL('**/'+shell+'/zenith/pos/Dashboard');
-   await strip.locator('a[data-match="/pos/Dashboard"]').waitFor();
-   check(shell+' can leave the KOT terminal gateway using a POS submodule',await page.locator('#zk-route-status').count()===0);
-   await sidebar.click();
-   await page.locator('#kd-wrap').waitFor();
-   await strip.getByRole('link',{name:'KOT Billing',exact:true}).click();
-   await page.locator('#kot-terminal-entry').waitFor();
    await page.locator((shell==='apps'?'#z-sidebar':'#zq-sidebar')+' a[data-match="/pos"]').click();
    await page.waitForURL('**/'+shell+'/zenith/pos/Dashboard');
    await strip.locator('a[data-match="/pos/Dashboard"]').waitFor();
-   check(shell+' can leave the KOT terminal gateway using the sidebar',await page.locator('#zk-route-status').count()===0);
+   const returnedPosLinks = await links.evaluateAll(anchors=>anchors.map(a=>a.getAttribute('data-match')));
+   check(shell+' can leave KOT Billing and reach the same POS navigation using the sidebar',
+    await page.locator('#zk-route-status').count()===0&&returnedPosLinks.join('|')===posLinks.join('|'),{returnedPosLinks});
   }
   const preference = JSON.stringify({version:1,order:['/kot/KotBilling','/pos/Reports'],hidden:['/pos/SalesMode']});
   const saved = await post(a,'saveSubnavConfiguration',{module:'kot',payload:preference});
@@ -132,6 +125,11 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   }
   const token=await clerkPage.locator('#kb-token').inputValue();
   const kit={c:clerk,t:token||await clerkPage.locator('#z-shopdata').getAttribute('data-token')};
+  for (const transition of ['listCreditBills','settleCredit']) {
+   const denied=await post(kit,'kot/CreditBills/'+transition,{});
+   check('billing-only KOT clerk cannot use Credit Bills '+transition,
+    [302,303,403].includes(denied.status()),{status:denied.status()});
+  }
   const sessionId=new URL(clerkPage.url()).searchParams.get('sessionId');
   const note='KOT role QA '+randomUUID();
   const ownTicket=await post(kit,'kot/KotBilling/createKot',{

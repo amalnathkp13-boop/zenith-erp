@@ -3,12 +3,45 @@
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         default-menu-title="Credit Bills" default-menu-index="9">
 
-    <transition name="goTerminal"><default-response url="../Terminal"/></transition>
+    <always-actions><script><![CDATA[
+        def path = ec.web?.request?.requestURI ?: ''
+        creditModule = path ==~ /(?:\/menuData)?\/(?:apps|qapps)\/zenith\/kot\/CreditBills(?:[\/.].*)?/ ? 'kot' : 'pos'
+    ]]></script></always-actions>
+
+    <transition name="goTerminal"><default-response url="${creditModule == 'kot' ? '../KotBilling' : '../Terminal'}"/></transition>
     <transition name="goTransactions"><default-response url="../PosTransactions"/></transition>
-    <transition name="goDashboard"><default-response url="../Dashboard"/></transition>
+    <transition name="goDashboard"><default-response url="${creditModule == 'kot' ? '../KotDashboard' : '../Dashboard'}"/></transition>
+
+    <transition name="listCreditBills" method="post" read-only="true"><actions><script><![CDATA[
+        def result = ec.service.sync().name('zenith.pos.PosCreditServices.list#PosCreditBills')
+            .parameters([sourceModuleId:creditModule,search:ec.web.parameters.search]).call()
+        if (ec.message.hasError()) {
+            def error = ec.message.errorsString
+            ec.message.clearErrors()
+            ec.web.sendJsonResponse([success:false,error:error])
+        } else {
+            ec.web.sendJsonResponse(result.creditList)
+        }
+    ]]></script></actions><default-response type="none"/></transition>
+
+    <transition name="settleCredit" method="post" begin-transaction="true"><actions><script><![CDATA[
+        def p = ec.web.parameters
+        def result = ec.service.sync().name('zenith.pos.PosCreditServices.settle#ScopedPosCredit')
+            .parameters([sourceModuleId:creditModule,transactionId:p.settleTxId,paymentMethod:p.settleMethod,
+                amount:p.settleAmount,referenceNumber:p.settleRef,collectionSessionId:p.sessionId]).call()
+        if (ec.message.hasError()) {
+            def error = ec.message.errorsString
+            ec.transaction.setRollbackOnly('Credit settlement rejected',null)
+            ec.message.clearErrors()
+            ec.web.sendJsonResponse([success:false,error:error])
+        } else {
+            ec.web.sendJsonResponse([success:true,outstanding:result.outstanding,fullyPaid:result.fullyPaid,paidAmount:result.paidAmount])
+        }
+    ]]></script></actions><default-response type="none"/></transition>
 
     <transition name="history" read-only="true"><actions><script><![CDATA[
-        def result = ec.service.sync().name('zenith.pos.PosCreditServices.get#PosCreditHistory').parameter('transactionId',ec.web.parameters.transactionId).call()
+        def result = ec.service.sync().name('zenith.pos.PosCreditServices.get#PosCreditHistory')
+            .parameters([transactionId:ec.web.parameters.transactionId,sourceModuleId:creditModule]).call()
         def success = !ec.message.hasError(); def error = ec.message.errorsString; ec.message.clearErrors()
         ec.web.sendJsonResponse([success:success,error:error,history:result?.history])
     ]]></script></actions><default-response type="none"/></transition>
@@ -21,7 +54,7 @@
     ]]></script></actions><default-response type="none"/></transition>
     <transition name="changeDueDate" begin-transaction="true"><actions><script><![CDATA[
         ec.service.sync().name('zenith.pos.PosCreditServices.change#PosCreditDueDate').parameters([
-            transactionId:ec.web.parameters.transactionId,dueDate:ec.web.parameters.dueDate,reason:ec.web.parameters.reason]).call()
+            transactionId:ec.web.parameters.transactionId,dueDate:ec.web.parameters.dueDate,reason:ec.web.parameters.reason,sourceModuleId:creditModule]).call()
         def success = !ec.message.hasError(); def error = ec.message.errorsString
         if (!success) { ec.transaction.setRollbackOnly('Credit due date rejected',null); ec.message.clearErrors() }
         ec.web.sendJsonResponse([success:success,error:error])
@@ -35,6 +68,17 @@
         ec.web.sendJsonResponse([success:success,error:error])
     ]]></script></actions><default-response type="none"/></transition>
 
+    <actions><script><![CDATA[
+        creditBilling = true
+        creditTransactions = true
+        if (creditModule == 'kot') {
+            def role = ec.service.sync().name('zenith.base.RoleAccessServices.get#AssignedRoleScope').disableAuthz().call()
+            if (role.restricted && !role.legacyModules.contains('kot')) {
+                creditBilling = role.selections.kot?.contains('/kot/KotBilling') == true
+                creditTransactions = role.selections.kot?.contains('/kot/PosTransactions') == true
+            }
+        }
+    ]]></script></actions>
     <widgets>
         <!-- ZE-POS-002 / PS-073: this page drives the /apps-only pos-terminal.js, and its data fetch to
              Terminal/ajaxCart is a POST. On /qapps that POST hits the POS /qapps->/apps 301 redirect, which
@@ -43,7 +87,7 @@
              img-onload is used because /qapps strips <script>; guarded so it is a no-op on /apps. -->
         <render-mode><text type="html,qvt" template="true"><![CDATA[<img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="if(location.pathname.indexOf('/qapps/')===0){location.replace('/apps/'+location.pathname.substring(7)+location.search);}"/>]]></text></render-mode>
         <container style="credit-bills-screen q-pa-md">
-            <render-mode><text type="html,qvt" template="true"><![CDATA[<input type="hidden" name="moquiSessionToken" value="${ec.web.sessionToken}"/><div id="credit-bills-root" style="min-height:200px">Loading credit bills…</div><script src="/zenithstatic/js/pos-terminal.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-terminal.js').getLastModified()?c}"></script>]]></text></render-mode>
+            <render-mode><text type="html,qvt" template="true"><![CDATA[<input type="hidden" name="moquiSessionToken" value="${ec.web.sessionToken}"/><div id="credit-bills-root" data-credit-module="${creditModule}" data-credit-billing="${creditBilling?c}" data-credit-transactions="${creditTransactions?c}" style="min-height:200px">Loading credit bills…</div><script src="/zenithstatic/js/pos-terminal.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-terminal.js').getLastModified()?c}"></script>]]></text></render-mode>
         </container>
     </widgets>
 </screen>

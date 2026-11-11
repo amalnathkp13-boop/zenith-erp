@@ -6,7 +6,9 @@
     function request(action, params) {
         var token = document.querySelector('[name=moquiSessionToken]');
         var data = new URLSearchParams(Object.assign({moquiSessionToken:token ? token.value : ''}, params));
-        return fetch('/apps/zenith/pos/CreditBills/' + action, {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:data})
+        var root = document.getElementById('credit-bills-root');
+        var module = root && root.dataset.creditModule === 'kot' ? 'kot' : 'pos';
+        return fetch('/apps/zenith/' + module + '/CreditBills/' + action, {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:data})
             .then(function (response) { if (!response.ok) throw new Error('Request denied. Refresh and check your permission.'); return response.json(); })
             .then(function (result) { if (!result.success) throw new Error(result.error || 'Could not save.'); return result; });
     }

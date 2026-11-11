@@ -37,15 +37,16 @@
         <subscreens-item name="PosTransactions" location="component://zenith-erp-pos/screen/zenith/pos/Pos/PosTransactions.xml" menu-title="Transactions" menu-index="7"/>
         <subscreens-item name="PosSessions" location="component://zenith-erp-pos/screen/zenith/pos/Pos/PosSessions.xml" menu-title="Sessions" menu-index="8"/>
         <subscreens-item name="PosTerminals" location="component://zenith-erp-pos/screen/zenith/pos/Pos/PosTerminals.xml" menu-title="Terminals" menu-index="9"/>
-        <subscreens-item name="Wastage" location="component://zenith-erp-pos/screen/zenith/pos/Pos/Wastage.xml" menu-title="Wastage" menu-index="10"/>
-        <subscreens-item name="ProductPricing" location="component://zenith-erp-pos/screen/zenith/pos/Pos/ProductPricing.xml" menu-title="Product Prices" menu-index="11"/>
-        <subscreens-item name="DiscountSettings" location="component://zenith-erp-pos/screen/zenith/pos/Pos/DiscountSettings.xml" menu-title="Discount" menu-index="12"/>
-        <subscreens-item name="SalesMode" location="component://zenith-erp-pos/screen/zenith/pos/Pos/SalesMode.xml" menu-title="Sales Mode" menu-index="13"/>
-        <subscreens-item name="ProductImport" location="component://zenith-erp-pos/screen/zenith/pos/Pos/ProductImport.xml" menu-title="Import" menu-index="14"/>
-        <subscreens-item name="ReceiptConfig" location="component://zenith-erp-pos/screen/zenith/pos/Pos/ReceiptConfig.xml" menu-title="Receipts" menu-index="15"/>
-        <subscreens-item name="PrinterConfig" location="component://zenith-erp-pos/screen/zenith/pos/Pos/PrinterConfig.xml" menu-title="Printers" menu-index="16"/>
-        <subscreens-item name="BillNumberRegister" location="component://zenith-erp-pos/screen/zenith/pos/Pos/BillNumberRegister.xml" menu-title="Bill Register" menu-index="17"/>
-        <subscreens-item name="OfflineMode" location="component://zenith-erp-pos/screen/zenith/pos/Pos/Kitchen/KotOfflineMode.xml" menu-title="Offline Mode" menu-index="18"/>
+        <subscreens-item name="CreditBills" location="component://zenith-erp-pos/screen/zenith/pos/Pos/CreditBills.xml" menu-title="Credit Bills" menu-index="10"/>
+        <subscreens-item name="Wastage" location="component://zenith-erp-pos/screen/zenith/pos/Pos/Wastage.xml" menu-title="Wastage" menu-index="11"/>
+        <subscreens-item name="ProductPricing" location="component://zenith-erp-pos/screen/zenith/pos/Pos/ProductPricing.xml" menu-title="Product Prices" menu-index="12"/>
+        <subscreens-item name="DiscountSettings" location="component://zenith-erp-pos/screen/zenith/pos/Pos/DiscountSettings.xml" menu-title="Discount" menu-index="13"/>
+        <subscreens-item name="SalesMode" location="component://zenith-erp-pos/screen/zenith/pos/Pos/SalesMode.xml" menu-title="Sales Mode" menu-index="14"/>
+        <subscreens-item name="ProductImport" location="component://zenith-erp-pos/screen/zenith/pos/Pos/ProductImport.xml" menu-title="Import" menu-index="15"/>
+        <subscreens-item name="ReceiptConfig" location="component://zenith-erp-pos/screen/zenith/pos/Pos/ReceiptConfig.xml" menu-title="Receipts" menu-index="16"/>
+        <subscreens-item name="PrinterConfig" location="component://zenith-erp-pos/screen/zenith/pos/Pos/PrinterConfig.xml" menu-title="Printers" menu-index="17"/>
+        <subscreens-item name="BillNumberRegister" location="component://zenith-erp-pos/screen/zenith/pos/Pos/BillNumberRegister.xml" menu-title="Bill Register" menu-index="18"/>
+        <subscreens-item name="OfflineMode" location="component://zenith-erp-pos/screen/zenith/pos/Pos/Kitchen/KotOfflineMode.xml" menu-title="Offline Mode" menu-index="19"/>
         <subscreens-item name="EditSession" location="component://zenith-erp-pos/screen/zenith/pos/Pos/EditSession.xml" menu-include="false"/>
         <subscreens-item name="PosSessionsPdf" location="component://zenith-erp-pos/screen/zenith/pos/Pos/PosSessionsPdf.xml" menu-include="false"/>
         <subscreens-item name="EditTransaction" location="component://zenith-erp-pos/screen/zenith/pos/Pos/EditTransaction.xml" menu-include="false"/>
