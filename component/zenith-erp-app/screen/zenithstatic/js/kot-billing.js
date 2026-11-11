@@ -863,7 +863,13 @@
   function closeHistoryDetail(){
     if(savingBill)return;
     if(editingBill?.canEdit&&billChanges().length&&!confirm('Discard the unsaved bill changes?'))return;
+    clearTimeout(editSearchTimer);
+    editSearchVersion++;
+    editingBill=null;
     historyDetail.close();
+    if(!history.open)return;
+    if(loadedHistoryVersion!==historyVersion)showHistory();
+    else filterHistory(true);
   }
   async function saveHistoryBill(event){
     event.preventDefault();
@@ -1046,14 +1052,6 @@
   });
   for(const id of ['history-back','history-detail-close'])$(id).addEventListener('click',closeHistoryDetail);
   historyDetail.addEventListener('cancel',event=>{event.preventDefault();closeHistoryDetail();});
-  historyDetail.addEventListener('close',()=>{
-    clearTimeout(editSearchTimer);
-    editSearchVersion++;
-    editingBill=null;
-    if(!history.open)return;
-    if(loadedHistoryVersion!==historyVersion)showHistory();
-    else filterHistory(true);
-  });
   $('history-detail-reprint')?.addEventListener('click',()=>openReprint(editingBill?.row));
   $('history-resume')?.addEventListener('click',()=>{
     if(!cart.size||confirm('Replace the current unsent items with this held order?')){

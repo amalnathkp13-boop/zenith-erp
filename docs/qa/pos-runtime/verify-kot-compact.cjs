@@ -280,7 +280,9 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   const printActions=historyBill.locator('..');
   await page.waitForFunction(()=>document.activeElement?.matches('#kb-history .is-current [data-kb-history-detail]'));
   await page.keyboard.press('Space');
-  check('Space moves from the bill number to Bill Print',await printActions.getByRole('button',{name:'Bill Print'}).evaluate(el=>el===document.activeElement));
+  const focusedPrint=await page.evaluate(()=>({action:document.activeElement?.dataset.kbHistoryPrint,
+   bill:document.activeElement?.closest('.kb-history-row')?.querySelector('[data-kb-history-detail]')?.textContent.trim()}));
+  check('Space moves from the bill number to Bill Print',focusedPrint.action==='bill'&&focusedPrint.bill==='#'+tx.transaction_number,focusedPrint);
   await page.keyboard.press('Enter');
   await page.waitForFunction(()=>window.kotPrints.length===5);
   await printActions.getByRole('button',{name:'KOT Print'}).click();
