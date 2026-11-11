@@ -150,6 +150,12 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   check('KOT-only clerk can complete a bill on the assigned terminal',draft.success&&settled.success===true);
   const transactionId=q("SELECT transaction_id FROM kitchen_order_ticket WHERE kot_id='"+draft.kotId+"'")[0]?.transaction_id;
   check('the paid KOT has a linked transaction and bill number',!!transactionId&&!!settled.billNumber);
+  const billDetails=await post(kit,'kot/KotBilling/historyBillDetails',{sessionId,kotId:draft.kotId});
+  const historyBill=await billDetails.json().catch(()=>null);
+  check('KOT-only clerk can view the issued bill without POS amendment access',
+   billDetails.ok()&&historyBill?.success===true&&historyBill.transactionId===transactionId&&
+   historyBill.number===settled.billNumber&&historyBill.canEdit===false,
+   {status:billDetails.status(),historyBill});
   for (const route of ['PosTransactions','EditTransaction?transactionId='+transactionId,'BillNumberRegister/printDoc']) {
    const report=await a.c.request.get(base+'/apps/zenith/kot/'+route);
    check('owner can find the issued KOT bill in '+route.split('?')[0],report.ok()&&

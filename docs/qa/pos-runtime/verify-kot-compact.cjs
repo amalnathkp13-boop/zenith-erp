@@ -85,7 +85,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await page.waitForFunction(()=>document.fullscreenElement?.id==='kb-wrap');
   check('Grid View can enter native fullscreen',await fullscreen.innerText()==='Exit fullscreen'&&await card.isVisible());
   await page.locator('#kb-history-open').click();
-  await page.locator('#kb-history').getByRole('button',{name:'Close',exact:true}).click();
+  await page.locator('#kb-history-close').click();
   check('History works in fullscreen',await page.evaluate(()=>document.fullscreenElement?.id==='kb-wrap'));
   await page.screenshot({path:path.join(out,'kot-grid-fullscreen.png')});
   await fullscreen.click();
@@ -238,10 +238,59 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   const short=await json('checkoutKot',{kotId:draft.data.kotId,sessionId:session.sessionId,paymentMethod:'Cash',cashAmount:'10'});
   check('An underpayment leaves no partial tender or completed sale',!short.data?.success&&JSON.stringify(txs())===JSON.stringify(beforeFailure),short);
   await post(screen,'deleteDraft',{sessionId:session.sessionId,kotId:draft.data.kotId});
-  await page.locator('#kb-history-open').click();
-  await page.locator('#kb-history').getByText(waiterName,{exact:false}).first().waitFor();
-  check('Saved checkout is available in the in-page History',new URL(page.url()).pathname.endsWith('/KotBilling'));
-  await page.locator('#kb-history').getByRole('button',{name:'Close',exact:true}).click();
+  await page.keyboard.press('F10');
+  const historyBill=page.locator('#kb-history [data-kb-history-detail]').filter({hasText:tx.transaction_number});
+  await historyBill.waitFor();
+  await page.waitForFunction(()=>document.activeElement?.matches('#kb-history [data-kb-history-detail]'));
+  check('History focuses the latest issued KOT bill in the billing workspace',
+   await historyBill.evaluate(el=>el===document.activeElement)&&new URL(page.url()).pathname.endsWith('/KotBilling'));
+  await page.keyboard.press('Enter');
+  await page.locator('#kb-history-detail [data-edit-quantity]').first().waitFor();
+  check('Enter opens the saved bill in the editor without loading it into the sale cart',
+   await page.locator('#kb-history-detail-number').innerText()==='#'+tx.transaction_number&&await page.locator('#kb-cart [data-product]').count()===0);
+  await page.keyboard.press('Space');
+  check('Space focuses Reprint in Edit Bill',await page.locator('#kb-history-detail-reprint').evaluate(el=>el===document.activeElement));
+  await page.keyboard.press('Enter');
+  await page.locator('#kb-print-choice').waitFor();
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  check('Right arrows select Print both',await page.locator('[data-kb-print="both"]').evaluate(el=>el===document.activeElement));
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(()=>window.kotPrints.length===4);
+  await page.locator('#kb-print-choice').waitFor({state:'hidden'});
+  check('History reprints both saved documents',await page.evaluate(()=>window.kotPrints[2]===window.kotPrints[0]&&window.kotPrints[3]===window.kotPrints[1]));
+  const editQuantity=page.locator('#kb-history-detail [data-edit-quantity]').first();
+  await editQuantity.fill('3');
+  check('Edit Bill shows the new amount before Save Changes',
+   await page.locator('#kb-history-detail [data-edit-total]').first().innerText()==='₹300.00'&&
+   await page.locator('#kb-history-detail-total').innerText()==='Estimated total ₹300.00');
+  const addItem=page.locator('#kb-history-add');
+  await addItem.fill('Disposable POS A NOWS');
+  await page.locator('#kb-history-products button').filter({hasText:'POS_QA_A_NOWS'}).waitFor();
+  await addItem.fill('POS_QA_A_UNPRICED');
+  await page.locator('#kb-history-products button').filter({hasText:'Disposable unpriced item'}).waitFor();
+  await addItem.press('Enter');
+  const added=page.locator('#kb-history-detail-lines tr').filter({hasText:'Disposable unpriced item'});
+  await added.locator('[data-edit-rate]').fill('25');
+  check('Name and code search can add an item without a saved rate',
+   await added.locator('[data-edit-total]').innerText()==='₹25.00'&&
+   await page.locator('#kb-history-detail-total').innerText()==='Estimated total ₹325.00');
+  page.once('dialog',dialog=>dialog.accept());
+  await page.locator('#kb-history-back').click();
+  const printActions=historyBill.locator('..');
+  await page.waitForFunction(()=>document.activeElement?.matches('#kb-history .is-current [data-kb-history-detail]'));
+  await page.keyboard.press('Space');
+  const focusedPrint=await page.evaluate(()=>({action:document.activeElement?.dataset.kbHistoryPrint,
+   bill:document.activeElement?.closest('.kb-history-row')?.querySelector('[data-kb-history-detail]')?.textContent.trim()}));
+  check('Space moves from the bill number to Bill Print',focusedPrint.action==='bill'&&focusedPrint.bill==='#'+tx.transaction_number,focusedPrint);
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(()=>window.kotPrints.length===5);
+  await printActions.getByRole('button',{name:'KOT Print'}).click();
+  await page.waitForFunction(()=>window.kotPrints.length===6);
+  check('History has direct Bill Print and KOT Print actions',
+   !await page.locator('#kb-print-choice').isVisible()&&
+   await page.evaluate(()=>window.kotPrints[4]===window.kotPrints[1]&&window.kotPrints[5]===window.kotPrints[0]));
+  await page.locator('#kb-history-close').click();
   for(const [view,option] of [['List',listMode],['Grid',gridMode]]) {
    await modes.locator('summary').click();
    await option.click();

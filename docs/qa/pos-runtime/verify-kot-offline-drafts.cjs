@@ -60,7 +60,15 @@ module.exports = async ({ foreign, base, check, q, out }) => {
       await drafts.getByText('No drafts saved on this device for this counter.').isVisible());
     if (out) await page.screenshot({ path:join(out,'kot-offline-draft-synced.png') });
     await drafts.getByRole('button', { name:'View Held Orders' }).click();
-    await page.locator('[data-kot-resume="' + firstSave[0].kot_id + '"]').waitFor();
+    const heldOrder = page.getByRole('dialog', { name:'Bill History' })
+      .locator('[data-kot-id="' + firstSave[0].kot_id + '"][data-kot-group="draft"]');
+    await heldOrder.getByRole('button', { name:'#KOT ' + firstSave[0].kot_number, exact:true }).click();
+    await page.getByRole('dialog', { name:'Held Order' }).getByRole('button', { name:'Resume Order' }).click();
+    await page.waitForURL(url => url.searchParams.get('loadDraft') === String(firstSave[0].kot_id));
+    const resumedItem = page.locator('#kb-cart tr[data-product="POS_QA_B_P18"]');
+    await resumedItem.waitFor();
+    check('the synced KOT draft is visible in Bill History and resumes into the cart',
+      await resumedItem.count() === 1 && (await page.locator('#kb-instr').inputValue()).includes(note));
     await page.goto(base + '/apps/zenith/kot/OfflineMode');
     check('KOT Offline Mode shows the persisted sync receipt',
       await page.locator('td').getByText(firstSave[0].kot_number, { exact:true }).count() === 1);
