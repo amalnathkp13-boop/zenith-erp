@@ -10,18 +10,46 @@
       (record.items||[]).map(it=>'<tr><td>'+esc(it.name)+'</td><td class="q">'+esc(it.qty)+'</td></tr>').join('')+'</tbody></table></body></html>';
   }
   function open(){const w=window.open('','_blank','width=430,height=650');if(!w)throw Error('Allow pop-ups for this site, then retry printing.');return w;}
-  async function browserPrint(w,html){
+  function printBeforeNextDocument(w,label){
+    // Keep the first document intact for browsers that return before the print dialog closes.
+    const button=w.document.createElement('button');
+    const style=w.document.createElement('style');
+    button.id='kitchen-print-continue';button.type='button';button.textContent=label;
+    style.textContent='@media print{#kitchen-print-continue{display:none!important}}';
+    w.document.head.appendChild(style);
+    w.document.body.prepend(button);
+    return new Promise((resolve,reject)=>{
+      const finish=(error)=>{
+        clearInterval(checkClosed);
+        if(!w.closed){w.removeEventListener('afterprint',advance);button.remove();}
+        if(error)reject(error);else resolve();
+      };
+      const advance=()=>finish();
+      const checkClosed=setInterval(()=>{
+        if(w.closed)finish(Error('The print window was closed before the customer bill opened.'));
+      },250);
+      w.addEventListener('afterprint',advance,{once:true});
+      button.addEventListener('click',advance,{once:true});
+      try{w.print();}catch(error){finish(error);}
+    });
+  }
+  async function browserPrint(w,html,{nextLabel,closeAfterPrint=false}={}){
     if(!w||w.closed)throw Error('The print window was closed. Retry when ready.');
     w.document.open();w.document.write(html);w.document.close();
     if(w.document.fonts)await w.document.fonts.ready;
     await Promise.all(Array.from(w.document.images||[]).map(img=>img.complete?Promise.resolve():new Promise(resolve=>{img.onload=img.onerror=resolve;setTimeout(resolve,5000);})));
     if(w.closed)throw Error('The print window was closed.');
-    w.focus();w.print(); // Request accepted by the browser; physical output/cancellation is not observable.
+    w.focus();
+    if(nextLabel)return printBeforeNextDocument(w,nextLabel);
+    if(closeAfterPrint){
+      w.addEventListener('afterprint',()=>setTimeout(()=>{if(!w.closed)w.close();},0),{once:true});
+    }
+    w.print(); // Request accepted by the browser; physical output/cancellation is not observable.
   }
-  async function customer(w,data){
+  async function customer(w,data,options){
     if(!data||!data.success||!window.PosReceiptLayout)throw Error('The saved customer receipt could not be loaded.');
     const html=PosReceiptLayout.render(data,Number(data.summary?.tax)>0,!!data.edited)+'</body></html>';
-    await browserPrint(w,html);
+    await browserPrint(w,html,options);
   }
   window.KitchenPrint={open:open,kotHtml:kotHtml,browserPrint:browserPrint,customer:customer};
   var busy=false;

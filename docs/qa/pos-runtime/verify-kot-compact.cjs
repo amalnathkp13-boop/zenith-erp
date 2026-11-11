@@ -225,10 +225,16 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   check('Checkout keeps the selected entry terminal',await page.locator('input[name=sessionId]').inputValue()===session.sessionId);
   await page.evaluate(()=>{
    window.kotPrints=[];
+   window.kotPrintWindows=0;
    window.open=()=>{
+    window.kotPrintWindows++;
     let html='';
-    return {document:{open(){html='';},write(x){html+=x;},close(){},images:[]},
-     closed:false,focus(){},print(){window.kotPrints.push(html);},close(){this.closed=true;}};
+    const printDoc=document.implementation.createHTMLDocument();
+    const popup=new EventTarget();
+    return Object.assign(popup,{document:{open(){html='';},write(x){html+=x;},close(){},images:[],
+     createElement:tag=>printDoc.createElement(tag),head:printDoc.head,body:printDoc.body},closed:false,focus(){},
+     print(){window.kotPrints.push(html);setTimeout(()=>this.dispatchEvent(new Event('afterprint')),0);},
+     close(){this.closed=true;}});
    };
   });
   await cash.fill('250');
@@ -250,6 +256,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   const kot=q("SELECT kot_id,transaction_id,waiter_name,table_id,notes FROM kitchen_order_ticket WHERE waiter_name='"+waiterName+"' AND transaction_id IS NOT NULL ORDER BY kot_id DESC")[0];
   const tx=q("SELECT transaction_number,payable_amount,change_amount,status_id,customer_party_id FROM pos_transaction WHERE transaction_id='"+kot.transaction_id+"'")[0];
   const printed=await page.evaluate(()=>window.kotPrints);
+  check('Take Away Print both uses one browser window',await page.evaluate(()=>window.kotPrintWindows===1));
   check('KOT header updates its last bill and today count after checkout',
    await page.locator('#kb-header-last-bill').textContent()===tx.transaction_number&&
    Number(await page.locator('#kb-header-today-bills').textContent())===initialToday+1);
@@ -289,6 +296,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await page.waitForFunction(()=>window.kotPrints.length===4);
   await page.locator('#kb-print-choice').waitFor({state:'hidden'});
   check('History reprints both saved documents',await page.evaluate(()=>window.kotPrints[2]===window.kotPrints[0]&&window.kotPrints[3]===window.kotPrints[1]));
+  check('History Print both uses one browser window',await page.evaluate(()=>window.kotPrintWindows===2));
   const editQuantity=page.locator('#kb-history-detail [data-edit-quantity]').first();
   await editQuantity.fill('3');
   check('Edit Bill shows the new amount before Save Changes',

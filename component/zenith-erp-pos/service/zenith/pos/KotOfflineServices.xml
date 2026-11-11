@@ -167,7 +167,7 @@
                 def notes=(sale.notes ?: '').toString()
                 def customerName=customer.name?.toString()?.trim()
                 def customerPhone=customer.phone?.toString()?.trim()
-                if (notes.size()>255 || (customerId && !(customerId instanceof String)) ||
+                if (notes.size()>500 || (customerId && !(customerId instanceof String)) ||
                     (customerName?.size() ?: 0)>255 || (customerPhone?.size() ?: 0)>100) {
                     reject('The offline customer or order note is invalid.'); return
                 }
@@ -239,6 +239,19 @@
                         referenceNumber:(sale.referenceNumber ?: 'KOT-OFFLINE:'+sale.offlineId).toString().take(120)]).call().checkout
                     if (!bill || ec.message.hasError()) return
                     if (amount(bill.changeAmount)!=change) { reject('Recorded change differs from the offline order.'); return }
+                    if (method=='Credit') {
+                        def credit=ec.entity.find('zenith.erp.pos.PosTransaction')
+                            .condition('transactionId',bill.transactionId).one()
+                        if (credit?.creditDays!=null) {
+                            def issuedDay=java.time.Instant.ofEpochMilli(issuedAt)
+                                .atZone(ec.user.timeZone.toZoneId()).toLocalDate()
+                            def dueDate=java.sql.Date.valueOf(issuedDay.plusDays(credit.creditDays as long))
+                            if (credit.creditDueDate!=dueDate) {
+                                credit.creditDueDate=dueDate
+                                credit.update()
+                            }
+                        }
+                    }
                 } else {
                     def display=ec.service.sync().name('zenith.pos.KotServices.get#KitchenDisplayPolicy').parameter('facilityId',terminal.facilityId).call()
                     if (display.enabled!=true) { reject('Kitchen Display is disabled for this shop.'); return }

@@ -16,7 +16,7 @@
   const deviceDrafts=cfg.kotModule==='kot'&&window.KotOfflineDrafts?.createStore(cfg.org,cfg.terminal,cfg.user);
   const device=deviceDrafts&&window.KotOffline?.createWorkspace(cfg.org,cfg.terminal,cfg.user);
   let workspace, catalogue, warming, syncing, localReceipt, offlineQuote, workspaceError, pendingSales=false;
-  let localOrderId='', sourceOfflineId='', draftRevision=cfg.draftrevision||'';
+  let localOrderId='', draftRevision=cfg.draftrevision||'';
   let claimingOrder, releaseOrder, lockRetry, catalogRead;
   const lockName='zenith-kot-cart:'+JSON.stringify([cfg.org,cfg.terminal,cfg.user,cfg.session]);
   const syncingHeld=new Set();
@@ -165,7 +165,7 @@
       root.classList.toggle('kb-display-disabled',displayDisabled);
       $('send').style.display=displayDisabled?'none':'';
       $('send').disabled=busy||sessionLost||unconfirmedOrder||!available||!cart.size||displayDisabled||!editError.hidden||
-        (needsLocalOrder()&&(!canPay||!!sourceOfflineId));
+        (needsLocalOrder()&&!canPay);
       $('send').title=displayDisabled?'Kitchen Display is disabled for this shop. Use KOT printing.':'Press Shift by itself';
     }
   }
@@ -175,7 +175,7 @@
     $('table').value=cfg.selectedTable||'';
     browsePage=null;
     setEditError('');
-    draftId='';draftRevision='';sourceOfflineId='';savedFingerprint='';customer={};
+    draftId='';draftRevision='';savedFingerprint='';customer={};
     if(localOrderId) {
       try { clearStoredOrder(); }
       catch { $('order-status').textContent='The browser could not clear its recovered order. Check History before resuming it.'; }
@@ -223,7 +223,7 @@
     const saved=device.readOrder(cfg.session);
     if(saved&&saved.localOrderId!==localOrderId)throw Error('Another unsent order is saved on this counter. Reload to recover it.');
     localOrderId||=crypto.randomUUID();
-    device.saveOrder(cfg.session,{...orderData(),localOrderId,draftId,draftRevision,sourceOfflineId,customer});
+    device.saveOrder(cfg.session,{...orderData(),localOrderId,draftId,draftRevision,customer});
   }
   function recoverActiveOrder() {
     if(!releaseOrder||!catalogRead||draftId||cart.size)return false;
@@ -267,7 +267,6 @@
     paintSalesMode();
     draftId=order.draftId||'';
     draftRevision=order.draftRevision||'';
-    sourceOfflineId=order.sourceOfflineId||'';
     localOrderId=order.localOrderId||crypto.randomUUID();
     savedFingerprint='';
     const cachedCustomer=workspace?.customers.find(person=>person.partyId===order.customerPartyId);
@@ -279,7 +278,7 @@
       cart.set(line.productId,{id:line.productId,name:product?.productName||line.productId,code:product?.barcode||line.productId,
         qty:Number(line.quantity),price:manualRate??Number(product?.prices?.[salesModeId]?.price||0),manualRate});
     }
-    $('badge').textContent=sourceOfflineId?'Pending kitchen ticket':'Editing Held Order';
+    $('badge').textContent='Editing Held Order';
     renderCustomer();browsePage=null;quote();lookup();
   }
   async function syncDeviceOrders() {
@@ -288,18 +287,20 @@
     const run=async()=>{
       let confirmed=false;
       try {
-        for(const row of device.queue().filter(row=>row.sale.sessionId===cfg.session)) {
+        const orders=device.queue().filter(row=>row.sale.sessionId===cfg.session);
+        for(const row of orders) {
           if(disconnected()||sessionLost||!root.isConnected)break;
           const {sale}=row;
           try {
             const result=await request('syncOfflineSale',{saleJson:JSON.stringify(sale)},AbortSignal.timeout?.(20000));
             if(result.offlineId!==sale.offlineId||!result.kotId)throw Error('The server did not confirm this KOT order.');
             if(sale.operation==='send') {
-              // Keep the local order's server link when a cashier is still editing it.
-              const order=device.readOrder(cfg.session);
-              if(order?.sourceOfflineId===sale.offlineId) {
-                device.saveOrder(cfg.session,{...order,draftId:result.kotId,sourceOfflineId:sale.offlineId});
-                if(sourceOfflineId===sale.offlineId)draftId=result.kotId;
+              if(historyTender?.ticket?.sale.offlineId===sale.offlineId)historyTender.kotId=result.kotId;
+              const payment=orders.find(order=>order.sale.sourceOfflineId===sale.offlineId)||
+                device.queue().find(order=>order.sale.sourceOfflineId===sale.offlineId);
+              if(payment) {
+                payment.sale.kotId=result.kotId;
+                device.enqueue(payment);
               }
             }
             const order=device.readOrder(cfg.session);
@@ -314,7 +315,7 @@
         if(!disconnected()&&!sessionLost&&!busy&&root.isConnected) {
           for(const draft of deviceDrafts.list()) {
             if(disconnected()||sessionLost||busy||!root.isConnected)break;
-            if(draft.order.draftId||draft.order.sourceOfflineId||(draft.order.sessionId&&draft.order.sessionId!==cfg.session)||
+            if(draft.order.draftId||(draft.order.sessionId&&draft.order.sessionId!==cfg.session)||
                 draft.order.localOrderId===localOrderId)continue;
             const id=draft.id, identity={offlineDraftId:id,offlineOrganizationId:cfg.org,offlineTerminalId:cfg.terminal,offlineUserId:cfg.user};
             syncingHeld.add(id);
@@ -830,32 +831,38 @@
     if(busy||(!kotId&&!queued))return;
     const chooser=$('print-choice'), errorOutput=chooser.open?$('print-error'):$('history-error');
     errorOutput.textContent='';
-    let billWindow,kotWindow;
+    let printWindow, acknowledgement;
     try {
-      // Open windows from the click itself so the browser does not block them after fetching.
-      if(kind==='bill'||kind==='both')billWindow=KitchenPrint.open();
-      if(kind==='kot'||kind==='both')kotWindow=KitchenPrint.open();
+      // Open once per click. Chromium consumes the user gesture on the first popup.
+      printWindow=KitchenPrint.open();
       busy=true;controls();
       for(const button of root.querySelectorAll('[data-kb-print]'))button.disabled=true;
-      if(kotWindow) {
+      if(kind==='kot'||kind==='both') {
         const record=queued?.receipt||(await request('printRecord',{kotId,kind:'kot'})).record;
-        await KitchenPrint.browserPrint(kotWindow,KitchenPrint.kotHtml(record));
-        if(!queued)await request('ackKotPrint',{kotId});
+        await KitchenPrint.browserPrint(printWindow,KitchenPrint.kotHtml(record),
+          kind==='both'?{nextLabel:'Print customer bill'}:{closeAfterPrint:true});
+        if(kind==='kot')printWindow=null;
+        if(!queued) {
+          const recordPrint=request('ackKotPrint',{kotId},AbortSignal.timeout?.(8000));
+          if(kind==='both')acknowledgement=recordPrint.then(()=>'',()=>' The kitchen print count could not be updated.');
+          else await recordPrint;
+        }
       }
-      if(billWindow) {
+      if(kind==='bill'||kind==='both') {
         const record=queued?.receipt||(await request('printRecord',{kotId,kind:row?.dataset.billed==='false'?'orderBill':'bill'})).record;
-        await KitchenPrint.customer(billWindow,record);
+        await KitchenPrint.customer(printWindow,record,{closeAfterPrint:true});
+        printWindow=null;
       }
+      const warning=(await acknowledgement)||'';
       if(row) {
         const status=$('history-detail').open?$('history-detail-message'):$('history-print-status');
-        status.textContent='Print request opened.';
-      } else $('order-status').textContent+=' Print request opened. The completed bill is also in History.';
+        status.textContent='Print request opened.'+warning;
+      } else $('order-status').textContent+=' Print request opened. The completed bill is also in History.'+warning;
       if(chooser.open)chooser.close();
     } catch(error) {
       errorOutput.textContent=error.message;
     } finally {
-      if(billWindow&&!billWindow.closed)billWindow.close();
-      if(kotWindow&&!kotWindow.closed)kotWindow.close();
+      if(printWindow&&!printWindow.closed)printWindow.close();
       busy=false;controls();
       updatePrintOptions();
     }
@@ -867,7 +874,7 @@
       if(needsLocalOrder()){
         requireOfflineOwner();
         if(cart.size>100)throw Error('Hold orders with up to 100 product lines.');
-        deviceDrafts.save({...orderData(),sessionId:cfg.session,draftId,draftRevision,sourceOfflineId,customer,localOrderId});
+        deviceDrafts.save({...orderData(),sessionId:cfg.session,draftId,draftRevision,customer,localOrderId});
         resetOrder();refreshOpenHistory();
         status.textContent='Order held on this device.';
         syncDeviceOrders();
@@ -883,16 +890,19 @@
       busy=false;controls();
     }
   }
-  function enqueueOrder(operation, payment={}) {
+  function enqueueOrder(operation, payment={}, savedOrder) {
     requireOfflineOwner();
     const {paymentMethod,referenceNumber}=payment;
+    const source=savedOrder?.ticket.sale;
+    const billTotal=source?.total??total;
+    const mode=source?.mode??salesModeId;
     let payments=[], change=0;
-    const chosen={partyId:customer.id||null,name:customer.name||'',phone:customer.phone||''};
+    const chosen=source?{...source.customer}:{partyId:customer.id||null,name:customer.name||'',phone:customer.phone||''};
     if(operation==='checkout') {
-      if(!(total>0))throw Error('Reconnect to confirm an order with no amount due.');
-      const rule=workspace.rules?.find(rule=>rule.mode===salesModeId);
+      if(!(billTotal>0))throw Error('Reconnect to confirm an order with no amount due.');
+      const rule=workspace?.rules?.find(rule=>rule.mode===mode);
       if(rule?.customer&&!chosen.partyId)throw Error('Select a customer for this sales mode.');
-      if(total<Number(rule?.minimum||0))throw Error('This sales mode requires a minimum order of '+money.format(rule.minimum)+'.');
+      if(billTotal<Number(rule?.minimum||0))throw Error('This sales mode requires a minimum order of '+money.format(rule.minimum)+'.');
       if(paymentMethod==='Credit') {
         chosen.name||=payment.customerName?.trim();
         chosen.phone||=payment.customerPhone?.trim();
@@ -902,37 +912,36 @@
       } else if(paymentMethod==='Split') {
         payments=['Cash','Card','UPI'].map(method=>({method,amount:Number(payment[method.toLowerCase()+'Amount']||0)}));
         if(payments.some(({amount})=>!Number.isFinite(amount)||amount<0)||payments.filter(({amount})=>amount>0).length<2||
-            KotOffline.roundMoney(payments.reduce((sum,p)=>sum+p.amount,0))!==total)
+            KotOffline.roundMoney(payments.reduce((sum,p)=>sum+p.amount,0))!==billTotal)
           throw Error('Enter at least two payments that add up to the bill total.');
         payments=payments.filter(({amount})=>amount>0);
       } else if(paymentMethod==='Cash') {
         payments=[{method:'Cash',amount:Number(payment.cashAmount)}];
-        if(!Number.isFinite(payments[0].amount)||payments[0].amount<total)throw Error('Cash received must cover the bill total.');
-        change=KotOffline.roundMoney(payments[0].amount-total);
-      } else if(paymentMethod==='Card'||paymentMethod==='UPI') payments=[{method:paymentMethod,amount:total}];
+        if(!Number.isFinite(payments[0].amount)||payments[0].amount<billTotal)throw Error('Cash received must cover the bill total.');
+        change=KotOffline.roundMoney(payments[0].amount-billTotal);
+      } else if(paymentMethod==='Card'||paymentMethod==='UPI') payments=[{method:paymentMethod,amount:billTotal}];
       else throw Error('Choose a payment method.');
     }
-    const data=orderData(), quote=offlineQuote, ts=new Date().toISOString();
-
+    const data=source||orderData(), quote=savedOrder?.ticket.receipt??offlineQuote, ts=new Date().toISOString();
     if(quote.items.length>100)throw Error('Offline orders can contain up to 100 product lines.');
-
     const {session,terminal,org,user}=cfg;
-    const sale={version:2,operation,offlineId:localOrderId,sessionId:session,terminalId:terminal,
-      organizationPartyId:org,userId:user,ts,facilityId:workspace.facilityId,
-      orderType,tableId:data.tableId,waiterId:data.waiterId,notes:data.notes,
-      taxOn,total:quote.summary.total,taxAmount:quote.summary.tax,paymentMethod,payments,change,referenceNumber,
-      customer:chosen,mode:salesModeId,
-      items:quote.items.map(line=>({productId:line.productId,qty:line.qty,price:line.rate,mode:salesModeId,
+    const sale={version:2,operation,offlineId:source?crypto.randomUUID():localOrderId,sessionId:session,terminalId:terminal,
+      organizationPartyId:org,userId:user,ts,facilityId:source?.facilityId??workspace.facilityId,
+      orderType:data.orderType,tableId:data.tableId,waiterId:data.waiterId,notes:data.notes,
+      taxOn:data.taxOn,total:quote.summary.total,taxAmount:quote.summary.tax,paymentMethod,payments,change,referenceNumber,
+      customer:chosen,mode,
+      items:source?.items??quote.items.map(line=>({productId:line.productId,qty:line.qty,price:line.rate,mode,
         discount:line.percent,manualPrice:line.manualPrice})),
-      ...(sourceOfflineId?{sourceOfflineId}:draftId?{kotId:draftId,sourceRevision:draftRevision}:{})};
+      ...(source?{sourceOfflineId:source.offlineId,kotId:savedOrder.kotId}
+        :draftId?{kotId:draftId,sourceRevision:draftRevision}:{})};
     const receipt={...quote,preview:operation==='send',
       store:{...quote.store,showLogo:'N',headerText:'OFFLINE · PENDING SYNC',
         showPaymentDetails:'N'},
-      bill:{number:sale.offlineId,date:new Date(ts).toLocaleString('en-IN'),orderType,
+      bill:{number:sale.offlineId,date:new Date(ts).toLocaleString('en-IN'),orderType:data.orderType,
         customer:chosen.name||'Walk-In Customer',customerPhone:chosen.phone,
         table:tableLabels[data.tableId]||''},
-      items:quote.items.map(item=>({...item,name:item.printName||item.name})),
-      payments,change,isCredit:paymentMethod==='Credit',outstanding:paymentMethod==='Credit'?total:0,
+      items:source?quote.items:quote.items.map(item=>({...item,name:item.printName||item.name})),
+      payments,change,isCredit:paymentMethod==='Credit',outstanding:paymentMethod==='Credit'?billTotal:0,
       notes:data.notes};
     const existing=device.queue().some(({sale:entry})=>entry.offlineId===sale.offlineId||
       (entry.operation==='checkout'&&((sale.sourceOfflineId&&entry.sourceOfflineId===sale.sourceOfflineId)||
@@ -958,9 +967,9 @@
     let bill;
     busy=true;controls();submit.disabled=true;cancel.disabled=true;$('payment-error').textContent='';
     try{
-      if(needsLocalOrder()&&!existingOrder) {
-        if(!offlineQuote)throw Error('Recheck the offline order before taking payment.');
-        const queued=enqueueOrder('checkout',payment);
+      if(existingOrder?.ticket||(needsLocalOrder()&&!existingOrder)) {
+        if(!existingOrder?.ticket&&!offlineQuote)throw Error('Recheck the offline order before taking payment.');
+        const queued=enqueueOrder('checkout',payment,existingOrder);
         bill={billNumber:queued.sale.offlineId,changeAmount:queued.sale.change,local:queued};
       }else {
         if(!existingOrder&&(!draftId||fingerprint!==savedFingerprint)){
@@ -1405,13 +1414,9 @@
       }
       const row=button.closest('[data-kb-local-sale]');
       const entry=device.queue().find(item=>item.sale.offlineId===row.dataset.kbLocalSale);
-      if(!entry){showHistory();return;}
-      const {sale}=entry;
-      restoreOrder({...sale,salesModeId:sale.mode,sourceOfflineId:sale.offlineId,
-        customer:{id:sale.customer?.partyId,name:sale.customer?.name,phone:sale.customer?.phone},
-        itemsJson:JSON.stringify(sale.items.map(item=>({productId:item.productId,quantity:item.qty,unitPrice:item.price,manualPrice:item.manualPrice})))});
+      if(entry?.sale.operation!=='send'||entry.sale.sessionId!==cfg.session){showHistory();return;}
       history.close();
-      openPayment();
+      openPayment('',{total:entry.sale.total,ticket:entry});
     }
     else if(button.dataset.kbBillOrder){
       if(sessionLost||disconnected())return;

@@ -199,12 +199,27 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
 
     await page.evaluate(() => {
       window.kotOfflinePrints = [];
+      window.kotOfflinePrintWindows = 0;
       window.open = () => {
+        window.kotOfflinePrintWindows++;
         let html = '';
-        return {
-          document: { open() { html = ''; }, write(markup) { html += markup; }, close() {}, images: [] },
-          closed: false, focus() {}, print() { window.kotOfflinePrints.push(html); }, close() { this.closed = true; }
+        const dom = document.implementation.createHTMLDocument();
+        const printDocument = {
+          head:dom.head, body:dom.body, createElement:tag => dom.createElement(tag),
+          open() { html = ''; },
+          write(markup) { html += markup; },
+          close() {}
         };
+        return Object.assign(new EventTarget(),{
+          document:printDocument,
+          closed:false,
+          focus() {},
+          print() {
+            window.kotOfflinePrints.push(html);
+            this.dispatchEvent(new Event('afterprint'));
+          },
+          close() { this.closed = true; }
+        });
       };
     });
     await search.focus();
@@ -224,6 +239,7 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
       prints[0].includes('Disposable POS B P18') && prints[0].includes('class="q">1.25</td>') &&
       prints[1].includes('Disposable POS B P18') && prints[1].includes('177.00') &&
       !browserRequests.some(url => /\/(?:printRecord|checkoutKot|syncOfflineSale)$/.test(url)));
+    check('Offline Print both opens one window for both documents',await page.evaluate(() => window.kotOfflinePrintWindows) === 1);
 
     let sale;
     let committed = false;
@@ -425,28 +441,63 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     await page.locator('#kb-instr').fill(note + ' dine-in');
     await page.locator('#kb-send').click();
     await page.locator('#kb-print-close').click();
-    await page.locator('#kb-history-open').click();
-    await history.locator('[data-kb-bill-local]').click();
+    const queuedSales = ({org,terminalId,user}) => window.KotOffline.createWorkspace(org,terminalId,user).queue().map(entry => entry.sale);
+    const sent = (await page.evaluate(queuedSales,scope)).find(sale => sale.operation === 'send');
+    assert.ok(sent,'The dine-in ticket was queued before checkout');
+    const openSentPayment = async method => {
+      await page.locator('#kb-history-open').click();
+      await history.locator('[data-kb-bill-local]').click();
+      const methodPicker = page.locator('#kb-payment-method');
+      if (await methodPicker.isVisible()) await methodPicker.selectOption(method);
+      else assert.equal(await methodPicker.inputValue(),method);
+    };
+    await openSentPayment('Cash');
+    const sentTotal = await page.locator('#kb-payment-total').textContent();
     await page.locator('#kb-payment .pos-cash-cancel').click();
-    await page.locator('[data-kb-payment=UPI]').click();
+    const sentRow = cart.locator('tr[data-product="' + product + '"]');
+    const editableSent = await sentRow.locator('[data-kb-edit]').evaluateAll(inputs => inputs.some(input => !input.disabled && !input.readOnly));
+    if (editableSent) {
+      const rate = sentRow.locator('[data-kb-edit=rate]');
+      await rate.fill('81');
+      await rate.press('Enter');
+    }
+    check('Cancelling offline payment never makes a sent kitchen ticket editable or queues a payment',
+      !editableSent && JSON.stringify(await page.evaluate(queuedSales,scope)) === JSON.stringify([sent]),
+      {editableSent,cartRows:await cart.locator('tr[data-product]').count()});
+
+    await addItem('disposable pos b p5','POS_QA_B_P5');
+    const newRow = cart.locator('tr[data-product="POS_QA_B_P5"]');
+    const newQuantity = newRow.locator('[data-kb-edit=qty]');
+    await newQuantity.fill('2');
+    await newQuantity.press('ArrowDown');
+    check('A new offline cart can be edited after cancellation while the sent ticket stays unchanged',
+      Number(await newQuantity.inputValue()) === 2 && JSON.stringify(await page.evaluate(queuedSales,scope)) === JSON.stringify([sent]));
+
+    await openSentPayment('UPI');
+    assert.equal(await page.locator('#kb-payment-total').textContent(),sentTotal,'Reopening uses the original sent ticket total');
     await confirmOther.click();
     await page.locator('#kb-print-close').click();
     check('A disconnected dine-in kitchen ticket can be billed from ordinary History',
-      await page.evaluate(deviceCount,scope) === 2 && matchingOrders().length === 3);
+      await page.evaluate(deviceCount,scope) === 2 && matchingOrders().length === 3 && Number(await newQuantity.inputValue()) === 2);
+    page.once('dialog',dialog => dialog.accept());
+    await page.locator('#kb-clear').click();
     await switchOffline(false);
     await page.waitForFunction(scope => window.KotOffline.createWorkspace(scope.org,scope.terminalId,scope.user).queue().length === 0,scope);
     const dineIn = matchingOrders()[3];
     const tickets = q("SELECT operation,kot_id,transaction_id FROM kot_offline_sale_sync WHERE kot_id='" + dineIn?.kot_id + "' ORDER BY operation");
+    const dineInPayments = q("SELECT payment_method,amount FROM pos_payment WHERE transaction_id='" + dineIn?.transaction_id + "'");
     check('The queued kitchen ticket and its later UPI payment reconcile to a single table order',
       matchingOrders().length === 4 && !!dineIn.transaction_id && tickets.length === 2 &&
       tickets[0].operation === 'checkout' && tickets[0].transaction_id === dineIn.transaction_id &&
-      tickets[1].operation === 'send' && !tickets[1].transaction_id,
-      {dineIn,tickets});
+      tickets[1].operation === 'send' && !tickets[1].transaction_id &&
+      dineInPayments.length === 1 && dineInPayments[0].payment_method === 'UPI' && Number(dineInPayments[0].amount) === Number(sent.total),
+      {dineIn,tickets,dineInPayments});
 
     await switchOffline(true);
     await page.locator('[data-ot="Take Away"]').click();
     await addItem(product,product);
-    await page.locator('#kb-instr').fill(note + ' card');
+    const cardNote = (note + ' card ').padEnd(500,'x');
+    await page.locator('#kb-instr').fill(cardNote);
     await page.locator('[data-kb-payment=Card]').click();
     await page.locator('#kb-payment [name=referenceNumber]').fill('KOT-QA-CARD');
     await confirmOther.click();
@@ -455,8 +506,36 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     await page.waitForFunction(scope => window.KotOffline.createWorkspace(scope.org,scope.terminalId,scope.user).queue().length === 0,scope);
     const cardOrder = matchingOrders()[4];
     const card = q("SELECT payment_method,reference_number FROM pos_payment WHERE transaction_id='" + cardOrder?.transaction_id + "'");
-    check('Direct Card checkout syncs exactly once with its cashier-entered reference',
-      matchingOrders().length === 5 && card.length === 1 && card[0].payment_method === 'Card' && card[0].reference_number === 'KOT-QA-CARD', {card});
+    const savedCardNote = q("SELECT notes FROM kitchen_order_ticket WHERE kot_id='" + cardOrder?.kot_id + "'")[0]?.notes;
+    check('Direct Card checkout syncs once with its cashier-entered reference and full 500-character note',
+      matchingOrders().length === 5 && card.length === 1 && card[0].payment_method === 'Card' &&
+      card[0].reference_number === 'KOT-QA-CARD' && savedCardNote === cardNote, {card,noteLength:savedCardNote?.length});
+
+    await switchOffline(true);
+    await addItem(product,product);
+    const reconnectNote = note + ' reconnect during sent payment';
+    await page.locator('#kb-instr').fill(reconnectNote);
+    await page.locator('#kb-send').click();
+    await page.locator('#kb-print-close').click();
+    const pendingTicket = (await page.evaluate(queuedSales,scope)).find(sale => sale.operation === 'send');
+    assert.ok(pendingTicket,'The ticket is queued before reconnecting');
+    await openSentPayment('UPI');
+    const pendingTotal = await page.locator('#kb-payment-total').textContent();
+    await switchOffline(false);
+    await page.waitForFunction(scope => window.KotOffline.createWorkspace(scope.org,scope.terminalId,scope.user).queue().length === 0,scope);
+    const ticketRow = () => q("SELECT kot_id,transaction_id FROM kitchen_order_ticket WHERE organization_party_id='" + org + "' AND notes='" + reconnectNote + "'");
+    const [savedTicket] = ticketRow();
+    assert.ok(savedTicket && !savedTicket.transaction_id,'The server has acknowledged the ticket while the tender dialog stays open');
+    assert.equal(await page.locator('#kb-payment-total').textContent(),pendingTotal);
+    await confirmOther.click();
+    await page.locator('#kb-print-close').click();
+    await page.waitForFunction(scope => window.KotOffline.createWorkspace(scope.org,scope.terminalId,scope.user).queue().length === 0,scope);
+    const linkedTicket = ticketRow();
+    const linkedPayments = q("SELECT payment_method,amount FROM pos_payment WHERE transaction_id='" + linkedTicket[0]?.transaction_id + "'");
+    check('Reconnecting while the sent-ticket payment dialog is open settles the original server ticket once',
+      linkedTicket.length === 1 && linkedTicket[0].kot_id === savedTicket.kot_id && linkedPayments.length === 1 &&
+      linkedPayments[0].payment_method === 'UPI' && Number(linkedPayments[0].amount) === Number(pendingTicket.total),
+      {linkedTicket,linkedPayments});
 
     await chooseMode('RETAIL');
 
