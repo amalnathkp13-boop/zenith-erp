@@ -841,7 +841,7 @@
 <div class="kb-wrap<#if !kitchenDisplayEnabled> kb-display-disabled</#if>" id="kb-wrap">
   <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=8"/>
   <link rel="stylesheet" href="/zenithstatic/css/pos-checkout.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/pos-checkout.css').getLastModified()?c}"/>
-  <link rel="stylesheet" href="/zenithstatic/css/kot-list.css?v=8"/>
+  <link rel="stylesheet" href="/zenithstatic/css/kot-list.css?v=9"/>
   <link rel="stylesheet" href="/zenithstatic/css/kot-bill-history.css?v=2"/>
   <input type="hidden" id="kb-token" value="${(ec.web.sessionToken)!''}"/>
   <div id="kb-data" style="display:none" data-session="${billingSession.sessionId?html}" data-user="${(ec.user.userId!'')?html}" data-org="${billingTerminal.organizationPartyId?html}" data-terminal="${billingTerminal.terminalId?html}" data-display-enabled="${kitchenDisplayEnabled?c}" data-kot-module="${(kitchenModuleId!'pos')?html}" data-stock-session="${billingSession.sessionId?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftcustomer="${draftCustomerJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}"></div>
