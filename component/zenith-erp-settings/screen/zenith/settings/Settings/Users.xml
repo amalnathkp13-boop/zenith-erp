@@ -410,10 +410,17 @@
                                 <button class="z-users-button" type="submit"><#if (disabled!'N')=='Y'>Enable account<#else>Disable account</#if></button>
                             </form>
                             ]]></text></render-mode>
-                            <render-mode><text type="html,vuet,qvt"><![CDATA[</div></details>]]></text></render-mode>
-                            <link url="deleteUser" text="Delete account" btn-type="danger" link-type="hidden-form"
-                                  condition="userId != ec.user.userId &amp;&amp; !adminUserIds.contains(userId)"
-                                  confirmation="Permanently delete this account? This cannot be undone. Accounts with activity must be disabled instead."><parameter name="userId"/></link>
+                            <render-mode><text type="html,vuet,qvt"><![CDATA[
+                            </div></details>
+                            <#if userId != ec.user.userId && !adminUserIds?seq_contains(userId)>
+                            <form method="post" action="${ec.web.request.requestURI?replace('\\.(qvt|vuet|html)$','','r')?html}/deleteUser"
+                                  onsubmit="return confirm('Permanently delete this account? This cannot be undone. Accounts with activity must be disabled instead.')">
+                                <input type="hidden" name="moquiSessionToken" value="${ec.web.sessionToken?html}"/>
+                                <input type="hidden" name="userId" value="${userId?html}"/>
+                                <button class="z-users-button" type="submit">Delete account</button>
+                            </form>
+                            </#if>
+                            ]]></text></render-mode>
                         </container>
                     </default-field></field>
                 </form-list>
