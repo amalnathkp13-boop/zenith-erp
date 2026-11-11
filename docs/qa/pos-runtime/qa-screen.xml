@@ -165,6 +165,44 @@
         refundForPaymentId:'POS_QA_KPI_POSTED',effectiveDate:now,statusId:'PmntConfirmed',amount:10,amountUomId:'INR']).create()
     ec.web.sendJsonResponse([success:true])
 ]]></script></actions><default-response type="none"/></transition>
+<transition name="kotSalesReportFixture" method="post" begin-transaction="true"><actions><script><![CDATA[
+    def mode = ec.web.parameters.mode
+    if (System.getProperty('pos.qa.disposable') != 'true' || ec.user.username != 'pos.qa' || !(mode in ['seed','clean'])) {
+        ec.web.response.setStatus(403); return
+    }
+    def org = 'POS_QA_A'
+    def session = ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',ec.web.parameters.sessionId)
+        .condition('organizationPartyId',org).one()
+    def terminal = session ? ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',session.terminalId)
+        .condition('organizationPartyId',org).one() : null
+    if (!terminal?.terminalId?.startsWith('KOT_CLERK_') || !terminal.facilityId) { ec.web.response.setStatus(400); return }
+    def stamp = ec.l10n.parseTimestamp('2040-02-01 23:59:59.999','yyyy-MM-dd HH:mm:ss.SSS')
+    [[key:'UNSYNCED', amount:110.25G], [key:'SYNCED', amount:15.75G, status:'InvoiceFinalized'],
+        [key:'DRAFT', amount:4.00G, status:'InvoiceInProcess'], [key:'CANCELLED', amount:7.00G, status:'InvoiceCancelled'],
+        [key:'POS', amount:3.00G]].each { fixture ->
+        def id = 'POS_QA_KOT_REPORT_' + fixture.key
+        if (mode == 'clean') {
+            ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('kotId','in',[id,id+'_COPY']).condition('organizationPartyId',org).deleteAll()
+            ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',id).condition('organizationPartyId',org).deleteAll()
+            ec.entity.find('mantle.account.invoice.Invoice').condition('invoiceId',id).condition('fromPartyId',org).deleteAll()
+        } else {
+            if (fixture.status) ec.entity.makeValue('mantle.account.invoice.Invoice').setAll([
+                invoiceId:id, fromPartyId:org, toPartyId:'POS_QA_A_CUST_SAME', facilityId:terminal.facilityId,
+                invoiceTypeEnumId:'InvoiceSales', statusId:fixture.status, invoiceDate:stamp, invoiceTotal:fixture.amount, currencyUomId:'INR']).create()
+            ec.entity.makeValue('zenith.erp.pos.PosTransaction').setAll([transactionId:id, transactionNumber:id,
+                sessionId:session.sessionId, organizationPartyId:org, statusId:'PtCompleted', transactionType:'Sale',
+                entryDate:stamp, completedDate:stamp, grandTotal:fixture.amount, payableAmount:fixture.amount.setScale(0,java.math.RoundingMode.HALF_UP),
+                linkedInvoiceId:fixture.status ? id : null, stockPosted:'Y']).create()
+            if (fixture.key != 'POS') {
+                (fixture.key == 'UNSYNCED' ? [id,id+'_COPY'] : [id]).each { kotId ->
+                    ec.entity.makeValue('zenith.erp.pos.KitchenOrderTicket').setAll([kotId:kotId, kotNumber:kotId,
+                        transactionId:id, organizationPartyId:org, terminalId:terminal.terminalId, kotDate:stamp, statusId:'KotServed']).create()
+                }
+            }
+        }
+    }
+    ec.web.sendJsonResponse([success:true])
+]]></script></actions><default-response type="none"/></transition>
 <transition name="legacyKot" method="post"><actions><script><![CDATA[
     if(System.getProperty('pos.qa.disposable')!='true' || ec.user.username!='pos.qa') {ec.web.response.setStatus(403);return}
     def kot=ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('kotId',ec.context.kotId)

@@ -375,7 +375,7 @@
             html_stylesheets.add('https://fonts.googleapis.com/icon?family=Material+Icons')
             if (footer_scripts == null) footer_scripts = []
             footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=14')
-            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=53')
+            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=54')
             footer_scripts.add('/zenithstatic/js/profile-menu.js?v=1')
             footer_scripts.add('/zenithstatic/js/sidebar-manager.js?v=3')
             footer_scripts.add('/zenithstatic/js/subnav-manager.js?v=5')
@@ -404,7 +404,7 @@
             html_scripts.add('/zenithstatic/js/qapps-shell-boot.js?v=1')
             html_scripts.add('/zenithstatic/js/kitchen-display.js?v=7')
             html_scripts.add('/zenithstatic/js/pos-receipt-layout.js?v=3')
-            html_scripts.add('/zenithstatic/js/kitchen-print.js?v=4')
+            html_scripts.add('/zenithstatic/js/kitchen-print.js?v=5')
             html_stylesheets.add('/zenithstatic/css/kitchen-display.css?v=5')
             // ZE-DASH-0402: neutralise the stock framework "notifications disabled" nag toast (Safari fires it
             // on every load). HEAD script so it runs before WebrootVue's mounted() hook. Both surfaces.
@@ -974,7 +974,7 @@
           </div>
 ]]></text></render-mode>
         <render-mode><text type="html" template="true"><![CDATA[
-          <#macro posSubnavTabs module="pos" kotGroup=false>
+          <#macro posSubnavTabs module="pos">
             <#local kotTools = ["PosTransactions", "PosSessions", "PosTerminals", "Wastage", "ProductPricing", "DiscountSettings", "SalesMode", "ProductImport", "ReceiptConfig", "PrinterConfig", "BillNumberRegister", "OfflineMode"]>
             <#list [
               ["Dashboard", "Dashboard"],
@@ -1002,7 +1002,7 @@
               ["BillNumberRegister", "Bill Register"],
               ["OfflineMode", "Offline Mode"]
             ] as tab>
-              <#if !kotGroup || (kotTools?seq_contains(tab[0]) == (module == "kot"))>
+              <#if module != "kot" || kotTools?seq_contains(tab[0])>
                 <a class="zsub-tab" data-match="/${module}/${tab[0]}" href="/apps/zenith/${module}/${tab[0]}">${tab[1]}</a>
               </#if>
             </#list>
@@ -1017,8 +1017,7 @@
             <a class="zsub-tab" data-match="/kot/Tables" href="/apps/zenith/kot/Tables">Tables</a>
             <a class="zsub-tab" data-match="/kot/KotHistory" href="/apps/zenith/kot/KotHistory">KOT History</a>
             <a class="zsub-tab" data-match="/kot/WaiterManagement" href="/apps/zenith/kot/WaiterManagement">Waiters</a>
-            <@posSubnavTabs module="kot" kotGroup=true/>
-            <#if (navShow["pos"])!false><@posSubnavTabs kotGroup=true/></#if>
+            <@posSubnavTabs module="kot"/>
           </div>
 ]]></text></render-mode>
         <render-mode><text type="html"><![CDATA[

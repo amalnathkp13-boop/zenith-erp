@@ -37,14 +37,18 @@
             <field-map field-name="terminalId" from="session.terminalId"/></entity-find-one>
 
         <entity-find entity-name="zenith.erp.pos.PosReceiptTemplate" list="receiptTemplates">
-            <econdition field-name="organizationPartyId" from="txn.organizationPartyId"/><econdition field-name="isActive" value="Y"/><order-by field-name="-isDefault"/><order-by field-name="templateId"/>
+            <econdition field-name="organizationPartyId" from="txn.organizationPartyId"/><econdition field-name="printUse" operator="is-null"/><econdition field-name="isActive" value="Y"/><order-by field-name="-isDefault"/><order-by field-name="templateId"/>
         </entity-find>
         <set field="rTpl" from="receiptTemplates.find { it.facilityId &amp;&amp; it.facilityId==terminal?.facilityId } ?: receiptTemplates.find { !it.facilityId }"/>
 
         <set field="taxReg" from="rTpl?.taxRegistrationNumber ?: terminal?.taxRegistrationNumber ?: ''"/>
         <if condition="kitchenModuleId == 'kot' &amp;&amp; terminal">
-            <service-call name="zenith.pos.ReceiptTemplateServices.resolve#TerminalPrintTemplate"
-                          in-map="[terminalId:terminal.terminalId]" out-map="_printTemplate"/>
+            <service-call name="zenith.pos.ReceiptTemplateServices.resolve#KotPrintTemplate"
+                          in-map="[printUse:'kotBill',terminalId:terminal.terminalId]" out-map="_printTemplate"/>
+            <if condition="!_printTemplate.template">
+                <service-call name="zenith.pos.ReceiptTemplateServices.resolve#TerminalPrintTemplate"
+                              in-map="[terminalId:terminal.terminalId]" out-map="_printTemplate"/>
+            </if>
             <set field="rTpl" from="_printTemplate.template ?: rTpl"/>
         </if>
 

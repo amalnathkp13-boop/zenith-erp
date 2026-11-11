@@ -24,13 +24,24 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   ['BillNumberRegister', 'Bill Register'],
   ['OfflineMode', 'Offline Mode']
  ];
- const sharedPosLinks = new Set(tools.map(([seg])=>'/pos/'+seg));
  const page = await a.c.newPage();
  const clerk = await browser.newContext({ viewport:{ width:1366, height:768 } });
  const post = (actor, route, values) => actor.c.request.post(base+'/apps/zenith/'+route,{
   maxRedirects:0,form:{ moquiSessionToken:actor.t,...values }
  });
  const completedOrders = page.locator('.kd-stat').filter({hasText:'Completed Orders'}).locator('.kd-stat__value');
+ const money = value => Number(value.replace(/[₹, ]/g,''));
+ const posTotal = async () => {
+  await page.goto(base+'/apps/zenith/pos/Dashboard');
+  const card = page.locator('.pos-dash-metric').filter({has:page.getByText('Total Sales',{exact:true})});
+  return money(await card.locator('strong').innerText());
+ };
+ const homeTotal = async (shell='apps', date='') => {
+  await page.goto(base+'/'+shell+'/zenith/Dashboard'+(date?'?dashDate='+date:''));
+  const card = page.locator('.zsc').filter({has:page.getByText('Total Sales',{exact:true})});
+  const config = JSON.parse(await page.locator('#homeDashboard').getAttribute('data-config'));
+  return {amount:money(await card.locator('.zsc-num').innerText()), chart:config.weekly.total, hourly:config.hourly.total};
+ };
  try {
   for (const shell of ['apps','qapps']) {
    const sidebar = page.locator(shell==='apps'?'#z-sidebar a[data-match="/kot"]':'#zq-sidebar a[data-match="/kot"]');
@@ -38,16 +49,14 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
    const links = strip.locator('a:visible');
    await page.goto(base+'/'+shell+'/zenith/pos/Dashboard');
    await strip.locator('a[data-match="/pos/Dashboard"]').waitFor();
-   const posLinks = await links.evaluateAll(anchors=>anchors.map(a=>a.getAttribute('data-match')));
    await sidebar.click();
    await page.locator('#kd-wrap').waitFor();
    const activeSidebar = sidebar.and(page.locator('.on'));
    await activeSidebar.waitFor();
    check(shell+' opens KOT as its own sidebar module',await activeSidebar.isVisible(),{url:page.url()});
    const kotLinks = await links.evaluateAll(anchors=>anchors.map(a=>a.getAttribute('data-match')));
-   check(shell+' lists the KOT tools under KOT and keeps the other entitled POS links',
-    kotLinks.join('|')===[...tabs.concat(tools).map(([seg])=>'/kot/'+seg),
-     ...posLinks.filter(link=>!sharedPosLinks.has(link))].join('|'),{kotLinks});
+   check(shell+' lists only KOT tools in the KOT tabs',
+    kotLinks.join('|')===tabs.concat(tools).map(([seg])=>'/kot/'+seg).join('|'),{kotLinks});
    const shellSelector=shell==='apps'?'#z-sidebar':'#kitchen-page-frame';
    await page.evaluate(selector=>{window.qaKotShell=document.querySelector(selector);},shellSelector);
    for (const [seg,name,content] of tabs.slice(1)) {
@@ -66,14 +75,6 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
    }
    await strip.getByRole('link',{name:'KOT Billing',exact:true}).click();
    await page.locator('#kot-terminal-entry').waitFor();
-   await strip.locator('a[data-match="/pos/Dashboard"]').click();
-   await page.waitForURL('**/'+shell+'/zenith/pos/Dashboard');
-   await strip.locator('a[data-match="/pos/Dashboard"]').waitFor();
-   check(shell+' can leave the KOT terminal gateway using a POS submodule',await page.locator('#zk-route-status').count()===0);
-   await sidebar.click();
-   await page.locator('#kd-wrap').waitFor();
-   await strip.getByRole('link',{name:'KOT Billing',exact:true}).click();
-   await page.locator('#kot-terminal-entry').waitFor();
    await page.locator((shell==='apps'?'#z-sidebar':'#zq-sidebar')+' a[data-match="/pos"]').click();
    await page.waitForURL('**/'+shell+'/zenith/pos/Dashboard');
    await strip.locator('a[data-match="/pos/Dashboard"]').waitFor();
@@ -81,14 +82,24 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   }
   const preference = JSON.stringify({version:1,order:['/kot/KotBilling','/pos/Reports'],hidden:['/pos/SalesMode']});
   const saved = await post(a,'saveSubnavConfiguration',{module:'kot',payload:preference});
-  check('KOT preferences accept both KOT and POS tabs',saved.ok()&&JSON.parse((await saved.json()).preference).order[1]==='/pos/Reports');
+  check('KOT preferences can still read legacy POS tab paths',saved.ok()&&JSON.parse((await saved.json()).preference).order[1]==='/pos/Reports');
   await page.goto(base+'/apps/zenith/kot/KotDashboard');
   const migratedTab=page.locator('#z-subnav .zsub-grp.show [data-match="/kot/SalesMode"]');
   await migratedTab.locator('xpath=self::*[@hidden]').waitFor({state:'attached'});
   check('KOT preserves the visibility of tabs saved under their previous POS paths',await migratedTab.isHidden());
   await post(a,'saveSubnavConfiguration',{module:'kot',payload:JSON.stringify({version:1,order:[],hidden:[]})});
   await page.goto(base+'/apps/zenith/kot/KotDashboard');
-  const before = Number(await completedOrders.innerText());
+  const reportingDate = await page.locator('.kd-datepill input').inputValue();
+  const dayStart = new Date(reportingDate+'T00:00:00+05:30').getTime();
+  const sqlTime = epoch => new Date(epoch).toISOString().slice(0,19).replace('T',' ');
+  const completedKotIds = () => q(`SELECT DISTINCT t.transaction_id FROM pos_transaction t
+   JOIN kitchen_order_ticket k ON k.transaction_id=t.transaction_id AND k.organization_party_id=t.organization_party_id
+   WHERE t.organization_party_id='POS_QA_A' AND t.status_id='PtCompleted'
+     AND t.entry_date>=TIMESTAMP '${sqlTime(dayStart)}' AND t.entry_date<TIMESTAMP '${sqlTime(dayStart+86400000)}'`)
+   .map(row=>row.transaction_id);
+  const beforeIds = completedKotIds();
+  const posBefore = await posTotal();
+  const homeBefore = await homeTotal();
   await page.goto(base+'/apps/zenith/pos/Kitchen');
   await page.locator('.zk-display').waitFor();
   check('old Kitchen bookmark still opens the shared Kitchen Display',
@@ -164,8 +175,49 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   const receipt=await a.c.request.get(base+'/fop/apps/zenith/kot/ReceiptPdf?transactionId='+transactionId);
   check('owner can generate the linked KOT receipt PDF',receipt.ok()&&
    (await receipt.body()).subarray(0,4).toString()==='%PDF');
-  await page.goto(base+'/apps/zenith/kot/KotDashboard');
-  check('standalone KOT dashboard counts the newly completed KOT sale once',Number(await completedOrders.innerText())===before+1);
+  await page.goto(base+'/apps/zenith/kot/KotDashboard?dashDate='+encodeURIComponent(reportingDate));
+  const afterText = await completedOrders.innerText();
+  const dashboardDate = await page.locator('.kd-datepill input').inputValue();
+  const shop = await page.locator('#z-shopdata').getAttribute('data-active');
+  const afterIds = completedKotIds();
+  check('standalone KOT dashboard counts the newly completed KOT sale once',
+   !shop&&dashboardDate===reportingDate&&Number(afterText)===afterIds.length&&
+   afterIds.length===beforeIds.length+1&&afterIds.includes(transactionId)&&!beforeIds.includes(transactionId)&&
+   beforeIds.every(id=>afterIds.includes(id)),{
+   beforeIds,afterIds,afterText,transactionId,reportingDate,dashboardDate,shop
+  });
+  check('POS dashboard includes the KOT bill once',await posTotal()===posBefore+100);
+  await page.goto(base+'/apps/zenith/pos/PosTransactions');
+  const posRow = page.getByRole('row').filter({has:page.getByText(settled.billNumber,{exact:true})});
+  check('POS Transactions displays the KOT bill once and identifies its source',
+   await posRow.count()===1&&await posRow.getByText('KOT',{exact:true}).count()===1);
+  await page.goto(base+'/apps/zenith/pos/Reports/BillWise?searchText='+encodeURIComponent(settled.billNumber));
+  check('POS Bill Wise report includes the completed KOT bill once',
+   await page.getByRole('row').filter({has:page.getByText(settled.billNumber,{exact:true})}).count()===1);
+  for (const shell of ['apps','qapps']) {
+   const homeAfter=await homeTotal(shell);
+   check(shell+' Home Dashboard adds the KOT bill exactly once to sales and charts',
+    homeAfter.amount===homeBefore.amount+100&&homeAfter.chart===homeAfter.amount&&homeAfter.hourly===homeAfter.amount,
+    {homeBefore,homeAfter});
+  }
+  const fixture = mode => post(a,'pos/PosQaAcceptance/kotSalesReportFixture',{mode,sessionId});
+  const historicalDate='2040-02-01';
+  try {
+   const seeded=await fixture('seed');
+   check('disposable KOT reporting records are seeded',seeded.ok()&&(await seeded.json()).success);
+   const historical=await homeTotal('apps',historicalDate);
+   const nextDay=await homeTotal('qapps','2040-02-02');
+   check('Home sales counts KOT before sync and finalization, deduplicates the finalized mirror, and excludes the cancelled mirror',
+    historical.amount===133&&historical.chart===133&&nextDay.amount===0&&nextDay.chart===0,
+    {historical,nextDay});
+   await page.goto(base+'/apps/zenith/kot/KotDashboard?dashDate='+historicalDate);
+   check('KOT Dashboard excludes ordinary POS and counts a sale with two kitchen tickets once',
+    Number(await completedOrders.innerText())===4);
+  } finally {
+   const cleaned=await fixture('clean');
+   check('disposable KOT reporting records are removed',cleaned.ok()&&(await cleaned.json()).success&&
+    q("SELECT transaction_id FROM pos_transaction WHERE transaction_id IN ('POS_QA_KOT_REPORT_UNSYNCED','POS_QA_KOT_REPORT_SYNCED','POS_QA_KOT_REPORT_DRAFT','POS_QA_KOT_REPORT_CANCELLED','POS_QA_KOT_REPORT_POS')").length===0);
+  }
   const unchanged=q("SELECT setting_value FROM company_settings WHERE organization_party_id='POS_QA_A' AND setting_key='KITCHEN_DISPLAY_POS_QA_A_FAC'");
   await post(kit,'kot/KitchenDisplay/saveDisplayPolicy',{facilityId:'POS_QA_A_FAC',enabled:'N'});
   check('KOT clerk cannot change the administrator kitchen policy',JSON.stringify(q("SELECT setting_value FROM company_settings WHERE organization_party_id='POS_QA_A' AND setting_key='KITCHEN_DISPLAY_POS_QA_A_FAC'"))===JSON.stringify(unchanged));

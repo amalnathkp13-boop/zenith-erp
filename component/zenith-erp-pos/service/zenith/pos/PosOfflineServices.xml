@@ -69,7 +69,7 @@
                     def registration=ec.service.sync().name('zenith.tax.TaxServices.get#PartyTaxRegistration').parameter('partyId',role.partyId).call()
                     if (name) customers.add([partyId:role.partyId,name:name,phone:phone,creditDays:party.creditDays,state:registration?.regionGeoId ?: '',gstin:registration?.registrationNumber ?: ''])
                 }
-                def templates=ec.entity.find('zenith.erp.pos.PosReceiptTemplate').condition('organizationPartyId',org).condition('isActive','Y').orderBy('-isDefault,templateId').list()
+                def templates=ec.entity.find('zenith.erp.pos.PosReceiptTemplate').condition('organizationPartyId',org).condition('printUse',null).condition('isActive','Y').orderBy('-isDefault,templateId').list()
                 def template=templates.find { it.facilityId==terminal.facilityId } ?: templates.find { !it.facilityId }
                 workspace=[version:2,userId:ec.user.userId,organizationPartyId:org,terminalId:terminalId,cachedAt:ec.user.nowTimestamp.time,
                     products:products,customers:customers,modes:modes,canOverride:priceAccess.canOverride==true,

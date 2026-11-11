@@ -1,6 +1,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
-const context=vm.createContext({window:{}});
+const context=vm.createContext({window:{},document:{addEventListener(){}}});
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../../../component/zenith-erp-app/screen/zenithstatic/js/pos-receipt-layout.js'),'utf8'),context);
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../../../component/zenith-erp-app/screen/zenithstatic/js/kitchen-print.js'),'utf8'),context);
 const base={store:{name:'QA company',headerText:'<QA header>',footerText:'QA footer',termsText:'Terms & conditions'},
  bill:{number:'REAL-SAVED-42',date:'31/10/2026',customer:'Saved customer',cashier:'Saved cashier'},
  items:[{name:'Tea cup',qty:2,uom:'Nos',rate:10,total:20,tax:1}],summary:{subtotal:20,tax:1,total:21},payments:[{method:'Cash',amount:21}]};
@@ -26,6 +27,13 @@ assert.ok(render({}, {showItemTax:'Y'}).includes('Tax: 1.00'));
 assert.ok(render({}, {showPaymentDetails:'Y'}).includes('>Cash<'));
 assert.ok(!render({}, {showLogo:'Y',logoUrl:'javascript:alert(1)'}).includes('<img'));
 assert.equal(JSON.stringify(base),original,'presentation never mutates bill or prices');
+const ticket=context.window.KitchenPrint.kotHtml({number:'KOT-42',date:'31/10/2026',items:base.items,
+ store:{...base.store,receiptWidth:'58mm',showLogo:'Y',logoUrl:'javascript:alert(1)'},
+ options:{billNumberLabel:'Kitchen order:',showDate:false,headerAlign:'left',headerBold:true}});
+assert.ok(ticket.includes('@page{size:58mm auto')&&ticket.includes('text-align:left;font-weight:700')&&
+ ticket.includes('&lt;QA header&gt;')&&ticket.includes('Kitchen order: KOT-42')&&ticket.includes('QA footer'));
+assert.ok(ticket.includes('Tea cup</td><td class="q">2')&&!ticket.includes('31/10/2026')&&
+ !ticket.includes('20.00')&&!ticket.includes('Cash')&&!ticket.includes('<img'));
 const pdf=fs.readFileSync(path.join(__dirname,'../../../component/zenith-erp-pos/screen/zenith/pos/Pos/ReceiptPdf.xml'),'utf8');
 assert.ok(pdf.includes('<#if ((txn.totalTaxAmount!0)) gt 0>TAX INVOICE'), 'hiding a tax breakdown must not rename a tax invoice');
 const runtimeChecks=fs.readFileSync(path.join(__dirname,'verify-runtime.cjs'),'utf8');

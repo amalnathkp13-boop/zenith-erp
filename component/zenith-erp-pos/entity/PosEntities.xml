@@ -31,6 +31,7 @@
         <field name="templateId" type="id" is-pk="true"/>
         <field name="organizationPartyId" type="id"/>
         <field name="facilityId" type="id"><description>Optional shop scope; blank retains the existing organization-wide fallback.</description></field>
+        <field name="printUse" type="text-short"><description>kotBill or kotTicket; blank is a standard POS receipt.</description></field>
         <field name="templateName" type="text-medium"/>
         <field name="companyName" type="text-medium"/>
         <field name="addressLine1" type="text-medium"/>
@@ -643,6 +644,7 @@
         <alias entity-alias="PX" name="customerPartyId"/>
         <alias entity-alias="PX" name="payableAmount"/>
         <alias entity-alias="PX" name="grandTotal"/>
+        <alias entity-alias="KOT" name="kotOrganizationPartyId" field="organizationPartyId"/>
     </view-entity>
 
     <view-entity entity-name="KotView" package="zenith.erp.pos">

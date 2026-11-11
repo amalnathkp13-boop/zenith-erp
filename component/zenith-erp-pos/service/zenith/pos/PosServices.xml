@@ -1821,12 +1821,15 @@
                 def sess = txn.sessionId ? ec.entity.find("zenith.erp.pos.PosSession").condition("sessionId", txn.sessionId).one() : null
                 def terminal = sess?.terminalId ? ec.entity.find("zenith.erp.pos.PosTerminal").condition("terminalId", sess.terminalId).one() : null
                 def rTplList = ec.entity.find("zenith.erp.pos.PosReceiptTemplate")
-                    .condition("organizationPartyId",txn.organizationPartyId).condition("isActive","Y").orderBy("-isDefault,templateId").list()
+                    .condition("organizationPartyId",txn.organizationPartyId).condition("printUse",null)
+                    .condition("isActive","Y").orderBy("-isDefault,templateId").list()
                 def rTpl = rTplList.find { it.facilityId && it.facilityId==terminal?.facilityId } ?: rTplList.find { !it.facilityId }
                 def receiptTaxReg = rTpl?.taxRegistrationNumber ?: terminal?.taxRegistrationNumber ?: ''
                 if (useTerminalPrintTemplate && terminal)
-                    rTpl = ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#TerminalPrintTemplate')
-                        .parameter('terminalId',terminal.terminalId).call().template ?: rTpl
+                    rTpl = ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#KotPrintTemplate')
+                        .parameters([printUse:'kotBill',terminalId:terminal.terminalId]).call().template ?:
+                        ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#TerminalPrintTemplate')
+                            .parameter('terminalId',terminal.terminalId).call().template ?: rTpl
                 def isRevised = ec.entity.find('zenith.erp.pos.PosTransactionAmendment').condition('transactionId',rTxId).count() > 0
                 def receiptDesign = isRevised ? 'revised' : (txn.isCredit == 'Y' ? 'credit' : '')
                 def receiptText = { key ->
@@ -2174,6 +2177,15 @@
             <set field="isFixed" from="ps == 'PpsFixedProduct'"/>
             <if condition="ps == 'PpsDiscountMrp' || ps == 'PpsDiscountList'">
                 <set field="discountPercent" from="(mode?.discountPercent ?: 0) as BigDecimal"/>
+                <script><![CDATA[
+                    def uri = ec.web?.request?.requestURI ?: ''
+                    if (ps == 'PpsDiscountMrp' && product?.ownerPartyId && uri ==~ /\/(apps|qapps)\/zenith\/(kot|pos\/Kitchen)\/KotBilling\/[^\/]+/) {
+                        def setting = ec.entity.find('zenith.erp.base.CompanySettings')
+                            .condition('organizationPartyId',product.ownerPartyId)
+                            .condition('settingKey','KOT_MODE_DISCOUNT_'+salesModeId).useCache(true).one()
+                        if (setting?.settingValue) discountPercent = setting.settingValue as BigDecimal
+                    }
+                ]]></script>
             </if>
         </actions>
     </service>
@@ -2315,10 +2327,7 @@
         </actions>
     </service>
 
-    <!-- ZE-POS-0210 follow-up: enforce one default receipt template per org. Called after a template
-         create/update; if the saved template is the org's default, un-defaults the org's other
-         templates so an org can never end up with two defaults (which would make the org-scoped
-         template pick non-deterministic). Loads the template so it needs only its id. -->
+    <!-- Enforce one default per organization, shop and print output. -->
     <service verb="enforce" noun="SingleDefaultReceiptTemplate">
         <in-parameters><parameter name="templateId" required="true"/></in-parameters>
         <actions>
@@ -2328,6 +2337,7 @@
                     ec.entity.find("zenith.erp.pos.PosReceiptTemplate")
                         .condition("organizationPartyId", _t.organizationPartyId)
                         .condition("facilityId", _t.facilityId)
+                        .condition("printUse", _t.printUse)
                         .condition("isDefault", "Y")
                         .condition("templateId", "not-equals", templateId)
                         .list().each { it.isDefault = "N"; it.update() }

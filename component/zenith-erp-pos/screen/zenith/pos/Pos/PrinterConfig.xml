@@ -16,11 +16,14 @@
             <if condition="!printerId?.trim() || !printerName?.trim()"><return error="true" message="Printer ID and name are required."/></if>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[terminalId:terminalId, templateId:posReceiptTemplateId]" out-map="scope"/>
             <if condition="!scope.allowed"><return/></if>
-            <if condition="terminalId &amp;&amp; posReceiptTemplateId">
-                <entity-find-one entity-name="zenith.erp.pos.PosTerminal" value-field="linkedTerminal"><field-map field-name="terminalId"/></entity-find-one>
+            <if condition="posReceiptTemplateId">
                 <entity-find-one entity-name="zenith.erp.pos.PosReceiptTemplate" value-field="linkedTemplate"><field-map field-name="templateId" from="posReceiptTemplateId"/></entity-find-one>
-                <if condition="linkedTemplate.facilityId &amp;&amp; linkedTemplate.facilityId != linkedTerminal.facilityId">
-                    <return error="true" message="Choose a receipt template for this terminal’s shop."/>
+                <if condition="linkedTemplate.printUse"><return error="true" message="Set KOT print designs in KOT Receipts."/></if>
+                <if condition="terminalId">
+                    <entity-find-one entity-name="zenith.erp.pos.PosTerminal" value-field="linkedTerminal"><field-map field-name="terminalId"/></entity-find-one>
+                    <if condition="linkedTemplate.facilityId &amp;&amp; linkedTemplate.facilityId != linkedTerminal.facilityId">
+                        <return error="true" message="Choose a receipt template for this terminal’s shop."/>
+                    </if>
                 </if>
             </if>
             <service-call name="create#zenith.erp.pos.PrinterConfiguration" in-map="[printerId:printerId, organizationPartyId:scope.organizationPartyId, printerName:printerName,
@@ -36,11 +39,14 @@
             <if condition="!printerId?.trim() || !printerName?.trim()"><return error="true" message="Printer ID and name are required."/></if>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[printerId:printerId, terminalId:terminalId, templateId:posReceiptTemplateId]" out-map="scope"/>
             <if condition="!scope.allowed"><return/></if>
-            <if condition="terminalId &amp;&amp; posReceiptTemplateId">
-                <entity-find-one entity-name="zenith.erp.pos.PosTerminal" value-field="linkedTerminal"><field-map field-name="terminalId"/></entity-find-one>
+            <if condition="posReceiptTemplateId">
                 <entity-find-one entity-name="zenith.erp.pos.PosReceiptTemplate" value-field="linkedTemplate"><field-map field-name="templateId" from="posReceiptTemplateId"/></entity-find-one>
-                <if condition="linkedTemplate.facilityId &amp;&amp; linkedTemplate.facilityId != linkedTerminal.facilityId">
-                    <return error="true" message="Choose a receipt template for this terminal’s shop."/>
+                <if condition="linkedTemplate.printUse"><return error="true" message="Set KOT print designs in KOT Receipts."/></if>
+                <if condition="terminalId">
+                    <entity-find-one entity-name="zenith.erp.pos.PosTerminal" value-field="linkedTerminal"><field-map field-name="terminalId"/></entity-find-one>
+                    <if condition="linkedTemplate.facilityId &amp;&amp; linkedTemplate.facilityId != linkedTerminal.facilityId">
+                        <return error="true" message="Choose a receipt template for this terminal’s shop."/>
+                    </if>
                 </if>
             </if>
             <service-call name="update#zenith.erp.pos.PrinterConfiguration" in-map="[printerId:printerId, organizationPartyId:scope.organizationPartyId, printerName:printerName,
@@ -78,6 +84,7 @@
         </entity-find>
         <entity-find entity-name="zenith.erp.pos.PosReceiptTemplate" list="receiptTemplates">
             <econdition field-name="isActive" value="Y"/>
+            <econdition field-name="printUse" from="null"/>
             <econdition field-name="organizationPartyId" from="posOrganizationPartyId ?: '__NO_ORGANIZATION__'"/>
             <order-by field-name="templateName"/>
         </entity-find>
@@ -107,7 +114,7 @@
     </actions>
 
     <widgets>
-        <render-mode><text type="html,qvt" template="true"><![CDATA[<details id="posHelp_printers" style="background:#EEF2FF;border:1px solid #C7D2FE;border-left:5px solid #6366F1;border-radius:10px;padding:9px 16px;margin:8px 16px 0 16px;font-family:Segoe UI,Arial,sans-serif"><summary style="cursor:pointer;font-weight:700;font-size:14px;color:#3730A3;outline:none">&#128424; Printers &mdash; quick help <span style="font-weight:500;color:#6B7280;font-size:12px">(click to hide / show)</span></summary><div style="font-size:13px;color:#202124;line-height:1.9;margin-top:8px"><#if (kitchenModuleId!'pos') == 'kot'>Assign an active Thermal Receipt printer and receipt template to a terminal to use that design for its KOT receipts. If more than one matches, the lowest printer ID takes priority. Choose the physical device in the browser print dialog.<#else>Set up your receipt and kitchen printers.<br><b>1</b>&nbsp;<b>Add Printer</b> with its type and connection.<br><b>2</b>&nbsp;Assign each printer to the terminal that should use it.</#if></div></details>]]></text></render-mode>
+        <render-mode><text type="html,qvt" template="true"><![CDATA[<details id="posHelp_printers" style="background:#EEF2FF;border:1px solid #C7D2FE;border-left:5px solid #6366F1;border-radius:10px;padding:9px 16px;margin:8px 16px 0 16px;font-family:Segoe UI,Arial,sans-serif"><summary style="cursor:pointer;font-weight:700;font-size:14px;color:#3730A3;outline:none">&#128424; Printers &mdash; quick help <span style="font-weight:500;color:#6B7280;font-size:12px">(click to hide / show)</span></summary><div style="font-size:13px;color:#202124;line-height:1.9;margin-top:8px"><#if (kitchenModuleId!'pos') == 'kot'>Set your kitchen ticket and customer bill designs in KOT Receipts. Until a KOT bill design is set, the terminal can use its existing thermal receipt template. Choose the physical printer in the browser print dialog.<#else>Set up your receipt and kitchen printers.<br><b>1</b>&nbsp;<b>Add Printer</b> with its type and connection.<br><b>2</b>&nbsp;Assign each printer to the terminal that should use it.</#if></div></details>]]></text></render-mode>
 
         <container style="q-px-md q-pt-md">
             <!-- Page header: printer icon + title + subtitle; Add Printer top-right when printers exist -->
@@ -241,7 +248,7 @@
                     <field name="terminalId"><header-field title="Terminal"/><default-field title="Terminal">
                         <drop-down allow-empty="true"><entity-options key="${terminalId}" text="${terminalName}"><entity-find entity-name="zenith.erp.pos.PosTerminal"><econdition field-name="organizationPartyId" from="posOrganizationPartyId ?: '__NO_ORGANIZATION__'"/><order-by field-name="terminalName"/></entity-find></entity-options></drop-down></default-field></field>
                     <field name="posReceiptTemplateId"><header-field title="Template"/><default-field title="Template">
-                        <drop-down allow-empty="true"><entity-options key="${templateId}" text="${templateName}"><entity-find entity-name="zenith.erp.pos.PosReceiptTemplate"><econdition field-name="organizationPartyId" from="posOrganizationPartyId ?: '__NO_ORGANIZATION__'"/><order-by field-name="templateName"/></entity-find></entity-options></drop-down></default-field></field>
+                        <drop-down allow-empty="true"><entity-options key="${templateId}" text="${templateName}"><entity-find entity-name="zenith.erp.pos.PosReceiptTemplate"><econdition field-name="printUse" from="null"/><econdition field-name="organizationPartyId" from="posOrganizationPartyId ?: '__NO_ORGANIZATION__'"/><order-by field-name="templateName"/></entity-find></entity-options></drop-down></default-field></field>
                     <field name="isActive"><header-field title="Status"/><default-field title="Status">
                         <drop-down><option key="Y" text="Yes"/><option key="N" text="No"/></drop-down></default-field></field>
                     <field name="submitBtn"><header-field title="Actions"/><conditional-field name="printer_update_write" condition="modCanWrite" title="Actions"><submit text="Update"/></conditional-field>

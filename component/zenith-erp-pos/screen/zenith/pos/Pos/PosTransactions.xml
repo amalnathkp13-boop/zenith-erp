@@ -8,6 +8,7 @@
     <actions>
         <!-- Standalone CSV skips the app's formatting setup. Initialize its row formatter here. -->
         <script>context.zinr = com.zenith.Fmt.INSTANCE</script>
+        <set field="showTransactionSource" from="kitchenModuleId != 'kot' &amp;&amp; !(sri.getRenderMode() in ['csv','xlsx'])"/>
         <if condition="kitchenModuleId == 'kot'">
             <service-call name="zenith.base.ShopServices.get#ActiveShopScope" in-map="[:]" out-map="_kotShop"/>
             <entity-find entity-name="zenith.erp.pos.KotTransactionDetailView" list="txnList" distinct="true">
@@ -26,6 +27,13 @@
                     <econdition field-name="organizationPartyId" from="(ec.user.getPreference('ACTIVE_ORGANIZATION')) ?: '__NO_ORGANIZATION__'"/>
                     <econdition field-name="sessionId" operator="in" from="_shopSessions" ignore-if-empty="true"/><!-- ZE-SHOP -->
                 </entity-find>
+                <if condition="showTransactionSource"><script><![CDATA[
+                    def org = posOrganizationPartyId ?: '__NO_ORGANIZATION__'
+                    posKotTransactionIds = txnList*.transactionId.collate(500).collectMany { ids ->
+                        ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('organizationPartyId',org)
+                            .condition('transactionId','in',ids).selectField('transactionId').distinct(true).list()*.transactionId
+                    } as Set
+                ]]></script></if>
             </else>
         </if>
     </actions>
@@ -62,6 +70,8 @@
                     <field name="transactionType"><header-field title="Type">
                             <drop-down allow-empty="true"><option key="Sale"/><option key="Return"/></drop-down></header-field>
                         <default-field><label text="${transactionType ?: ''}" type="span" style="text-dark"/></default-field></field>
+                    <field name="transactionSource" hide="!showTransactionSource"><header-field title="Source"/>
+                        <default-field><display text="${posKotTransactionIds?.contains(transactionId) ? 'KOT' : 'POS'}"/></default-field></field>
                     <field name="entryDate"><header-field title="Date" show-order-by="true"><date-period/></header-field>
                         <default-field><display format="dd-MM-yyyy HH:mm"/></default-field></field>
                     <field name="terminalName"><header-field title="Terminal" show-order-by="true"/>
