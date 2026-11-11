@@ -6,6 +6,7 @@
   root.dataset.ready='true';
   const $=id=>root.querySelector('#kb-'+id);
   const search=$('search'), suggestions=$('suggestions'), cart=new Map();
+  const stats=$('stats'), summaryStack=stats.parentElement, checkout=root.querySelector('.kb-bottom');
   const modesMenu=root.querySelector('.kg-modes');
   const modeOptions=modesMenu.querySelectorAll('[data-kb-view]');
   const salesModeOptions=modesMenu.querySelectorAll('[data-kb-sales-mode]');
@@ -676,6 +677,7 @@
     panel.hidden=!grid;
     for(const option of modeOptions)option.setAttribute('aria-pressed',String((option.dataset.kbView==='grid')===grid));
     (grid?panel:search.parentElement).append(suggestions);
+    (grid?checkout:summaryStack).append(stats);
     if(!grid||search.value.trim())renderMatches();
     else lookup();
   }
@@ -855,7 +857,7 @@
       if(row) {
         const status=$('history-detail').open?$('history-detail-message'):$('history-print-status');
         status.textContent='Print request opened.'+warning;
-      } else $('order-status').textContent+=' Print request opened. The completed bill is also in History.'+warning;
+      } else if(warning) $('order-status').textContent+=warning;
       if(chooser.open)chooser.close();
     } catch(error) {
       errorOutput.textContent=error.message;
@@ -1006,8 +1008,8 @@
     $('payment').close();
     if(!existingOrder)resetOrder();
     const change=Number(bill.changeAmount)>0?' Change given: '+money.format(bill.changeAmount)+'.':'';
-    const notice=bill.local?'Bill '+bill.billNumber+' is saved on this device and queued to sync.':'Saved bill '+bill.billNumber+'.';
-    $('order-status').textContent=notice+change;
+    const notice=bill.local?'Bill '+bill.billNumber+' is saved on this device and queued to sync.':'Bill '+bill.billNumber+' is saved.';
+    $('order-status').textContent=bill.local?notice+change:'';
     $('print-summary').textContent=notice+change+' Choose a print option.';
     historyPrintRow=null;
     $('print-title').textContent='Payment complete';

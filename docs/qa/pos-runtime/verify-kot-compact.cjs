@@ -378,8 +378,9 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await page.locator('#kb-other-payment').getByRole('button',{name:'Confirm payment'}).click();
    await page.locator('#kb-payment').waitFor({state:'hidden'});
    await page.locator('#kb-print-choice').waitFor();
+   check('Completed payment is confirmed in the print dialog', (await page.locator('#kb-print-summary').innerText()).includes('is saved.'));
    await page.locator('#kb-print-close').click();
-   await page.locator('#kb-order-status').filter({hasText:'Saved bill'}).waitFor();
+   check('Completed payment leaves no message under Add Note',await page.locator('#kb-order-status').isHidden());
    const lines=q("SELECT i.unit_price,i.quantity,i.manual_price,t.payable_amount,p.payment_method FROM pos_transaction_item i JOIN pos_transaction t ON t.transaction_id=i.transaction_id JOIN pos_payment p ON p.transaction_id=t.transaction_id WHERE t.session_id='"+session.sessionId+"' AND t.status_id='PtCompleted' AND i.manual_price='Y'");
    check('Card checkout persists the keypad rate and quantity',lines.length===1&&lines[0].payment_method==='Card'&&Number(lines[0].unit_price)===150&&Number(lines[0].quantity)===3&&Number(lines[0].payable_amount)===450,lines);
   }

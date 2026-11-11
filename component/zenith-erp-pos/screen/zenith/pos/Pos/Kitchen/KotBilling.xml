@@ -875,20 +875,22 @@
         <div><dt>Waiter</dt><dd id="kb-list-waiter">—</dd><dt>Sales Mode</dt><dd id="kb-list-mode">—</dd></div>
       </dl>
     </section>
-    <section class="kl-card kl-summary">
-      <div class="kl-card-title"><span class="kl-icon"><@ic 'receipt' 23/></span><h2>Bill Summary</h2></div>
-      <div class="kl-sum-row"><span>Subtotal (<span id="kb-list-item-count">0</span>)</span><strong id="kb-list-subtotal">&#8377;0.00</strong></div>
-      <div class="kl-sum-row"><span>Tax</span><strong id="kb-list-tax">&#8377;0.00</strong></div>
-      <div class="kl-sum-row kl-grand"><span>Grand Total</span><strong id="kb-list-grand">&#8377;0.00</strong></div>
-    </section>
+    <div class="kl-summary-stack">
+      <section class="kl-card kl-summary">
+        <div class="kl-card-title"><span class="kl-icon"><@ic 'receipt' 23/></span><h2>Bill Summary</h2></div>
+        <div class="kl-sum-row"><span>Subtotal (<span id="kb-list-item-count">0</span>)</span><strong id="kb-list-subtotal">&#8377;0.00</strong></div>
+        <div class="kl-sum-row"><span>Tax</span><strong id="kb-list-tax">&#8377;0.00</strong></div>
+        <div class="kl-sum-row kl-grand"><span>Grand Total</span><strong id="kb-list-grand">&#8377;0.00</strong></div>
+      </section>
+      <div class="kb-stats" id="kb-stats">
+        <span>Last amount: <b id="kb-list-last-stat">${((lastCompleted.payableAmount)!0)?c}</b></span>
+        <span>Qty: <b id="kb-list-qty">0</b></span><span>Tax: <b id="kb-list-tax-stat">0</b></span><span>Disc: <b>0</b></span>
+      </div>
+    </div>
   </aside>
   </div>
 
   <div class="kb-bottom">
-    <div class="kb-stats">
-      <span>Last amount: <b id="kb-list-last-stat">${((lastCompleted.payableAmount)!0)?c}</b></span>
-      <span>Qty: <b id="kb-list-qty">0</b></span><span>Tax: <b id="kb-list-tax-stat">0</b></span><span>Disc: <b>0</b></span>
-    </div>
     <div class="kb-total-row"><span>KOT TOTAL</span><strong id="kb-grand">&#8377;0.00</strong></div>
     <#if modCanWrite><div class="kb-checkout-actions" role="group" aria-label="Payment and kitchen actions">
       <#list ['Cash','Card','Credit','UPI','Split'] as tender>
