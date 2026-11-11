@@ -447,6 +447,7 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     const openSentPayment = async method => {
       await page.locator('#kb-history-open').click();
       await history.locator('[data-kb-bill-local]').click();
+      await page.locator('#kb-payment').waitFor();
       const methodPicker = page.locator('#kb-payment-method');
       if (await methodPicker.isVisible()) await methodPicker.selectOption(method);
       else assert.equal(await methodPicker.inputValue(),method);
@@ -472,15 +473,22 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     await newQuantity.press('ArrowDown');
     check('A new offline cart can be edited after cancellation while the sent ticket stays unchanged',
       Number(await newQuantity.inputValue()) === 2 && JSON.stringify(await page.evaluate(queuedSales,scope)) === JSON.stringify([sent]));
+    await page.locator('#kb-history-open').click();
+    await history.locator('[data-kb-bill-local]').click();
+    await history.locator('#kb-history-error').filter({hasText:'Hold the current order'}).waitFor();
+    check('An unsent offline cart remains intact when opening a different sent ticket',
+      Number(await newQuantity.inputValue()) === 2 && !await page.locator('#kb-payment').isVisible() &&
+      JSON.stringify(await page.evaluate(queuedSales,scope)) === JSON.stringify([sent]));
+    await page.locator('#kb-history-close').click();
+    page.once('dialog',dialog => dialog.accept());
+    await page.locator('#kb-clear').click();
 
     await openSentPayment('UPI');
     assert.equal(await page.locator('#kb-payment-total').textContent(),sentTotal,'Reopening uses the original sent ticket total');
     await confirmOther.click();
     await page.locator('#kb-print-close').click();
     check('A disconnected dine-in kitchen ticket can be billed from ordinary History',
-      await page.evaluate(deviceCount,scope) === 2 && matchingOrders().length === 3 && Number(await newQuantity.inputValue()) === 2);
-    page.once('dialog',dialog => dialog.accept());
-    await page.locator('#kb-clear').click();
+      await page.evaluate(deviceCount,scope) === 2 && matchingOrders().length === 3);
     await switchOffline(false);
     await page.waitForFunction(scope => window.KotOffline.createWorkspace(scope.org,scope.terminalId,scope.user).queue().length === 0,scope);
     const dineIn = matchingOrders()[3];
@@ -509,7 +517,7 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     const savedCardNote = q("SELECT notes FROM kitchen_order_ticket WHERE kot_id='" + cardOrder?.kot_id + "'")[0]?.notes;
     check('Direct Card checkout syncs once with its cashier-entered reference and full 500-character note',
       matchingOrders().length === 5 && card.length === 1 && card[0].payment_method === 'Card' &&
-      card[0].reference_number === 'KOT-QA-CARD' && savedCardNote === cardNote, {card,noteLength:savedCardNote?.length});
+      card[0].reference_number === 'KOT-QA-CARD' && savedCardNote === '[Take Away] ' + cardNote, {card,noteLength:savedCardNote?.length});
 
     await switchOffline(true);
     await addItem(product,product);
@@ -523,7 +531,7 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     const pendingTotal = await page.locator('#kb-payment-total').textContent();
     await switchOffline(false);
     await page.waitForFunction(scope => window.KotOffline.createWorkspace(scope.org,scope.terminalId,scope.user).queue().length === 0,scope);
-    const ticketRow = () => q("SELECT kot_id,transaction_id FROM kitchen_order_ticket WHERE organization_party_id='" + org + "' AND notes='" + reconnectNote + "'");
+    const ticketRow = () => q("SELECT kot_id,transaction_id FROM kitchen_order_ticket WHERE organization_party_id='" + org + "' AND notes='[Take Away] " + reconnectNote + "'");
     const [savedTicket] = ticketRow();
     assert.ok(savedTicket && !savedTicket.transaction_id,'The server has acknowledged the ticket while the tender dialog stays open');
     assert.equal(await page.locator('#kb-payment-total').textContent(),pendingTotal);
