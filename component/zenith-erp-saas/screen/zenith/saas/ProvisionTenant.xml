@@ -11,6 +11,7 @@
     <actions>
         <entity-find entity-name="zenith.erp.saas.SaasPlan" list="planList">
             <econdition field-name="isActive" value="Y"/>
+            <econdition field-name="monthlyPrice" operator="is-not-null"/>
             <order-by field-name="sortOrder"/>
         </entity-find>
     </actions>

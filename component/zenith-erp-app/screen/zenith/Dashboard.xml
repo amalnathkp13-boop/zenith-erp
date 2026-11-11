@@ -39,6 +39,8 @@
     </transition>
 
     <actions>
+        <set field="kotStaffHome" from="saasPlanId == 'KOT' &amp;&amp; !ec.user.isInGroup('ZENITH_ADMIN') &amp;&amp; !ec.user.isInGroup('ADMIN')"/>
+        <if condition="kotStaffHome"><return/></if>
         <!-- Financial sources require an active organization; no selection never falls back to global totals. -->
         <set field="activeOrgId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
         <set field="activeOrgId" from="activeOrgId == '_NA_' ? null : activeOrgId"/>
@@ -649,6 +651,11 @@
     </actions>
 
     <widgets>
+        <section name="KotStaffHome" condition="kotStaffHome"><widgets>
+            <label text="Your workspace" type="h1"/>
+            <label text="Choose a module your owner assigned from the navigation." type="p"/>
+        </widgets></section>
+        <section name="BusinessOverview" condition="!kotStaffHome"><widgets>
         <render-mode><text type="html,vuet,qvt" template="true"><![CDATA[
 <div id="homeDashboard" data-config="${homeDashConfig?html}">
 <#if dateError?has_content><div class="home-notice" role="alert">${dateError?html}</div></#if>
@@ -866,5 +873,6 @@
         </widgets></section>
 
         <render-mode><text type="html,vuet,qvt"><![CDATA[<p id="homeLayoutStatus" role="status" aria-live="polite"></p></div>]]></text></render-mode>
+        </widgets></section>
     </widgets>
 </screen>

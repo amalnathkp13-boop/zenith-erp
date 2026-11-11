@@ -74,6 +74,16 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   check('Grid removes the header customer action and gives the catalogue its own column',
    await page.locator('.kg-header #kb-customer-open').count()===0&&
    await page.locator('#kb-product-grid').evaluate(panel=>panel.getBoundingClientRect().width>innerWidth*0.4));
+  const catalogueRequests=[];
+  const recordLookup=request=>{if(request.url().endsWith('/searchMenu'))catalogueRequests.push(request.postData());};
+  page.on('request',recordLookup);
+  await modes.locator('summary').click();
+  await listMode.click();
+  await modes.locator('summary').click();
+  await gridMode.click();
+  await card.waitFor();
+  page.off('request',recordLookup);
+  check('List to Grid reuses the loaded catalogue page',catalogueRequests.length===0,{requests:catalogueRequests.length});
   await search.fill('Disposable');
   const gridResults=page.locator('#kb-suggestions');
   await page.waitForFunction(()=>document.querySelectorAll('#kb-suggestions [data-result]').length>=5);
@@ -116,10 +126,18 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await cash.fill('50');
   check('Grid underpayment shows the shortfall and blocks confirmation',await confirmCash.isDisabled()&&
    (await page.locator('.pos-cash-change').innerText()).includes('₹50 more needed'));
-  await page.locator('.pos-cash-quick[data-amt="100"]').click();
+  const exactCash=page.locator('.pos-cash-quick[data-amt="100"]'), largerCash=page.locator('.pos-cash-quick[data-amt="500"]');
+  const focused=locator=>locator.evaluate(el=>el===document.activeElement);
+  await page.keyboard.press('ArrowDown');
+  check('Grid Cash Down skips disabled confirmation without changing Received',await focused(exactCash)&&await cash.inputValue()==='50');
+  await page.keyboard.press('ArrowRight');
+  check('Grid Cash Right moves to the next preset',await focused(largerCash));
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('Enter');
   check('Grid exact quick amount enables confirmation',await confirmCash.isEnabled()&&
+   await focused(confirmCash)&&
    (await page.locator('.pos-cash-change').innerText()).includes('Exact Amount'));
-  await page.locator('.pos-cash-quick[data-amt="500"]').click();
+  await largerCash.click();
   check('Grid quick tender shows change to return',(await page.locator('.pos-cash-change').innerText()).includes('₹400'));
   await page.screenshot({path:path.join(out,'kot-grid-cash-payment.png')});
   await page.locator('.pos-cash-cancel').click();
@@ -155,9 +173,28 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await fullscreen.click();
   await page.waitForFunction(()=>document.fullscreenElement?.id==='kb-wrap');
   check('List View can enter native fullscreen and keep the current order',await page.locator('#kb-cart tr').count()===1);
-  await search.fill('POS_QA_A_P18');await search.press('Enter');
+  const codeRequests=[];
+  let releaseLookup;
+  const lookupReleased=new Promise(resolve=>{releaseLookup=resolve;});
+  const interceptLookup=async route=>{
+   if(new URLSearchParams(route.request().postData()||'').get('term')==='POS_QA_A_P18'){
+    codeRequests.push(route.request());
+    await lookupReleased;
+   }
+   await route.continue().catch(()=>{});
+  };
+  await page.route('**/searchMenu',interceptLookup);
+  const lookupStarted=page.waitForRequest(request=>request.url().endsWith('/searchMenu')&&
+   new URLSearchParams(request.postData()||'').get('term')==='POS_QA_A_P18');
+  await search.fill('POS_QA_A_P18');
+  await lookupStarted;
+  await search.press('Enter');
+  await search.press('Enter');
+  releaseLookup();
   await page.locator('#kb-grand').getByText('₹200.00').waitFor();
+  await page.unroute('**/searchMenu',interceptLookup);
   check('An exact product code increments the existing line',await page.locator('#kb-cart tr').count()===1);
+  check('Enter during a pending lookup reuses the request and adds the product once',codeRequests.length===1);
   await page.locator('#kb-instr').fill('No onion');
   await page.locator('#kb-instr').press('Space');
   check('Space in kitchen notes does not open checkout',!await page.locator('#kb-payment').isVisible());
@@ -192,11 +229,17 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await cash.fill('250');
   check('List Cash computes change before confirmation',(await page.locator('.pos-cash-change').innerText()).includes('₹50'));
   await page.screenshot({path:path.join(out,'kot-list-cash-payment.png')});
-  await cash.press('Enter');
+  await page.keyboard.press('ArrowDown');
+  check('List Cash Down focuses confirmation without changing Received',await focused(confirmCash)&&await cash.inputValue()==='250');
+  await page.keyboard.press('Enter');
   await page.locator('#kb-print-choice').waitFor();
   check('Payment waits for the selected print option',await page.evaluate(()=>window.kotPrints.length===0));
   check('The print choice shows the confirmed cash change',await page.locator('#kb-print-summary').getByText('Change given: ₹50.00.',{exact:false}).isVisible());
-  await page.locator('[data-kb-print="both"]').click();
+  check('Payment complete opens focused on Print Bill',await focused(page.locator('[data-kb-print="bill"]')));
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  check('Print Right moves to Print both',await focused(page.locator('[data-kb-print="both"]')));
+  await page.keyboard.press('Enter');
   await page.waitForFunction(()=>window.kotPrints.length===2);
   await page.locator('#kb-print-choice').waitFor({state:'hidden'});
   const kot=q("SELECT kot_id,transaction_id,waiter_name,table_id,notes FROM kitchen_order_ticket WHERE waiter_name='"+waiterName+"' AND transaction_id IS NOT NULL ORDER BY kot_id DESC")[0];
@@ -243,7 +286,21 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    check(view+' Right commits the rate and selects the entire quantity',await rate.inputValue()==='150'&&await quantity.evaluate(allSelected));
    await page.keyboard.type('3');
    await page.keyboard.press('ArrowDown');
-   check(view+' Down moves from quantity to Cash',await page.locator('[data-kb-payment=Cash]').evaluate(el=>el===document.activeElement));
+   check(view+' Down commits quantity and returns to search',await quantity.inputValue()==='3'&&
+    await search.evaluate(el=>el===document.activeElement));
+   await page.keyboard.press('ArrowDown');
+   check(view+' Down from empty search moves to Cash',await page.locator('[data-kb-payment=Cash]').evaluate(el=>el===document.activeElement));
+   if(view==='List'){
+    const fits=await page.locator('#kb-wrap').evaluate(root=>{
+     const payment=root.querySelector('.kb-checkout-actions').getBoundingClientRect();
+     const searchTop=root.querySelector('#kb-search').getBoundingClientRect().top;
+     const cartBottom=root.querySelector('.kb-panel').getBoundingClientRect().bottom;
+     const summaryBottom=root.querySelector('.kl-grand').getBoundingClientRect().bottom;
+     return root.scrollHeight<=root.clientHeight+1&&payment.bottom<=innerHeight&&
+      cartBottom<=searchTop&&summaryBottom<=searchTop;
+    });
+    check('List View keeps the cart and payment row in one viewport',fits);
+   }
    await page.keyboard.press('ArrowRight');
    await page.keyboard.press('Enter');
    await page.locator('#kb-payment').waitFor();
@@ -265,6 +322,44 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   }
   await modes.locator('summary').click();
   await listMode.click();
+  const held=await json('saveDraft',{itemsJson:JSON.stringify([{productId:'POS_QA_A_P18',quantity:1.25,manualPrice:'Y',unitPrice:120}]),
+   salesModeId:'RETAIL',customerPartyId:'POS_QA_A_CUST_SAME',orderType:'Take Away',taxOn:'N',notes:'Held order QA',wantJson:'Y'});
+  check('A named customer and fractional line can be held',held.data?.success,held);
+  await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling?sessionId='+session.sessionId+'&loadDraft='+held.data.kotId);
+  await page.locator('#kb-grand').getByText('₹150.00').waitFor();
+  check('Resuming a hold restores the customer, rate and quantity',
+   await page.locator('#kb-customer-name').innerText()===customerName&&
+   await page.locator('[data-kb-edit=rate]').inputValue()==='120'&&
+   await page.locator('[data-kb-edit=qty]').inputValue()==='1.25');
+  await page.getByRole('button',{name:'Decrease quantity'}).click();
+  check('Decreasing a fractional quantity preserves its fractional part',await page.locator('[data-kb-edit=qty]').inputValue()==='0.25');
+  for(const width of [1024,390,320]){
+   await page.setViewportSize({width,height:690});
+   for(const [view,option] of [['List',listMode],['Grid',gridMode]]){
+    await modes.locator('summary').click();
+    await option.click();
+    if(view==='Grid'&&width<800)await page.locator('#kb-suggestions [data-result]').first().waitFor();
+    const layout=await page.locator('#kb-wrap').evaluate(root=>{
+     const actions=Array.from(root.querySelectorAll('.kb-checkout-actions button')).filter(button=>button.getClientRects().length);
+     const header=root.querySelector('.kg-header'), toolbar=root.querySelector('.kb-toolbar');
+     const grid=root.querySelector('#kb-product-grid'), card=grid.querySelector('[data-result]');
+     return {width:root.clientWidth,documentWidth:root.scrollWidth,
+      headerClear:Array.from(header.children).every(control=>control.getBoundingClientRect().bottom<=toolbar.getBoundingClientRect().top+1),
+      searchAboveGrid:root.querySelector('#kb-search').getBoundingClientRect().bottom<=grid.getBoundingClientRect().top,
+      cardFits:card&&card.getBoundingClientRect().bottom<=grid.getBoundingClientRect().bottom+1,
+      overflow:actions.filter(button=>button.scrollWidth>button.clientWidth+1).map(button=>button.textContent.trim())};
+    });
+    check(view+' keeps payment controls within the '+width+'px viewport',layout.documentWidth<=layout.width+1&&layout.overflow.length===0,layout);
+    if(width<800)check(view+' header and toolbar stay separate at '+width+'px',layout.headerClear,layout);
+    if(view==='Grid'&&width<800)check('Grid search stays above a visible catalogue at '+width+'px',layout.searchAboveGrid&&layout.cardFits,layout);
+   }
+  }
+  await page.setViewportSize({width:1366,height:768});
+  await modes.locator('summary').click();
+  await listMode.click();
+  await post(screen,'deleteDraft',{sessionId:session.sessionId,kotId:held.data.kotId});
+  await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling?sessionId='+session.sessionId);
+  await page.locator('#kb-wrap[data-ready=true]').waitFor();
   const foreignClose=await json('sessionDrawer',{drawerAction:'close',closingCash:'300'},foreign);
   check('A foreign organization cannot close the KOT drawer',!foreignClose.data?.success&&
    q("SELECT status_id FROM pos_session WHERE session_id='"+session.sessionId+"'")[0].status_id==='PsOpen');
@@ -282,6 +377,14 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   const closed=q("SELECT status_id,expected_cash,closing_cash,cash_difference FROM pos_session WHERE session_id='"+session.sessionId+"'")[0];
   check('Confirm closes the same drawer and returns to terminal selection',closed.status_id==='PsClosed'&&
    Number(closed.expected_cash)===300&&Number(closed.closing_cash)===295&&Number(closed.cash_difference)===-5,closed);
+  const seeded=await post('PosQaAcceptance','seedSearch',{kotExactBarcode:'Y'});
+  check('The synthetic catalog has an exact barcode beyond its first page',(await seeded.json()).seeded===true);
+  const [firstPage,secondPage]=await Promise.all([0,40].map(offset=>json('searchMenu',{sessionId:'',term:'PP ',offset,salesModeId:'RETAIL'})));
+  const products=[...firstPage.data.products,...secondPage.data.products];
+  check('KOT preserves exact barcode selection and all spaced-name results across pages',
+   firstPage.data.exactId==='POS_QA_SEARCH_64'&&firstPage.data.products.some(product=>product.id===firstPage.data.exactId)&&
+   firstPage.data.hasMore&&!secondPage.data.hasMore&&new Set(products.map(product=>product.id)).size===67&&
+   products.every(product=>product.name.startsWith('PP ')&&product.id!=='POS_QA_SEARCH_FOREIGN'));
  }finally{
   await page.close();
   const paid=q("SELECT paid_amount FROM pos_transaction WHERE session_id='"+session.sessionId+"' AND status_id='PtCompleted'").reduce((sum,x)=>sum+Number(x.paid_amount),0);

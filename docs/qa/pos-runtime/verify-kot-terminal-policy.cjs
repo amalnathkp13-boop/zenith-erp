@@ -111,7 +111,77 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    } finally { await page.unroute('**/cartReceipt'); }
    await page.goto(base+'/'+shell+'/zenith/kot/KitchenDisplay?facilityId=POS_QA_A_FAC');
    await page.getByText(note,{exact:false}).waitFor();
+   const ticketSql=`SELECT kot_id,kot_date,status_id,transaction_id FROM kitchen_order_ticket WHERE terminal_id='${terminalId}' AND notes LIKE '%${note}%'`;
+   const ticket=q(ticketSql)[0];
+   const statuses=grid?['KotPreparing','KotReady','KotServed']:['KotPreparing'];
+   for(const statusId of statuses) {
+    await a.c.request.post(base+'/'+shell+'/zenith/kot/KitchenDisplay/updateStatus',{
+     maxRedirects:0,form:{moquiSessionToken:a.t,kotId:ticket.kot_id,statusId}});
+   }
+   const status=statuses.at(-1);
+   check(shell+' can progress the kitchen ticket before payment',q(ticketSql)[0].status_id===status);
+   const changed=await (await request('checkoutKot',{kotId:ticket.kot_id,paymentMethod:'UPI',confirmedTotal:'0.01'})).json();
+   await request('checkoutKot',{kotId:ticket.kot_id,paymentMethod:'UPI'},foreign);
+   check(shell+' rejects stale totals and foreign checkout without taking payment',
+    !changed.success&&changed.error.includes('saved order total changed')&&!q(ticketSql)[0].transaction_id);
+   await page.goto(base+'/'+shell+'/zenith/kot/KotBilling?sessionId='+sessionId);
+   await page.locator('#kb-wrap[data-ready=true]').waitFor();
+   await page.locator('#kb-search').fill('POS_QA_A_P5');
+   await page.locator('#kb-suggestions [data-result]').first().click();
+   await page.locator('#kb-history-open').click();
+   const billButton=page.locator('[data-kb-bill-order="'+ticket.kot_id+'"]');
+   const due=Number(await billButton.getAttribute('data-kb-bill-total'));
+   await billButton.click();
+   const payment=page.locator('#kb-other-payment');
+   const method=page.locator('#kb-payment-method');
+   const submit=payment.locator('button[type=submit]');
+   check(shell+' asks which tender to use for an already sent KOT',await method.inputValue()===''&&await submit.isDisabled());
+   await method.selectOption(grid?'Split':'UPI');
+   if(grid) {
+    await payment.locator('[name=cardAmount]').fill('17');
+    await page.locator('#kb-payment-close').click();
+    await page.locator('#kb-history-open').click();
+    await billButton.click();
+    await method.selectOption('Split');
+    check('Reopening checkout discards the abandoned split amounts',await payment.locator('[name=cardAmount]').inputValue()==='');
+    await payment.locator('[name=cardAmount]').fill('50');
+    await payment.locator('[name=upiAmount]').fill((due-50).toFixed(2));
+   }
+   await submit.click();
+   await page.locator('#kb-print-choice[open]').waitFor();
+   await page.locator('#kb-print-close').click();
+   const billed=q(ticketSql)[0];
+   const tenders=()=>q(`SELECT payment_method,amount FROM pos_payment WHERE transaction_id='${billed.transaction_id}' ORDER BY payment_method`);
+   const bill=q(`SELECT transaction_number,payable_amount,status_id FROM pos_transaction WHERE transaction_id='${billed.transaction_id}'`)[0];
+   const expected=grid?[['Card',50],['UPI',due-50]]:[['UPI',due]];
+   check(shell+' bills the sent KOT at its saved price and preserves kitchen status and the new cart',
+    billed.status_id===status&&billed.kot_date===ticket.kot_date&&bill?.status_id==='PtCompleted'&&Number(bill.payable_amount)===due&&
+    JSON.stringify(tenders().map(row=>[row.payment_method,Number(row.amount)]))===JSON.stringify(expected)&&
+    await page.locator('#kb-cart tr').filter({hasText:'Disposable POS A P5'}).count()===1,{billed,bill,expected});
+   const retry=await (await request('checkoutKot',{kotId:ticket.kot_id,paymentMethod:'UPI',confirmedTotal:String(due)})).json();
+   check(shell+' retry reuses the issued bill without another tender',retry.billNumber===bill.transaction_number&&tenders().length===expected.length);
+   await page.locator('#kb-history-open').click();
+   await page.locator('#kb-history-rows').getByText(bill.transaction_number,{exact:false}).waitFor();
+   check(shell+' no longer offers Bill Out for the paid ticket',await billButton.count()===0);
   }
+  const tableStatus=()=>q(`SELECT status_id FROM restaurant_table WHERE table_id='${tableId}'`)[0].status_id;
+  const creditPhone='9000000001';
+  const creditOrder=await (await request('createKot',{
+   itemsJson,orderType:'Dine In',tableId,taxOn:'N',salesModeId:'RETAIL',wantJson:'Y'
+  })).json();
+  const creditTicket=()=>q(`SELECT status_id,transaction_id FROM kitchen_order_ticket WHERE kot_id='${creditOrder.kotId}'`)[0];
+  const advance=statusId=>a.c.request.post(base+'/apps/zenith/kot/KitchenDisplay/updateStatus',{
+   maxRedirects:0,form:{moquiSessionToken:a.t,kotId:creditOrder.kotId,statusId}});
+  await advance('KotPreparing');
+  const credit=await (await request('checkoutKot',{kotId:creditOrder.kotId,paymentMethod:'Credit',
+   customerName:'Synthetic KOT credit customer',customerPhone:creditPhone})).json();
+  const receivable=q(`SELECT is_credit,customer_party_id,payable_amount,paid_amount FROM pos_transaction WHERE transaction_id='${creditTicket()?.transaction_id}'`)[0];
+  check('Credit checkout preserves the named customer and keeps its table occupied until serving',
+   credit.success&&receivable?.is_credit==='Y'&&receivable.customer_party_id==='POSCUST_POS_QA_A_'+creditPhone&&Number(receivable.payable_amount)===100&&
+   Number(receivable.paid_amount)===0&&creditTicket().status_id==='KotPreparing'&&tableStatus()==='TblOccupied',{creditOrder,credit,receivable});
+  await advance('KotReady');
+  await advance('KotServed');
+  check('Serving the last paid dine-in ticket releases its table',creditTicket().status_id==='KotServed'&&tableStatus()==='TblAvailable');
   const posCart=await invoke('cart',{sessionId});
   await invoke('add',{transactionId:posCart.transactionId,productId:'POS_QA_A_P18',quantity:'1',taxOn:'N'});
   await invoke('kitchenSend',{posTransactionId:posCart.transactionId,items:JSON.stringify([{productId:'POS_QA_A_P18',quantity:1}])});

@@ -2,7 +2,7 @@
 <screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         default-menu-title="Users &amp; Role Assignment">
 
-    <transition name="createUser">
+    <transition name="createUser" begin-transaction="true">
         <actions>
             <if condition="!(ec.user.isInGroup('ZENITH_ADMIN') || ec.user.isInGroup('ADMIN'))"><return error="true" message="Only an administrator can change settings"/></if>
             <!-- ZE-ROLE-011 (username): required, no spaces, at least 3 chars, and must contain letters so
@@ -16,6 +16,11 @@
                  international names (José, 李明, O'Brien) stay valid. -->
             <if condition="!userFullName?.trim()"><return error="true" message="Full name is required."/></if>
             <if condition="!userFullName.find(/\p{L}/)"><return error="true" message="Please enter a valid full name — it must contain letters, not only numbers or symbols."/></if>
+            <if condition="ec.entity.isEntityDefined('zenith.erp.saas.SaasTenant')">
+                <service-call name="zenith.saas.SaasUsageServices.check#KotCapacity" in-map="[resource:'user']"
+                              out-map="seatCapacity" disable-authz="true"/>
+            </if>
+            <if condition="ec.message.hasError()"><return/></if>
             <service-call name="org.moqui.impl.UserServices.create#UserAccount"
                           in-map="[username:username, userFullName:userFullName, newPassword:newPassword, newPasswordVerify:newPasswordVerify]"
                           out-map="userOut"/>
@@ -23,8 +28,9 @@
                           in-map="[userGroupId:'ZENITH_ALL', userId:userOut.userId, fromDate:ec.user.nowTimestamp]"/>
             <script><![CDATA[
                 def orgId = ec.user.getPreference('ACTIVE_ORGANIZATION')
-                // add the new user to the same TENANT_ group(s) as the creating admin (scopes them to this tenant)
-                def myT = ec.entity.find("moqui.security.UserGroupMember").condition("userId", ec.user.userId).list()*.userGroupId.findAll{ it?.startsWith('TENANT_') }
+                // A SaaS account is created in the selected tenant, even if the owner manages several.
+                def myT = seatCapacity?.tenantGroupId ? [seatCapacity.tenantGroupId] :
+                    ec.entity.find("moqui.security.UserGroupMember").condition("userId", ec.user.userId).list()*.userGroupId.findAll{ it?.startsWith('TENANT_') }
                 myT.each { tg -> ec.entity.makeValue("moqui.security.UserGroupMember").setAll([userGroupId:tg, userId:userOut.userId, fromDate:ec.user.nowTimestamp]).create() }
                 // give the new user the tenant's active organization so row-level filters work on login
                 if (orgId) {
@@ -180,9 +186,12 @@
         <default-response url="."/>
     </transition>
 
-    <transition name="enableUser">
+    <transition name="enableUser" begin-transaction="true">
         <actions>
             <service-call name="zenith.settings.SettingsServices.check#UserInActiveOrg" in-map="[userId:userId]"/>
+            <if condition="!ec.message.hasError() &amp;&amp; ec.entity.isEntityDefined('zenith.erp.saas.SaasTenant')">
+                <service-call name="zenith.saas.SaasUsageServices.check#KotCapacity" in-map="[resource:'user',userId:userId]" disable-authz="true"/>
+            </if>
             <if condition="!ec.message.hasError()">
                 <service-call name="update#moqui.security.UserAccount" in-map="[userId:userId, disabled:'N']"/>
             </if>

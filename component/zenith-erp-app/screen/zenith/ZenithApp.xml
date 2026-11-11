@@ -402,7 +402,7 @@
             html_stylesheets.add('/zenithstatic/css/barcode-reference.css?v=1')
             if (html_scripts == null) html_scripts = []
             html_scripts.add('/zenithstatic/js/qapps-shell-boot.js?v=1')
-            html_scripts.add('/zenithstatic/js/kitchen-display.js?v=5')
+            html_scripts.add('/zenithstatic/js/kitchen-display.js?v=6')
             html_scripts.add('/zenithstatic/js/pos-receipt-layout.js?v=3')
             html_scripts.add('/zenithstatic/js/kitchen-print.js?v=4')
             html_stylesheets.add('/zenithstatic/css/kitchen-display.css?v=5')
@@ -518,6 +518,7 @@
             context.isSaasTenant = false
             context.isSaasSuspended = false
             context.saasAllowedModules = null
+            context.saasPlanId = null
             context.saasPlanName = null
             context.saasAllowedModulesJson = '[]'
             if (orgId) {
@@ -545,6 +546,7 @@
                         def plan = ec.entity.find("zenith.erp.saas.SaasPlan")
                             .condition("planId", tenant.planId).one()
                         context.saasPlanName = plan?.planName ?: tenant.planId
+                        context.saasPlanId = tenant.planId
 
                         def planModules = ec.entity.find("zenith.erp.saas.SaasPlanModule")
                             .condition("planId", tenant.planId).list()
