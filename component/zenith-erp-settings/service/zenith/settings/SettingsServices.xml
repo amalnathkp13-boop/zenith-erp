@@ -140,7 +140,8 @@
             <if condition="!userFullName?.trim()"><return error="true" message="Full name is required."/></if>
             <if condition="!userFullName.find(/\p{L}/)"><return error="true" message="Please enter a valid full name — it must contain letters, not only numbers or symbols."/></if>
             <script><![CDATA[
-                def ua = ec.entity.find("moqui.security.UserAccount").condition("userId", userId).one()
+                userFullName = userFullName.trim()
+                def ua = ec.entity.find("moqui.security.UserAccount").condition("userId", userId).forUpdate(true).one()
                 if (ua == null) { ec.message.addError("That user no longer exists."); return }
                 def changedUser = (username != ua.username)
                 def changedName = (userFullName != ua.userFullName)
@@ -148,12 +149,25 @@
                     def taken = ec.entity.find("moqui.security.UserAccount").condition("username", username).list().any { it.userId != userId }
                     if (taken) { ec.message.addError("Username '" + username + "' is already in use. Please choose another."); return }
                 }
-                if (!changedUser && !changedName) { ec.message.addMessage("No changes to save."); return }
                 boolean _d = ec.artifactExecution.disableAuthz()
                 try {
-                    ua.username = username
-                    ua.userFullName = userFullName
-                    ua.update()   // Moqui auto-audits BOTH username and userFullName to EntityAuditLog
+                    // Billing reads the linked person. Re-saving also repairs earlier account-only renames.
+                    def person = ua.partyId ? ec.entity.find("mantle.party.Person").condition("partyId", ua.partyId).forUpdate(true).one() : null
+                    def changedPerson = person && [person.firstName, person.lastName].findAll { it }.join(' ') != userFullName
+                    if (!changedUser && !changedName && !changedPerson) {
+                        ec.message.addMessage("No changes to save."); return
+                    }
+                    if (changedUser || changedName) {
+                        ua.username = username
+                        ua.userFullName = userFullName
+                        ua.update()
+                    }
+                    if (changedPerson) {
+                        int lastSpace = userFullName.lastIndexOf(' ')
+                        person.firstName = lastSpace < 0 ? userFullName : userFullName.substring(0, lastSpace)
+                        person.lastName = lastSpace < 0 ? null : userFullName.substring(lastSpace + 1)
+                        person.update()
+                    }
                     ec.message.addMessage("User details updated.")
                 } finally { if (!_d) ec.artifactExecution.enableAuthz() }
             ]]></script>

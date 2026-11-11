@@ -118,6 +118,18 @@ function check(name, value) { assert.ok(value, name); report.checks.push(name); 
         const row = page.locator('tr').filter({has:page.getByText('scope.qa@example.com',{exact:true})});
         const newUserId = await row.locator('input[name=userId]').first().inputValue();
         check('Add user creates real organization-linked account', !!newUserId);
+        await row.getByText('Edit',{exact:true}).click();
+        const editForm = page.locator('.modal.in form[name=EditUserForm]');
+        await editForm.locator('input[name=userFullName]').fill('Renamed scope clerk');
+        await Promise.all([
+            page.waitForResponse(r=>r.request().method()==='POST'&&r.url().endsWith('/editUser')),
+            editForm.getByRole('button',{name:'Save changes'}).click()
+        ]);
+        await page.goto(base+'/apps/zenith/Settings/Users');
+        check('editing a user updates the saved name on reload', await row.locator('.z-user-name').innerText()==='Renamed scope clerk');
+        const deleteAction = row.getByRole('button',{name:'Delete account'});
+        check('unused user has a visible Delete account POST action', await deleteAction.isVisible() &&
+            await deleteAction.evaluate(button=>button.form?.method==='post' && !button.closest('details')));
         await post(context,'/apps/zenith/Settings/Users/saveRoles',{moquiSessionToken:csrf,userId:newUserId,selectedRoles:['ZENITH_ALL',roleId]});
         await page.goto(base+'/apps/zenith/Settings/Users?searchTerm=scope.qa&statusFilter=active&roleFilter='+roleId);
         check('name/status/role filters combine', await page.locator('.z-user-email').allTextContents().then(a=>a.length===1 && a[0]==='scope.qa@example.com'));
