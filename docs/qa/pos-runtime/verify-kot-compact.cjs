@@ -104,10 +104,18 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await cash.fill('50');
   check('Grid underpayment shows the shortfall and blocks confirmation',await confirmCash.isDisabled()&&
    (await page.locator('.pos-cash-change').innerText()).includes('₹50 more needed'));
-  await page.locator('.pos-cash-quick[data-amt="100"]').click();
+  const exactCash=page.locator('.pos-cash-quick[data-amt="100"]'), largerCash=page.locator('.pos-cash-quick[data-amt="500"]');
+  const focused=locator=>locator.evaluate(el=>el===document.activeElement);
+  await page.keyboard.press('ArrowDown');
+  check('Grid Cash Down skips disabled confirmation without changing Received',await focused(exactCash)&&await cash.inputValue()==='50');
+  await page.keyboard.press('ArrowRight');
+  check('Grid Cash Right moves to the next preset',await focused(largerCash));
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('Enter');
   check('Grid exact quick amount enables confirmation',await confirmCash.isEnabled()&&
+   await focused(confirmCash)&&
    (await page.locator('.pos-cash-change').innerText()).includes('Exact Amount'));
-  await page.locator('.pos-cash-quick[data-amt="500"]').click();
+  await largerCash.click();
   check('Grid quick tender shows change to return',(await page.locator('.pos-cash-change').innerText()).includes('₹400'));
   await page.screenshot({path:path.join(out,'kot-grid-cash-payment.png')});
   await page.locator('.pos-cash-cancel').click();
@@ -199,11 +207,17 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await cash.fill('250');
   check('List Cash computes change before confirmation',(await page.locator('.pos-cash-change').innerText()).includes('₹50'));
   await page.screenshot({path:path.join(out,'kot-list-cash-payment.png')});
-  await cash.press('Enter');
+  await page.keyboard.press('ArrowDown');
+  check('List Cash Down focuses confirmation without changing Received',await focused(confirmCash)&&await cash.inputValue()==='250');
+  await page.keyboard.press('Enter');
   await page.locator('#kb-print-choice').waitFor();
   check('Payment waits for the selected print option',await page.evaluate(()=>window.kotPrints.length===0));
   check('The print choice shows the confirmed cash change',await page.locator('#kb-print-summary').getByText('Change given: ₹50.00.',{exact:false}).isVisible());
-  await page.locator('[data-kb-print="both"]').click();
+  check('Payment complete opens focused on Print Bill',await focused(page.locator('[data-kb-print="bill"]')));
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  check('Print Right moves to Print both',await focused(page.locator('[data-kb-print="both"]')));
+  await page.keyboard.press('Enter');
   await page.waitForFunction(()=>window.kotPrints.length===2);
   await page.locator('#kb-print-choice').waitFor({state:'hidden'});
   const kot=q("SELECT kot_id,transaction_id,waiter_name,table_id,notes FROM kitchen_order_ticket WHERE waiter_name='"+waiterName+"' AND transaction_id IS NOT NULL ORDER BY kot_id DESC")[0];
@@ -294,7 +308,21 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    check(view+' Right commits the rate and selects the entire quantity',await rate.inputValue()==='150'&&await quantity.evaluate(allSelected));
    await page.keyboard.type('3');
    await page.keyboard.press('ArrowDown');
-   check(view+' Down moves from quantity to Cash',await page.locator('[data-kb-payment=Cash]').evaluate(el=>el===document.activeElement));
+   check(view+' Down commits quantity and returns to search',await quantity.inputValue()==='3'&&
+    await search.evaluate(el=>el===document.activeElement));
+   await page.keyboard.press('ArrowDown');
+   check(view+' Down from empty search moves to Cash',await page.locator('[data-kb-payment=Cash]').evaluate(el=>el===document.activeElement));
+   if(view==='List'){
+    const fits=await page.locator('#kb-wrap').evaluate(root=>{
+     const payment=root.querySelector('.kb-checkout-actions').getBoundingClientRect();
+     const searchTop=root.querySelector('#kb-search').getBoundingClientRect().top;
+     const cartBottom=root.querySelector('.kb-panel').getBoundingClientRect().bottom;
+     const summaryBottom=root.querySelector('.kl-grand').getBoundingClientRect().bottom;
+     return root.scrollHeight<=root.clientHeight+1&&payment.bottom<=innerHeight&&
+      cartBottom<=searchTop&&summaryBottom<=searchTop;
+    });
+    check('List View keeps the cart and payment row in one viewport',fits);
+   }
    await page.keyboard.press('ArrowRight');
    await page.keyboard.press('Enter');
    await page.locator('#kb-payment').waitFor();

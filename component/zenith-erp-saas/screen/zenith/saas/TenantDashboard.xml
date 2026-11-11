@@ -223,7 +223,7 @@
 
                         // All plans for upgrade comparison
                         def allPlans = ec.entity.find("zenith.erp.saas.SaasPlan")
-                            .condition("isActive", "Y").orderBy("sortOrder").list()
+                            .condition("isActive", "Y").orderBy("sortOrder").list().findAll { it.monthlyPrice != null }
                         context.allPlans = allPlans
                         context.currentPlanSortOrder = plan?.sortOrder ?: 0
 
@@ -272,7 +272,7 @@
                         }
                         context.usageHtml = '<div class="mysub-usage-grid">' +
                             _urow(svgUsers, 'Users', context.userCount, context.maxUsers) +
-                            _urow(svgMonitor, 'POS Terminals', context.usedTerminals, context.maxPos) +
+                            _urow(svgMonitor, plan?.planId == 'KOT' ? 'KOT Billing Terminals' : 'POS Terminals', context.usedTerminals, context.maxPos) +
                             _urow(svgPackage, 'Products', context.usedProducts, context.maxProducts) +
                             _urow(svgFile, 'Monthly Transactions', context.usedTxn, context.maxTxn) +
                             _urow(svgStore, 'Stores', context.usedStores, context.maxStores) +

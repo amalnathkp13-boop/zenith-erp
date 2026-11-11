@@ -57,7 +57,7 @@
             boolean alreadyDisabled = ec.artifactExecution.disableAuthz()
             try {
                 planList = ec.entity.find("zenith.erp.saas.SaasPlan")
-                    .condition("isActive", "Y").orderBy("sortOrder").list()
+                    .condition("isActive", "Y").orderBy("sortOrder").list().findAll { it.monthlyPrice != null }
                 countryList = ec.entity.find("zenith.erp.base.CountryConfiguration")
                     .orderBy("countryName").list()
                 industryList = ec.entity.find("moqui.basic.Enumeration")

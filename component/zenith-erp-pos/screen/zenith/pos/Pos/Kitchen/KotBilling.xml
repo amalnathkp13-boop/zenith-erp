@@ -7,8 +7,9 @@
         <actions><script><![CDATA[
             sessionId=null
             def access=ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId',ec.context.kitchenModuleId ?: 'pos').call()
-            def scope=ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess').parameter('terminalId',ec.context.terminalId).call()
-            if(!scope.allowed || access.canWrite!=true) { ec.message.addError('KOT write access is required.'); return }
+            def scope=ec.service.sync().name('zenith.pos.KotServices.get#BillingScope').parameter('terminalId',ec.context.terminalId).call()?.scope
+            if(!scope?.allowed) return
+            if(access.canWrite!=true) { ec.message.addError('KOT write access is required.'); return }
             def counter=ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',ec.context.terminalId).forUpdate(true).one()
             def shop=ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call().activeShopId
             if(counter?.isActive!='Y' || !counter.facilityId || (shop && counter.facilityId!=shop)) { ec.message.addError('Choose an active terminal in this shop.'); return }
@@ -460,7 +461,12 @@
             def session=ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',sid).one()
             def terminal=ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',session?.terminalId).one()
             def billing=ec.service.sync().name('zenith.pos.KotServices.get#BillingSession').parameter('sessionId',sid).call()
-            if(!billing.terminal || ec.message.hasError()) { reject('Choose your open terminal session in this shop.'); return }
+            if(!billing.terminal || ec.message.hasError()) {
+                def error = ec.message.errorsString?.trim() ?: 'Choose your open terminal session in this shop.'
+                ec.message.clearErrors()
+                ec.web.sendJsonResponse([success:false,error:error])
+                return
+            }
             def shop=ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call().activeShopId
             if(!kot || (!kot.terminalId && scope.terminalRestricted) || session?.operatorPartyId!=ec.user.userAccount?.partyId || !terminal || (shop && terminal.facilityId!=shop) || (kot.terminalId && kot.terminalId!=terminal.terminalId)) {
                 reject('Choose your terminal session in this shop.'); return
@@ -562,8 +568,9 @@
         <script><![CDATA[
             import org.moqui.entity.EntityCondition
             import groovy.json.JsonOutput
-            def scope=ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess').call()
+            def scope=ec.service.sync().name('zenith.pos.KotServices.get#BillingScope').call()?.scope ?: [:]
             org=scope.allowed ? scope.organizationPartyId : null
+            kotCounterNeedsSetup=scope.kotCounterConfigured == false
             def IN=EntityCondition.ComparisonOperator.IN
             def cf=ec.entity.conditionFactory
             billingSession=null; billingTerminal=null
@@ -751,7 +758,8 @@
     <label>Select Terminal<select name="terminalId" required><#list entryTerminals as t><option value="${t.terminalId?html}">${(t.terminalName!t.terminalId)?html}</option></#list></select></label>
     <label>Opening Cash<input name="openingCash" type="number" min="0" step="0.01" value="0" required/></label>
     <button type="submit" class="kb-action-bill">Open / Resume Session</button>
-  </form><#else><p>Your administrator must assign an active terminal and shop before you can bill.</p></#if>
+  </form><#elseif kotCounterNeedsSetup!false><p>KOT Plan requires exactly one active billing counter. Ask your administrator to check the counter setup.</p>
+  <#else><p>Your administrator must assign an active terminal and shop before you can bill.</p></#if>
 </section>
 <#else>
 <div class="kb-wrap<#if !kitchenDisplayEnabled> kb-display-disabled</#if>" id="kb-wrap">
@@ -814,7 +822,7 @@
       <a class="kb-control" href="/Login" target="_blank" rel="noopener">Sign in again</a>
       <button class="kb-control" id="kb-resume" type="button">Resume billing</button>
     </div>
-    <#if modCanWrite><p id="kb-key-help"><span><kbd>/</kbd> Search</span> <span><kbd><span class="kg-only">←</span>↑↓<span class="kg-only">→</span></kbd> Choose item</span> <span><kbd>Enter</kbd> Add and edit rate</span> <span><kbd>→</kbd> Quantity</span> <span><kbd>↓</kbd> Payment</span> <span><kbd>←→</kbd> Choose method</span></p></#if>
+    <#if modCanWrite><p id="kb-key-help"><span><kbd>/</kbd> Search</span> <span><kbd><span class="kg-only">←</span>↑↓<span class="kg-only">→</span></kbd> Choose item</span> <span><kbd>Enter</kbd> Add and edit rate</span> <span><kbd>→</kbd> Quantity</span> <span><kbd>↓</kbd> Search</span> <span><kbd>↓</kbd> Payment from empty search</span> <span><kbd>←→</kbd> Choose method</span></p></#if>
     <div class="kb-order-scroll"><table class="kb-otable" aria-label="Current Order"><thead><tr>
       <th scope="col">#</th><th scope="col"><span class="kg-only">Item</span><span class="kg-normal">Product</span></th>
       <th scope="col" class="kg-normal">Mode</th><th scope="col">Rate (&#8377;)</th>

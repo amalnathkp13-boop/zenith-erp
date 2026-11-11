@@ -25,6 +25,10 @@
             <if condition="organizationPartyId &amp;&amp; organizationPartyId != posOrganizationPartyId"><return error="true" message="The selected organization does not match your active organization."/></if>
             <set field="organizationPartyId" from="posOrganizationPartyId"/>
             <if condition="!organizationPartyId"><return error="true" message="Select an organization before creating a terminal."/></if>
+            <if condition="ec.entity.isEntityDefined('zenith.erp.saas.SaasTenant')">
+                <service-call name="zenith.saas.SaasUsageServices.check#KotCapacity" in-map="[resource:'terminal']" disable-authz="true"/>
+            </if>
+            <if condition="ec.message.hasError()"><return/></if>
             <service-call name="create#zenith.erp.pos.PosTerminal" in-map="context"/>
         </actions>
         <default-response url="."/>
@@ -53,6 +57,11 @@
                 <if condition="_openTerminalSessions"><return error="true" message="Close the POS session before changing this terminal's facility."/></if>
             </if>
             <set field="organizationPartyId" from="posOrganizationPartyId"/>
+            <if condition="isActive == 'Y' &amp;&amp; _existingTerminal.isActive != 'Y' &amp;&amp; ec.entity.isEntityDefined('zenith.erp.saas.SaasTenant')">
+                <service-call name="zenith.saas.SaasUsageServices.check#KotCapacity"
+                              in-map="[resource:'terminal',terminalId:terminalId]" disable-authz="true"/>
+                <if condition="ec.message.hasError()"><return/></if>
+            </if>
             <service-call name="update#zenith.erp.pos.PosTerminal" in-map="context"/>
         </actions>
         <default-response url="."/>

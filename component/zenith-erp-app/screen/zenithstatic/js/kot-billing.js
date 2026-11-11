@@ -293,11 +293,13 @@
     }
     const toQty=field==='rate' && (e.key==='ArrowRight'||e.key==='Enter');
     const toRate=field==='qty' && e.key==='ArrowLeft';
-    const toPayment=e.key==='ArrowDown'||(field==='qty'&&e.key==='Enter');
-    if(!toQty&&!toRate&&!toPayment)return;
+    const toSearch=field==='qty' && e.key==='ArrowDown';
+    const toPayment=(field==='rate'&&e.key==='ArrowDown')||(field==='qty'&&e.key==='Enter');
+    if(!toQty&&!toRate&&!toSearch&&!toPayment)return;
     e.preventDefault();
     if(!commitEdit(input))return;
-    if(toPayment)paymentButtons[0]?.focus();
+    if(toSearch)search.focus();
+    else if(toPayment)paymentButtons[0]?.focus();
     else focusEditor(editorFor(id,toQty?'qty':'rate'));
   });
   for(const [index,button] of paymentButtons.entries()) {
@@ -498,6 +500,12 @@
   });
   search.addEventListener('keydown',async e=>{
     if(e.isComposing||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey)return;
+    const cash=paymentButtons[0];
+    if(e.key==='ArrowDown'&&!search.value.trim()&&cash&&!cash.disabled){
+      e.preventDefault();
+      if(!e.repeat)cash.focus();
+      return;
+    }
     if(moveMatch(e.key,false)){e.preventDefault();return;}
     if(e.repeat)return;
     if(e.key==='Escape'){clearSearch();return;}
@@ -647,6 +655,7 @@
     $('print-error').textContent='';
     updatePrintOptions();
     $('print-choice').showModal();
+    $('print-choice').querySelector('[data-kb-print="bill"]').focus();
   }
 
   const history=$('history'), historyDetail=$('history-detail'), historyEdit=$('history-edit');
@@ -963,7 +972,9 @@
       post('saveDraft',{...orderData(),existingDraftId:draftId});
     }
     else if(button.classList.contains('pos-cash-quick')){
-      $('cash').value=button.dataset.amt;PosTillDialogs.updateCash($('cash-slot'),paymentAmount);
+      const slot=$('cash-slot');
+      $('cash').value=button.dataset.amt;
+      if(PosTillDialogs.updateCash(slot,paymentAmount)&&e.detail===0)slot.querySelector('.pos-cash-confirm').focus();
     }
     else if(button.id==='kb-payment-close'||button.classList.contains('pos-cash-cancel'))$('payment').close();
     else if(button.dataset.kbPrint)printChoice(button.dataset.kbPrint);
@@ -1108,6 +1119,40 @@
   $('payment-method')?.addEventListener('change',tenderFields);
   $('payment-form')?.addEventListener('submit',pay);
   $('payment')?.addEventListener('cancel',e=>{if(busy)e.preventDefault();});
+  function ignoreDialogKey(e) {
+    return e.defaultPrevented||e.isComposing||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey;
+  }
+  $('cash-slot')?.addEventListener('keydown',e=>{
+    if(ignoreDialogKey(e))return;
+    if(e.key==='Enter'&&e.repeat){e.preventDefault();return;}
+    const slot=e.currentTarget, received=$('cash');
+    const quick=Array.from(slot.querySelectorAll('.pos-cash-quick'));
+    if(e.key==='ArrowLeft'||e.key==='ArrowRight'){
+      const index=quick.indexOf(e.target);
+      if(index<0)return;
+      e.preventDefault();
+      quick[(index+(e.key==='ArrowRight'?1:-1)+quick.length)%quick.length].focus();
+    }else if(e.key==='ArrowUp'||e.key==='ArrowDown'){
+      const rows=[[received],Array.from(slot.querySelectorAll('.pos-cash-confirm:enabled')),
+        quick,Array.from(slot.querySelectorAll('.pos-cash-cancel:enabled'))].filter(row=>row.length);
+      const index=rows.findIndex(row=>row.includes(e.target));
+      if(index<0)return;
+      e.preventDefault();
+      rows[index+(e.key==='ArrowDown'?1:-1)]?.[0].focus();
+    }else if(e.key==='Enter'&&e.target===received&&!slot.querySelector('.pos-cash-confirm:enabled')&&!busy){
+      e.preventDefault();quick[0].focus();
+    }
+  });
+  $('print-choice')?.addEventListener('keydown',e=>{
+    if(ignoreDialogKey(e))return;
+    if(e.key==='Enter'&&e.repeat){e.preventDefault();return;}
+    if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;
+    const buttons=Array.from(e.currentTarget.querySelectorAll('button:enabled'));
+    const index=buttons.indexOf(e.target);
+    if(index<0)return;
+    e.preventDefault();
+    buttons[(index+(e.key==='ArrowRight'?1:-1)+buttons.length)%buttons.length].focus();
+  });
   let shiftAlone=false;
   const editable=e=>e.target?.closest?.('input,textarea,select,button,a,[contenteditable],dialog');
   function shortcut(e) {

@@ -2,17 +2,49 @@
 <services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
           xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
 
+    <service verb="get" noun="BillingScope" authenticate="true">
+        <in-parameters><parameter name="terminalId"/><parameter name="sessionId"/></in-parameters>
+        <out-parameters><parameter name="scope" type="Map"/></out-parameters>
+        <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[terminalId:terminalId,sessionId:sessionId]" out-map="scope"/>
+            <if condition="!scope.allowed"><return/></if>
+            <script><![CDATA[
+                if (!ec.entity.isEntityDefined('zenith.erp.saas.SaasTenant')) return
+                def org = scope.organizationPartyId
+                def kotPlan = ec.entity.find('zenith.erp.saas.SaasTenant')
+                    .condition('organizationPartyId',org).condition('planId','KOT').disableAuthz().useCache(true).count() > 0
+                if (!kotPlan) return
+                // Count across the organization before applying any selected shop or cashier assignment.
+                def counters = ec.entity.find('zenith.erp.pos.PosTerminal')
+                    .condition('organizationPartyId',org).condition('isActive','Y')
+                    .selectField('terminalId').limit(2).disableAuthz().list()
+                scope.kotCounterId = counters.size() == 1 ? counters[0].terminalId : null
+                scope.kotCounterConfigured = scope.kotCounterId != null
+                if (scope.terminalRestricted) scope.allowedTerminalIds = scope.allowedTerminalIds.findAll { it == scope.kotCounterId }
+                else scope.allowedTerminalIds = scope.kotCounterConfigured ? [scope.kotCounterId] : []
+                scope.terminalRestricted = true
+                if (terminalId && !scope.allowedTerminalIds.contains(terminalId)) {
+                    scope.allowed = false
+                    ec.message.addError('KOT Plan allows billing at one active counter. Ask your administrator to check the counter setup.')
+                }
+            ]]></script>
+        </actions>
+    </service>
+
     <service verb="get" noun="BillingSession">
         <in-parameters><parameter name="sessionId" required="true"/></in-parameters>
         <out-parameters><parameter name="session" type="Map"/><parameter name="terminal" type="Map"/></out-parameters>
         <actions>
-            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[sessionId:sessionId]" out-map="scope"/>
+            <service-call name="zenith.pos.KotServices.get#BillingScope" in-map="[sessionId:sessionId]" out-map="context"/>
             <if condition="!scope.allowed"><return/></if>
             <script><![CDATA[
                 def row=ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',sessionId).one()
                 def counter=row ? ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',row.terminalId).one() : null
                 def shop=ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call().activeShopId
                 def facility=counter?.facilityId ? ec.entity.find('mantle.facility.Facility').condition('facilityId',counter.facilityId).one() : null
+                if(scope.kotCounterConfigured == false || (scope.kotCounterId && counter?.terminalId != scope.kotCounterId)) {
+                    ec.message.addError('KOT Plan allows billing at one active counter. Ask your administrator to check the counter setup.'); return
+                }
                 if(row?.statusId!='PsOpen' || row.operatorPartyId!=ec.user.userAccount?.partyId || counter?.isActive!='Y' ||
                     counter.organizationPartyId!=scope.organizationPartyId || facility?.ownerPartyId!=scope.organizationPartyId || (shop && counter.facilityId!=shop)) {
                     ec.message.addError('Choose your open terminal session in this shop.'); return
