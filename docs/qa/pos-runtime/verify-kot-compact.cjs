@@ -24,34 +24,61 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
  try{
   await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling?sessionId='+session.sessionId);
   await page.locator('#kb-wrap[data-ready=true]').waitFor();
+  const initialToday=Number(await page.locator('#kb-header-today-bills').textContent());
+  check('KOT header shows a stationary terminal and bill data without removed controls',
+   await page.locator('.kg-header .kg-chip').evaluate(el=>el.tagName==='BUTTON'&&!el.textContent.includes('⌄'))&&
+   await page.locator('#kb-header-last-bill').count()===1&&
+   await page.locator('.kg-header #kb-customer-open').count()===0&&
+   await page.locator('#kb-display-message').isHidden()&&
+   !(await page.locator('.kg-header').innerText()).includes('KOT Mode'));
+  const billingUrl=page.url();
+  await page.locator('.kg-header .kg-chip').click();
+  check('Current terminal button does not navigate',page.url()===billingUrl);
   check('KOT Billing uses the full viewport without entering browser fullscreen',await page.locator('#kb-wrap').evaluate(root=>{
    const bounds=root.getBoundingClientRect();
    return !document.fullscreenElement&&bounds.left===0&&bounds.top===0&&bounds.width===innerWidth&&bounds.height===innerHeight
     && Array.from(document.querySelectorAll('#top,#z-sidebar,#z-subnav,#ai-copilot-container')).every(el=>!el.getClientRects().length);
   }));
   check('Default workspace has one search and tax toggle, no permanent catalogue',await page.locator('#kb-search').count()===1&&await page.getByRole('switch',{name:'Tax'}).count()===1&&await page.locator('.kb-catlist,.kb-menu').count()===0);
-  await page.locator('#kb-mode').selectOption('RETAIL');
+  const modes=page.locator('.kg-modes');
+  await modes.locator('summary').click();
+  check('Modes separates sales choices from Grid and List View',
+   await modes.getByRole('group',{name:'Sales mode'}).count()===1&&
+   await modes.getByRole('group',{name:'Billing layout'}).count()===1&&
+   await modes.locator('[data-kb-view]').count()===2&&
+   await modes.locator('[data-kb-sales-mode="RETAIL"]').count()===1);
+  await modes.locator('[data-kb-sales-mode="WHOLESALE"]').click();
+  check('Modes updates the existing pricing control',await page.locator('#kb-mode').inputValue()==='WHOLESALE'&&
+   await modes.locator('[data-kb-sales-mode="WHOLESALE"]').getAttribute('aria-pressed')==='true');
+  await modes.locator('summary').click();
+  await modes.locator('[data-kb-sales-mode="RETAIL"]').click();
+  check('Retail can be restored in Modes',await page.locator('#kb-mode').inputValue()==='RETAIL');
   await page.locator('#kb-waiter').selectOption({label:waiterName});
   await page.locator('[data-ot="Take Away"]').click();
-  check('Take Away hides table selection',!await page.locator('#kb-table').isVisible());
+  check('List View has no table picker',await page.locator('#kb-table-field').count()===0&&await page.locator('#kb-table').isHidden());
   await page.getByRole('switch',{name:'Tax'}).click();
   const search=page.locator('#kb-search');
-  const fullscreen=page.locator('#kb-fullscreen'), modes=page.locator('.kg-modes');
+  const fullscreen=page.locator('#kb-fullscreen');
   const listMode=modes.getByRole('button',{name:'List View',exact:true});
   const gridMode=modes.getByRole('button',{name:'Grid View',exact:true});
   await modes.locator('summary').click();
   check('Modes is the only layout selector and starts in List View',
-   (await modes.getByRole('button').allTextContents()).join('|')==='List View|Grid View'&&
+   (await modes.locator('[data-kb-view]').allTextContents()).join('|')==='List View|Grid View'&&
    await listMode.getAttribute('aria-pressed')==='true'&&
    await page.getByRole('button',{name:/^(Grid|List) View/}).count()===2);
   await gridMode.click();
+  check('Grid View has no table picker',await page.locator('#kb-table-field').count()===0&&await page.locator('#kb-table').isHidden());
   const card=page.locator('#kb-suggestions [data-result]').filter({hasText:'Disposable POS A P18'});
   await card.waitFor();
   check('Grid View shows a product catalogue with empty search',await search.inputValue()===''&&
    await page.locator('#kb-product-grid .kb-results-grid').isVisible());
-  check('Grid keeps the customer in the header and gives the catalogue its own column',
-   await page.locator('.kg-header #kb-customer-open').isVisible()&&
+  check('Grid moves customer selection into the toolbar and gives the catalogue its own column',
+   await page.locator('.kg-header #kb-customer-open').count()===0&&
+   await page.locator('.kb-toolbar #kb-customer-open').isVisible()&&
    await page.locator('#kb-product-grid').evaluate(panel=>panel.getBoundingClientRect().width>innerWidth*0.4));
+  await page.locator('.kb-toolbar #kb-customer-open').click();
+  check('Grid customer picker remains available',await page.locator('#kb-customer-dialog').isVisible());
+  await page.locator('#kb-customer-close').click();
   const catalogueRequests=[];
   const recordLookup=request=>{if(request.url().endsWith('/searchMenu'))catalogueRequests.push(request.postData());};
   page.on('request',recordLookup);
@@ -223,6 +250,9 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   const kot=q("SELECT kot_id,transaction_id,waiter_name,table_id,notes FROM kitchen_order_ticket WHERE waiter_name='"+waiterName+"' AND transaction_id IS NOT NULL ORDER BY kot_id DESC")[0];
   const tx=q("SELECT transaction_number,payable_amount,change_amount,status_id,customer_party_id FROM pos_transaction WHERE transaction_id='"+kot.transaction_id+"'")[0];
   const printed=await page.evaluate(()=>window.kotPrints);
+  check('KOT header updates its last bill and today count after checkout',
+   await page.locator('#kb-header-last-bill').textContent()===tx.transaction_number&&
+   Number(await page.locator('#kb-header-today-bills').textContent())===initialToday+1);
   check('Take Away saves the bill and Print both opens a name-and-quantity KOT plus the bill',tx.status_id==='PtCompleted'&&Number(tx.payable_amount)===200&&!kot.table_id&&kot.notes.includes('Take Away')&&printed[0].includes('Disposable POS A P18')&&printed[0].includes('class="q">2</td>')&&!printed[0].includes('No onion')&&!printed[0].includes('KOT #')&&printed[1].includes(tx.transaction_number),{kot,tx});
   check('The cash bill and customer receipt retain the selected customer',tx.customer_party_id==='POS_QA_A_CUST_SAME'&&printed[1].includes(customerName));
   check('The shared drawer records tender received and change separately',Number(tx.change_amount)===50&&
