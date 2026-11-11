@@ -46,10 +46,17 @@ module.exports = async function verifyKot({a,foreign,base,post,rows,count,check}
   const printPage=await a.c.newPage();
   await printPage.goto(base+'/apps/zenith/pos/Kitchen/KotBilling?sessionId='+kotSessionId,{waitUntil:'networkidle'});
   await printPage.locator('#kb-wrap[data-ready=true]').waitFor();
+  check('Legacy KOT Billing loads print and receipt helpers before becoming ready',
+    await printPage.evaluate(()=>typeof window.KitchenPrint?.browserPrint==='function'&&typeof window.PosReceiptLayout?.render==='function'));
   await printPage.evaluate(()=>{
     window.__printedHtml='';window.__printCalls=0;
-    window.open=()=>({document:{open:()=>{},write:s=>{window.__printedHtml+=s},close:()=>{},images:[]},
-      focus:()=>{},print:()=>{window.__printCalls++},close:()=>{}});
+    window.open=()=>Object.assign(new EventTarget(),{
+      document:{open(){},write(html){window.__printedHtml+=html;},close(){},images:[]},
+      closed:false,
+      focus(){},
+      print(){window.__printCalls++;this.dispatchEvent(new Event('afterprint'));},
+      close(){this.closed=true;}
+    });
   });
   await printPage.locator('#kb-history-open').click();
   const printRow=printPage.locator(`#kb-history-rows [data-kot-id="${ticket.kot_id}"]`);
@@ -58,7 +65,7 @@ module.exports = async function verifyKot({a,foreign,base,post,rows,count,check}
   await printPage.waitForFunction(()=>window.__printedHtml.includes('Disposable POS A P18'));
   check('Print on an existing KOT records one shop-owned reprint and opens the slip',
     Number(rows('kitchen_order_ticket',`kot_id='${ticket.kot_id}'`)[0].print_count)===1&&
-    await printPage.evaluate(()=>window.__printedHtml.includes('<td>Disposable POS A P18</td>')&&!window.__printedHtml.includes('KOT #')));
+    await printPage.evaluate(()=>window.__printCalls===1&&window.__printedHtml.includes('<td>Disposable POS A P18</td>')&&!window.__printedHtml.includes('KOT #')));
   await printPage.close();
 
   const ownTable='POS_QA_KOT_A_TABLE_'+Date.now().toString(36);

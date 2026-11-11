@@ -1004,8 +1004,32 @@
     <div class="zk-history-actions"><button type="button" class="kb-control" id="kb-customer-walkin">Use Walk-in Customer</button><button type="button" class="kb-control" id="kb-customer-close">Close</button></div>
   </dialog></#if>
 
+  <#function kbScriptVersion script>
+    <#return ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/' + script).getLastModified()?c>
+  </#function>
   <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" style="display:none"
-       onload="(function(){function boot(){var s=document.createElement('script');s.src='/zenithstatic/js/kot-billing.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/kot-billing.js').getLastModified()?c}';document.head.appendChild(s);}function billing(){<#if kitchenModuleId == 'kot' && modCanWrite>if(!window.KotOfflineDrafts){var offline=document.createElement('script');offline.src='/zenithstatic/js/kot-offline.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/kot-offline.js').getLastModified()?c}';offline.onload=offline.onerror=boot;document.head.appendChild(offline);return;}</#if>boot();}if(window.PosTillDialogs){billing();return;}var shared=document.createElement('script');shared.src='/zenithstatic/js/pos-till-dialogs.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-till-dialogs.js').getLastModified()?c}';shared.onload=billing;document.head.appendChild(shared);})()"/>
+       onload="(function(){
+         function load(present, name, version) {
+           if (present) return Promise.resolve();
+           return new Promise(function(resolve) {
+             var script = document.createElement('script');
+             script.src = '/zenithstatic/js/' + name + '?v=' + version;
+             script.onload = script.onerror = resolve;
+             document.head.appendChild(script);
+           });
+         }
+         var dependencies = [
+           load(window.PosTillDialogs, 'pos-till-dialogs.js', ${kbScriptVersion('pos-till-dialogs.js')}),
+           load(window.PosReceiptLayout, 'pos-receipt-layout.js', ${kbScriptVersion('pos-receipt-layout.js')}),
+           load(window.KitchenPrint, 'kitchen-print.js', ${kbScriptVersion('kitchen-print.js')})
+         ];
+         <#if kitchenModuleId == 'kot' && modCanWrite>
+         dependencies.push(load(window.KotOfflineDrafts, 'kot-offline.js', ${kbScriptVersion('kot-offline.js')}));
+         </#if>
+         Promise.all(dependencies).then(function() {
+           load(false, 'kot-billing.js', ${kbScriptVersion('kot-billing.js')});
+         });
+       })()"/>
 </div>
 </#if>
         ]]></text></render-mode>

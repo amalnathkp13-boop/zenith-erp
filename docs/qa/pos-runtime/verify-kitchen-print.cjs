@@ -18,7 +18,27 @@ module.exports=async function({a,foreign,base,post,rows,count,check,out}){
   r=await post('Kitchen/KotBilling','cartReceipt',{itemsJson:JSON.stringify(payload)});check('customer quote rejects invalid items '+JSON.stringify(payload),r.status()===403||!(await r.json()).success);
  }
  const page=await a.c.newPage();
- async function stubPrint(fail=false){await page.evaluate(fail=>{window.__printHtml=[];window.__printCalls=0;window.__printFail=fail;window.open=()=>({closed:false,document:{open(){},write(s){window.__printHtml.push(s);},close(){},images:[],fonts:{ready:Promise.resolve()}},focus(){},print(){if(window.__printFail)throw Error('Synthetic printer unavailable');window.__printCalls++;},close(){this.closed=true;}});},fail);}
+ async function stubPrint(fail=false){
+  await page.evaluate(fail=>{
+   window.__printHtml=[];
+   window.__printCalls=0;
+   window.open=()=>{
+    const popup=new EventTarget();
+    return Object.assign(popup,{
+     closed:false,
+     document:{open(){},write(s){window.__printHtml.push(s);},close(){},images:[],fonts:{ready:Promise.resolve()}},
+     focus(){},
+     print(){
+      if(fail)throw Error('Synthetic printer unavailable');
+      this.dispatchEvent(new Event('beforeprint'));
+      window.__printCalls++;
+      setTimeout(()=>{if(!this.closed)this.dispatchEvent(new Event('afterprint'));},0);
+     },
+     close(){this.closed=true;}
+    });
+   };
+  },fail);
+ }
  const priorDrafts=rows('kitchen_order_ticket',"organization_party_id='POS_QA_A' AND status_id='KotDraft'");
  await post('Kitchen/KotBilling','saveDraft',{itemsJson:JSON.stringify([{productId:'POS_QA_A_P18',quantity:2}]),salesModeId:'RETAIL',orderType:'Take Away',taxOn:'N',notes:'Synthetic resumed quote'});
  const draft=rows('kitchen_order_ticket',"organization_party_id='POS_QA_A' AND status_id='KotDraft'").find(k=>!priorDrafts.some(x=>x.kot_id===k.kot_id));
