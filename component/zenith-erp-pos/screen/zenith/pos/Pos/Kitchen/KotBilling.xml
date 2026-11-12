@@ -740,6 +740,7 @@
 <#if name=='bag'><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/>
 <#elseif name=='box'><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.73Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>
 <#elseif name=='search'><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+<#elseif name=='check'><path d="m5 12 4 4L19 6"/>
 <#elseif name=='x'><path d="M18 6 6 18"/><path d="m6 6 12 12"/>
 <#elseif name=='chevron'><path d="m6 9 6 6 6-6"/>
 <#elseif name=='plus'><path d="M5 12h14"/><path d="M12 5v14"/>
@@ -1001,6 +1002,7 @@
     </form>
   </dialog></#if>
   <#if modCanWrite><dialog id="kb-print-choice" class="zk-history-view" aria-labelledby="kb-print-title">
+    <span class="kb-completion-icon kb-print-success" aria-hidden="true"><@ic 'check' 26/></span>
     <h2 id="kb-print-title">Payment complete</h2><p id="kb-print-summary"></p>
     <div id="kb-printer-options" hidden>
       <div class="kb-dialog-fields">
@@ -1010,11 +1012,12 @@
       </div>
     </div>
     <div class="zk-history-actions kb-print-options" role="group" aria-label="Print options">
-      <button type="button" class="kb-control" data-kb-print="bill">Bill Print</button>
-      <button type="button" class="kb-control" data-kb-print="kot">KOT Print</button>
-      <button type="button" class="kb-control" data-kb-print="both">Print both</button>
+      <button type="button" class="kb-control" data-kb-print="bill"><span class="kb-completion-icon" aria-hidden="true"><@ic 'printer' 18/></span>Bill Print</button>
+      <button type="button" class="kb-control" data-kb-print="kot"><span class="kb-completion-icon" aria-hidden="true"><@ic 'printer' 18/></span>KOT Print</button>
+      <button type="button" class="kb-control" data-kb-print="both"><span class="kb-completion-icon" aria-hidden="true"><@ic 'printer' 18/></span><span id="kb-print-both-label">Print both</span></button>
     </div>
-    <p id="kb-print-error" role="alert"></p><button type="button" class="kb-control" id="kb-print-close">Done</button>
+    <p id="kb-print-error" role="alert"></p>
+    <button type="button" class="kb-control" id="kb-print-close"><span class="kb-completion-icon" aria-hidden="true"><@ic 'save' 18/></span><span id="kb-print-close-label">Done</span></button>
   </dialog></#if>
   <#if modCanWrite><dialog id="kb-customer-dialog" class="zk-history-view" aria-labelledby="kb-customer-title">
     <header class="kb-customer-heading">

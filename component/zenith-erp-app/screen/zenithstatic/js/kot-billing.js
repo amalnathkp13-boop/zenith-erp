@@ -1068,6 +1068,10 @@
       if(printWindow&&!printWindow.closed)printWindow.close();
       busy=false;controls();
       updatePrintOptions();
+      if(chooser.open&&chooser.classList.contains('kb-payment-complete')&&
+        (document.activeElement===chooser||!chooser.contains(document.activeElement))){
+        chooser.querySelector('[data-kb-print="'+kind+'"]:enabled')?.focus();
+      }
     }
   }
   const heldOrderData=()=>({...orderData(),billingView:grid?'grid':'list'});
@@ -1242,9 +1246,10 @@
     $('order-status').textContent=bill.local?notice+change:'';
     $('print-summary').textContent=notice+change+' Choose a print option.';
     historyPrintRow=null;
-    $('print-title').textContent='Payment complete';
+    $('print-title').textContent='Payment Complete';
     $('print-error').textContent='';
     updatePrintOptions();
+    setPrintChoiceLayout(true);
     $('print-choice').showModal();
     $('print-choice').querySelector('[data-kb-print="bill"]').focus();
     if(bill.local)syncDeviceOrders();
@@ -1412,6 +1417,7 @@
   }
   function openReprint(row){
     if(!row||!$('print-choice'))return;
+    setPrintChoiceLayout(false);
     historyPrintRow=row;
     $('print-title').textContent='Reprint';
     $('print-summary').textContent='Choose what to print for '+row.querySelector('[data-kb-history-detail]').textContent.trim()+'.';
@@ -1419,6 +1425,15 @@
     updatePrintOptions();
     $('print-choice').showModal();
     $('print-choice').querySelector('[data-kb-print]:enabled')?.focus();
+  }
+
+  function setPrintChoiceLayout(complete){
+    const dialog=$('print-choice'), close=$('print-close');
+    dialog.classList.toggle('kb-payment-complete',complete);
+    $('print-both-label').textContent=complete?'Print Both':'Print both';
+    $('print-close-label').textContent=complete?'Save':'Done';
+    if(complete)dialog.querySelector('.kb-print-options').append(close);
+    else $('print-error').after(close);
   }
 
   function billLine(item, canEdit){
@@ -1629,6 +1644,7 @@
         completedKotId='';localReceipt=queued;historyPrintRow=null;
         resetOrder();refreshOpenHistory();
         status.textContent='Kitchen ticket saved on this device and queued to sync.';
+        setPrintChoiceLayout(false);
         $('print-title').textContent='Kitchen ticket saved';
         $('print-summary').textContent='Print the ticket while the order is pending sync.';
         $('print-error').textContent='';
@@ -1978,14 +1994,36 @@
     }
   });
   $('print-choice')?.addEventListener('keydown',e=>{
+    const dialog=e.currentTarget;
+    if(!dialog.open)return;
+    const complete=dialog.classList.contains('kb-payment-complete');
+    if(complete&&e.key==='Tab'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.defaultPrevented){
+      const controls=Array.from(dialog.querySelectorAll('button:enabled,select:enabled'))
+        .filter(control=>control.getClientRects().length);
+      const boundary=e.shiftKey?controls[0]:controls.at(-1);
+      if(e.target===boundary||!controls.includes(e.target)){
+        e.preventDefault();
+        (e.shiftKey?controls.at(-1):controls[0])?.focus();
+      }
+      return;
+    }
     if(ignoreDialogKey(e))return;
-    if(e.key==='Enter'&&e.repeat){e.preventDefault();return;}
+    if(e.key==='Enter'){
+      if(e.repeat)e.preventDefault();
+      if(complete)e.stopPropagation();
+      return;
+    }
     if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;
-    const buttons=Array.from(e.currentTarget.querySelectorAll('button:enabled'));
+    const buttons=Array.from(dialog.querySelectorAll(complete?'.kb-print-options button:enabled':'button:enabled'));
     const index=buttons.indexOf(e.target);
     if(index<0)return;
     e.preventDefault();
+    if(complete)e.stopPropagation();
     buttons[(index+(e.key==='ArrowRight'?1:-1)+buttons.length)%buttons.length].focus();
+  });
+  $('print-choice')?.addEventListener('close',e=>{
+    if(!e.currentTarget.open&&e.currentTarget.classList.contains('kb-payment-complete')&&
+      root.isConnected&&!root.querySelector('dialog[open]'))search.focus({preventScroll:true});
   });
   $('printer-list')?.addEventListener('change',event=>{
     const printer=event.target.value;
