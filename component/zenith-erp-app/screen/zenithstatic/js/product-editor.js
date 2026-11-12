@@ -19,13 +19,16 @@
   return refresh;
  }
  async function submitProduct(form,status,prepare){
-  if(form.getAttribute('aria-busy')==='true')return;
-  form.setAttribute('aria-busy','true');
+  const busyTarget=form.closest('#productEditor')||form;
+  if(busyTarget.getAttribute('aria-busy')==='true')return;
+  const operation=form.dataset.peSave;
+  const removing=operation==='delete';
+  busyTarget.setAttribute('aria-busy','true');
   status.dataset.error='false';
-  status.textContent='Saving product…';
+  status.textContent=removing?'Removing product…':'Saving product…';
   try {
    const body=new URLSearchParams(new FormData(form));
-   prepare(body);
+   if(prepare)prepare(body);
    const response=await fetch(form.action,{method:'POST',body,credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json','X-Requested-With':'XMLHttpRequest'}});
    let target=new URL(response.url,location.href),errors=[];
    const json=(response.headers.get('Content-Type')||'').includes('application/json');
@@ -35,19 +38,22 @@
      .map(error=>typeof error==='string'?error:error.message||'').filter(Boolean);
     if(typeof result.screenUrl==='string')target=new URL(result.screenUrl,location.href);
    }
-   const saved=response.ok&&!errors.length&&target.origin===location.origin&&target.pathname.endsWith('/EditProduct')&&
-    (form.dataset.peSave==='create'?target.searchParams.has('productId'):target.searchParams.get('productSaved')==='Y');
-   if(saved){location.assign(target.href);return;}
+   const confirmed=removing?target.pathname.endsWith('/FindProduct'):
+    target.pathname.endsWith('/EditProduct')&&
+    (operation==='create'?target.searchParams.has('productId'):target.searchParams.get('productSaved')==='Y');
+   if(response.ok&&!errors.length&&target.origin===location.origin&&confirmed){location.assign(target.href);return;}
    if(!json){
     const html=new DOMParser().parseFromString(await response.text(),'text/html');
     errors=[...html.querySelectorAll('.alert-danger,.q-notification.bg-negative,.text-negative[role="alert"]')]
      .map(element=>element.textContent.trim()).filter(Boolean);
    }
-   throw Error(errors[0]||(response.status===401?'Your sign-in session expired. Sign in again before saving.':'The product could not be saved. Check the values and try again.'));
+   const failure=removing?'The product could not be removed. Check the product list before retrying.':
+    'The product could not be saved. Check the values and try again.';
+   throw Error(errors[0]||(response.status===401?'Your sign-in session expired. Sign in again before trying again.':failure));
   }catch(error){
    status.dataset.error='true';
-   status.textContent=error instanceof TypeError?'Connection lost while saving. Check the product list before retrying.':error.message;
-   form.removeAttribute('aria-busy');
+   status.textContent=error instanceof TypeError?'Connection lost. Check the product list before retrying.':error.message;
+   busyTarget.removeAttribute('aria-busy');
   }
  }
  window.initProductCreation=function(){
@@ -86,9 +92,9 @@
   });
   root.querySelectorAll('[data-pe-leave]').forEach(a=>a.addEventListener('click',e=>{if(dirty&&!window.confirm('Discard unsaved product changes?'))e.preventDefault();else dirty=false;}));
   root.querySelector('[data-pe-delete]')?.addEventListener('click',()=>{
+    if(root.getAttribute('aria-busy')==='true')return;
     if(window.confirm('Remove this product from active inventory and billing? Current stock must be zero. Past bills and stock history are kept.')){
-      dirty=false;
-      root.querySelector('#productDeleteForm').requestSubmit();
+      submitProduct(root.querySelector('#productDeleteForm'),status);
     }
   });
   root.querySelectorAll('.pe-tabs a').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();root.querySelectorAll('.pe-tabs a').forEach(b=>b.removeAttribute('aria-current'));a.setAttribute('aria-current','true');root.querySelector(a.getAttribute('href')).scrollIntoView({block:'start'});}));

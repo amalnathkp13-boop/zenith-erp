@@ -25,8 +25,10 @@ module.exports = async function ({a, foreign, base, check, q, invoke, post}) {
    a.p.getByRole('button',{name:'Delete Product',exact:true}).click()
   ]);
   check('Delete Product explains that past bills and stock history are kept',
-   prompt?.includes('Past bills and stock history are kept') && response.status() === 302, {status:response.status()});
-  return new URL(response.headers().location || '/', base).pathname;
+   prompt?.includes('Past bills and stock history are kept'));
+  check(shell+' Delete Product returns a structured result',
+   response.headers()['content-type']?.includes('application/json'), {status:response.status()});
+  return response;
  };
  const product = id => q(`SELECT * FROM product WHERE product_id='${id}'`)[0];
  const details = id => q(`SELECT * FROM asset_detail WHERE product_id='${id}'`).map(row => JSON.stringify(row)).sort();
@@ -39,11 +41,18 @@ module.exports = async function ({a, foreign, base, check, q, invoke, post}) {
  await remove(unused, 'apps', foreign);
  await remove(unused, 'apps', a, false);
  check('foreign tenant and missing CSRF cannot remove a product', product(unused).sales_discontinuation_date == null);
- const blockedLocation = await deleteFromScreen(id, 'apps');
- check('a stocked product stays active and does not change the POS catalogue revision',
-  blockedLocation.endsWith('/EditProduct') && onHand(id) === 1 &&
-  product(id).sales_discontinuation_date == null && revision() === beforeBlocked, {location:blockedLocation});
- await a.p.getByText('Current stock must be zero in every shop and lot before removing this product.', {exact:true}).first().waitFor();
+ const stockWarning = 'Current stock must be zero in every shop and lot before removing this product.';
+ for (const shell of ['apps','qapps']) {
+  const response = await deleteFromScreen(id, shell);
+  const result = await response.json();
+  const location = new URL(a.p.url()).pathname;
+  const warning = a.p.locator('#productEditor [data-pe-status][data-error="true"]');
+  await warning.waitFor();
+  check(shell+' a stocked product stays active and does not change the POS catalogue revision',
+   !response.ok() && result.errors.includes(stockWarning) && await warning.textContent() === stockWarning &&
+   location.endsWith('/EditProduct') &&
+   onHand(id) === 1 && product(id).sales_discontinuation_date == null && revision() === beforeBlocked, {location});
+ }
 
  await post('PosTerminals','createTerminal',{terminalId, terminalName:'Disposable product removal terminal',
   facilityId:'POS_QA_A_FAC', organizationPartyId:'POS_QA_A', stateCode:'33', isActive:'Y'});
@@ -76,10 +85,11 @@ module.exports = async function ({a, foreign, base, check, q, invoke, post}) {
  check('active product is selectable by code on both tills',
   (await lookup(code)).some(p => p.productId === id) && (await menu(code)).products.some(p => p.id === id));
  for (const [productId, shell] of [[id,'apps'],[unused,'qapps']]) {
-  const location = await deleteFromScreen(productId, shell);
+  const response = await deleteFromScreen(productId, shell);
   await a.p.locator('#productCatalog').waitFor();
+  const location = new URL(a.p.url()).pathname;
   check(shell+' Delete Product removes the item from the active catalogue',
-   location.endsWith('/FindProduct') && product(productId).sales_discontinuation_date != null, {location});
+   response.ok() && location.endsWith('/FindProduct') && product(productId).sales_discontinuation_date != null, {location});
  }
  for (const shell of ['apps','qapps']) {
   await a.p.goto(inventoryUrl(shell) + '/FindProduct?catalogSearch=' + encodeURIComponent(productName));
