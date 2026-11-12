@@ -111,12 +111,12 @@ module.exports=async function({manager,cashier,foreign,session,id,free,credit,ca
   await page.waitForFunction(()=>window.PosFreeItems && window._posAjax && document.querySelector('#pos-terminal-root'),null,{timeout:60000});
   await page.locator('.nb-modes summary').click();
   await page.locator('[data-pos-layout=advanced]').click();
-  await page.locator('form:has(input[name="productId"][value="POS_QA_A_FREE"]) button').click();
+  await page.locator('form:has(input[name="productId"][value="POS_QA_A_UNPRICED"]) button').click();
   await page.waitForFunction(()=>/Bill Items\s*\(\s*3\s*\)/.test(document.body.innerText));
-  check(shell+' zero-price tile enters the draft cart',q(`SELECT * FROM pos_transaction_item WHERE transaction_id='${ui}'`).length===3);
+  check(shell+' unpriced tile enters the draft cart',q(`SELECT * FROM pos_transaction_item WHERE transaction_id='${ui}'`).length===3);
   const blocked=await page.evaluate(async({tx,token})=>{try{await window.PosFreeItems.ensure(tx,token);return '';}catch(e){return e.message;}},{tx:ui,token:manager.token});
-  check(shell+' zero-price line blocks checkout before manager approval',blocked.includes('price above ₹0')&&await page.locator('#pos-free-approval').count()===0);
-  const zeroSeq=q(`SELECT item_seq_id FROM pos_transaction_item WHERE transaction_id='${ui}' AND product_id='POS_QA_A_FREE'`)[0].item_seq_id;
+  check(shell+' unpriced line blocks checkout before manager approval',blocked.includes('price above ₹0')&&await page.locator('#pos-free-approval').count()===0);
+  const zeroSeq=q(`SELECT item_seq_id FROM pos_transaction_item WHERE transaction_id='${ui}' AND product_id='POS_QA_A_UNPRICED'`)[0].item_seq_id;
   await manager.invoke('remove',{transactionId:ui,itemSeqId:zeroSeq});await page.reload({waitUntil:'domcontentloaded'});
   const run=()=>page.evaluate(async({tx,token})=>{try{await window.PosFreeItems.ensure(tx,token);return 'approved';}catch(e){return 'cancelled';}},{tx:ui,token:manager.token});
   const cancelled=run();await page.locator('#pos-free-approval').waitFor();await page.locator('#pos-free-approval [data-cancel]').click();
