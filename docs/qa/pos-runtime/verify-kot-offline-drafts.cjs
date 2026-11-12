@@ -352,6 +352,11 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
       qzPrint.browser === existingBrowserJobs);
     await syncedRow.locator('[data-kb-history-detail]').click();
     await page.locator('#kb-history-detail-reprint').click();
+    await page.locator('[data-kb-print=bill]').focus();
+    for (const [selector, label] of [['[data-kb-print=kot]', 'KOT Print'], ['[data-kb-print=both]', 'Print both'], ['#kb-print-close', 'Done']]) {
+      await page.keyboard.press('ArrowRight');
+      check('The print chooser moves focus to '+label, await page.locator(selector).evaluate(el => el === document.activeElement));
+    }
     await page.locator('#kb-printer-setup').click();
     await page.locator('#kb-printer-list').selectOption('Second disposable printer');
     check('KOT can change the saved QZ printer without opening a print dialog',
