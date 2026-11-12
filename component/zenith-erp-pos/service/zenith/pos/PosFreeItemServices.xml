@@ -36,12 +36,14 @@
         <in-parameters><parameter name="transactionId" required="true"/></in-parameters>
         <out-parameters><parameter name="required" type="Boolean"/><parameter name="freeItemCount" type="Integer"/>
             <parameter name="fingerprint"/><parameter name="approvalFingerprint"/><parameter name="freeItems" type="List"/>
-            <parameter name="snapshotJson"/><parameter name="approvalId"/><parameter name="approvalEnabled" type="Boolean"/></out-parameters>
+            <parameter name="snapshotJson"/><parameter name="approvalId"/><parameter name="approvalEnabled" type="Boolean"/>
+            <parameter name="missingPrice" type="Boolean"/></out-parameters>
         <actions>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[transactionId:transactionId]" out-map="access"/>
             <if condition="!access.allowed"><return/></if>
             <script><![CDATA[
                 def lines = ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId',transactionId).orderBy('itemSeqId').list()
+                missingPrice = lines.any { it.priceRequiresEntry == 'Y' && (it.unitPrice ?: 0) <= 0 }
                 def free = lines.findAll { ((it.unitPrice ?: 0) as BigDecimal) <= 0 || ((it.lineTotal ?: 0) as BigDecimal) <= 0 }
                 freeItemCount = free.size()
                 def decimal = { value -> ((value ?: 0) as BigDecimal).stripTrailingZeros().toPlainString() }
@@ -81,6 +83,7 @@
             <set field="txn" from="ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',transactionId).forUpdate(true).one()"/>
             <if condition="!(txn.statusId in ['PtCreated','PtCompleted'])"><return error="true" message="Only an open or issued bill can be approved."/></if>
             <service-call name="zenith.pos.PosFreeItemServices.get#FreeItemApprovalState" in-map="[transactionId:transactionId]" out-map="state"/>
+            <if condition="state.missingPrice"><return error="true" message="Enter a price above ₹0 for each unpriced product before payment."/></if>
             <if condition="expectedFingerprint != state.approvalFingerprint"><return error="true" message="The free items changed. Cancel and reopen approval to review the current bill."/></if>
             <service-call name="zenith.pos.PosFreeItemServices.get#ManagerApprovalAccess" out-map="manager"/>
             <if condition="!manager.canApprove">
@@ -100,6 +103,8 @@
         <actions>
             <service-call name="zenith.pos.PosFreeItemServices.get#FreeItemApprovalState" in-map="[transactionId:transactionId]" out-map="state"/>
             <set field="_freeTxn" from="ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',transactionId).one()"/>
+            <if condition="_freeTxn?.statusId == 'PtCreated' &amp;&amp; state.missingPrice">
+                <return error="true" message="Enter a price above ₹0 for each unpriced product before payment."/></if>
             <!-- Hard ₹0-block applies only when the org has NOT opted into free-item approval; an opted-in
                  org's free/₹0 items go through the manager-approval path below (coexist with the #138 feature). -->
             <if condition="_freeTxn?.statusId == 'PtCreated' &amp;&amp; !state.approvalEnabled &amp;&amp; state.freeItems?.any { (it.price as BigDecimal) &lt;= 0 }">

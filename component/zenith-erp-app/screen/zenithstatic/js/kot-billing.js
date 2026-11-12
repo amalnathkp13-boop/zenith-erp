@@ -148,7 +148,9 @@
   function controls() {
     const online=!disconnected();
     const available=online||!!catalogue;
-    const canPay=!busy&&!sessionLost&&!unconfirmedOrder&&available&&cart.size>0&&total!==null&&editError.hidden;
+    const hasQuote=!busy&&!sessionLost&&!unconfirmedOrder&&available&&cart.size>0&&total!==null&&editError.hidden;
+    const pendingPrice=Array.from(cart.values()).some(item=>item.pricePending);
+    const canPay=hasQuote&&!pendingPrice;
     $('display-message').textContent=cfg.displayEnabled==='true'?'Kitchen Display enabled.':'Kitchen Display disabled. Use printed KOTs.';
     for(const button of paymentButtons) {
       button.disabled=busy||sessionLost||unconfirmedOrder||!available||!cart.size;
@@ -160,12 +162,13 @@
       closeSession.disabled=busy||sessionLost||!online||pendingSales;
       closeSession.title=pendingSales?'Wait for pending KOT orders to sync before closing the session.':'';
     }
-    for(const id of ['draft','bill']) if($(id)) $(id).disabled=!canPay;
+    if($('draft')) $('draft').disabled=!hasQuote;
+    if($('bill')) $('bill').disabled=!canPay;
     if($('send')) {
       const displayDisabled=cfg.displayEnabled==='false';
       root.classList.toggle('kb-display-disabled',displayDisabled);
       $('send').style.display=displayDisabled?'none':'';
-      $('send').disabled=busy||sessionLost||unconfirmedOrder||!available||!cart.size||displayDisabled||!editError.hidden||
+      $('send').disabled=busy||sessionLost||unconfirmedOrder||!available||!cart.size||displayDisabled||!editError.hidden||pendingPrice||
         (needsLocalOrder()&&!canPay);
       $('send').title=displayDisabled?'Kitchen Display is disabled for this shop. Use KOT printing.':'Press Shift by itself';
     }
@@ -448,8 +451,10 @@
   function applyQuote(receipt) {
     for(const line of receipt.items){
       const item=cart.get(line.productId);
-      if(item){item.price=Number(line.rate);item.amount=Number(line.total);item.tax=Number(line.tax??0);item.code=line.code;item.name=line.name;}
+      if(item){item.price=Number(line.rate);item.amount=Number(line.total);item.tax=Number(line.tax??0);item.code=line.code;item.name=line.name;item.pricePending=line.pricePending===true;}
     }
+    const pending=receipt.items.find(line=>line.pricePending);
+    $('quote-error').textContent=pending?'Enter a price above ₹0 for '+pending.name+' before payment.':'';
     rows();total=Number(receipt.summary.total);controls();
     $('subtotal').textContent=money.format(receipt.summary.subtotal);
     $('grand').textContent=money.format(total);
@@ -582,8 +587,8 @@
     if(!showResults){suggestions.replaceChildren();return;}
     suggestions.innerHTML=(message?'<p class="kb-search-message" role="status">'+esc(message)+'</p>':'')+
       results.map((p,i)=>{
-        const price=p.price==null?(p.reason||'No price for this mode'):(grid?cardMoney:money).format(p.price);
-        return '<button type="button" class="kb-suggestion'+(i===selected&&(!grid||term||pickedMatch)?' is-active':'')+'" data-result="'+i+'"'+(search.disabled?' disabled':'')+'><span><strong>'+esc(p.name)+'</strong><small>'+esc(p.code)+(p.stock==null?'':' · Stock: '+esc(p.stock))+'</small></span><span'+(p.price==null?' class="kg-unpriced" title="'+esc(price)+'"':'')+'>'+esc(price)+'</span></button>';
+        const price=p.pricePending?'₹0 · Enter price':p.price==null?(p.reason||'No price for this mode'):(grid?cardMoney:money).format(p.price);
+        return '<button type="button" class="kb-suggestion'+(i===selected&&(!grid||term||pickedMatch)?' is-active':'')+'" data-result="'+i+'"'+(search.disabled?' disabled':'')+'><span><strong>'+esc(p.name)+'</strong><small>'+esc(p.code)+(p.stock==null?'':' · Stock: '+esc(p.stock))+'</small></span><span'+(p.price==null||p.pricePending?' class="kg-unpriced" title="'+esc(price)+'"':'')+'>'+esc(price)+'</span></button>';
       }).join('')
       +(hasMore?'<button type="button" class="kb-control" id="kb-more">More matches</button>':'');
   }
@@ -745,7 +750,7 @@
     if(cart.has(item.id)){const row=cart.get(item.id);row.qty++;row.amount=null;}
     else cart.set(item.id,{...item,qty:1});
     clearSearch();quote();
-    if(byKeyboard)focusEditor(editorFor(item.id,'rate'));
+    if(byKeyboard||item.pricePending)focusEditor(editorFor(item.id,'rate'));
     else search.focus({preventScroll:grid});
   }
   search.addEventListener('input',e=>{
@@ -1067,6 +1072,7 @@
       else throw Error('Choose a payment method.');
     }
     const data=source||orderData(), quote=savedOrder?.ticket.receipt??offlineQuote, ts=new Date().toISOString();
+    if(quote.items.some(item=>item.pricePending))throw Error('Enter a price above ₹0 for each unpriced product before continuing.');
     if(quote.items.length>100)throw Error('Offline orders can contain up to 100 product lines.');
     const {session,terminal,org,user}=cfg;
     const sale={version:2,operation,offlineId:source?crypto.randomUUID():localOrderId,sessionId:session,terminalId:terminal,

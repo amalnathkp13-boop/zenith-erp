@@ -119,6 +119,7 @@
                     if (pricing?.unitPrice != null && (pricing.unitPrice as BigDecimal).signum() > 0) price = pricing.unitPrice
                 }
                 if (price == null || (resolved.isFixed && resolved.blocked)) {
+                    if (line.priceRequiresEntry == 'Y') continue
                     ec.message.addError((product.productName ?: product.productId)+': Price not configured for this sales mode.')
                     return
                 }
@@ -127,13 +128,13 @@
                 if (line.manualDiscount == 'N') {
                     discount = ((resolved.discountPercent ?: 0) as BigDecimal).max(BigDecimal.ZERO).min(100.0G)
                 }
-                if (line.unitPrice == null || (price as BigDecimal).compareTo(line.unitPrice as BigDecimal) != 0 ||
+                if (line.priceRequiresEntry == 'Y' || line.unitPrice == null || (price as BigDecimal).compareTo(line.unitPrice as BigDecimal) != 0 ||
                     discount.compareTo(savedDiscount) != 0) updates.add([line,price,product.mrpAmount,discount])
             }
             if (!updates) return
             for (def update in updates) {
                 def line = update[0]
-                line.setAll([unitPrice:update[1],mrp:update[2] != null ? update[2] : update[1],discountPercent:update[3],
+                line.setAll([unitPrice:update[1],mrp:update[2] != null ? update[2] : update[1],discountPercent:update[3],priceRequiresEntry:'N',
                     discountAmount:(line.quantity as BigDecimal)*(update[1] as BigDecimal)*(update[3] as BigDecimal)/100]).update()
             }
             ec.service.sync().name('zenith.pos.PosServices.refresh#PosTransactionTax')

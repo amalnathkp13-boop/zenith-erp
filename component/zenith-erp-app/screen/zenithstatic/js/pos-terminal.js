@@ -44,6 +44,7 @@ window.PosFreeItems = (function () {
     function ensure(transactionId, token) {
         return api('freeItemState',{transactionId:transactionId},token).then(function(state){
             if(!state.success)throw new Error(state.error || 'Approval could not be checked.');
+            if(state.missingPrice)throw new Error('Enter a price above ₹0 for each unpriced product before payment.');
             if(!state.approvalEnabled && (state.freeItems||[]).some(function(item){return !(Number(item.price)>0);}))throw new Error('Set a price above ₹0 for every product before payment.');
             if(!state.required)return;
             return promptApproval(state.canApprove,state.freeItems,function(values){
@@ -1009,11 +1010,7 @@ window._posOffline = (function () {
             return;
         }
         var price = (p.prices || {})[draft.mode];
-        if (price && price.blocked) {
-            toast('No price is configured for this mode.', '#c62828');
-            return;
-        }
-        var rate = Number(price ? price.price : p.price),
+        var rate = Number(price ? price.price : p.price) || 0,
             existing = cart.find(function (i) {
                 return i.productId === pid && i.mode === draft.mode && i.price === rate;
             });
@@ -1795,7 +1792,15 @@ window._posOffline = (function () {
         render: render,
         remember: remember,
         cacheCatalog: cacheCatalog,
-        search: search,
+        searchSuggestions: function (term) {
+            var mode = draft && draft.mode;
+            return search(term).map(function (product) {
+                var rate = (product.prices || {})[mode];
+                var price = rate ? rate.price : product.price;
+                return { productId: product.productId, productName: product.name, mrpAmount: price || 0,
+                    pricePending: price == null, pseudoId: product.barcode };
+            });
+        },
         lookup: lookup,
         catalogSize: catalogSize,
         getQueue: getQueue,
@@ -4524,7 +4529,9 @@ window.posToggleFullscreen = function() {
                         modeCell = '<span style="display:inline-block;font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px;background:'+_cbg+';color:'+_cfg+'">'+cartText(_mn)+'</span>';
                     }
                 }
-                h += '<td style="padding:3px 10px"><div style="font-size:14px;font-weight:600;color:#000;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+cartText(it.name)+'</div><div style="font-size:11px;color:#555">'+cartText(it.pid)+'</div>'+(((document.getElementById('pos-free-item-approval')||{}).value==='Y' && (Number(it.price)<=0 || Number(it.total)<=0))?'<small style="display:block;color:#92400e;font-weight:600">Free item · manager approval</small>':'')+'</td>';
+                var priceNote = it.pricePending ? 'Enter a price above ₹0' :
+                    (document.getElementById('pos-free-item-approval')||{}).value==='Y' && (Number(it.price)<=0 || Number(it.total)<=0) ? 'Free item · manager approval' : '';
+                h += '<td style="padding:3px 10px"><div style="font-size:14px;font-weight:600;color:#000;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+cartText(it.name)+'</div><div style="font-size:11px;color:#555">'+cartText(it.pid)+'</div>'+(priceNote?'<small style="display:block;color:#92400e;font-weight:600">'+priceNote+'</small>':'')+'</td>';
                 h += '<td style="padding:3px 8px;text-align:left;vertical-align:middle">'+modeCell+'</td>';
                 h += '<td style="padding:4px 4px;text-align:right;vertical-align:middle"><div style="display:flex;align-items:center;gap:3px;justify-content:flex-end">';
                 var priceCapability = document.getElementById('pos-price-override-allowed');
@@ -4956,12 +4963,11 @@ window.posToggleFullscreen = function() {
                             addQty:1, catId:params.catId || '', taxOn:TO, salesModeId:SM, moquiSessionToken:TK}).forEach(function(pair) {
                             var input=doc.createElement('input');input.type='hidden';input.name=pair[0];input.value=pair[1];form.appendChild(input);
                         });
-                        var button=doc.createElement('button');button.type='submit';button.disabled=p.blocked;
+                        var button=doc.createElement('button');button.type='submit';
                         button.style.cssText='background:#fff;border:1px solid #ddd;border-radius:10px;padding:14px 8px;cursor:pointer;text-align:center;font-family:inherit;color:#333;min-height:clamp(64px,9vh,90px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px';
-                        if(p.blocked)button.style.cssText+=';opacity:0.5;cursor:not-allowed;background:#f5f5f5;border-style:dashed;border-color:#e57373';
                         var title=doc.createElement('div');title.textContent=p.name;title.title=p.name;
                         title.style.cssText='font-size:13px;font-weight:600;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;flex-shrink:0';
-                        var price=doc.createElement('div');price.textContent=p.priceText;price.style.cssText='font-size:17px;font-weight:bold;color:'+(p.blocked?'#c62828':'#e53935');
+                        var price=doc.createElement('div');price.textContent=p.priceText;price.style.cssText='font-size:17px;font-weight:bold;color:#e53935';
                         var stock=doc.createElement('div');stock.className='pos-card-stock';stock.dataset.productId=p.productId;stock.textContent=p.stockText;stock.title="On-hand stock in this counter's warehouse";
                         button.append(title,price,stock);form.appendChild(button);grid.appendChild(form);
                     });
@@ -5855,9 +5861,8 @@ window.posToggleFullscreen = function() {
                 dd.innerHTML = '<div style="padding:10px;color:#999;font-size:13px;text-align:center">No products found</div>';
             } else {
                 dd.innerHTML = data.map(function (p) {
-                    var blocked = p.priceBlocked === true;
-                    return '<div class="' + (blocked ? 'cart-dd-blocked' : 'cart-dd-item') + '" data-pid="' + esc(p.productId) + '" data-price="' + Number(p.mrpAmount || 0) + '" data-name="' + esc(p.productName) + '" style="padding:8px 12px;cursor:' + (blocked ? 'not-allowed' : 'pointer') + ';border-bottom:1px solid #eee;font-size:14px;background:#fff">'
-                        + '<span class="dd-price" style="float:right;color:#e53935;font-weight:bold;font-size:14px">' + (blocked ? 'Price not configured' : esc(p.mrpAmount)) + '</span>'
+                    return '<div class="cart-dd-item" data-pid="' + esc(p.productId) + '" data-price="' + Number(p.mrpAmount || 0) + '" data-name="' + esc(p.productName) + '" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #eee;font-size:14px;background:#fff">'
+                        + '<span class="dd-price" style="float:right;color:#e53935;font-weight:bold;font-size:14px">' + (p.pricePending ? '₹0 · Enter price' : esc(p.mrpAmount)) + '</span>'
                         + '<span class="dd-name" style="font-weight:600;color:#000">' + esc(p.productName) + '</span>'
                         + '<div class="dd-code" style="font-size:12px;color:#555;margin-top:2px">' + esc(p.pseudoId) + '</div></div>';
                 }).join('');
@@ -5870,9 +5875,7 @@ window.posToggleFullscreen = function() {
             if (!text.trim()) { keyTimes = []; resetGridSearch(); return; }
             var offline = window._posOffline;
             if (offline && offline.active()) {
-                renderResults(offline.search(text).map(function (p) {
-                    return {productId:p.productId,productName:p.name,mrpAmount:p.price,pseudoId:p.barcode};
-                }), text, version);
+                renderResults(offline.searchSuggestions(text), text, version);
                 return;
             }
             var grid = document.querySelector('.pos-product-grid');

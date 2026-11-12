@@ -98,6 +98,9 @@
                         reject('Choose an available or occupied table at the terminal shop.'); return
                     }
                     def quote=new groovy.json.JsonSlurper().parseText(kot.orderReceiptJson)
+                    if(quote.items.any { it.pricePending == true }) {
+                        reject('Enter a price above ₹0 for each unpriced product before payment.'); return
+                    }
                     if(confirmedTotal) {
                         def amount=confirmedTotal.toString()
                         if(!amount.isBigDecimal() || new BigDecimal(amount).compareTo(quote.summary.total as BigDecimal)!=0) {

@@ -296,7 +296,7 @@
                 // replacing a resumed draft => delete the old one first
                 def draftReceipt=ec.service.sync().name('zenith.pos.KitchenPrintServices.get#CartReceipt')
                     .parameters([sessionId:ec.context.sessionId,itemsJson:ec.context.itemsJson,tableId:tableIdVal,orderType:ec.context.orderType,
-                                 taxOn:ec.context.taxOn ?: 'Y',salesModeId:ec.context.salesModeId,waiterId:ec.context.waiterId,customerPartyId:ec.context.customerPartyId,notes:ec.context.notes,lockDiscountMode:true]).call()?.receipt
+                                 taxOn:ec.context.taxOn ?: 'Y',salesModeId:ec.context.salesModeId,waiterId:ec.context.waiterId,customerPartyId:ec.context.customerPartyId,notes:ec.context.notes,lockDiscountMode:true,allowUnpricedDraft:true]).call()?.receipt
                 if(ec.message.hasError()) return reply()
                 if (draft) {
                     ec.entity.find('zenith.erp.pos.KotItem').condition('kotId', exId).deleteAll()
@@ -404,7 +404,7 @@
 
     <transition name="cartReceipt" method="post">
         <actions><script><![CDATA[
-            def result=ec.service.sync().name('zenith.pos.KitchenPrintServices.get#CartReceipt').parameters([sessionId:ec.context.sessionId,itemsJson:ec.context.itemsJson,tableId:ec.context.tableId,orderType:ec.context.orderType,taxOn:ec.context.taxOn ?: 'Y',salesModeId:ec.context.salesModeId,waiterId:ec.context.waiterId,customerPartyId:ec.context.customerPartyId,notes:ec.context.notes]).call()
+            def result=ec.service.sync().name('zenith.pos.KitchenPrintServices.get#CartReceipt').parameters([sessionId:ec.context.sessionId,itemsJson:ec.context.itemsJson,tableId:ec.context.tableId,orderType:ec.context.orderType,taxOn:ec.context.taxOn ?: 'Y',salesModeId:ec.context.salesModeId,waiterId:ec.context.waiterId,customerPartyId:ec.context.customerPartyId,notes:ec.context.notes,allowUnpricedDraft:true]).call()
             ec.web.sendJsonResponse([success:!ec.message.hasError(),receipt:result?.receipt,error:ec.message.errorsString])
         ]]></script></actions><default-response type="none"/>
     </transition>
@@ -514,10 +514,9 @@
                 result=[success:!ec.message.hasError(),exactId:exact?.productId,ambiguous:scan?.ambiguous,hasMore:hasMore,
                     products:page.collect { p ->
                         def price=validMode ? (overrides.containsKey(p.productId) ? overrides[p.productId] : p.mrpAmount) : null
-                        def reason=!validMode ? 'This sales mode is not available for this product.' :
-                            (price==null ? 'Price not configured for this sales mode.' : null)
+                        def reason=!validMode ? 'This sales mode is not available for this product.' : null
                         [id:p.productId,name:p.productName ?: p.productId,code:p.pseudoId ?: p.productId,
-                         price:price,reason:reason,stock:stock[p.productId]?.quantity]
+                         price:validMode ? (price ?: 0) : null,pricePending:validMode && price==null,reason:reason,stock:stock[p.productId]?.quantity]
                     }]
             }
             ec.web.sendJsonResponse(result)
