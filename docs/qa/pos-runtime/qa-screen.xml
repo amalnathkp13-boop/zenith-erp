@@ -176,7 +176,9 @@
     def terminal = session ? ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',session.terminalId)
         .condition('organizationPartyId',org).one() : null
     if (!terminal?.terminalId?.startsWith('KOT_CLERK_') || !terminal.facilityId) { ec.web.response.setStatus(400); return }
-    def stamp = ec.l10n.parseTimestamp('2040-02-01 23:59:59.999','yyyy-MM-dd HH:mm:ss.SSS')
+    def stamp = ec.l10n.parseTimestamp('2040-02-01 23:59:59','yyyy-MM-dd HH:mm:ss')
+    // Cover database timestamps with greater than millisecond precision.
+    stamp.setNanos(999500000)
     [[key:'UNSYNCED', amount:110.25G], [key:'SYNCED', amount:15.75G, status:'InvoiceFinalized'],
         [key:'DRAFT', amount:4.00G, status:'InvoiceInProcess'], [key:'CANCELLED', amount:7.00G, status:'InvoiceCancelled'],
         [key:'POS', amount:3.00G]].each { fixture ->

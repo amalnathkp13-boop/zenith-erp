@@ -6,9 +6,8 @@
  * PROACTIVELY enforces it: the /qapps Quasar SPA keeps showing cached UI (and a
  * "Remember Me" login-key can silently re-authenticate), so an idle user never
  * sees a login prompt. This script watches for real user activity and, after
- * IDLE_MS with none, warns and then performs a FULL logout (/Login/logout, which
- * invalidates the session AND clears the Remember Me cookie) so re-auth is
- * required — matching the server timeout.
+ * IDLE_MS with none, warns and ends the active session. The idle tab lands on
+ * the sign-in form while a later visit can still use an opted-in remembered login.
  *
  * Loaded app-wide via footer_scripts in ZenithApp.xml, so it runs on BOTH /apps
  * (Bootstrap) and /qapps (Quasar SPA). All UI is built in JS with inline styles
@@ -152,8 +151,7 @@
     if (loggingOut) return;
     loggingOut = true;
     if (countdownEl) countdownEl.parentNode.innerHTML = 'Signing you out due to inactivity…';
-    // Full logout: invalidates the session and clears the Remember Me cookie, then lands on Login.
-    location.href = '/Login/logout';
+    location.href = '/Login/idleLogout';
   }
 
   function checkIdle() {

@@ -48,6 +48,11 @@ With Playwright available to Node, run from the repository root:
 node docs/qa/users-shop-scope/verify-runtime.cjs
 ```
 
+Run `node docs/qa/users-shop-scope/verify-role-navigation.cjs` on a fresh disposable
+runtime to verify role-based sign-in, sidebar links, section tabs, and plan limits in
+both shells. The role navigation test changes the disposable tenant's plan, so run
+it separately from the general users and shops suite.
+
 The verifier initializes the fixture once, creates synthetic organization roles and an
 account with a generated temporary password, exercises both Bootstrap and Quasar,
 checks stored records and authorization failures, verifies shop totals, and writes

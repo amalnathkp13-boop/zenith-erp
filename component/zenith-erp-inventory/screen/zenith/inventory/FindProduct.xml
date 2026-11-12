@@ -57,6 +57,18 @@
                 <return error="true" message="Opening Stock is only available for physical products."/>
             </if>
             <script>ec.entity.find('mantle.party.Party').condition('partyId',_createOrg).disableAuthz().forUpdate(true).one()</script>
+            <script><![CDATA[
+                if (pseudoId && (
+                        ec.entity.find('mantle.product.Product').condition('ownerPartyId',_createOrg)
+                            .condition('pseudoId',pseudoId).disableAuthz().count() ||
+                        ec.entity.find('mantle.product.Product').condition('ownerPartyId',_createOrg)
+                            .condition('productId',pseudoId).disableAuthz().count() ||
+                        ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('organizationPartyId',_createOrg)
+                            .condition('barcodeValue',pseudoId).disableAuthz().count())) {
+                    ec.message.addError("The code '${pseudoId}' is already used in this organization. Each item needs a unique scan code.")
+                }
+            ]]></script>
+            <if condition="ec.message.hasError()"><return/></if>
             <service-call name="create#mantle.product.Product" out-map="createOut"
                           in-map="[productName:productName, printName:printName &amp;&amp; printName!=productName ? printName : null,
                                    productTypeEnumId:productTypeEnumId, description:description, hsnCode:(productTypeEnumId=='PtService'?null:hsnSacCode),
