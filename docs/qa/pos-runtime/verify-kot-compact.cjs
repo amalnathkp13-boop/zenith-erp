@@ -249,12 +249,52 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   check('Payment waits for the selected print option',await page.evaluate(()=>window.kotPrints.length===0));
   check('The print choice shows the confirmed cash change',await page.locator('#kb-print-summary').getByText('Change given: ₹50.00.',{exact:false}).isVisible());
   check('Payment complete opens focused on Print Bill',await focused(page.locator('[data-kb-print="bill"]')));
+  const completion=page.locator('#kb-print-choice');
+  const completionButtons=completion.locator('.kb-print-options button');
+  for(const width of [1366,320]){
+   await page.setViewportSize({width,height:768});
+   const layout=await completionButtons.evaluateAll(buttons=>buttons.map(button=>{
+    const box=button.getBoundingClientRect();
+    return {label:button.textContent.trim(),top:box.top,left:box.left,right:box.right};
+   }));
+   check('Payment Complete keeps four ordered actions in one row at '+width+'px',
+    layout.map(button=>button.label).join('|')==='Bill Print|KOT Print|Print Both|Save'&&
+    layout.every((button,index)=>button.top===layout[0].top&&button.left>=0&&button.right<=width&&
+     (index===0||button.left>=layout[index-1].right)),layout);
+  }
+  await page.setViewportSize({width:1366,height:768});
+  const saveButton=completion.getByRole('button',{name:'Save',exact:true});
+  await page.keyboard.press('ArrowLeft');
+  check('Left wraps from Bill Print to Save',await focused(saveButton));
+  await page.keyboard.press('Tab');
+  const firstControl=completion.locator(':is(button,select):visible:enabled').first();
+  check('Tab from Save wraps to the first control in Payment Complete',await focused(firstControl));
+  await page.keyboard.press('Shift+Tab');
+  check('Shift+Tab from the first control stays in Payment Complete',await focused(saveButton));
+  await page.keyboard.press('ArrowRight');
+  check('Right wraps from Save to Bill Print',await focused(completionButtons.first()));
+  await page.keyboard.press('F10');
+  check('Billing shortcuts stay in the completion modal',await completion.isVisible()&&!await page.locator('#kb-history').isVisible());
+  const focusStyle=await completionButtons.first().evaluate(button=>{
+   const style=getComputedStyle(button);
+   return {outline:style.outlineWidth,offset:style.outlineOffset,color:style.outlineColor,duration:style.transitionDuration};
+  });
+  check('The selected action has a visible blue outline and brief focus animation',
+   focusStyle.outline==='2px'&&focusStyle.offset==='2px'&&focusStyle.color==='rgb(37, 99, 235)'&&focusStyle.duration==='0.15s',focusStyle);
+  await page.emulateMedia({reducedMotion:'reduce'});
+  const reducedDuration=await completionButtons.first().evaluate(button=>getComputedStyle(button).transitionDuration);
+  check('Receipt-action focus stops animating for reduced motion',reducedDuration==='0s',reducedDuration);
+  await page.emulateMedia({reducedMotion:'no-preference'});
+  await page.screenshot({path:path.join(out,'kot-payment-complete.png')});
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('ArrowRight');
   check('Print Right moves to Print both',await focused(page.locator('[data-kb-print="both"]')));
-  await page.keyboard.press('Enter');
+  await page.keyboard.down('Enter');
+  await page.keyboard.down('Enter');
+  await page.keyboard.up('Enter');
   await page.waitForFunction(()=>window.kotPrints.length===2);
   await page.locator('#kb-print-choice').waitFor({state:'hidden'});
+  await page.waitForFunction(()=>document.activeElement?.id==='kb-search');
   const kot=q("SELECT kot_id,transaction_id,waiter_name,table_id,notes FROM kitchen_order_ticket WHERE waiter_name='"+waiterName+"' AND transaction_id IS NOT NULL ORDER BY kot_id DESC")[0];
   const tx=q("SELECT transaction_number,payable_amount,change_amount,status_id,customer_party_id FROM pos_transaction WHERE transaction_id='"+kot.transaction_id+"'")[0];
   const printed=await page.evaluate(()=>window.kotPrints);
@@ -387,7 +427,12 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await page.locator('#kb-payment').waitFor({state:'hidden'});
    await page.locator('#kb-print-choice').waitFor();
    check('Completed payment is confirmed in the print dialog', (await page.locator('#kb-print-summary').innerText()).includes('is saved.'));
-   await page.locator('#kb-print-close').click();
+   await page.keyboard.press('ArrowLeft');
+   check('Card completion can focus Save with one Left press',await focused(saveButton));
+   await page.keyboard.press('Enter');
+   await completion.waitFor({state:'hidden'});
+   await page.waitForFunction(()=>document.activeElement?.id==='kb-search');
+   check('Save returns to billing without printing',await page.evaluate(()=>window.kotPrints.length===6));
    check('Completed payment leaves no message under Add Note',await page.locator('#kb-order-status').isHidden());
    const lines=q("SELECT i.unit_price,i.quantity,i.manual_price,t.payable_amount,p.payment_method FROM pos_transaction_item i JOIN pos_transaction t ON t.transaction_id=i.transaction_id JOIN pos_payment p ON p.transaction_id=t.transaction_id WHERE t.session_id='"+session.sessionId+"' AND t.status_id='PtCompleted' AND i.manual_price='Y'");
    check('Card checkout persists the keypad rate and quantity',lines.length===1&&lines[0].payment_method==='Card'&&Number(lines[0].unit_price)===150&&Number(lines[0].quantity)===3&&Number(lines[0].payable_amount)===450,lines);
