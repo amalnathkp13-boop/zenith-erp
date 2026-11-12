@@ -283,6 +283,10 @@ along with this software (see the LICENSE.md file). If not, see
         <default-response url="/"/>
         <error-response url="."/>
     </transition>
+    <transition name="idleLogout">
+        <actions><script>ec.user.logoutUser()</script></actions>
+        <default-response url="." parameter-map="[idle:'Y']"/>
+    </transition>
     <transition name="removePreAuth">
         <actions><script>
             ec.web.sessionAttributes.remove('zenithRememberMe')
@@ -403,9 +407,9 @@ along with this software (see the LICENSE.md file). If not, see
         // if user already logged in redirect to root
         if (ec.user.userId) { sri.sendRedirectAndStopRender('/qapps/zenith/Dashboard'); return }
 
-        // auto-login from Remember Me cookie
+        // Keep the idle tab on the sign-in screen. A subsequent visit can use the saved key.
         def cookies = ec.web.request.cookies
-        if (cookies) {
+        if (cookies && ec.web.parameters.idle != 'Y') {
             def loginKeyCookie = cookies.find { it.name == 'moquiLoginKey' && it.value }
             if (loginKeyCookie) {
                 boolean loggedIn = ec.user.loginUserKey(loginKeyCookie.value)

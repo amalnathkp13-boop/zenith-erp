@@ -92,6 +92,8 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  if(process.env.POS_QA_FOCUS==='history-window'){await browser.close();browser=null;return;}
  if(process.env.POS_QA_UI_ONLY!=='true')await require('./verify-catalog-performance.cjs')({a,foreign,base,check,q,invoke,post,out});
  if(process.env.POS_QA_UI_ONLY!=='true'){
+ await require('./verify-login-session.cjs')({browser,base,check});
+ await require('./verify-kot-terminal-assignment.cjs')({a,base,check,q});
  await require('./verify-pricing-save.cjs')({a,foreign,base,check,q,out});
  const terminalDraft={terminalId:'POS_QA_A_NEW_TERM',terminalName:'Disposable POS new terminal',facilityId:'POS_QA_A_FAC',organizationPartyId:'POS_QA_A',stateCode:'33',isActive:'Y'};
  await post('PosTerminals','createTerminal',{...terminalDraft,facilityId:'POS_QA_B_FAC'});

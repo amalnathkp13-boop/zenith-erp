@@ -118,8 +118,11 @@ const server = http.createServer((request, response) => {
           scenario === 'manual' ? ['kitchen', 'customer', 'customer retained'] :
             ['kitchen', 'kitchen retained', 'customer', 'customer retained']);
         await page.waitForFunction(() => !window.isBusy());
+        const status = await page.locator('#kb-order-status').textContent();
         if (scenario === 'ack-error') {
-          assert.match(await page.locator('#kb-order-status').textContent(), /kitchen print count could not be updated/i);
+          assert.match(status, /kitchen print count could not be updated/i);
+        } else {
+          assert.equal(status, '', 'Printing must keep the cart clear of confirmation messages');
         }
       } finally {
         await page.close();

@@ -18,6 +18,7 @@
     <!-- Mounted module screens define the submodule catalogue, including installed extensions.
          A selected submodule includes its nested workflow screens and transitions. -->
     <service verb="get" noun="RoleCatalogue" authenticate="true" transaction="ignore">
+        <in-parameters><parameter name="moduleIds" type="List"/></in-parameters>
         <out-parameters><parameter name="modules" type="List"/></out-parameters>
         <actions>
             <service-call name="zenith.base.RoleAccessServices.get#RoleOrganization" out-map="scope"/>
@@ -37,18 +38,19 @@
                 root.subscreensItemsSorted.each { mod ->
                     def id = mod.name.toLowerCase()
                     def group = 'Z_' + id.toUpperCase()
+                    // The Settings module has its own administrator-only boundary.
+                    if (id == 'settings' || (moduleIds != null && !moduleIds.contains(id))) return
                     if (!groups.containsKey(group) || (plan != null && !plan.contains('all') && !plan.contains(id) && !(id == 'kot' && plan.contains('pos')))) return
                     def screens = []
                     // Read the module's mounted children only. Loading every detail screen compiles
                     // hundreds of unrelated actions and makes first-time role creation unresponsive.
                     ec.screen.getScreenDefinition(mod.location).subscreensItemsSorted.each { child ->
-                        if (id == 'pos' && !posTabs.contains(child.name)) return
-                        if (id == 'kot' && child.name in ['EditSession','PosSessionsPdf','EditTransaction','ReceiptPdf']) return
+                        if (id == 'pos' ? !posTabs.contains(child.name) : !child.menuInclude) return
                         screens.add([id:'/' + mod.name + '/' + child.name,
                             name:child.menuTitle ?: child.name, location:child.location])
                     }
                     if (!screens) screens.add([id:'/' + mod.name, name:mod.menuTitle ?: mod.name, location:mod.location])
-                    modules.add([id:id, name:mod.menuTitle ?: mod.name, description:groups[group], artifactGroupId:group, screens:screens])
+                    modules.add([id:id, mount:'/' + mod.name, name:mod.menuTitle ?: mod.name, description:groups[group], artifactGroupId:group, screens:screens])
                 }
                 modules.sort { it.name }
             ]]></script>
@@ -268,7 +270,7 @@
             if (uri ==~ /\/(apps|qapps)\/zenith\.qvt/) return
             def match = uri =~ /^\/(?:qapps|apps|fop(?:\/apps)?)\/zenith(\/[^?]*)?$/
             if (!match.matches()) { allowed = false; return }
-            def route = (match[0][1] ?: '').replaceFirst(/\.(qvt|vuet|html|pdf)$/, '')
+            def route = (match[0][1] ?: '').replaceFirst(/\.(qvt|vuet|html|pdf)$/, '').replaceFirst(/\/$/, '')
             def mod = route.tokenize('/').find()?.toLowerCase()
             def personal = ['MyPassword','MySecurity','MyNotifications','MyWorkspace','saasConfig','getSaasContext','getSidebarConfiguration',
                 'saveSidebarConfiguration','getSubnavConfiguration','saveSubnavConfiguration','setActiveShop']
@@ -276,8 +278,14 @@
             if (uri.endsWith('.qvt') && route.tokenize('/').size() == 1 &&
                     (policy.selections.containsKey(mod) || policy.legacyModules.contains(mod))) return
             allowed = policy.legacyModules.contains(mod) || (policy.selections[mod] ?: []).any { route == it || route.startsWith(it + '/') }
-            def first = (policy.selections[mod] ?: policy.selections.values().flatten()).find()
-            if (first) landingPath = (uri.startsWith('/qapps/') ? '/qapps/zenith' : '/apps/zenith') + first
+            // Bare module links and the login landing page need an actual assigned page.
+            if (!allowed && route.tokenize('/').size() <= 1) {
+                def nav = ec.service.sync().name('zenith.base.SecurityServices.get#ModuleNavigation').disableAuthz().call()
+                def target = nav.roleSections?.find { it.mount == route }
+                if (!route || route == '/Dashboard') target = nav.roleSections?.find()
+                def first = target?.screens?.find()?.id
+                if (first) landingPath = (uri.startsWith('/qapps/') && first != '/pos/Terminal' ? '/qapps/zenith' : '/apps/zenith') + first
+            }
         ]]></script></actions>
     </service>
 

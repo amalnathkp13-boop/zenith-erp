@@ -295,12 +295,14 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
       document.querySelector('#kb-header-today-bills').textContent.trim() === String(count) &&
       document.querySelector('#kb-header-last-bill').textContent.trim() === number,
       {number:officialNumber,count:initialToday+1});
-    check('Acknowledgement updates the same billing page with the official number and clears the queued notice',
+    const printSummary = await page.locator('#kb-print-summary').textContent();
+    check('Acknowledgement updates the bill number and clears the queued message without reloading',
       await page.evaluate(() => window.kotReconnectDocument) &&
       (await page.locator('#kb-list-last-bill').textContent()).trim() === officialNumber &&
-      (await orderStatus.textContent()).includes('Saved bill '+officialNumber+'.') &&
-      (await orderStatus.textContent()).includes('Print request opened.') &&
-      !(await orderStatus.textContent()).includes('queued to sync'));
+      await orderStatus.isHidden() &&
+      printSummary.includes('Bill '+officialNumber+' is saved.') &&
+      printSummary.includes('Change given: ₹23.00.') &&
+      !printSummary.includes('queued to sync'));
     if (out) await page.screenshot({path:join(out,'kot-offline-reconnected-billing.png')});
     check('Same-tab reconnect replays the sale without a duplicate KOT ticket, transaction or tender',
       JSON.stringify(matchingOrders()) === JSON.stringify(firstSave) &&

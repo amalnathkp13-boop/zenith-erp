@@ -37,11 +37,11 @@
             def sdf = new java.text.SimpleDateFormat('yyyy-MM-dd'); sdf.setTimeZone(ec.user.timeZone)
             def todayStr = sdf.format(now)
             dashDate = ec.context.dashDate ?: todayStr
-            def dayStart = ec.l10n.parseTimestamp(dashDate + ' 00:00:00', 'yyyy-MM-dd HH:mm:ss')
-            def dayEnd = ec.l10n.parseTimestamp(dashDate + ' 23:59:59.999', 'yyyy-MM-dd HH:mm:ss.SSS')
-            def DAYMS = 86400000L
-            def yStart = new java.sql.Timestamp(dayStart.getTime() - DAYMS)
-            def yEnd = new java.sql.Timestamp(dayStart.getTime() - 1000L)
+            def midnight = { date -> ec.l10n.parseTimestamp(date.toString() + ' 00:00:00', 'yyyy-MM-dd HH:mm:ss') }
+            def dayStart = midnight(dashDate)
+            def selectedDay = java.time.LocalDate.parse(sdf.format(dayStart))
+            def nextDayStart = midnight(selectedDay.plusDays(1))
+            def yStart = midnight(selectedDay.minusDays(1))
 
             // Limit standalone KOT reporting to sales linked to a ticket in the same organization.
             def kotOnly = kitchenModuleId == 'kot'
@@ -57,9 +57,9 @@
             def salesEntity = !kotOnly ? 'zenith.erp.pos.PosTransaction' :
                 (terminals != null ? 'zenith.erp.pos.KotTransactionDetailView' : 'zenith.erp.pos.KotTransactionView')
             def amt = { t -> (t.payableAmount ?: t.grandTotal ?: 0) as BigDecimal }
-            def findOrders = { s, e, completedOnly ->
+            def findOrders = { startInclusive, endExclusive, completedOnly ->
                 def f = ec.entity.find(salesEntity)
-                    .condition('entryDate', 'greater-equals', s).condition('entryDate', 'less-equals', e)
+                    .condition('entryDate', 'greater-equals', startInclusive).condition('entryDate', 'less', endExclusive)
                     .condition('organizationPartyId', org ?: '__NO_ORGANIZATION__')
                     .selectFields(['transactionId', 'entryDate', 'statusId', 'customerPartyId', 'payableAmount', 'grandTotal'])
                 if (completedOnly) f.condition('statusId', 'PtCompleted')
@@ -72,7 +72,7 @@
                 return f.orderBy('entryDate').list()
             }
 
-            def todayOrders = findOrders(dayStart, dayEnd, false)
+            def todayOrders = findOrders(dayStart, nextDayStart, false)
             completedTxns = todayOrders.findAll { it.statusId == 'PtCompleted' }
             def totalSalesAmt = completedTxns.sum { amt(it) } ?: BigDecimal.ZERO
             completedOrders = completedTxns.size()
@@ -91,7 +91,7 @@
             ordersInProgress = akf.count() as int
 
             // yesterday
-            def yOrders = findOrders(yStart, yEnd, false)
+            def yOrders = findOrders(yStart, dayStart, false)
             def yTxns = yOrders.findAll { it.statusId == 'PtCompleted' }
             def ySales = yTxns.sum { amt(it) } ?: BigDecimal.ZERO
             def yCompleted = yTxns.size()
@@ -145,8 +145,8 @@
             def todayPoints = (0..23).collect { hourLabel(it) }
             def todayAxis = ['12 AM', '4 AM', '8 AM', '12 PM', '4 PM', '8 PM', '12 AM']
 
-            def monthStart = new java.sql.Timestamp(dayStart.getTime() - 29L * DAYMS)
-            def monthTxns = findOrders(monthStart, dayEnd, true)
+            def monthStart = midnight(selectedDay.minusDays(29))
+            def monthTxns = findOrders(monthStart, nextDayStart, true)
             def dayBucket = [:]
             monthTxns.each { t -> if (t.entryDate) { def ds = sdf.format(t.entryDate); dayBucket[ds] = (dayBucket[ds] ?: BigDecimal.ZERO) + amt(t) } }
             def dlabel = new java.text.SimpleDateFormat('d MMM'); dlabel.setTimeZone(ec.user.timeZone)
