@@ -38,11 +38,15 @@ module.exports = async ({a,foreign,base,check,q,invoke,post}) => {
   const line=()=>q(`SELECT unit_price,manual_price FROM pos_transaction_item WHERE transaction_id='${transactionId}' ORDER BY item_seq_id`);
   try {
     const unpriced=await body('lookupProducts',{sessionId,salesModeId:'WHOLESALE',term:barcode.barcode_value});
-    check('Barcode lookup identifies the unpriced product without inventing a zero rate',
-      unpriced.some(p=>p.productId===id&&p.priceBlocked&&p.mrpAmount==null),unpriced);
+    check('Barcode lookup identifies an unpriced product with an editable ₹0 placeholder',
+      unpriced.some(p=>p.productId===id&&p.pricePending&&Number(p.mrpAmount)===0),unpriced);
     const add=(salesModeId='WHOLESALE')=>body('ajaxCart',{...args,action:'addItem',productId:id,unitPrice:'1',salesModeId});
-    const blocked=await add();
-    check('Unpriced POS product cannot be added by supplying a client price',!blocked.success&&line().length===0,blocked);
+    const pending=await add();
+    check('An unpriced POS product can be added, and the client cannot supply its own rate on add',
+      pending.success&&pending.items[0]?.pricePending&&Number(line()[0]?.unit_price)===0,pending);
+    await invoke('pay',{transactionId,paymentMethod:'Cash',amount:'1'},true);
+    const removed=await body('ajaxCart',{...args,action:'removeItem',itemSeqId:pending.addedItemSeqId});
+    check('The cashier can remove an unpriced line before continuing',removed.success&&line().length===0,removed);
     check('Explicit price equal to MRP is saved',success(await update('100','{"RETAIL":"100","WHOLESALE":null}'))&&
       prices().length===1&&Number(prices()[0].price)===100,prices());
     check('A foreign account cannot alter the product or price',

@@ -32,7 +32,8 @@
     <!-- Read-only quote: uses canonical product prices and the installed tax dispatcher.
          An unsent order has no legal invoice number, payment or sale to reprint. -->
     <service verb="get" noun="CartReceipt">
-        <in-parameters><parameter name="sessionId"/><parameter name="itemsJson" required="true" allow-html="any"/><parameter name="tableId"/><parameter name="orderType"/><parameter name="taxOn" default-value="Y"/><parameter name="salesModeId"/><parameter name="waiterId"/><parameter name="customerPartyId"/><parameter name="notes" allow-html="any"/><parameter name="lockDiscountMode" type="Boolean" default="false"/></in-parameters>
+        <in-parameters><parameter name="sessionId"/><parameter name="itemsJson" required="true" allow-html="any"/><parameter name="tableId"/><parameter name="orderType"/><parameter name="taxOn" default-value="Y"/><parameter name="salesModeId"/><parameter name="waiterId"/><parameter name="customerPartyId"/><parameter name="notes" allow-html="any"/><parameter name="lockDiscountMode" type="Boolean" default="false"/>
+            <parameter name="allowUnpricedDraft" type="Boolean" default-value="false"/></in-parameters>
         <out-parameters><parameter name="receipt" type="Map"/></out-parameters>
         <actions>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="scope"/>
@@ -71,7 +72,6 @@
                     def price=p.mrpAmount as BigDecimal
                     def mp=mode ? ec.service.sync().name('zenith.pos.PosServices.resolve#PosModePrice')
                         .parameters([productId:p.productId,salesModeId:salesModeId,product:p]).call() : [:]
-                    if(mp.blocked) { ec.message.addError(mp.blockReason); return }
                     if(mp.isFixed) price=mp.unitPrice
                     else if(mode) {
                         def priced=ec.service.sync().name('zenith.pricing.PricingServices.calculate#Price')
@@ -79,13 +79,21 @@
                                 regionGeoId:billing?.terminal?.regionGeoId,salesChannelEnumId:'ScPos']).call()
                         if(priced?.unitPrice>0) price=priced.unitPrice
                     }
+                    def missingCatalogPrice=price==null
                     def manualPrice=item.manualPrice=='Y'
                     if(manualPrice) {
                         try { price=new BigDecimal(String.valueOf(item.unitPrice)) } catch(Exception ignored) { price=null }
                     }
+                    def pricePending=missingCatalogPrice && (!manualPrice || price==0)
+                    if(pricePending) {
+                        if(!allowUnpricedDraft) {
+                            ec.message.addError('Enter a price above ₹0 for '+(p.productName ?: p.productId)+' before continuing.'); return
+                        }
+                        price=BigDecimal.ZERO
+                    }
                     if(price==null || price<0 || price>10000000 || price.scale()>2) { ec.message.addError('Enter a valid item price before printing.'); return }
                     def discount=(price*qty*((mp.discountPercent ?: 0) as BigDecimal)/100).setScale(2,java.math.RoundingMode.HALF_UP)
-                    products.add([product:p,qty:qty,price:price,discount:discount,manualPrice:manualPrice])
+                    products.add([product:p,qty:qty,price:price,discount:discount,manualPrice:manualPrice,pricePending:pricePending])
                     taxInputs.add([productId:p.productId,productTaxCode:p.productTaxCode,taxCategoryId:p.taxCategoryId,quantity:qty,unitAmount:price,discountAmount:discount,isTaxInclusive:mode?.isTaxInclusive ?: 'N'])
                 }
                 def templates=ec.entity.find('zenith.erp.pos.PosReceiptTemplate').condition('organizationPartyId',scope.organizationPartyId)
@@ -117,7 +125,7 @@
                 products.eachWithIndex { row,i ->
                     def ti=tax?.taxedItems?.getAt(i)
                     (ti?.taxBreakdowns ?: []).each { b -> sumTax[b.taxName]=(sumTax[b.taxName] ?: 0)+(b.taxAmount ?: 0) }
-                    lines.add([productId:row.product.productId,name:row.product.productName ?: row.product.productId,code:row.product.pseudoId ?: row.product.productId,qty:row.qty,rate:row.price,manualPrice:row.manualPrice?'Y':'N',
+                    lines.add([productId:row.product.productId,name:row.product.productName ?: row.product.productId,code:row.product.pseudoId ?: row.product.productId,qty:row.qty,rate:row.price,manualPrice:row.manualPrice?'Y':'N',pricePending:row.pricePending,
                         total:(ti?.taxableAmount != null ? ti.taxableAmount : row.price*row.qty-row.discount),tax:(ti?.totalTaxAmount ?: 0),discount:row.discount,
                         uom:['OTH_ea':'Nos','WT_kg':'kg','WT_g':'g','VLIQ_L':'L','VLIQ_ml':'ml'][row.product.amountUomId] ?: ''])
                 }
@@ -171,6 +179,11 @@
                         .parameters([transactionId:tx.transactionId,useTerminalPrintTemplate:moduleId=='kot']).call().receipt
                     else if(kind=='orderBill' && k.orderReceiptJson) {
                         record=new groovy.json.JsonSlurper().parseText(k.orderReceiptJson)
+                        if(record.items?.any { it.pricePending == true }) {
+                            ec.message.addError('Enter a price above ₹0 for each unpriced product before printing a bill.')
+                            record=null
+                            return
+                        }
                         if(moduleId=='kot') {
                             def tpl=ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#KotPrintTemplate')
                                 .parameters([printUse:'kotBill',terminalId:k.terminalId]).call().template
