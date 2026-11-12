@@ -60,15 +60,16 @@
         } catch (_e) {} return null;
     }
 
-    function roleAllows(path) {
-        var cfg = document.getElementById('zenith-saas-cfg'), scope;
-        if (!cfg || !cfg.hasAttribute('data-role-scope')) return false;
-        try { scope = JSON.parse((cfg && cfg.getAttribute('data-role-scope')) || '{}'); } catch (_) { return false; }
-        if (!scope.restricted) return true;
-        var module = (path.split('/')[1] || '').toLowerCase();
-        return (scope.legacyModules || []).indexOf(module) >= 0 || ((scope.selections || {})[module] || []).some(function (route) {
-            return path === route || path.indexOf(route + '/') === 0;
-        });
+    function roleSections() {
+        var cfg = document.getElementById('zenith-saas-cfg');
+        try {
+            var scope = JSON.parse((cfg && cfg.getAttribute('data-role-scope')) || '{}');
+            return scope.restricted ? scope.sections || [] : null;
+        } catch (_) { return []; }
+    }
+
+    function screenHref(path) {
+        return (path === '/pos/Terminal' || path === '/kot/CreditBills' ? '/apps/zenith' : '/qapps/zenith') + path;
     }
 
     // module → sidebar entry. hrefs stay on /qapps (stay in the SPA); the billing Terminal is /apps-only.
@@ -154,7 +155,11 @@
         brand.appendChild(el('span', null, 'ZcERP'));
         side.appendChild(brand);
         var scroll = el('div', 'zqs-scroll');
-        CATS.forEach(function (grp) {
+        var sections = roleSections();
+        var categories = sections ? [{ head: 'YOUR MODULES', items: sections.map(function (section) {
+            return { match: section.mount, label: section.name, icon: 'apps', href: screenHref(section.screens[0].id) };
+        }) }] : CATS;
+        categories.forEach(function (grp) {
             if (grp.head) { var h = el('div', 'zqs-cat', grp.head); scroll.appendChild(h); }
             grp.items.forEach(function (it) {
                 var a = el('a', 'zqs-link'); a.href = it.href;
@@ -294,17 +299,23 @@
         wrap.appendChild(sc);
         // Index the rendered, plan-filtered navigation and its screens, rather than the raw module catalogue.
         function searchIndex() {
-            var idx = [];
+            var idx = [], sections = roleSections();
             document.querySelectorAll('#zq-sidebar .zqs-link').forEach(function (link) {
-                if (link.style.display === 'none') return;
+                if (link.hidden || link.style.display === 'none') return;
                 var match = link.getAttribute('data-match'), label = (link.querySelector('.t') || link).textContent.trim();
                 if (match === '/__more') return;
                 idx.push({ label: label, mod: '', href: link.getAttribute('href') });
+                if (sections) {
+                    var section = sections.find(function (item) { return item.mount === match; });
+                    if (section) section.screens.forEach(function (screen) {
+                        idx.push({ label: screen.name, mod: section.name, href: screenHref(screen.id) });
+                    });
+                    return;
+                }
                 var group = SUBNAV[match];
                 if (group) group.slice(1).forEach(function (screen) {
                     var split = screen.indexOf(':'), route = screen.slice(0, split);
-                    if (!roleAllows(match + '/' + route)) return;
-                    idx.push({ label: screen.slice(split + 1), mod: group[0], href: (match === '/pos' && route === 'Terminal' ? '/apps/' : '/qapps/') + 'zenith' + match + '/' + route });
+                    idx.push({ label: screen.slice(split + 1), mod: group[0], href: screenHref(match + '/' + route) });
                 });
             });
             document.querySelectorAll('#dashAllModules a[href]').forEach(function (link) { idx.push({ label: link.textContent.trim(), mod: '', href: link.getAttribute('href') }); });
@@ -419,14 +430,14 @@
     function updateSubnav() {
         if (!subBar) return;
         var rel = location.pathname.replace(/^\/qapps\/zenith/, '') || '/';
+        var sections = roleSections();
         // Home/Dashboard landing → the "Dashboards" hub (every ERP dashboard)
-        if (rel === '/' || rel === '/Dashboard') {
+        if (!sections && (rel === '/' || rel === '/Dashboard')) {
             subBar.innerHTML = '';
             subBar.setAttribute('data-mod', '__dash');
             subBar.appendChild(el('span', 'zqsub-title', 'Dashboards'));
             var mods = tenantMods();
             DASHBOARDS.forEach(function (d) {
-                if (!roleAllows(d[2])) return;
                 if (d[3] && mods && mods.indexOf(d[3]) < 0) return;   // module not in the tenant's plan → skip
                 var a = el('a', 'zqsub-tab', d[0]); a.href = d[1];
                 a.setAttribute('data-match', d[2]);
@@ -438,10 +449,10 @@
             document.dispatchEvent(new Event('zc:subnav-updated'));
             return;
         }
-        var key = null, klen = -1;
-        for (var k in SUBNAV) { if (rel.indexOf(k) === 0 && k.length > klen) { key = k; klen = k.length; } }
+        var roleSection = sections && sections.find(function (item) { return rel === item.mount || rel.indexOf(item.mount + '/') === 0; });
+        var key = sections ? roleSection && roleSection.mount : '/' + (rel.split('/')[1] || '');
         subBar.innerHTML = '';
-        if (!key) { subBar.classList.remove('show'); document.body.classList.remove('zq-has-subnav'); syncHeaderLayout(); document.dispatchEvent(new Event('zc:subnav-updated')); return; }
+        if (!key || (!roleSection && !SUBNAV[key])) { subBar.classList.remove('show'); document.body.classList.remove('zq-has-subnav'); syncHeaderLayout(); document.dispatchEvent(new Event('zc:subnav-updated')); return; }
         var mount = key.slice(1);
         subBar.setAttribute('data-mod', mount);  // ZE-CONTACTS-DS: lets CSS scope the active-tab pill to Contacts only
         // ZE-NAV-ALIAS: a detail/edit screen (menu-include=false, e.g. EditStockTransfer) shares no URL prefix with its
@@ -455,23 +466,27 @@
         var posCash = null;
         var config = document.getElementById('zenith-saas-cfg');
         if (config && config.getAttribute('data-pos-only') === 'true') posCash = { Dashboard: 1, Terminal: 1, PosTransactions: 1, DailySummary: 1, PosSessions: 1, CreditBills: 1, CashEntry: 1 };
-        subBar.appendChild(el('span', 'zqsub-title', SUBNAV[key][0]));
+        subBar.appendChild(el('span', 'zqsub-title', roleSection ? roleSection.name : SUBNAV[key][0]));
         var active = null, alen = -1;
-        var tabs = SUBNAV[key].slice(1);
-        if (key === '/kot') tabs = tabs.concat(SUBNAV['/pos'].slice(1).filter(function (pair) {
-            return KOT_TOOLS.has(pair.slice(0, pair.indexOf(':')));
-        }));
-        tabs.forEach(function (pair) {
-            var ci = pair.indexOf(':'), seg = pair.slice(0, ci), label = pair.slice(ci + 1);
-            var match = key + '/' + seg;
-            if ((key === '/pos' && posCash && !posCash[seg]) || !roleAllows(match)) return;
+        function addTab(match, label) {
             var a = el('a', 'zqsub-tab', label);
-            var classicOnly = match === '/pos/Terminal' || match === '/kot/CreditBills';
-            a.href = (classicOnly ? '/apps/zenith' : '/qapps/zenith') + match;
+            a.href = screenHref(match);
             a.setAttribute('data-match', match);
-            if (relA.indexOf(match) === 0 && match.length > alen) { active = a; alen = match.length; }
+            if ((relA === match || relA.indexOf(match + '/') === 0) && match.length > alen) { active = a; alen = match.length; }
             subBar.appendChild(a);
-        });
+        }
+        if (roleSection) roleSection.screens.forEach(function (screen) { addTab(screen.id, screen.name); });
+        else {
+            var tabs = SUBNAV[key].slice(1);
+            if (key === '/kot') tabs = tabs.concat(SUBNAV['/pos'].slice(1).filter(function (pair) {
+                return KOT_TOOLS.has(pair.slice(0, pair.indexOf(':')));
+            }));
+            tabs.forEach(function (pair) {
+                var ci = pair.indexOf(':'), seg = pair.slice(0, ci);
+                if (key === '/pos' && posCash && !posCash[seg]) return;
+                addTab(key + '/' + seg, pair.slice(ci + 1));
+            });
+        }
         if (active) active.classList.add('on');
         subBar.classList.add('show'); document.body.classList.add('zq-has-subnav'); syncHeaderLayout();
         if (active) { try { var r = active.getBoundingClientRect(), br = subBar.getBoundingClientRect(); subBar.scrollLeft += (r.left - br.left) - (subBar.clientWidth / 2) + (r.width / 2); } catch (_e) {} }
