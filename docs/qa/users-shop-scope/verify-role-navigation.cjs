@@ -61,6 +61,10 @@ const base = 'http://127.0.0.1:18086';
             const tabs = shell === 'apps' ? '#z-subnav .zsub-tab' : '#zq-subnav .zqsub-tab';
             assert.equal((await page.goto(base + prefix + routes[0], { waitUntil: 'domcontentloaded' })).status(), 200);
             await page.locator(sidebar + '[data-match="/Inventory"]:visible').waitFor();
+            assert.equal(await page.locator(sidebar + '[data-match="/Inventory"] .material-icons').textContent(),
+                'inventory_2', shell + ' custom roles use the original Inventory icon');
+            assert.equal(await page.locator(sidebar + '[data-match="/Hr"] .material-icons').textContent(),
+                'badge', shell + ' custom roles give HR a module-specific icon');
             const targets = await page.locator(sidebar + ':visible').evaluateAll(links => links.map(link => new URL(link.href).pathname).sort());
             assert.deepEqual(targets, routes.map(route => prefix + route));
             await page.locator(sidebar + '[data-match="/Inventory"]').click();
