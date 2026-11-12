@@ -225,6 +225,7 @@
         <field name="totalTaxAmount" type="currency-amount"/>
         <field name="lineTotal" type="currency-amount"/>
         <field name="manualPrice" type="text-indicator"><description>Y = cashier hand-typed this unit price; quantity-break auto-pricing must NOT override it. Default N.</description></field>
+        <field name="priceRequiresEntry" type="text-indicator"><description>Y = the draft item had no configured price. A positive rate is required before checkout.</description></field>
         <relationship type="one" related="zenith.erp.pos.PosTransaction"/>
         <relationship type="one" related="mantle.product.Product"/>
     </entity>
@@ -949,7 +950,7 @@
         <field name="dailyBillNumbering" type="text-indicator" default="'N'"><description>Y = POS bill numbers reset per India business day (POS/yyyyMMdd/NNNNN) and the GST invoice number is minted as its own per-financial-year CONSECUTIVE series (INV/FY/NNNNN). N (default) = legacy per-financial-year consecutive POS number, which is also used verbatim as the GST invoice number.</description></field>
         <field name="idleSessionAutoClose" type="text-indicator" default="'N'"><description>Explicit organization override: Y enables one-hour idle closure with cash unverified, including eligible older sessions; N disables closure. Without a config row, new sessions use their stored policy and legacy sessions remain unchanged.</description></field>
         <field name="enforceStockOnSale" type="text-indicator" default="'N'"><description>Y = POS checkout decrements tracked-product stock atomically and BLOCKS a sale exceeding on-hand (unless the facility allows issue-over-QOH). N (default) = legacy behavior: stock is adjusted via the async invoice-sync path and a sale is never blocked for insufficient stock. No config row = N (opt-in).</description></field>
-        <field name="freeItemApproval" type="text-indicator" default="'N'"><description>Y = free / zero-price / fully-discounted / price-unset POS lines require explicit manager approval with a reason (a signed-in manager, or a cashier using the shop manager PIN) before payment, bill completion, credit settlement, or an issued-bill amendment, and are blocked in offline checkout. N (default) = no approval gate; such lines check out normally. No config row = N (opt-in).</description></field>
+        <field name="freeItemApproval" type="text-indicator" default="'N'"><description>Y = intentional free or fully discounted POS lines require manager approval with a reason. A missing catalogue price requires a positive rate before checkout. No config row = N (opt-in).</description></field>
         <relationship type="one" title="Organization" related="mantle.party.Party"><key-map field-name="organizationPartyId" related="partyId"/></relationship>
     </entity>
 

@@ -150,7 +150,9 @@
   function controls() {
     const online=!disconnected();
     const available=online||!!catalogue;
-    const canPay=!busy&&!sessionLost&&!unconfirmedOrder&&available&&cart.size>0&&total!==null&&editError.hidden;
+    const hasQuote=!busy&&!sessionLost&&!unconfirmedOrder&&available&&cart.size>0&&total!==null&&editError.hidden;
+    const pendingPrice=Array.from(cart.values()).some(item=>item.pricePending);
+    const canPay=hasQuote&&!pendingPrice;
     $('display-message').textContent=cfg.displayEnabled==='true'?'Kitchen Display enabled.':'Kitchen Display disabled. Use printed KOTs.';
     for(const button of paymentButtons) {
       button.disabled=busy||sessionLost||unconfirmedOrder||!available||!cart.size;
@@ -162,12 +164,13 @@
       closeSession.disabled=busy||sessionLost||!online||pendingSales;
       closeSession.title=pendingSales?'Wait for pending KOT orders to sync before closing the session.':'';
     }
-    for(const id of ['draft','bill']) if($(id)) $(id).disabled=!canPay;
+    if($('draft')) $('draft').disabled=!hasQuote;
+    if($('bill')) $('bill').disabled=!canPay;
     if($('send')) {
       const displayDisabled=cfg.displayEnabled==='false';
       root.classList.toggle('kb-display-disabled',displayDisabled);
       $('send').style.display=displayDisabled?'none':'';
-      $('send').disabled=busy||sessionLost||unconfirmedOrder||!available||!cart.size||displayDisabled||!editError.hidden||
+      $('send').disabled=busy||sessionLost||unconfirmedOrder||!available||!cart.size||displayDisabled||!editError.hidden||pendingPrice||
         (needsLocalOrder()&&!canPay);
       $('send').title=displayDisabled?'Kitchen Display is disabled for this shop. Use KOT printing.':'Press Shift by itself';
     }
@@ -400,15 +403,18 @@
     $('customer-results').replaceChildren();dlg.showModal();
     searchCustomers('');$('customer-search').focus();
   }
+  function offlineCustomers(term) {
+    const query=KotOffline.normalize(term);
+    return (workspace?.customers||[]).filter(c=>
+      !query||KotOffline.normalize([c.name,c.phone,c.partyId].join(' ')).includes(query))
+      .slice(0,30).map(c=>({...c,id:c.partyId}));
+  }
   async function searchCustomers(term) {
     const version=++custVersion;
     custAbort?.abort();custAbort=new AbortController();
     $('customer-error').textContent='';
     try{
-      const query=window.KotOffline?.normalize(term);
-      const data=disconnected()?{customers:(workspace?.customers||[]).filter(c=>
-        !query||KotOffline.normalize([c.name,c.phone,c.partyId].join(' ')).includes(query))
-        .slice(0,30).map(c=>({...c,id:c.partyId}))}:await request('searchKotCustomers',{term},custAbort.signal);
+      const data=disconnected()?{customers:offlineCustomers(term)}:await request('searchKotCustomers',{term},custAbort.signal);
       if(version!==custVersion||!root.isConnected)return;
       renderCustomerResults(data.customers||[]);
     }catch(e){if(e.name!=='AbortError'&&version===custVersion)$('customer-error').textContent=e.message;}
@@ -416,7 +422,7 @@
   function renderCustomerResults(list) {
     const box=$('customer-results');if(!box)return;
     if(!list.length){box.innerHTML='<p class="kb-search-message" role="status">No matching customers.</p>';return;}
-    box.innerHTML=list.map(c=>'<button type="button" class="kb-suggestion" data-cust-id="'+esc(c.id)+'" data-cust-name="'+esc(c.name)+'" data-cust-phone="'+esc(c.phone||'')+'"><span><strong>'+esc(c.name)+'</strong><small>'+esc(c.phone||c.id)+'</small></span></button>').join('');
+    box.innerHTML=list.map(c=>'<button type="button" class="kb-suggestion" data-cust-id="'+esc(c.id)+'" data-cust-name="'+esc(c.name)+'" data-cust-phone="'+esc(c.phone||'')+'" data-cust-credit-days="'+esc(c.creditDays??'')+'"><span><strong>'+esc(c.name)+'</strong><small>'+esc(c.phone||c.id)+'</small></span></button>').join('');
   }
   function selectCustomer(el) {
     customer={id:el.dataset.custId,name:el.dataset.custName,phone:el.dataset.custPhone||''};
@@ -425,6 +431,7 @@
       paintTax();
     }
     $('customer-dialog')?.close();renderCustomer();quote();
+    customer.creditDays=el.dataset.custCreditDays||'';
   }
   function walkInCustomer() {
     customer={};$('customer-dialog')?.close();renderCustomer();quote();
@@ -483,8 +490,10 @@
   function applyQuote(receipt) {
     for(const line of receipt.items){
       const item=cart.get(line.productId);
-      if(item){item.price=Number(line.rate);item.amount=Number(line.total);item.tax=Number(line.tax??0);item.code=line.code;item.name=line.name;}
+      if(item){item.price=Number(line.rate);item.amount=Number(line.total);item.tax=Number(line.tax??0);item.code=line.code;item.name=line.name;item.pricePending=line.pricePending===true;}
     }
+    const pending=receipt.items.find(line=>line.pricePending);
+    $('quote-error').textContent=pending?'Enter a price above ₹0 for '+pending.name+' before payment.':'';
     rows();total=Number(receipt.summary.total);controls();
     $('subtotal').textContent=money.format(receipt.summary.subtotal);
     $('grand').textContent=money.format(total);
@@ -617,8 +626,8 @@
     if(!showResults){suggestions.replaceChildren();return;}
     suggestions.innerHTML=(message?'<p class="kb-search-message" role="status">'+esc(message)+'</p>':'')+
       results.map((p,i)=>{
-        const price=p.price==null?(p.reason||'No price for this mode'):(grid?cardMoney:money).format(p.price);
-        return '<button type="button" class="kb-suggestion'+(i===selected&&(!grid||term||pickedMatch)?' is-active':'')+'" data-result="'+i+'"'+(search.disabled?' disabled':'')+'><span><strong>'+esc(p.name)+'</strong><small>'+esc(p.code)+(p.stock==null?'':' · Stock: '+esc(p.stock))+'</small></span><span'+(p.price==null?' class="kg-unpriced" title="'+esc(price)+'"':'')+'>'+esc(price)+'</span></button>';
+        const price=p.pricePending?'₹0 · Enter price':p.price==null?(p.reason||'No price for this mode'):(grid?cardMoney:money).format(p.price);
+        return '<button type="button" class="kb-suggestion'+(i===selected&&(!grid||term||pickedMatch)?' is-active':'')+'" data-result="'+i+'"'+(search.disabled?' disabled':'')+'><span><strong>'+esc(p.name)+'</strong><small>'+esc(p.code)+(p.stock==null?'':' · Stock: '+esc(p.stock))+'</small></span><span'+(p.price==null||p.pricePending?' class="kg-unpriced" title="'+esc(price)+'"':'')+'>'+esc(price)+'</span></button>';
       }).join('')
       +(hasMore?'<button type="button" class="kb-control" id="kb-more">More matches</button>':'');
   }
@@ -780,7 +789,7 @@
     if(cart.has(item.id)){const row=cart.get(item.id);row.qty++;row.amount=null;}
     else cart.set(item.id,{...item,qty:1});
     clearSearch();quote();
-    if(byKeyboard)focusEditor(editorFor(item.id,'rate'));
+    if(byKeyboard||item.pricePending)focusEditor(editorFor(item.id,'rate'));
     else search.focus({preventScroll:grid});
   }
   search.addEventListener('input',e=>{
@@ -835,27 +844,155 @@
     historyTender=order;
     paymentAmount=order?.total??total;
     $('payment-total').textContent='Order total: '+money.format(paymentAmount);
-    if($('payment-method')){$('payment-method').value=method;tenderFields();}
-    if($('payment-error'))$('payment-error').textContent='';
+    $('payment-method').value=method;
     $('payment').showModal();
-    ($('cash')||$('payment-method'))?.focus();
+    tenderFields(method);
   }
-  function tenderFields() {
-    const method=$('payment-method').value, cash=method==='Cash', slot=$('cash-slot'), dialog=$('payment');
-    dialog.classList.toggle('kb-cash-dialog',cash);
-    dialog.setAttribute('aria-labelledby',cash?'pos-cash-title':'kb-payment-title');
-    $('payment-heading').hidden=$('other-payment').hidden=cash;
-    $('other-payment').querySelector('[type=submit]').disabled=cash||!method;
-    for(const label of dialog.querySelectorAll('[data-kb-tender]')){
-      const shown=label.dataset.kbTender.split(' ').includes(method);label.hidden=!shown;
-      label.querySelector('input').disabled=!shown;
+  function tenderFields(method) {
+    const dialog=$('payment'), cashSlot=$('cash-slot'), panel=$('other-payment');
+    $('payment-error').textContent='';
+    $('payment-heading').hidden=$('payment-picker').hidden=Boolean(method);
+    $('payment-continue').disabled=!method;
+    dialog.classList.toggle('kb-cash-dialog',method==='Cash');
+    dialog.dataset.tender=method;
+    dialog.setAttribute('aria-labelledby',{
+      Cash:'pos-cash-title',Card:'pos-digital-title',UPI:'pos-digital-title',
+      Split:'pos-split-title',Credit:'pos-credit-title'
+    }[method]||'kb-payment-title');
+    cashSlot.replaceChildren();
+    panel.replaceChildren();
+    if(method==='Cash'){
+      cashSlot.innerHTML=PosTillDialogs.cashMarkup(paymentAmount,true);
+      const input=cashSlot.querySelector('.pos-cash-input');
+      input.id='kb-cash';cashSlot.querySelector('label').htmlFor=input.id;
+      input.addEventListener('input',()=>PosTillDialogs.updateCash(cashSlot,paymentAmount));
+      input.focus();
+    }else if(method==='Card'||method==='UPI'){
+      panel.innerHTML=PosTillDialogs.digitalMarkup(method,paymentAmount);
+      panel.querySelector('#posPayConfCancel').id='kb-payment-close';
+      const confirm=panel.querySelector('#posPayConfOk');
+      confirm.parentElement.insertAdjacentHTML('beforebegin',
+        '<label>Reference number (optional)<input name="referenceNumber" type="text" maxlength="80"></label>');
+      if(method==='Card')confirm.type='submit';
+      confirm.focus();
+    }else if(method==='Split'){
+      panel.innerHTML=PosTillDialogs.splitMarkup(paymentAmount);
+      panel.querySelector('.pos-split-cancel').id='kb-payment-close';
+      for(const input of panel.querySelectorAll('input[type=number]')){
+        input.step='0.01';
+        input.inputMode='decimal';
+      }
+      for(const input of panel.querySelectorAll('input[type=text]'))input.maxLength=80;
+      panel.querySelector('[name=cashAmount]').focus();
+    }else if(method==='Credit'){
+      panel.innerHTML=PosTillDialogs.creditMarkup();
+      setupCreditTender(panel);
+    }else{
+      $('payment-method').focus();
     }
-    slot.innerHTML=cash?PosTillDialogs.cashMarkup(paymentAmount,true):'';
-    if(cash){
-      const input=slot.querySelector('.pos-cash-input');
-      input.id='kb-cash';slot.querySelector('label').htmlFor=input.id;
-      input.addEventListener('input',()=>PosTillDialogs.updateCash(slot,paymentAmount));
-    }
+  }
+  function showUpiReceiptChoices() {
+    const panel=$('other-payment');
+    const reference=panel.querySelector('[name=referenceNumber]');
+    panel.innerHTML='<div class="kb-upi-save">'+PosTillDialogs.upiReceiptMarkup(paymentAmount)+'</div>';
+    reference.type='hidden';
+    panel.append(reference);
+    $('payment').setAttribute('aria-labelledby','pos-upi-title');
+    const choices=panel.querySelectorAll('button');
+    for(const choice of choices)choice.type='submit';
+    choices[0].focus();
+  }
+  function setupCreditTender(panel) {
+    const field=id=>panel.querySelector('#credit-'+id);
+    const name=field('name'), phone=field('phone'), add=field('add-customer'), upfront=field('upfront');
+    const days=field('days'), results=field('cust-results'), confirm=field('confirm');
+    const attached=historyTender?historyTender.customer:customer;
+    const chosen=Object.assign(document.createElement('input'),{type:'hidden',name:'creditCustomerPartyId'});
+    panel.append(chosen);
+    Object.assign(name,{name:'customerName',required:true,maxLength:80,value:attached?.id?attached.name:''});
+    Object.assign(phone,{name:'customerPhone',required:true,maxLength:20,value:attached?.id?attached.phone||'':''});
+    Object.assign(upfront,{name:'upfrontAmount',required:true,max:String(paymentAmount)});
+    field('upfront-method').name='upfrontMethod';
+    days.name='creditDays';
+    days.value=attached?.creditDays??'';
+    field('terms-reason').name='termsReason';
+    field('cancel').id='kb-payment-close';
+    confirm.type='submit';
+    name.readOnly=add.disabled=Boolean(attached?.id);
+    phone.readOnly=Boolean(attached?.id&&phone.value);
+    let searchTimer, searchAbort;
+    const hideResults=()=>{
+      clearTimeout(searchTimer);
+      searchAbort?.abort();
+      results.replaceChildren();
+      results.style.display='none';
+    };
+    const update=()=>{
+      const value=upfront.valueAsNumber, enteredDays=days.valueAsNumber;
+      const {creditDate,creditZone}=$('payment-form').dataset;
+      const date=new Date(creditDate+'T00:00:00Z');
+      field('due-preview').textContent=upfront.validity.valid
+        ? 'Balance after this payment: '+money.format(paymentAmount-value)
+        : 'Enter an amount from ₹0 to the remaining bill balance.';
+      if(days.validity.valid&&Number.isInteger(enteredDays)&&Number.isFinite(date.valueOf())){
+        date.setUTCDate(date.getUTCDate()+enteredDays);
+        field('date-preview').textContent='Due through '+date.toISOString().slice(0,10)+' ('+creditZone+').';
+      }else field('date-preview').textContent='Choose the customer’s calendar-day term before completing.';
+    };
+    const pick=match=>{
+      chosen.value=match.id;
+      name.value=match.name;
+      phone.value=match.phone||'';
+      days.value=match.creditDays??'';
+      hideResults();
+      update();
+      (phone.value?upfront:phone).focus();
+    };
+    const searchSaved=async term=>{
+      const controller=new AbortController();
+      searchAbort=controller;
+      try{
+        const {customers}=disconnected()?{customers:offlineCustomers(term)}:
+          await request('searchKotCustomers',{term},controller.signal);
+        if(controller.signal.aborted||!name.isConnected||!$('payment').open)return;
+        for(const match of customers){
+          const button=document.createElement('button');
+          button.type='button';
+          button.className='kb-credit-customer';
+          button.textContent=match.name+(match.phone?' · '+match.phone:'');
+          button.addEventListener('click',()=>pick(match));
+          results.append(button);
+        }
+        if(!customers.length)results.textContent='No saved customer found. Use Add customer below.';
+        results.style.display='block';
+      }catch(error){
+        if(!controller.signal.aborted&&name.isConnected&&$('payment').open)$('payment-error').textContent=error.message;
+      }
+    };
+    name.addEventListener('input',()=>{
+      chosen.value='';
+      days.value='';
+      hideResults();
+      update();
+      const term=name.value.trim();
+      if(term)searchTimer=setTimeout(()=>searchSaved(term),180);
+    });
+    phone.addEventListener('input',()=>{
+      if(chosen.value)days.value='';
+      chosen.value='';
+      update();
+    });
+    add.addEventListener('click',()=>{
+      chosen.value='';
+      days.value='';
+      hideResults();
+      update();
+      (name.value.trim()?phone:name).focus();
+    });
+    upfront.addEventListener('input',update);
+    days.addEventListener('input',update);
+    update();
+    (name.readOnly?(phone.readOnly?upfront:phone):name).focus();
   }
   async function openSessionClose() {
     if(!$('close-session')||busy||sessionLost||document.getElementById('posCloseSessionOverlay'))return;
@@ -989,6 +1126,11 @@
         if(!chosen.name||!chosen.phone)throw Error('Choose a saved customer or enter the customer name and phone.');
         if(!/^\d{10,15}$/.test(chosen.phone.replace(/\D/g,'')))
           throw Error('Enter a valid customer phone number (10 to 15 digits).');
+        const upfront=Number(payment.upfrontAmount||0);
+        if(!Number.isFinite(upfront)||upfront<0||upfront>billTotal||
+            (upfront>0&&!['Cash','Card','UPI'].includes(payment.upfrontMethod)))
+          throw Error('Enter a valid upfront payment for this bill.');
+        if(upfront>0)payments=[{method:payment.upfrontMethod,amount:upfront}];
       } else if(paymentMethod==='Split') {
         payments=['Cash','Card','UPI'].map(method=>({method,amount:Number(payment[method.toLowerCase()+'Amount']||0)}));
         if(payments.some(({amount})=>!Number.isFinite(amount)||amount<0)||payments.filter(({amount})=>amount>0).length<2||
@@ -1003,12 +1145,16 @@
       else throw Error('Choose a payment method.');
     }
     const data=source||orderData(), quote=savedOrder?.ticket.receipt??offlineQuote, ts=new Date().toISOString();
+    if(quote.items.some(item=>item.pricePending))throw Error('Enter a price above ₹0 for each unpriced product before continuing.');
     if(quote.items.length>100)throw Error('Offline orders can contain up to 100 product lines.');
     const {session,terminal,org,user}=cfg;
     const sale={version:2,operation,offlineId:source?crypto.randomUUID():localOrderId,sessionId:session,terminalId:terminal,
       organizationPartyId:org,userId:user,ts,facilityId:source?.facilityId??workspace.facilityId,
       orderType:data.orderType,tableId:data.tableId,waiterId:data.waiterId,notes:data.notes,
       taxOn:data.taxOn,total:quote.summary.total,taxAmount:quote.summary.tax,paymentMethod,payments,change,referenceNumber,
+      ...(paymentMethod==='Split'?{cardRef:payment.cardRef,upiRef:payment.upiRef}:{}),
+      ...(paymentMethod==='Credit'?{creditCustomerPartyId:payment.creditCustomerPartyId,
+        creditDays:payment.creditDays||null,termsReason:payment.termsReason}:{}),
       customer:chosen,mode,
       items:source?.items??quote.items.map(line=>({productId:line.productId,qty:line.qty,price:line.rate,mode,
         discount:line.percent,manualPrice:line.manualPrice})),
@@ -1021,7 +1167,8 @@
         customer:chosen.name||'Walk-In Customer',customerPhone:chosen.phone,
         table:tableLabels[data.tableId]||''},
       items:source?quote.items:quote.items.map(item=>({...item,name:item.printName||item.name})),
-      payments,change,isCredit:paymentMethod==='Credit',outstanding:paymentMethod==='Credit'?billTotal:0,
+      payments,change,isCredit:paymentMethod==='Credit',
+      outstanding:paymentMethod==='Credit'?KotOffline.roundMoney(billTotal-(payments[0]?.amount||0)):0,
       notes:data.notes};
     const existing=device.queue().some(({sale:entry})=>entry.offlineId===sale.offlineId||
       (entry.operation==='checkout'&&((sale.sourceOfflineId&&entry.sourceOfflineId===sale.sourceOfflineId)||
@@ -1039,13 +1186,23 @@
     if(!existingOrder&&unconfirmedOrder)return;
     const confirmedTotal=paymentAmount;
     if(busy||sessionLost||!$('payment-method').value||confirmedTotal===null||(!existingOrder&&total!==confirmedTotal))return;
-    const form=e.currentTarget, cash=$('payment-method').value==='Cash';
-    const submit=cash?$('cash-slot').querySelector('[type=submit]'):$('other-payment').querySelector('[type=submit]');
-    const cancel=cash?$('cash-slot').querySelector('.pos-cash-cancel'):$('payment-close');
+    const form=e.currentTarget, method=$('payment-method').value, cash=method==='Cash';
+    const submit=e.submitter||form.querySelector('[type=submit]');
+    if(!submit)return;
     if(cash&&!PosTillDialogs.updateCash($('cash-slot'),confirmedTotal))return;
+    if(method==='Credit'){
+      const phone=form.elements.customerPhone;
+      if(!/^\d{10,15}$/.test(phone.value.replace(/\D/g,''))){
+        $('payment-error').textContent='Enter a valid customer phone number (10 to 15 digits).';
+        phone.focus();
+        return;
+      }
+    }
     const payment=Object.fromEntries(new FormData(form)), data=orderData(), fingerprint=JSON.stringify(data);
+    const saveWithoutPrint=submit.id==='posPaySave';
+    const actions=Array.from(form.querySelectorAll('button:enabled'));
     let bill;
-    busy=true;controls();submit.disabled=true;cancel.disabled=true;$('payment-error').textContent='';
+    busy=true;controls();actions.forEach(button=>button.disabled=true);$('payment-error').textContent='';
     try{
       if(existingOrder?.ticket||(needsLocalOrder()&&!existingOrder)) {
         if(!existingOrder?.ticket&&!offlineQuote)throw Error('Recheck the offline order before taking payment.');
@@ -1068,10 +1225,10 @@
     }catch(error){
       $('payment-error').textContent=error.message;
     }finally{
-      busy=false;controls();cancel.disabled=false;
+      busy=false;controls();actions.forEach(button=>button.disabled=false);
       if(!bill&&$('payment').open&&!sessionLost&&!unconfirmedOrder){
         if(cash)PosTillDialogs.updateCash($('cash-slot'),confirmedTotal);
-        else submit.disabled=false;
+        if(!submit.disabled)submit.focus();
       }
     }
     if(!bill)return;
@@ -1101,6 +1258,11 @@
     historyPrintRow=null;
     $('print-title').textContent='Payment complete';
     $('print-error').textContent='';
+    if(saveWithoutPrint){
+      $('order-status').textContent=notice+change;
+      if(bill.local)syncDeviceOrders();
+      return;
+    }
     updatePrintOptions();
     $('print-choice').showModal();
     $('print-choice').querySelector('[data-kb-print="bill"]').focus();
@@ -1527,7 +1689,8 @@
         return;
       }
       $('history').close();
-      openPayment('',{id:button.dataset.kbBillOrder,total:Number(button.dataset.kbBillTotal)});
+      openPayment('',{id:button.dataset.kbBillOrder,total:Number(button.dataset.kbBillTotal),
+        customer:{id:button.dataset.kbBillCustomer,name:button.dataset.kbBillName,phone:button.dataset.kbBillPhone}});
     }
     else if(button.id==='kb-resume')resumeBilling();
     else if(button.id==='kb-bill')openPayment();
@@ -1544,7 +1707,9 @@
       $('cash').value=button.dataset.amt;
       if(PosTillDialogs.updateCash(slot,paymentAmount)&&e.detail===0)slot.querySelector('.pos-cash-confirm').focus();
     }
-    else if(button.id==='kb-payment-close'||button.classList.contains('pos-cash-cancel'))$('payment').close();
+    else if(button.id==='kb-payment-continue')tenderFields($('payment-method').value);
+    else if(button.id==='posPayConfOk'&&$('payment-method').value==='UPI')showUpiReceiptChoices();
+    else if(button.id==='kb-payment-close'||button.id==='kb-payment-picker-close'||button.classList.contains('pos-cash-cancel'))$('payment').close();
     else if(button.dataset.kbPrint)printChoice(button.dataset.kbPrint);
     else if(button.id==='kb-print-close')$('print-choice').close();
     else if(button.id==='kb-printer-setup')chooseQzPrinter();
@@ -1691,7 +1856,7 @@
     const term=e.target.value.trim();
     custTimer=setTimeout(()=>searchCustomers(term),150);
   });
-  $('payment-method')?.addEventListener('change',tenderFields);
+  $('payment-method')?.addEventListener('change',()=>{$('payment-continue').disabled=!$('payment-method').value;});
   $('payment-form')?.addEventListener('submit',pay);
   $('payment')?.addEventListener('cancel',e=>{if(busy)e.preventDefault();});
   function ignoreDialogKey(e) {
@@ -1716,6 +1881,40 @@
       rows[index+(e.key==='ArrowDown'?1:-1)]?.[0].focus();
     }else if(e.key==='Enter'&&e.target===received&&!slot.querySelector('.pos-cash-confirm:enabled')&&!busy){
       e.preventDefault();quick[0].focus();
+    }
+  });
+  $('payment')?.addEventListener('keydown',e=>{
+    if(ignoreDialogKey(e)||e.target.closest('#kb-cash-slot'))return;
+    const key=e.key, target=e.target;
+    if(key==='Enter'&&e.repeat){e.preventDefault();return;}
+    if(!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter'].includes(key))return;
+    if(target===$('payment-method')&&key==='Enter'&&target.value){
+      e.preventDefault();
+      tenderFields(target.value);
+      return;
+    }
+    const rows=new Map();
+    for(const control of e.currentTarget.querySelectorAll('input:not([type=hidden]):enabled, select:enabled, button:enabled')){
+      if(!control.getClientRects().length)continue;
+      const row=control.closest('[data-pos-tender-row], .zk-history-actions')||control;
+      if(!rows.has(row))rows.set(row,[]);
+      rows.get(row).push(control);
+    }
+    const groups=Array.from(rows.values()), index=groups.findIndex(row=>row.includes(target));
+    if(index<0)return;
+    const row=groups[index], col=row.indexOf(target);
+    if(key==='ArrowLeft'||key==='ArrowRight'){
+      if(row.length<2||target.tagName==='SELECT'||(target.tagName==='INPUT'&&target.type!=='number'))return;
+      e.preventDefault();
+      row[(col+(key==='ArrowRight'?1:-1)+row.length)%row.length].focus();
+    }else if(key==='Enter'){
+      if(target.tagName==='BUTTON')return;
+      e.preventDefault();
+      (row[col+1]||groups[index+1]?.[0])?.focus();
+    }else if(target.tagName!=='SELECT'){
+      e.preventDefault();
+      const next=groups[index+(key==='ArrowDown'?1:-1)];
+      next?.[Math.min(col,next.length-1)].focus();
     }
   });
   $('print-choice')?.addEventListener('keydown',e=>{

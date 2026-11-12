@@ -482,13 +482,11 @@
             <!-- An explicit mode price wins over MRP and price lists. The fixed-mode MRP
                  fallback is also exact. An intentional cashier override remains separate. -->
             <set field="modeIsFixed" from="false"/>
+            <set field="mp" from="[:]"/>
             <if condition="salesModeId">
                 <service-call name="zenith.pos.PosServices.resolve#PosModePrice" out-map="mp"
                               in-map="[productId:productId, salesModeId:salesModeId, product:product]"/>
                 <set field="modeIsFixed" from="mp?.isFixed ?: false"/>
-                <!-- Block only when charging the mode's own price (no manual override typed). -->
-                <if condition="isDefaultPrice &amp;&amp; modeIsFixed &amp;&amp; (mp?.blocked == true)">
-                    <return error="true" message="${mp.blockReason}"/></if>
                 <if condition="modeIsFixed">
                     <if condition="isDefaultPrice"><set field="unitPrice" from="mp.unitPrice as BigDecimal" type="BigDecimal"/></if>
                     <set field="discountPercent" from="BigDecimal.ZERO" type="BigDecimal"/>
@@ -505,8 +503,8 @@
                               out-map="priceResult"/>
                 <set field="unitPrice" from="(priceResult?.unitPrice != null &amp;&amp; (priceResult.unitPrice as BigDecimal).compareTo(BigDecimal.ZERO) &gt; 0) ? priceResult.unitPrice : product?.mrpAmount" type="BigDecimal"/>
             </if>
-            <if condition="unitPrice == null">
-                <return error="true" message="Price not configured for this sales mode."/></if>
+            <set field="priceRequiresEntry" from="unitPrice == null || (unitPrice == 0 &amp;&amp; mp?.unitPrice == null &amp;&amp; product?.mrpAmount == null) ? 'Y' : 'N'"/>
+            <if condition="unitPrice == null"><set field="unitPrice" from="BigDecimal.ZERO" type="BigDecimal"/></if>
             <set field="mrp" from="product?.mrpAmount ?: unitPrice"/>
             <set field="productTaxCode" from="product?.productTaxCode ?: ''"/>
 
@@ -598,7 +596,8 @@
                              unitPrice:unitPrice, mrp:mrp, discountPercent:discountPercent,
                              discountAmount:discAmt, taxableAmount:taxableAmount,
                              totalTaxAmount:totalTaxAmount, lineTotal:lineTotal, uomId:(product?.amountUomId ?: 'OTH_ea'), salesModeId:salesModeId,
-                             manualPrice:(existingLine.manualPrice ?: _manualPrice), manualDiscount:_manualDiscount]"/>
+                             manualPrice:(existingLine.manualPrice ?: _manualPrice), manualDiscount:_manualDiscount,
+                             priceRequiresEntry:(existingLine.priceRequiresEntry == 'Y' ? 'Y' : priceRequiresEntry)]"/>
             <else>
                 <entity-find entity-name="zenith.erp.pos.PosTransactionItem" list="existingItems">
                     <econdition field-name="transactionId"/></entity-find>
@@ -611,7 +610,7 @@
                              unitPrice:unitPrice, mrp:mrp, discountPercent:discountPercent,
                              discountAmount:discAmt, taxableAmount:taxableAmount,
                              totalTaxAmount:totalTaxAmount, lineTotal:lineTotal, uomId:(product?.amountUomId ?: 'OTH_ea'), salesModeId:salesModeId,
-                             manualPrice:_manualPrice, manualDiscount:_manualDiscount]"/>
+                             manualPrice:_manualPrice, manualDiscount:_manualDiscount, priceRequiresEntry:priceRequiresEntry]"/>
             </else></if>
 
             <!-- Store per-line tax breakdown. ZE-TAX-PHANTOM: only when tax is ON. Storing the breakdown while the
