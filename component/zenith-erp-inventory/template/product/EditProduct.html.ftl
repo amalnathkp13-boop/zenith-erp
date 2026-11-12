@@ -45,5 +45,5 @@
 </aside></div>
 <div class="pe-savebar"><span role="status" data-pe-status><#if !invCanWrite>View-only access — changes are disabled.</#if></span><a class="pe-button" data-pe-leave href="${sri.buildUrl('../FindProduct').url?html}">Cancel</a><#if invCanWrite><button type="submit" class="pe-primary">Save Changes</button></#if></div>
 </form>
-<#if invCanWrite><form id="productDeleteForm" method="post" action="${sri.buildUrl('deleteProduct').url?html}"><input type="hidden" name="moquiSessionToken" value="${(ec.web.sessionToken!'')?html}"/><input type="hidden" name="productId" value="${productId?html}"/></form></#if>
+<#if invCanWrite><form id="productDeleteForm" method="post" action="${sri.buildUrl('deleteProduct').url?html}" data-pe-save="delete"><input type="hidden" name="moquiSessionToken" value="${(ec.web.sessionToken!'')?html}"/><input type="hidden" name="productId" value="${productId?html}"/></form></#if>
 </div>

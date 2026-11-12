@@ -157,7 +157,7 @@
         var scroll = el('div', 'zqs-scroll');
         var sections = roleSections();
         var categories = sections ? [{ head: 'YOUR MODULES', items: sections.map(function (section) {
-            return { match: section.mount, label: section.name, icon: 'apps', href: screenHref(section.screens[0].id) };
+            return { match: section.mount, label: section.name, icon: section.icon || 'apps', href: screenHref(section.screens[0].id) };
         }) }] : CATS;
         categories.forEach(function (grp) {
             if (grp.head) { var h = el('div', 'zqs-cat', grp.head); scroll.appendChild(h); }

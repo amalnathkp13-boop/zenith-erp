@@ -298,6 +298,7 @@
                     .parameters([sessionId:ec.context.sessionId,itemsJson:ec.context.itemsJson,tableId:tableIdVal,orderType:ec.context.orderType,
                                  taxOn:ec.context.taxOn ?: 'Y',salesModeId:ec.context.salesModeId,waiterId:ec.context.waiterId,customerPartyId:ec.context.customerPartyId,notes:ec.context.notes,lockDiscountMode:true,allowUnpricedDraft:true]).call()?.receipt
                 if(ec.message.hasError()) return reply()
+                if (ec.context.billingView in ['grid', 'list']) draftReceipt.billingView = ec.context.billingView
                 if (draft) {
                     ec.entity.find('zenith.erp.pos.KotItem').condition('kotId', exId).deleteAll()
                     draft.delete()
@@ -627,7 +628,8 @@
                 f.condition('organizationPartyId', org ?: '__NO_ORGANIZATION__')
                 if(billingTerminal) f.condition(cf.makeCondition([cf.makeCondition('terminalId',EntityCondition.ComparisonOperator.EQUALS,billingTerminal.terminalId),
                     cf.makeCondition('terminalId',EntityCondition.ComparisonOperator.EQUALS,null)],EntityCondition.JoinOperator.OR))
-                def ks = f.orderBy('-kotDate').limit(lim).list()
+                if(lim) f.limit(lim)
+                def ks = f.orderBy('-kotDate').list()
                 // Pre-terminal drafts remain recoverable by an owner. Never expose an
                 // unattributed legacy order to a restricted cashier or another shop's table.
                 if(billingTerminal) ks=ks.findAll { k ->
@@ -680,7 +682,7 @@
             if(includeBillingHistory) {
                 def activeKots = loadKots(['KotNew', 'KotPreparing', 'KotReady'], 60)
                 def completedKots = loadKots(['KotServed', 'KotCancelled'], 60)
-                def draftKots = loadKots(['KotDraft'], 30)
+                def draftKots = loadKots(['KotDraft'], null)
                 historyKots=(draftKots.collect { it + [group:'draft'] } + activeKots.collect { it + [group:'active'] } +
                     completedKots.collect { it + [group:'completed'] }).sort { a,b ->
                     ((b.billNumber ? 1 : 0) <=> (a.billNumber ? 1 : 0)) ?: (b.sortedAt <=> a.sortedAt) ?: (b.id <=> a.id)
@@ -697,7 +699,7 @@
                 if (selected && selected.facilityId == shop) selectedTableId = selected.tableId
             }
             draftLoadTable = ''; draftLoadType = ''; draftLoadInstr = ''; draftLoadTax = 'Y'; draftLoadMode = ''; draftLoadWaiter = ''; draftReceiptLines = []
-            draftCustomer = [:]; draftRevision = ''
+            draftCustomer = [:]; draftRevision = ''; draftLoadView = 'list'
             if (loadedDraftId) {
                 def dk = ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('kotId', loadedDraftId).one()
                 if (billingTerminal && dk && dk.statusId == 'KotDraft' && org && dk.organizationPartyId == org && ((!dk.terminalId && !scope.terminalRestricted) || dk.terminalId==billingTerminal.terminalId)) {
@@ -715,6 +717,7 @@
                             draftLoadTax = savedReceipt?.bill?.taxOn == 'N' ? 'N' : 'Y'
                             draftLoadMode = savedReceipt?.bill?.salesModeId ?: ''
                             draftLoadWaiter = savedReceipt?.bill?.waiterId ?: ''
+                            if (savedReceipt?.billingView == 'grid') draftLoadView = 'grid'
                             draftReceiptLines = savedReceipt?.items ?: []
                             def bill=savedReceipt?.bill
                             if(bill?.customerPartyId) draftCustomer=[id:bill.customerPartyId,name:bill.customer,phone:bill.customerPhone]
@@ -744,6 +747,7 @@
 <#elseif name=='minus'><path d="M5 12h14"/>
 <#elseif name=='trash'><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>
 <#elseif name=='clock'><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+<#elseif name=='hold'><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/>
 <#elseif name=='save'><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/>
 <#elseif name=='printer'><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/>
 <#elseif name=='close-session'><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h7"/>
@@ -781,9 +785,9 @@
   <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/kot-grid.css').getLastModified()?c}"/>
   <link rel="stylesheet" href="/zenithstatic/css/pos-checkout.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/pos-checkout.css').getLastModified()?c}"/>
   <link rel="stylesheet" href="/zenithstatic/css/kot-list.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/kot-list.css').getLastModified()?c}"/>
-  <link rel="stylesheet" href="/zenithstatic/css/kot-bill-history.css?v=2"/>
+  <link rel="stylesheet" href="/zenithstatic/css/kot-bill-history.css?v=3"/>
   <input type="hidden" id="kb-token" value="${(ec.web.sessionToken)!''}"/>
-  <div id="kb-data" style="display:none" data-session="${billingSession.sessionId?html}" data-user="${(ec.user.userId!'')?html}" data-org="${billingTerminal.organizationPartyId?html}" data-terminal="${billingTerminal.terminalId?html}" data-display-enabled="${kitchenDisplayEnabled?c}" data-kot-module="${(kitchenModuleId!'pos')?html}" data-stock-session="${billingSession.sessionId?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftcustomer="${draftCustomerJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-draftrevision="${draftRevision?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}"></div>
+  <div id="kb-data" style="display:none" data-session="${billingSession.sessionId?html}" data-user="${(ec.user.userId!'')?html}" data-org="${billingTerminal.organizationPartyId?html}" data-terminal="${billingTerminal.terminalId?html}" data-display-enabled="${kitchenDisplayEnabled?c}" data-kot-module="${(kitchenModuleId!'pos')?html}" data-stock-session="${billingSession.sessionId?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftcustomer="${draftCustomerJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-draftrevision="${draftRevision?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}" data-draftview="${draftLoadView}"></div>
 
 
   <header class="kg-header">
@@ -817,6 +821,7 @@
     </details>
     <select id="kb-mode" hidden aria-label="Selected sales mode"><#if draftModeUnavailable><option value="${draftLoadMode?html}" disabled selected>Previous mode unavailable</option></#if><#if !modes?has_content><option value="">Standard</option></#if><#list modes as m><option value="${m.salesModeId?html}">${m.modeName?html}</option></#list></select>
     <button type="button" class="kb-control kb-tax-toggle is-on" id="kb-tax-toggle" role="switch" aria-label="Tax" aria-checked="true">Tax: ON</button>
+    <#if modCanWrite><button type="button" class="kb-control" id="kb-held-open" aria-keyshortcuts="F9" aria-haspopup="dialog" aria-controls="kb-history"><@ic 'hold' 18/> Hold Bills <kbd>F9</kbd></button></#if>
     <button type="button" class="kb-control" id="kb-history-open" aria-keyshortcuts="F10"><@ic 'clock'/> History <kbd>F10</kbd></button>
     <div class="kb-otype" role="group" aria-label="Service type">
       <button type="button" class="kb-otbtn is-active" data-ot="Dine In"><@ic 'bag'/> Dine In</button>
@@ -909,7 +914,6 @@
       </#list>
       <button type="button" id="kb-draft" class="kb-action-hold" disabled><span aria-hidden="true">Ⅱ</span> Hold <kbd>F7</kbd></button>
       <button type="button" id="kb-send" class="kb-action-send" title="Press Shift by itself" <#if !kitchenDisplayEnabled>style="display:none"</#if> disabled><@ic 'printer'/> Send to KOT <kbd>Shift</kbd></button>
-      <button type="button" id="kb-bill" class="kb-action-bill" disabled><@ic 'box'/> Bill Out <kbd>Space</kbd></button>
     </div></#if>
     <div class="kb-search"><@ic 'search'/>
       <input type="search" id="kb-search" placeholder="Scan barcode, or type product name or code… ( / )" autocomplete="off" aria-label="Search products" aria-keyshortcuts="/" aria-controls="kb-suggestions" <#if modCanWrite>aria-describedby="kb-key-help"<#else>disabled</#if>>
@@ -918,7 +922,7 @@
     </div>
   </div>
   <dialog id="kb-history" class="kb-history-dialog" aria-labelledby="kb-history-title">
-    <header class="kb-history-heading"><h2 id="kb-history-title"><@ic 'receipt' 20/> Bill History</h2><button id="kb-history-close" type="button" aria-label="Close history">×</button></header>
+    <header class="kb-history-heading"><h2 id="kb-history-title"><@ic 'receipt' 20/> <span id="kb-history-label">Bill History</span></h2><button id="kb-history-close" type="button" aria-label="Close history">×</button></header>
     <div class="kb-history-toolbar">
       <input id="kb-history-search" type="search" aria-label="Search bills and KOTs" placeholder="Search by bill number, amount, or customer…">
       <button id="kb-history-filter" class="kb-history-button" type="button" aria-expanded="false" aria-controls="kb-history-filters">Filter</button>
@@ -935,12 +939,13 @@
       <button type="button" id="kb-history-retry" class="kb-history-button" hidden>Retry</button>
       <div id="kb-history-rows"<#if includeBillingHistory> data-kb-history-loaded</#if>>
         <#list (historyKots![]) as k>
-        <article class="kb-history-row" data-kot-id="${k.id?html}" data-kot-group="${k.group}" data-order-date="${k.isoDate}" data-billed="${k.billNumber?has_content?c}" data-has-bill="${k.hasBill?c}" data-kot-number="${k.num?html}" data-search="${(k.searchText!'')?html}">
+        <article class="kb-history-row" data-kot-id="${k.id?html}" data-kot-group="${k.group}" data-order-date="${k.isoDate}" data-order-at="${k.sortedAt?c}" data-billed="${k.billNumber?has_content?c}" data-has-bill="${k.hasBill?c}" data-kot-number="${k.num?html}" data-search="${(k.searchText!'')?html}">
           <button type="button" class="kb-history-number" data-kb-history-detail>#<#if k.billNumber?has_content>${k.billNumber?html}<#else>KOT ${k.num?html}</#if></button>
           <strong class="kb-history-amount"><#if k.total??>&#8377;${ec.l10n.format(k.total,'#,##0.00')?html}<#else>—</#if></strong>
           <span class="kb-history-meta">${k.time?html}</span>
           <span class="kb-history-meta kb-history-info">${k.customer?html} · ${k.items?size} <#if k.items?size == 1>item<#else>items</#if> · ${(k.payment?has_content?then(k.payment,k.label))?html}</span>
           <#if modCanWrite>
+          <#if k.group == 'draft'><div class="kb-history-row-actions kb-held-resume"><button type="button" class="kb-history-button kb-history-primary" data-kb-resume-held>Resume</button></div></#if>
           <div class="kb-history-row-actions" role="group" aria-label="Print options">
             <button type="button" class="kb-history-button" data-kb-history-print="bill" <#if !k.hasBill>disabled title="No saved bill or order pricing is available."</#if>><@ic 'printer' 14/> Bill Print</button>
             <button type="button" class="kb-history-button" data-kb-history-print="kot"><@ic 'printer' 14/> KOT Print</button>

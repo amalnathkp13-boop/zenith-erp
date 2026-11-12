@@ -12,7 +12,7 @@ body:has(#kb-wrap) :is(#top,#footer,#z-sidebar,#z-side-burger,#z-subnav,#pos-mod
 #kb-wrap #kb-fullscreen-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 
 #kb-wrap:not(.kg-grid) .kg-only,
-#kb-wrap.kg-grid :is(.kg-normal,#kb-bill){display:none}
+#kb-wrap.kg-grid .kg-normal{display:none}
 #kb-wrap.kg-grid .kl-workspace{display:contents}
 
 #kb-wrap.kg-grid{

@@ -9,7 +9,7 @@
   const stats=$('stats'), summaryStack=stats.parentElement, checkout=root.querySelector('.kb-bottom');
   const modesMenu=root.querySelector('.kg-modes');
   const modeOptions=modesMenu.querySelectorAll('[data-kb-view]');
-  const salesModeOptions=modesMenu.querySelectorAll('[data-kb-sales-mode]');
+  const salesModeSection='[aria-label="Sales mode"]';
   const paymentButtons=Array.from(root.querySelectorAll('[data-kb-payment]'));
   const cartRows=$('cart'), editError=$('edit-error');
   const cfg=$('data').dataset;
@@ -33,25 +33,21 @@
   const cardMoney=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',minimumFractionDigits:0});
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const token=()=>$('token').value||window.moqui?.webrootVue?.moquiSessionToken;
-  let orderType=cfg.drafttype||'Dine In', taxOn=cfg.drafttax||'Y', draftId=cfg.draftid||'';
+  let orderType='Dine In', taxOn='Y', draftId='';
   let salesModeId=$('mode').value, quoteVersion=0, quoteTimer, total=null, busy=false, savedFingerprint='';
   let searchVersion=0, searchTimer, searchAbort, results=[], selected=0, exactId, ambiguous=false, hasMore=false, offset=0;
   let browsePage, pendingLookup, searchMessage='';
   let historyVersion=0, loadedHistoryVersion=$('history-rows').hasAttribute('data-kb-history-loaded')?0:-1, historyLoading=false;
   let grid=false, pickedMatch=false, categoryId='';
-  let customer=JSON.parse(cfg.draftcustomer||'{}'), custVersion=0, custTimer, custAbort;
+  let customer={}, custVersion=0, custTimer, custAbort;
   let invalidEdit, pendingTender, sessionLost=false, completedKotId='', historyPrintRow=null;
   let historyTender, paymentAmount;
   let unconfirmedOrder=false;
   const signInMessage='Sign in again to continue billing.';
   const unconfirmedMessage='The last order submission could not be confirmed. Check Order History after reconnecting before saving it again.';
-  if(cfg.draftmode && Array.from($('mode').options).some(o=>o.value===cfg.draftmode)) salesModeId=$('mode').value=cfg.draftmode;
   function paintSalesMode() {
-    for(const option of salesModeOptions)option.setAttribute('aria-pressed',String(option.dataset.kbSalesMode===salesModeId));
+    for(const option of modesMenu.querySelectorAll('[data-kb-sales-mode]'))option.setAttribute('aria-pressed',String(option.dataset.kbSalesMode===salesModeId));
   }
-  paintSalesMode();
-  if(cfg.draftwaiter) $('waiter').value=cfg.draftwaiter;
-  $('table').value=cfg.drafttable||cfg.selectedTable||'';
 
   function postRequest(path,action,data,signal) {
     return fetch(path+'/'+action,{method:'POST',credentials:'same-origin',signal,
@@ -147,16 +143,19 @@
     const on=taxOn==='Y',b=$('tax-toggle');
     b.textContent=on?'Tax: ON':'Tax: OFF';b.classList.toggle('is-on',on);b.setAttribute('aria-checked',on);
   }
+  const hasCartQuote=()=>paymentButtons.length>0&&!busy&&!sessionLost&&!unconfirmedOrder&&
+    (!disconnected()||!!catalogue)&&cart.size>0&&total!==null&&editError.hidden;
+  const hasPendingPrice=()=>Array.from(cart.values()).some(item=>item.pricePending);
+  const canPay=()=>hasCartQuote()&&!hasPendingPrice();
   function controls() {
     const online=!disconnected();
     const available=online||!!catalogue;
-    const hasQuote=!busy&&!sessionLost&&!unconfirmedOrder&&available&&cart.size>0&&total!==null&&editError.hidden;
-    const pendingPrice=Array.from(cart.values()).some(item=>item.pricePending);
-    const canPay=hasQuote&&!pendingPrice;
+    const hasQuote=hasCartQuote(), pendingPrice=hasPendingPrice();
+    const readyToPay=hasQuote&&!pendingPrice;
     $('display-message').textContent=cfg.displayEnabled==='true'?'Kitchen Display enabled.':'Kitchen Display disabled. Use printed KOTs.';
     for(const button of paymentButtons) {
       button.disabled=busy||sessionLost||unconfirmedOrder||!available||!cart.size;
-      button.setAttribute('aria-disabled',String(!canPay));
+      button.setAttribute('aria-disabled',String(!readyToPay));
     }
     $('clear').disabled=busy||!cart.size;
     const closeSession=$('close-session');
@@ -165,13 +164,12 @@
       closeSession.title=pendingSales?'Wait for pending KOT orders to sync before closing the session.':'';
     }
     if($('draft')) $('draft').disabled=!hasQuote;
-    if($('bill')) $('bill').disabled=!canPay;
     if($('send')) {
       const displayDisabled=cfg.displayEnabled==='false';
       root.classList.toggle('kb-display-disabled',displayDisabled);
       $('send').style.display=displayDisabled?'none':'';
       $('send').disabled=busy||sessionLost||unconfirmedOrder||!available||!cart.size||displayDisabled||!editError.hidden||pendingPrice||
-        (needsLocalOrder()&&!canPay);
+        (needsLocalOrder()&&!readyToPay);
       $('send').title=displayDisabled?'Kitchen Display is disabled for this shop. Use KOT printing.':'Press Shift by itself';
     }
   }
@@ -285,6 +283,7 @@
         qty:Number(line.quantity),price:manualRate??Number(product?.prices?.[salesModeId]?.price||0),manualRate});
     }
     $('badge').textContent='Editing Held Order';
+    if(order.billingView)setGridView(order.billingView==='grid');
     renderCustomer();browsePage=null;quote();lookup();
   }
   function showSyncedBill(sale,result) {
@@ -723,8 +722,6 @@
     lookup();
   }
   function setGridView(next) {
-    modesMenu.open=false;
-    modesMenu.querySelector('summary').focus({preventScroll:true});
     if(grid===next)return;
     grid=next;
     const panel=$('product-grid');
@@ -816,7 +813,7 @@
     if(moveMatch(e.key,false)){e.preventDefault();return;}
     if(e.repeat)return;
     if(e.key==='Escape'){clearSearch();return;}
-    if(e.key===' '&&!search.value&&!$('bill')?.disabled&&!e.ctrlKey&&!e.altKey&&!e.metaKey&&!e.shiftKey){e.preventDefault();openPayment();return;}
+    if(e.key===' '&&!search.value&&canPay()){e.preventDefault();openPayment();return;}
     if(e.key!=='Enter'||(!search.value.trim()&&!(grid&&pickedMatch)))return;
     e.preventDefault();clearTimeout(searchTimer);
     const submitted=search.value;
@@ -839,13 +836,14 @@
   });
 
   function openPayment(method='Cash', order=null) {
-    if(!$('bill')||busy||sessionLost||$('payment').open||(!order&&$('bill').disabled))return;
+    const dialog=$('payment');
+    if(!dialog||busy||sessionLost||dialog.open||(!order&&!canPay()))return;
     $('payment-form').reset();
     historyTender=order;
     paymentAmount=order?.total??total;
     $('payment-total').textContent='Order total: '+money.format(paymentAmount);
     $('payment-method').value=method;
-    $('payment').showModal();
+    dialog.showModal();
     tenderFields(method);
   }
   function tenderFields(method) {
@@ -1088,6 +1086,7 @@
       }
     }
   }
+  const heldOrderData=()=>({...orderData(),billingView:grid?'grid':'list'});
   async function holdOrder() {
     busy=true;controls();
     const status=$('order-status');
@@ -1095,13 +1094,13 @@
       if(needsLocalOrder()){
         requireOfflineOwner();
         if(cart.size>100)throw Error('Hold orders with up to 100 product lines.');
-        deviceDrafts.save({...orderData(),sessionId:cfg.session,draftId,draftRevision,customer,localOrderId});
+        deviceDrafts.save({...heldOrderData(),sessionId:cfg.session,draftId,draftRevision,customer,localOrderId});
         resetOrder();refreshOpenHistory();
         status.textContent='Order held on this device.';
         syncDeviceOrders();
         return;
       }
-      const saved=await request('saveDraft',{...orderData(),existingDraftId:draftId,wantJson:'Y'});
+      const saved=await request('saveDraft',{...heldOrderData(),existingDraftId:draftId,wantJson:'Y'});
       resetOrder();
       refreshOpenHistory();
       status.textContent='Saved as Draft #'+saved.kotNumber+'.';
@@ -1293,19 +1292,24 @@
       $('history-count').textContent='';
       return;
     }
-    const term=$('history-search').value.trim().toLowerCase();
-    const status=$('history-status').value, date=$('history-date').value;
+    const heldOnly=history.hasAttribute('data-held-only');
+    const term=heldOnly?'':$('history-search').value.trim().toLowerCase();
+    const status=heldOnly?'draft':$('history-status').value, date=heldOnly?'':$('history-date').value;
     for(const order of $('history-rows').children){
       const matchesStatus=!status||(status==='billed'?order.dataset.billed==='true':order.dataset.kotGroup===status);
       const text=(order.textContent+' '+order.dataset.search).toLowerCase();
       order.hidden=(!order.hasAttribute('data-kb-device-row')&&loadedHistoryVersion!==historyVersion)||
         !matchesStatus||Boolean((date&&order.dataset.orderDate!==date)||(term&&!text.includes(term)));
     }
-    const rows=historyRows(), billed=rows.filter(row=>row.dataset.billed==='true');
-    const counts=[];
-    if(billed.length)counts.push(billed.length+' bill'+(billed.length===1?'':'s'));
-    if(rows.length>billed.length)counts.push((rows.length-billed.length)+' KOT'+(rows.length-billed.length===1?'':'s'));
-    $('history-count').textContent=counts.length?counts.join(' · ')+' found':'No matching bills or KOTs.';
+    const rows=historyRows();
+    if(heldOnly){
+      $('history-count').textContent=rows.length?rows.length+(rows.length===1?' held bill':' held bills'):'No held bills available.';
+    }else{
+      const billed=rows.filter(row=>row.dataset.billed==='true'), counts=[];
+      if(billed.length)counts.push(billed.length+' bill'+(billed.length===1?'':'s'));
+      if(rows.length>billed.length)counts.push((rows.length-billed.length)+' KOT'+(rows.length-billed.length===1?'':'s'));
+      $('history-count').textContent=counts.length?counts.join(' · ')+' found':'No matching bills or KOTs.';
+    }
     selectHistoryRow(rows.includes(activeHistoryRow)?activeHistoryRow:rows[0],focus);
   }
   function renderLocalHistory() {
@@ -1330,17 +1334,23 @@
         row.dataset.kotGroup=record.group;
         row.dataset.billed=String(record.group==='billed');
         row.dataset.hasBill=String(!held);
+        row.dataset.orderAt=String(date.getTime());
         row.dataset.orderDate=new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,10);
         row.dataset.search=record.name||'Walk-In Customer';
         row.innerHTML='<button type="button" class="kb-history-number" data-kb-history-detail>'+esc(record.label)+'</button>'+
           '<strong class="kb-history-amount">'+(record.total==null?'—':money.format(record.total))+'</strong>'+
           '<span class="kb-history-meta">'+esc(date.toLocaleString())+'</span>'+
           '<span class="kb-history-meta kb-history-info">'+esc(row.dataset.search)+' · '+record.items+' items · '+esc(record.note)+'</span>'+
-          (held?'':'<div class="kb-history-row-actions" role="group" aria-label="Print options">'+
+          (held?($('held-open')?'<div class="kb-history-row-actions kb-held-resume"><button type="button" class="kb-history-button kb-history-primary" data-kb-resume-held>Resume</button></div>':''):
+            '<div class="kb-history-row-actions" role="group" aria-label="Print options">'+
             '<button type="button" class="kb-history-button" data-kb-history-print="bill">Bill Print</button>'+
             '<button type="button" class="kb-history-button" data-kb-history-print="kot">KOT Print</button>'+
             (record.group==='active'?'<button type="button" class="kb-history-button kb-history-primary" data-kb-bill-local>Bill Out</button>':'')+'</div>');
-        host.prepend(row);
+        if(held){
+          const drafts=Array.from(host.querySelectorAll('[data-kot-group="draft"]'));
+          const older=drafts.find(other=>Number(other.dataset.orderAt)<=date.getTime());
+          host.insertBefore(row,older||(drafts.length?drafts.at(-1).nextSibling:host.firstChild));
+        }else host.prepend(row);
       }
     }catch(error){$('history-error').textContent=error.message;}
   }
@@ -1348,12 +1358,19 @@
     historyVersion++;
     if(history.open)showHistory();
   }
+  function openBillHistory(heldOnly=false){
+    history.toggleAttribute('data-held-only',heldOnly);
+    $('history-label').textContent=heldOnly?'Hold Bills':'Bill History';
+    $('history-close').setAttribute('aria-label',heldOnly?'Close held bills':'Close history');
+    showHistory();
+  }
   async function showHistory(){
     const opened=!history.open;
     if(opened){
       history.showModal();
       selectHistoryRow(null);
       $('history-print-status').textContent='';
+      $('history-error').textContent='';
     }
     renderLocalHistory();
     filterHistory(opened);
@@ -1669,7 +1686,11 @@
     const button=e.target.closest('button');if(!button||button.disabled||busy)return;
     if(button.dataset.ot){setType(button.dataset.ot);quote();}
     else if(button.id==='kb-tax-toggle'){taxOn=taxOn==='Y'?'N':'Y';paintTax();quote();}
-    else if(button.dataset.kbView)setGridView(button.dataset.kbView==='grid');
+    else if(button.dataset.kbView){
+      modesMenu.open=false;
+      modesMenu.querySelector('summary').focus({preventScroll:true});
+      setGridView(button.dataset.kbView==='grid');
+    }
     else if(button.hasAttribute('data-kb-sales-mode')){
       $('mode').value=button.dataset.kbSalesMode;
       $('mode').dispatchEvent(new Event('change'));
@@ -1682,10 +1703,9 @@
     else if(button.dataset.kbPayment)openPayment(button.dataset.kbPayment);
     else if(button.id==='kb-fullscreen')toggleFullscreen();
     else if(button.id==='kb-close-session')openSessionClose();
-    else if(button.id==='kb-clear'&&confirm('Clear the unsent items from this order?')){
-      resetOrder();
-    }
-    else if(button.id==='kb-history-open'||button.id==='kb-history-retry')showHistory();
+    else if(button.id==='kb-clear')resetOrder();
+    else if(button.id==='kb-held-open'||button.id==='kb-history-open')openBillHistory(button.id==='kb-held-open');
+    else if(button.id==='kb-history-retry')showHistory();
     else if(button.hasAttribute('data-kb-bill-local')) {
       if(!releaseOrder){$('history-error').textContent='This KOT session is open in another tab.';return;}
       if(cart.size) {
@@ -1709,13 +1729,12 @@
         customer:{id:button.dataset.kbBillCustomer,name:button.dataset.kbBillName,phone:button.dataset.kbBillPhone}});
     }
     else if(button.id==='kb-resume')resumeBilling();
-    else if(button.id==='kb-bill')openPayment();
     else if(button.id==='kb-send')sendToKitchen();
     else if(button.id==='kb-draft'){
       if(deviceDrafts)holdOrder();
       else {
         busy=true;controls();
-        post('saveDraft',{...orderData(),existingDraftId:draftId});
+        post('saveDraft',{...heldOrderData(),existingDraftId:draftId});
       }
     }
     else if(button.classList.contains('pos-cash-quick')){
@@ -1766,6 +1785,10 @@
     if(!row)return;
     selectHistoryRow(row);
     if(event.target.closest('[data-kb-bill-order],[data-kb-bill-local]'))return;
+    if(event.target.closest('[data-kb-resume-held]')){
+      resumeHeldOrder(row,$('history-error'));
+      return;
+    }
     const print=event.target.closest('[data-kb-history-print]');
     if(print){if(!print.disabled)printChoice(print.dataset.kbHistoryPrint,row);}
     else openHistoryDetail(row);
@@ -1797,10 +1820,45 @@
   for(const id of ['history-back','history-detail-close'])$(id).addEventListener('click',closeHistoryDetail);
   historyDetail.addEventListener('cancel',event=>{event.preventDefault();closeHistoryDetail();});
   $('history-detail-reprint')?.addEventListener('click',()=>openReprint(editingBill?.row));
-  $('history-resume')?.addEventListener('click',()=>{
-    const row=editingBill.row, id=row.dataset.kbResumeLocal;
+  function restoreServerDraft(draft, freshPage) {
+    const snapshot=JSON.parse(draft.draftreceipt);
+    const items=JSON.parse(draft.draftload);
+    const savedCustomer=JSON.parse(draft.draftcustomer);
+    if(freshPage){
+      const mode=freshPage.getElementById('kb-mode'), section=freshPage.querySelector('.kg-modes '+salesModeSection);
+      if(!mode||!section)throw Error('The held bill could not be loaded. Please try again.');
+      if(localOrderId)clearStoredOrder();
+      $('mode').replaceChildren(...mode.children);
+      modesMenu.querySelector(salesModeSection).replaceWith(section);
+      cfg.selectedTable=draft.selectedTable;
+    }
+    localOrderId='';unconfirmedOrder=false;savedFingerprint='';
+    draftId=draft.draftid;draftRevision=draft.draftrevision;
+    setType(draft.drafttype||'Dine In');
+    taxOn=draft.drafttax;paintTax();
+    $('table').value=draft.drafttable||cfg.selectedTable||'';
+    $('waiter').value=draft.draftwaiter;
+    $('instr').value=draft.draftinstr;
+    const mode=$('mode');
+    if(draft.draftmode&&Array.from(mode.options).some(option=>option.value===draft.draftmode))mode.value=draft.draftmode;
+    salesModeId=mode.value;paintSalesMode();
+    customer=savedCustomer;
+    cart.clear();setEditError('');
+    for(const item of items){
+      const saved=snapshot.find(row=>row.productId===item.productId);
+      cart.set(item.productId,{id:item.productId,name:item.productName,code:saved?.code||item.productId,
+        price:Number(saved?.rate)||0,qty:Number(item.quantity),
+        manualRate:saved?.manualPrice==='Y'?Number(saved.rate):undefined});
+    }
+    $('badge').textContent='Editing Held Order';
+    renderCustomer();browsePage=null;quote();
+    setGridView(draft.draftview==='grid');
+  }
+  async function resumeHeldOrder(row,message){
+    if(busy)return;
+    const id=row.dataset.kbResumeLocal;
     if(id) {
-      if(cart.size){$('history-detail-message').textContent='Hold the current order before resuming this one.';return;}
+      if(cart.size){message.textContent='Hold the current order before resuming this one.';return;}
       try {
         requireOfflineOwner();
         if(syncingHeld.has(id))throw Error('This held order is syncing. Reopen History in a moment.');
@@ -1809,13 +1867,34 @@
         restoreOrder(draft.order);
         rememberOrder();
         deviceDrafts.remove(id);
-        historyDetail.close();history.close();search.focus();
-      }catch(error){$('history-detail-message').textContent=error.message;}
-    } else if(disconnected()) $('history-detail-message').textContent='Reconnect to resume this server order.';
+        if(historyDetail.open)historyDetail.close();
+        history.close();search.focus();
+      }catch(error){message.textContent=error.message;}
+    } else if(disconnected()) message.textContent='Reconnect to resume this server order.';
     else if(!cart.size||confirm('Replace the current unsent items with this held order?')){
-      location.href=base+'/?sessionId='+encodeURIComponent(cfg.session)+'&loadDraft='+encodeURIComponent(row.dataset.kotId);
+      const params=new URLSearchParams({sessionId:cfg.session,loadDraft:row.dataset.kotId});
+      if(fullscreenElement()!==root){location.href=base+'/?'+params;return;}
+      const dialog=historyDetail.open?historyDetail:history;
+      busy=true;controls();
+      message.textContent='Loading held bill…';
+      try {
+        const response=await fetch('/apps'+billingPath+'?'+params,{cache:'no-store',signal:AbortSignal.timeout?.(15000)});
+        if(!response.ok||response.redirected)throw Error('The held bill could not be loaded. Please try again.');
+        const page=new DOMParser().parseFromString(await response.text(),'text/html');
+        const draft=page.getElementById('kb-data')?.dataset;
+        if(!draft||draft.draftid!==row.dataset.kotId||draft.session!==cfg.session||draft.user!==cfg.user||
+            draft.org!==cfg.org||draft.terminal!==cfg.terminal)throw Error('This held bill is no longer available at this counter.');
+        if(!root.isConnected||!dialog.open)return;
+        search.value='';categoryId='';
+        restoreServerDraft(draft,page);
+        window.history.replaceState(window.history.state,'',base+'?'+params);
+        if(historyDetail.open)historyDetail.close();
+        history.close();search.focus();lookup();
+      }catch(error){if(dialog.open)message.textContent=error.message;}
+      finally{busy=false;controls();}
     }
-  });
+  }
+  $('history-resume')?.addEventListener('click',()=>resumeHeldOrder(editingBill.row,$('history-detail-message')));
   $('history-discard')?.addEventListener('click',()=>{
     if(!confirm('Discard this held order?'))return;
     const row=editingBill.row, id=row.dataset.kbResumeLocal;
@@ -1990,7 +2069,8 @@
     }
     if(!e.repeat&&!e.isComposing&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.shiftKey&&!root.querySelector('dialog[open]')){
       if(e.key.toLowerCase()==='c'&&$('close-session')&&!e.target?.closest?.('input,textarea,select,[contenteditable]')){e.preventDefault();openSessionClose();return;}
-      if(e.key==='F10'){e.preventDefault();showHistory();return;}
+      if(e.key==='F9'&&$('held-open')){e.preventDefault();openBillHistory(true);return;}
+      if(e.key==='F10'){e.preventDefault();openBillHistory();return;}
       if(e.key==='F7'&&!$('draft')?.disabled){e.preventDefault();$('draft')?.click();return;}
       if(grid&&paymentButtons.length&&/^F[2-6]$/.test(e.key)){
         e.preventDefault();paymentButtons[Number(e.key.slice(1))-2].click();return;
@@ -2007,17 +2087,15 @@
     if(e.repeat||e.isComposing||e.ctrlKey||e.metaKey||e.altKey||editable(e)||root.querySelector('dialog[open]'))return;
     if(e.key==='Shift')shiftAlone=true;
 
-    if(e.key===' '&&!e.shiftKey&&!$('bill')?.disabled){e.preventDefault();$('bill')?.click();}
+    if(e.key===' '&&!e.shiftKey&&canPay()){e.preventDefault();openPayment();}
   }
   document.addEventListener('keydown',shortcut);document.addEventListener('keyup',shortcut);
-  const snapshot=JSON.parse(cfg.draftreceipt||'[]');
-  for(const item of JSON.parse(cfg.draftload||'[]')){
-    const saved=snapshot.find(row=>row.productId===item.productId);
-    cart.set(item.productId,{id:item.productId,name:item.productName,code:saved?.code||item.productId,price:Number(saved?.rate)||0,qty:Number(item.quantity),
-      manualRate:saved?.manualPrice==='Y'?Number(saved.rate):undefined});
+  updatePendingSales();updateHeader();
+  if(cfg.draftid)restoreServerDraft(cfg);
+  else {
+    $('table').value=cfg.selectedTable||'';
+    setType(orderType);paintTax();paintSalesMode();renderCustomer();quote();
   }
-  if(draftId){$('badge').textContent='Editing Held Order';$('instr').value=cfg.draftinstr||'';}
-  updatePendingSales();updateHeader();setType(orderType);paintTax();renderCustomer();quote();
   function connectionChanged() {
     if(!root.isConnected)return;
     updateHeader();browsePage=null;quote(false);lookup();

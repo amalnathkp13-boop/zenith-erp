@@ -44,8 +44,7 @@ module.exports = async ({ a, base, q, check, invoke }) => {
     await addProduct(second);
     await second.locator('#kb-quote-error').getByText(/another tab/).waitFor();
     check('A second KOT tab cannot take payment for its own version of the offline cart',
-      await second.locator('#kb-bill').isDisabled() && orders().length === 0);
-    second.once('dialog', dialog => dialog.accept());
+      await second.locator('[data-kb-payment="Cash"]').isDisabled() && orders().length === 0);
     await second.locator('#kb-clear').click();
     await first.close();
     await total(second).waitFor();
@@ -54,7 +53,7 @@ module.exports = async ({ a, base, q, check, invoke }) => {
       Number(await row(second).locator('[data-kb-edit=rate]').inputValue()) === 61 &&
       Number(await row(second).locator('[data-kb-edit=qty]').inputValue()) === 1.25);
 
-    await second.locator('#kb-bill').click();
+    await second.locator('[data-kb-payment="Cash"]').click();
     await second.locator('#kb-payment input[name=cashAmount]:visible').fill('76');
     await second.locator('#kb-payment .pos-cash-confirm').click();
     await second.locator('#kb-print-choice').waitFor();

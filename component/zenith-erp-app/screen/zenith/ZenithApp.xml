@@ -378,7 +378,7 @@
             html_stylesheets.add('https://fonts.googleapis.com/icon?family=Material+Icons')
             if (footer_scripts == null) footer_scripts = []
             footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=14')
-            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=56')
+            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=57')
             footer_scripts.add('/zenithstatic/js/profile-menu.js?v=1')
             footer_scripts.add('/zenithstatic/js/sidebar-manager.js?v=3')
             footer_scripts.add('/zenithstatic/js/subnav-manager.js?v=5')
@@ -882,7 +882,7 @@
             <#if customRoleNavigation!false>
             <div class="zs-cat">YOUR MODULES</div>
             <#list roleNavSections as section>
-            <a class="zs-link" data-match="${section.mount?html}" href="/apps/zenith${section.screens[0].id?html}"><span class="material-icons">apps</span><span class="t">${section.name?html}</span></a>
+            <a class="zs-link" data-match="${section.mount?html}" href="/apps/zenith${section.screens[0].id?html}"><span class="material-icons" aria-hidden="true">${(section.icon!'apps')?html}</span><span class="t">${section.name?html}</span></a>
             </#list>
             <#else>
             <div class="zs-cat">OVERVIEW</div>

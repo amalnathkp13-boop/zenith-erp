@@ -79,6 +79,7 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
   await require('./verify-subnav-preference.cjs')({browser,base,check});
   await browser.close();browser=null;return;
  }
+ if(process.env.POS_QA_FOCUS==='grid-tax-fullscreen'){await require('./verify-grid-tax-fullscreen.cjs')({a,foreign,base,check,q,invoke,post});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='catalog'){await require('./verify-catalog-performance.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='history-scope'){
   await require('./verify-history-scope.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;
@@ -563,6 +564,7 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  await require('./verify-column-dialog.cjs')({a,base,check,out});
  for(const width of [1920,1366,800,390,320])for(const shell of ['apps','qapps'])for(const screen of ['Terminal','PosTransactions','CreditBills','PosSessions','PosTerminals','CashEntry','SalesMode','ProductPricing','ReceiptConfig','Reports']){await p.setViewportSize({width,height:768});await p.goto(shell==='qapps'&&screen==='Terminal'?base+billingHref:`${base}/${shell}/zenith/pos/${screen}`,{waitUntil:'domcontentloaded',timeout:60000});if(['Terminal','CreditBills'].includes(screen))await p.locator(screen==='Terminal'?'#pos-terminal-root,.pos-no-session,.pos-receipt-card':'#credit-bills-root').first().waitFor();await p.locator('.z-pos-page').first().waitFor();const toggle=p.locator('#zq-nav-toggle');if(width<800&&await toggle.count()&&await p.locator('body').evaluate(e=>e.classList.contains('zq-nav-open')))await toggle.click();const g=await p.evaluate(()=>({viewport:innerWidth,document:document.documentElement.scrollWidth,scoped:document.querySelectorAll('.z-pos-page').length,overflow:[...document.querySelectorAll('.z-pos-page input,.z-pos-page select,.z-pos-page button')].filter(e=>{let r=e.getBoundingClientRect();return e.checkVisibility()&&r.width&&(r.right>innerWidth+2||r.left<-2)&&!e.closest('table,.q-table,.z-termtable,.modal,[role=dialog]')}).slice(0,8).map(e=>({id:e.id,name:e.name}))}));report.layouts.push({shell,screen,width,url:p.url(),...g});check(`${shell} ${screen} ${width}px fits viewport`,g.document<=width+2&&g.scoped>0&&g.overflow.length===0,g);if(width===390||width===1366)await p.screenshot({path:path.join(out,`${shell}-${screen}-${width}.png`),fullPage:true});}
  if(process.env.POS_QA_UI_ONLY!=='true')await require('./verify-walkin-tax-clock.cjs')({a,base,check,q,invoke,post,out});
+ if(process.env.POS_QA_UI_ONLY!=='true')await require('./verify-grid-tax-fullscreen.cjs')({a,foreign,base,check,q,invoke,post});
  check('POS pages have no JavaScript exceptions',report.consoleErrors.length===0,report.consoleErrors);
  await require('./verify-next-bill.cjs')({a,base,check,q,invoke,post,out});
  await require('./verify-checkout-reference.cjs')({a,foreign,base,check,q,invoke,post,out});

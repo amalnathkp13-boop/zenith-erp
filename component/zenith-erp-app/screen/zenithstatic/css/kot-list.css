@@ -142,8 +142,8 @@
   padding:0 20px 0 40px;border-radius:0 8px 8px 0;clip-path:polygon(22px 0,100% 0,100% 100%,0 100%);
   background:var(--kb-total-value-bg);color:#fff;font-size:35px;
 }
-#kb-wrap:not(.kg-grid) .kb-checkout-actions{grid-template-columns:1fr 1fr 1fr 1fr 1.3fr 1fr 1.3fr 1fr;gap:9px}
-#kb-wrap:not(.kg-grid).kb-display-disabled .kb-checkout-actions{grid-template-columns:1fr 1fr 1fr 1fr 1.3fr 1fr 1fr}
+#kb-wrap:not(.kg-grid) .kb-checkout-actions{grid-template-columns:repeat(4,minmax(0,1fr)) minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.45fr);gap:9px}
+#kb-wrap:not(.kg-grid).kb-display-disabled .kb-checkout-actions{grid-template-columns:repeat(4,minmax(0,1fr)) minmax(0,1.4fr) minmax(0,1fr)}
 #kb-wrap:not(.kg-grid) .kb-checkout-actions button{
   min-height:52px;gap:8px;padding:6px;border:1px solid transparent;border-radius:10px;font-size:16px;font-weight:750;
 }
@@ -178,7 +178,6 @@
 #kb-wrap:not(.kg-grid) [data-kb-payment=Credit]{background:#fff0e1;color:#ad3900}
 #kb-wrap:not(.kg-grid) [data-kb-payment=UPI]{background:#eee3fc;color:#5d17cb}
 #kb-wrap:not(.kg-grid) #kb-send{background:#e2f5d6;color:#00816c}
-#kb-wrap:not(.kg-grid) #kb-bill{background:#e2d5fc;color:#5916c8}
 #kb-wrap:not(.kg-grid) .kb-checkout-actions button:hover:enabled{border-color:currentColor}
 @media (min-width:901px){
   #kb-wrap:not(.kg-grid) .kl-side{
