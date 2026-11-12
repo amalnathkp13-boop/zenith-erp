@@ -50,6 +50,7 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
   await browser.close();browser=null;return;
  }
  if(process.env.POS_QA_FOCUS==='product-mode-prices'){await require('./verify-product-mode-prices.cjs')({a,foreign,base,check,q,invoke,post});await browser.close();browser=null;return;}
+ if(process.env.POS_QA_FOCUS==='unpriced-items'){await require('./verify-unpriced-items.cjs')({a,base,check,q,invoke,post});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='product-mode-form'){await require('./verify-product-mode-form.cjs')({a,base,check,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='live-mode-pricing'){await require('./verify-live-mode-pricing.cjs')({a,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='checkout-recovery'){await require('./verify-checkout-recovery.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
@@ -586,6 +587,7 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
   await require('./verify-kot-compact.cjs')({a,foreign,base,check,q,invoke,post,out});
   await require('./verify-kot-terminal-policy.cjs')({a,foreign,base,check,q,invoke,post,out});
   await require('./verify-product-mode-prices.cjs')({a,foreign,base,check,q,invoke,post});
+  await require('./verify-unpriced-items.cjs')({a,base,check,q,invoke,post});
   await require('./verify-product-mode-form.cjs')({a,base,check,out});
   await require('./verify-live-mode-pricing.cjs')({a,base,check,q,invoke,post,out});
   await require('./verify-shop-dashboard-access.cjs')({a,browser,base,check,invoke,post,q,out});

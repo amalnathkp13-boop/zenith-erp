@@ -111,12 +111,11 @@
     }
     const matches = exact.concat(prefix, remainder);
     return {
-      products: matches.slice(offset, offset + 40).map(product => ({
-        id: product.productId,
-        name: product.productName,
-        code: product.barcode,
-        price: product.prices?.[mode]?.blocked ? null : product.prices?.[mode]?.price ?? null,
-      })),
+      products: matches.slice(offset, offset + 40).map(product => {
+        const price = product.prices?.[mode];
+        return {id:product.productId,name:product.productName,code:product.barcode,
+          price:price ? price.price ?? 0 : null,pricePending:price?.price === null};
+      }),
       exactId: exact.length === 1 ? exact[0].productId : null,
       ambiguous: exact.length > 1,
       hasMore: matches.length > offset + 40,
@@ -128,9 +127,10 @@
     let subtotal = 0, tax = 0, totalQty = 0;
     const items = Array.from(cart, item => {
       const product = index.products.get(item.id), priceInfo = product?.prices?.[modeId];
-      if (!priceInfo || priceInfo.blocked || priceInfo.price == null) throw Error(item.name + ' has no offline price for this sales mode.');
-      const rate = Number(item.manualRate ?? priceInfo.price);
-      if (!(rate > 0)) throw Error(item.name + ' needs a positive price. Approve free items online.');
+      if (!priceInfo) throw Error(item.name + ' has no offline price for this sales mode.');
+      const rate = Number(item.manualRate ?? priceInfo.price ?? 0);
+      const pricePending = priceInfo.price == null && rate === 0;
+      if (!pricePending && !(rate > 0)) throw Error(item.name + ' needs a positive price. Approve free items online.');
       if (taxOn && !Array.isArray(product.taxRates)) throw Error('GST is unavailable offline for ' + item.name + '. Reconnect to verify its tax.');
       const gross = rate * item.qty, discount = roundMoney(gross * Number(priceInfo.disc || 0) / 100);
       const net = gross - discount, rates = taxOn ? product.taxRates.map(Number) : [];
@@ -144,7 +144,7 @@
       totalQty += item.qty;
       return {productId: item.id, name: product.productName, printName: product.printName, code: product.barcode,
         qty: item.qty, rate, total: taxable, tax: lineTax, discount, percent: Number(priceInfo.disc || 0),
-        manualPrice: item.manualRate != null ? 'Y' : 'N', uom: product.uom};
+        manualPrice: item.manualRate != null ? 'Y' : 'N', pricePending, uom: product.uom};
     });
     const grand = subtotal + tax, total = Math.round(grand + Number.EPSILON * Math.max(1, grand));
     return {success: true, store, items, summary: {subtotal: roundMoney(subtotal), tax: roundMoney(tax),

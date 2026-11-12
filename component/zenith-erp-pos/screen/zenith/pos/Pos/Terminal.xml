@@ -107,10 +107,10 @@
                 .parameters([salesModeId:mode.salesModeId, productIds:page.gridProducts*.productId]).disableAuthz().call().overrides ?: [:]
             def cards=page.gridProducts.collect { product ->
                 def price=prices.containsKey(product.productId) ? prices[product.productId] : product.mrpAmount
-                def blocked=price==null
+                def pricePending=price==null
                 def stock=page.gridCardStock[product.productId] ?: [:]
-                [productId:product.productId,name:product.productName ?: product.pseudoId ?: '',price:price ?: 0,blocked:blocked,
-                    priceText:blocked ? 'Price not configured' : '₹'+ec.l10n.format(price,'#,##0.##'),
+                [productId:product.productId,name:product.productName ?: product.pseudoId ?: '',price:price ?: 0,pricePending:pricePending,
+                    priceText:pricePending ? '₹0 · Enter price' : '₹'+ec.l10n.format(price,'#,##0.##'),
                     stockText:!stock.tracked ? 'Stock: not tracked' : stock.quantity!=null ? 'Stock: '+ec.l10n.format(stock.quantity,'#,##0.###') : 'Stock: unavailable']
             }
             ec.web.sendJsonResponse([success:true,products:cards,hasMore:page.gridHasMore,nextOffset:page.gridNextOffset])
@@ -1519,7 +1519,7 @@
                         def price=prices.containsKey(p.productId) ? prices[p.productId] : p.mrpAmount
                         results.add([productId:p.productId, pseudoId:p.pseudoId ?: '',
                                      productName:p.productName ?: p.pseudoId ?: p.productId,
-                                     mrpAmount:price, priceBlocked:price==null])
+                                     mrpAmount:price ?: 0, pricePending:price==null])
                     }
                 }
                 ec.web.sendJsonResponse(results)
@@ -1740,7 +1740,9 @@
     <transition name="freeItemState" method="post"><actions><script><![CDATA[
         def state = ec.service.sync().name('zenith.pos.PosFreeItemServices.get#FreeItemApprovalState').parameters([transactionId:transactionId]).call()
         def manager = ec.service.sync().name('zenith.pos.PosFreeItemServices.get#ManagerApprovalAccess').call()
-        ec.web.sendJsonResponse([success:!ec.message.hasError(),required:state?.required,freeItemCount:state?.freeItemCount,freeItems:state?.freeItems,approvalFingerprint:state?.approvalFingerprint,canApprove:manager?.canApprove,error:ec.message.errorsString])
+        ec.web.sendJsonResponse([success:!ec.message.hasError(),required:state?.required,missingPrice:state?.missingPrice,
+            approvalEnabled:state?.approvalEnabled,freeItemCount:state?.freeItemCount,freeItems:state?.freeItems,
+            approvalFingerprint:state?.approvalFingerprint,canApprove:manager?.canApprove,error:ec.message.errorsString])
     ]]></script></actions><default-response type="none"/></transition>
     <transition name="approveFreeItems" method="post" begin-transaction="true"><actions><script><![CDATA[
         try {
@@ -1878,7 +1880,7 @@
                                 quantity:addQty, discountPercent:(p.salesModeId ? (ec.entity.find("zenith.erp.pos.PosSalesMode").condition("salesModeId", p.salesModeId).one()?.discountPercent ?: 0) : 0), salesModeId:p.salesModeId, taxOn:taxOn]).call()
 
                         addedItemSeqId = added.itemSeqId
-                        // Explicit per-mode pricing may block the add (no price set) -> surface it so the client rolls back.
+                        // Surface authorization, stock or other add failures so the client rolls back.
                         if (ec.message.hasError()) { def _em = ec.message.errorsString; ec.message.clearErrors(); ec.web.sendJsonResponse([success:false, error:_em, transactionId:transactionId]); return }
 
                         if (taxOn == 'N') {
@@ -2206,7 +2208,7 @@
 
 
                                     quantity:1, discountPercent:0, salesModeId:p.salesModeId, taxOn:taxOn]).call()
-                            // Per-mode pricing may block an unpriced product in a fixed mode -> surface it so the client rolls back the scan.
+                            // Surface add failures so the client rolls back the scan.
                             if (ec.message.hasError()) { def _em = ec.message.errorsString; ec.message.clearErrors(); ec.web.sendJsonResponse([success:false, error:_em, transactionId:transactionId]); return }
 
 
@@ -2880,6 +2882,7 @@
 
 
                             qty:it.quantity ?: 0, price:it.unitPrice ?: 0, total:it.lineTotal ?: 0,
+                            pricePending:it.priceRequiresEntry == 'Y' && (it.unitPrice ?: 0) <= 0,
 
 
 
@@ -5274,7 +5277,7 @@ window.sendWhatsAppWithPdf=function() {
 
 
 
-                        <button type="submit" <#if _blk>disabled </#if>style="background:#fff;border:1px solid #ddd;border-radius:10px;padding:14px 8px;cursor:pointer;text-align:center;font-family:inherit;color:#333;min-height:clamp(64px,9vh,90px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;-webkit-tap-highlight-color:rgba(0,0,0,0.1)<#if _blk>;opacity:0.5;cursor:not-allowed;background:#f5f5f5;border-style:dashed;border-color:#e57373</#if>">
+                        <button type="submit" style="background:#fff;border:1px solid #ddd;border-radius:10px;padding:14px 8px;cursor:pointer;text-align:center;font-family:inherit;color:#333;min-height:clamp(64px,9vh,90px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;-webkit-tap-highlight-color:rgba(0,0,0,0.1)">
 
 
 
@@ -5283,7 +5286,7 @@ window.sendWhatsAppWithPdf=function() {
 
 
                             <#if _blk>
-                            <div style="font-size:12px;font-weight:700;color:#c62828">No ${(salesMode!'')?html} price</div>
+                            <div style="font-size:12px;font-weight:700;color:#c62828">${currSymbol}0 · Enter price</div>
                             <#else>
                             <div style="font-size:17px;font-weight:bold;color:#e53935">${currSymbol}${zinr.inr(ec.l10n.format(_mp, '#,##0.##'))}</div>
                             </#if>
