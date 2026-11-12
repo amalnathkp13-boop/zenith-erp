@@ -3,9 +3,11 @@ body:has(.pos-checkout-reference) { margin:0; padding:0; overflow:hidden; }
 body:has(.pos-checkout-reference) .navbar,
 body:has(.pos-checkout-reference) #pos-tabs-menu,
 body:has(.pos-checkout-reference) #pos-module-nav { display:none!important; }
+.z-pos-page #pos-terminal-root.pos-checkout-reference {
+  position:fixed; inset:0; z-index:1100; height:100vh!important; height:100dvh!important; width:100%;
+}
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference {
   --pos-ink:#10112d; --pos-muted:#7780a3; --pos-line:#e6eaf3; --pos-purple:#6332ff;
-  position:fixed; inset:0; z-index:1100; height:100dvh!important; width:100%;
   box-sizing:border-box; padding:0 24px 16px; background:#f9fbff; color:var(--pos-ink);
   font-family:Inter,'Segoe UI',Arial,sans-serif; font-size:14px; overflow:hidden;
   display:grid!important; grid-template-columns:minmax(0,46.5fr) minmax(0,53.5fr)!important;
@@ -13,6 +15,7 @@ html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference {
   grid-template-areas:'header header' 'actions actions' 'catalog carthead' 'catalog cart' 'catalog strip' 'catalog total' 'payment payment'!important;
   gap:10px 12px; isolation:isolate;
 }
+body.pos-focus .z-pos-page #pos-terminal-root.pos-checkout-reference { z-index:9999; background:#fff; }
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference *, html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference *:before, html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference *:after { box-sizing:border-box; }
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference button, html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference input, html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference select { font-family:inherit; }
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference button, html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference summary, html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference a { -webkit-tap-highlight-color:transparent; }
@@ -87,7 +90,7 @@ html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .pos-ca
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .pos-cat-strip a { display:flex; align-items:center; justify-content:center; min-height:44px; padding:0 20px!important; border-radius:10px!important; background:#f0f3f8!important; color:var(--pos-ink)!important; font-size:13px!important; font-weight:600; white-space:nowrap; text-decoration:none; }
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .pos-cat-strip a.is-selected { background:linear-gradient(120deg,#7445ff,#5424ff)!important; color:white!important; }
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .pos-product-grid { flex:1; min-height:0; grid-template-columns:repeat(4,minmax(0,1fr))!important; grid-auto-rows:144px; align-content:start!important; gap:8px!important; padding:6px 0 0!important; background:white!important; overflow:auto; scrollbar-width:thin; }
-html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .pos-product-grid button[type=submit] { width:100%!important; min-width:0; height:100%; min-height:140px!important; padding:16px 8px!important; gap:12px!important; border:1px solid var(--pos-line)!important; border-radius:14px!important; box-shadow:none!important; color:var(--pos-ink)!important; background:white!important; content-visibility:visible!important; contain:none!important; }
+html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .pos-product-grid button[type=submit] { width:100%!important; min-width:0; height:100%; min-height:140px!important; padding:16px 8px!important; gap:12px!important; border:1px solid var(--pos-line)!important; border-radius:14px!important; box-shadow:none!important; color:var(--pos-ink)!important; background:white!important; }
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .pos-product-grid button[type=submit]:hover { border-color:#b9a1ff!important; background:#fcfaff!important; }
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .pos-product-grid button div:first-child { white-space:normal!important; overflow-wrap:anywhere; font-size:14px!important; line-height:1.25!important; font-weight:600!important; color:var(--pos-ink)!important; }
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .pos-product-grid button div:nth-child(2) { font-size:22px!important; font-weight:750!important; color:var(--pos-ink)!important; }

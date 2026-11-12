@@ -987,251 +987,16 @@
 
 
     <transition name="toggleTax" begin-transaction="true">
-
-
-
         <actions>
-            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_taxAccess"
-                          in-map="[transactionId:transactionId, sessionId:sessionId]"/>
-            <if condition="!_taxAccess.allowed"><return/></if>
-
-
-
-            <if condition="transactionId">
-                <entity-find-one entity-name="zenith.erp.pos.PosTransaction" value-field="txn2"/>
-                <if condition="txn2.statusId != 'PtCreated'"><return error="true" message="Only an open cart can change tax mode."/></if>
-
-
-
-                <entity-find entity-name="zenith.erp.pos.PosTransactionItem" list="taxItems">
-
-
-
-                    <econdition field-name="transactionId"/>
-
-
-
-                </entity-find>
-
-
-
-                <if condition="taxOn == 'N'">
-
-
-
-                    <iterate list="taxItems" entry="ti">
-
-
-
-                        <service-call name="update#zenith.erp.pos.PosTransactionItem"
-
-
-
-                            in-map="[transactionId:transactionId, itemSeqId:ti.itemSeqId,
-
-
-
-                                     totalTaxAmount:0, lineTotal:ti.taxableAmount]"/>
-
-
-
-                    </iterate>
-                    <entity-delete-by-condition entity-name="zenith.erp.tax.TaxLineDetail">
-                        <econdition field-name="referenceType" value="PosTransactionItem"/>
-                        <econdition field-name="referenceId" from="transactionId"/>
-                    </entity-delete-by-condition>
-
-
-
-                <else>
-
-
-
-                    <entity-find-one entity-name="zenith.erp.pos.PosSession" value-field="sess2">
-
-
-
-                        <field-map field-name="sessionId" from="txn2.sessionId"/>
-
-
-
-                    </entity-find-one>
-                    <entity-find-one entity-name="zenith.erp.pos.PosTerminal" value-field="term2">
-
-
-
-                        <field-map field-name="terminalId" from="sess2.terminalId"/>
-
-
-
-                    </entity-find-one>
-                    <entity-find entity-name="zenith.erp.india.IndiaGstConfig" list="_toggleGstConfig" limit="1">
-                        <econdition field-name="organizationPartyId" from="txn2.organizationPartyId"/>
-                    </entity-find>
-                    <script><![CDATA[
-                        // State Code is the editable GST setting; regionGeoId may be an older
-                        // non-GST Geo ID. Repair only that inherited value on an open cart.
-                        def configuredOrigin = term2?.stateCode ?: term2?.regionGeoId ?: (_toggleGstConfig ? _toggleGstConfig[0].stateCode : null)
-                        def storedOrigin = txn2.originRegionGeoId
-                        def origin = storedOrigin ?: configuredOrigin
-                        def validOrigin = origin ? ec.entity.find('zenith.erp.india.IndiaState').condition('stateCode', origin).one() : null
-                        def inheritedLegacyOrigin = storedOrigin && storedOrigin == term2?.regionGeoId && !validOrigin
-                        if (inheritedLegacyOrigin) {
-                            origin = configuredOrigin
-                            validOrigin = origin ? ec.entity.find('zenith.erp.india.IndiaState').condition('stateCode', origin).one() : null
-                        }
-                        def gstinState = txn2.customerTaxRegNumber && txn2.customerTaxRegNumber ==~ /[0-9]{2}[A-Z0-9]{13}/ ? txn2.customerTaxRegNumber.substring(0, 2) : null
-                        def destination = txn2.destinationRegionGeoId ?: gstinState ?: origin
-                        if (inheritedLegacyOrigin && txn2.destinationRegionGeoId == storedOrigin) destination = gstinState ?: origin
-                        def validDestination = destination ? ec.entity.find('zenith.erp.india.IndiaState').condition('stateCode', destination).one() : null
-                        taxStatesValid = validOrigin != null && validDestination != null
-                        if (taxStatesValid) {
-                            if (txn2.originRegionGeoId != origin || txn2.destinationRegionGeoId != destination) {
-                                txn2.originRegionGeoId = origin
-                                txn2.destinationRegionGeoId = destination
-                                txn2.update()
-                            }
-                            taxOrigin = origin
-                            taxDestination = destination
-                        } else {
-                            modeSwitchError = 'Set a valid POS terminal and customer supply state before enabling GST.'
-                            taxOn = 'N'
-                        }
-                    ]]></script>
-                    <if condition="!taxStatesValid"><return/></if>
-
-
-
-
-
-
-
-                    <iterate list="taxItems" entry="ti">
-
-
-
-                        <entity-find-one entity-name="mantle.product.Product" value-field="prod2">
-
-
-
-                            <field-map field-name="productId" from="ti.productId"/>
-
-
-
-                        </entity-find-one>
-
-
-
-                        <service-call name="zenith.tax.TaxServices.calculate#Tax"
-
-
-
-                            in-map="[organizationPartyId:txn2.organizationPartyId,
-
-
-
-                                     items:[[productId:ti.productId, productTaxCode:ti.productTaxCode ?: prod2?.productTaxCode,
-
-
-
-                                             taxCategoryId:prod2?.taxCategoryId, quantity:ti.quantity,
-
-
-
-                                             unitAmount:ti.unitPrice, discountAmount:ti.discountAmount ?: 0,
-
-
-
-                                             isTaxInclusive:'N']],
-
-
-
-                                     originRegionGeoId:taxOrigin,
-
-
-
-                                     destinationRegionGeoId:taxDestination,
-
-
-
-                                     transactionType:'SALE']"
-
-
-
-                            out-map="taxRes2" ignore-error="true"/>
-                        <if condition="ec.message.hasError()"><return/></if>
-
-
-
-                        <set field="ti2" from="taxRes2?.taxedItems ? taxRes2.taxedItems[0] : null"/>
-
-
-
-                        <set field="newTax" from="ti2?.totalTaxAmount ?: BigDecimal.ZERO" type="BigDecimal"/>
-
-
-
-                        <set field="newLine" from="((ti.taxableAmount ?: 0) as BigDecimal) + newTax" type="BigDecimal"/>
-
-
-
-                        <service-call name="update#zenith.erp.pos.PosTransactionItem"
-
-
-
-                            in-map="[transactionId:transactionId, itemSeqId:ti.itemSeqId,
-
-
-
-                                     totalTaxAmount:newTax, lineTotal:newLine]"/>
-                        <if condition="ti2?.taxBreakdowns">
-                            <service-call name="zenith.tax.TaxServices.store#TaxLineDetails"
-                                in-map="[referenceType:'PosTransactionItem', referenceId:transactionId,
-                                         referenceSeqId:ti.itemSeqId, taxBreakdowns:ti2.taxBreakdowns]"/>
-                        </if>
-
-
-
-                    </iterate>
-
-
-
-                </else>
-
-
-
-                </if>
-
-
-
-                <service-call name="zenith.pos.PosServices.recalculate#TransactionTotals"
-
-
-
-                    in-map="[transactionId:transactionId]"/>
-
-
-
+            <service-call name="zenith.pos.PosCheckoutServices.change#PosCartTaxMode" out-map="_taxChange"
+                          in-map="[transactionId:transactionId, sessionId:sessionId, taxOn:taxOn]"/>
+            <if condition="_taxChange.reason">
+                <set field="modeSwitchError" from="_taxChange.reason"/>
+                <set field="taxOn" from="taxOn == 'Y' ? 'N' : 'Y'"/>
             </if>
-
-
-
         </actions>
-
-
-
         <default-response url="." parameter-map="[sessionId:sessionId, transactionId:transactionId, catId:catId, taxOn:taxOn, salesModeId:salesModeId]"/>
-
-
-
     </transition>
-
-
-
-
-
-
-
     <transition name="changeSalesMode">
 
 
@@ -1827,7 +1592,17 @@
                         def editable=ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',transactionId).forUpdate(true).one()
                         if (!editable || editable.statusId!='PtCreated') { ec.web.sendJsonResponse([success:false,cartClosed:true,transactionId:'',error:'That bill is already issued or no longer open. Starting a fresh cart; use History to amend an issued bill.']);return }
                     }
-                    if (action == 'cardStock') {
+                    if (action == 'toggleTax') {
+                        if (!'POST'.equalsIgnoreCase(ec.web.request.method)) {
+                            ec.web.response.setStatus(405)
+                            ec.web.sendJsonResponse([success:false,error:'Use POST to change tax mode.'])
+                            return
+                        }
+                        def change = ec.service.sync().name('zenith.pos.PosCheckoutServices.change#PosCartTaxMode')
+                            .parameters([sessionId:sessionId,transactionId:transactionId,taxOn:p.taxOn]).call()
+                        if (ec.message.hasError()) throw new IllegalArgumentException(ec.message.errorsString)
+                        if (change?.reason) { ec.web.sendJsonResponse([success:false,error:change.reason]); return }
+                    } else if (action == 'cardStock') {
                         def ids=(p.productIds ?: '').toString().split(',').take(120).toList()
                         def stockResult=ec.service.sync().name('zenith.pos.PosCheckoutServices.get#PosCardStock').parameters([sessionId:sessionId,productIds:ids]).call()
                         if (ec.message.hasError()) { def error=ec.message.errorsString; ec.message.clearErrors(); ec.web.sendJsonResponse([success:false,error:error]);return }
@@ -2904,6 +2679,7 @@
 
 
                         cnt:items.size(), tQty:totalQty, modes:offeredModes.collect{[id:it.salesModeId, name:it.modeName, disc:(it.discountPercent ?: 0)]}]
+                    if (action == 'toggleTax') result.taxOn = taxOn
                     if (action == 'recallSale') {
                         result.salesModeId = txn?.salesModeId ?: ''
                         result.taxOn = (txn?.totalTaxAmount ?: 0) > 0 ? 'Y' : 'N'
@@ -2915,6 +2691,10 @@
 
 
 
+                    if (action == 'toggleTax') {
+                        ec.transaction.setRollbackOnly('POS tax mode change failed', e)
+                        if (ec.message.hasError()) ec.message.clearErrors()
+                    }
                     if (action == 'applyDiscount') {
                         ec.transaction.setRollbackOnly('POS bill discount failed', e)
                         if (ec.message.hasError()) ec.message.clearErrors()
@@ -5142,7 +4922,7 @@ window.sendWhatsAppWithPdf=function() {
   
 
     <form method="post" action="Terminal/closeSession" style="display:inline;margin:0"><input type="hidden" name="sessionId" value="${sessionId!''}"/><input type="hidden" name="closingCash" value="0"/><input type="hidden" name="moquiSessionToken" value="${ec.web.sessionToken}"/><button type="submit" class="nb-power" title="Review cash and close this POS session" aria-label="Review cash and close session"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h7"/></svg><span>Close session</span></button></form>
-  <button id="posFullscreenBtn" type="button" onclick="posToggleFocus()" class="nb-abtn nb-abtn--icon" title="Enter fullscreen" aria-label="Enter fullscreen" aria-pressed="false"><span id="fsBtnIcon" aria-hidden="true">&#x26F6;</span></button>
+  <button id="posFullscreenBtn" type="button" onclick="posToggleFocus()" class="nb-abtn nb-abtn--icon" title="Enter fullscreen" aria-label="Enter fullscreen" aria-pressed="false"><span id="fsBtnIcon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5"/></svg></span></button>
 </div>
 </div>
 
@@ -6002,27 +5782,57 @@ window.sendWhatsAppWithPdf=function() {
 
 
 <script>(function(){
-function applyFocus(on){var r=document.getElementById('pos-terminal-root');if(!r)return;document.body.classList.toggle('pos-focus',on);if(on){r.style.position='fixed';r.style.top='0';r.style.left='0';r.style.right='0';r.style.bottom='0';r.style.zIndex='9999';r.style.background='#fff';}else{['position','top','left','right','bottom','zIndex','background'].forEach(function(k){r.style[k]='';});}}
-function fullscreenElement(){return document.fullscreenElement||document.webkitFullscreenElement;}
-function f(){var r=document.getElementById('pos-terminal-root');if(!r)return;var foc=!!fullscreenElement();var t=foc?0:r.getBoundingClientRect().top;var h=window.innerHeight-t;if(h<360)h=360;r.style.height=h+'px';var lg=document.getElementById('posKbLegend');if(lg)lg.style.display=(window.innerHeight<1100?'none':'');var fi=document.getElementById('fsBtnIcon');if(fi){fi.innerHTML=foc?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5"/></svg>';fi.setAttribute('aria-hidden','true');}var btn=document.getElementById('posFullscreenBtn');if(btn){btn.title=foc?'Exit fullscreen':'Enter fullscreen';btn.setAttribute('aria-label',btn.title);btn.setAttribute('aria-pressed',String(foc));}}
-window.posFitTerminal=f;
-function syncFullscreen(){applyFocus(!!fullscreenElement());f();}
-window.posToggleFocus=function(){
-    var target=fullscreenElement()?document:document.documentElement;
-    var method=fullscreenElement()?(document.exitFullscreen||document.webkitExitFullscreen):(target.requestFullscreen||target.webkitRequestFullscreen);
-    if(!method){syncFullscreen();return;}
-    try{var result=method.call(target);if(result&&result.catch)result.catch(syncFullscreen);}catch(e){syncFullscreen();}
-};
-if(window.__posFullscreenSync){document.removeEventListener('fullscreenchange',window.__posFullscreenSync);document.removeEventListener('webkitfullscreenchange',window.__posFullscreenSync);}
-window.__posFullscreenSync=syncFullscreen;
-document.addEventListener('fullscreenchange',syncFullscreen);document.addEventListener('webkitfullscreenchange',syncFullscreen);
-try{localStorage.removeItem('posFocus');sessionStorage.removeItem('posFS');}catch(e){}
-syncFullscreen();
-function syncLayoutChoices(){var normal=document.body.classList.contains('pos-mode-normal');document.querySelectorAll('[data-pos-layout]').forEach(function(btn){var active=(btn.getAttribute('data-pos-layout')==='normal')===normal;btn.classList.toggle('is-active',active);btn.setAttribute('aria-pressed',String(active));});}
-window.posSetLayout=function(mode){if(mode!=='normal'&&mode!=='advanced')return;var normal=mode==='normal';document.body.classList.toggle('pos-mode-normal',normal);document.body.classList.toggle('pos-mode-advanced',!normal);try{localStorage.setItem('posLayoutMode',mode);}catch(e){}syncLayoutChoices();var menu=document.querySelector('.nb-modes');if(menu)menu.open=false;f();var root=document.getElementById('pos-terminal-root');if(root)root.scrollTop=0;setTimeout(f,100);setTimeout(f,320);};
-window.posToggleLayout=function(){window.posSetLayout(document.body.classList.contains('pos-mode-normal')?'advanced':'normal');};
-syncLayoutChoices();
-window.addEventListener('resize',f);window.addEventListener('orientationchange',f);if(document.readyState!=='loading')f();else document.addEventListener('DOMContentLoaded',f);setTimeout(f,150);setTimeout(f,500);setTimeout(f,1200);
+    var root=document.getElementById('pos-terminal-root');
+    var button=document.getElementById('posFullscreenBtn');
+    var icon=root.querySelector('#fsBtnIcon path');
+    function fullscreenElement(){return document.fullscreenElement||document.webkitFullscreenElement;}
+    function syncFullscreen(){
+        if(!root.isConnected)return;
+        var active=!!fullscreenElement();
+        document.body.classList.toggle('pos-focus',active);
+        if(button.getAttribute('aria-pressed')===String(active))return;
+        button.title=active?'Exit fullscreen':'Enter fullscreen';
+        button.setAttribute('aria-label',button.title);
+        button.setAttribute('aria-pressed',String(active));
+        icon.setAttribute('d',active?'m6 6 12 12M18 6 6 18':'M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5');
+    }
+    window.posToggleFocus=function(){
+        var active=fullscreenElement();
+        var target=active?document:document.documentElement;
+        var method=active?(document.exitFullscreen||document.webkitExitFullscreen):(target.requestFullscreen||target.webkitRequestFullscreen);
+        if(!method){syncFullscreen();return;}
+        try{var result=method.call(target);if(result&&result.catch)result.catch(syncFullscreen);}catch(e){syncFullscreen();}
+    };
+    if(window.__posFullscreenSync){
+        document.removeEventListener('fullscreenchange',window.__posFullscreenSync);
+        document.removeEventListener('webkitfullscreenchange',window.__posFullscreenSync);
+    }
+    window.__posFullscreenSync=syncFullscreen;
+    document.addEventListener('fullscreenchange',syncFullscreen);
+    document.addEventListener('webkitfullscreenchange',syncFullscreen);
+    try{localStorage.removeItem('posFocus');sessionStorage.removeItem('posFS');}catch(e){}
+    syncFullscreen();
+
+    function syncLayoutChoices(){
+        var normal=document.body.classList.contains('pos-mode-normal');
+        root.querySelectorAll('[data-pos-layout]').forEach(function(choice){
+            var active=(choice.getAttribute('data-pos-layout')==='normal')===normal;
+            choice.classList.toggle('is-active',active);
+            choice.setAttribute('aria-pressed',String(active));
+        });
+    }
+    window.posSetLayout=function(mode){
+        if(mode!=='normal'&&mode!=='advanced')return;
+        var normal=mode==='normal';
+        document.body.classList.toggle('pos-mode-normal',normal);
+        document.body.classList.toggle('pos-mode-advanced',!normal);
+        try{localStorage.setItem('posLayoutMode',mode);}catch(e){}
+        syncLayoutChoices();
+        var menu=root.querySelector('.nb-modes');if(menu)menu.open=false;
+        root.scrollTop=0;
+    };
+    window.posToggleLayout=function(){window.posSetLayout(document.body.classList.contains('pos-mode-normal')?'advanced':'normal');};
+    syncLayoutChoices();
 }())</script>
 <style>.cart-dd-item{padding:8px 12px;cursor:pointer;border-bottom:1px solid #eee;font-size:14px;background:#fff}.cart-dd-item:hover,.cart-dd-item.active{background:#e8f5e9}.cart-dd-item .dd-price{float:right;color:#e53935 !important;font-weight:bold;font-size:14px}.cart-dd-item .dd-name{font-weight:600;color:#000 !important;font-size:14px}.cart-dd-item .dd-code{font-size:12px;color:#555 !important}</style>
 

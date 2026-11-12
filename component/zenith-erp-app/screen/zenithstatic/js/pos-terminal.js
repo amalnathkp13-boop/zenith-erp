@@ -594,6 +594,7 @@ window._posOffline = (function () {
                 var source = form && form.querySelector('[name=transactionId]');
                 var id = source && source.value;
                 if (!id || localEditing || (snapshot && snapshot.transactionId === id)) return config.products.length;
+                var previousSnapshot = snapshot;
                 var data = new URLSearchParams(new FormData(form));
                 data.set('action', 'refresh');
                 return fetch('Terminal/ajaxCart', {
@@ -602,7 +603,9 @@ window._posOffline = (function () {
                     if (!response.ok) return null;
                     return response.json();
                 }).then(function (result) {
-                    if (!localEditing && source.value === id && result && result.success && result.transactionId === id) remember(result);
+                    // A confirmed cart edit or tax change is newer than this background read.
+                    if (!localEditing && snapshot === previousSnapshot && source.value === id &&
+                        result && result.success && result.transactionId === id) remember(result);
                 }).catch(function () {}).then(function () { return config.products.length; });
             });
         }).catch(function () { return 0; }).finally(function () { catalogRefresh = null; });
@@ -2566,7 +2569,8 @@ window._posOffline = (function () {
                 renderRows();
                 histToast('Added ' + (name || pid) + ' to bill', '#2e7d32');
             };
-            setTimeout(function(){ var r=ed.querySelector('.ced-price'); if(r) r.focus(); }, 50);
+            var firstRate = ed.querySelector('.ced-price');
+            if (firstRate) firstRate.focus();
         }
         window.posOpenCartEditor = openCartEditor;
 
@@ -3606,6 +3610,7 @@ window.posToggleFullscreen = function() {
         var CS = '₹';
         var busy = false;
         var modeSwitching = false;
+        var taxModePending = false, unconfirmedTaxTx = null;
         var cartClearing = false;
         var lastTxnNum = '';
         var lastPay = 0;
@@ -4266,13 +4271,13 @@ window.posToggleFullscreen = function() {
         }
 
         /* --- Cart AJAX --- */
-        function post(params) {
+        function post(params, signal) {
             if (busy) return Promise.resolve(null);
             busy = true;
-            params.sessionId = SI; params.taxOn = TO; params.salesModeId = SM; params.moquiSessionToken = TK;
+            params.sessionId = SI; params.taxOn = params.taxOn || TO; params.salesModeId = SM; params.moquiSessionToken = TK;
             return fetch('Terminal/ajaxCart', {
                 method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                body: new URLSearchParams(params), credentials: 'same-origin'
+                body: new URLSearchParams(params), credentials: 'same-origin', signal: signal
             }).then(function(r) { return r.json(); }).finally(function() { busy = false; });
         }
 
@@ -5240,7 +5245,7 @@ window.posToggleFullscreen = function() {
                     if (previous && window._posOffline) window._posOffline.cacheCatalog();
                 }
                 if (checkedTx && (data.cartChanged || (previous && data.changed))) catalogDirtyTx = checkedTx;
-                if (!TX || catalogDirtyTx !== TX || busy || OPT._drainPending() ||
+                if (!TX || catalogDirtyTx !== TX || taxModePending || busy || OPT._drainPending() ||
                     document.querySelector('.pos-cart [aria-invalid="true"]')) return data;
                 var cartBefore = lastCartData;
                 return post({action:'refresh', transactionId:TX}).then(function(current) {
@@ -5272,9 +5277,20 @@ window.posToggleFullscreen = function() {
                 if (data.cartChanged) showToast('Product prices changed. Review the updated bill total.', '#b45309');
             }).catch(function() {});
         }
+        function taxModeError() {
+            if (taxModePending) return 'Wait for the tax mode to finish updating.';
+            if (unconfirmedTaxTx === TX) return 'Retry the tax switch before taking payment.';
+            return '';
+        }
         function confirmCatalogTender() {
             var total = Number(lastPay), checkedTx = TX;
-            return OPT.whenIdle().then(function() { return refreshCatalog(true); }).then(function(data) {
+            return OPT.whenIdle().then(function() {
+                var error = taxModeError();
+                if (error) throw new Error(error);
+                return refreshCatalog(true);
+            }).then(function(data) {
+                var error = taxModeError();
+                if (error) throw new Error(error);
                 if (TX !== checkedTx) throw new Error('The active bill changed. Review it before taking payment.');
                 if (!af.isConnected || !TX || catalogDirtyTx === TX) throw new Error('Could not verify the current bill. Try again.');
                 if (data.cartChanged || Number(lastPay) !== total)
@@ -5396,30 +5412,45 @@ window.posToggleFullscreen = function() {
         }
         if (taxForm) taxForm.addEventListener('submit', function(e) {
             e.preventDefault();
-            if (modeSwitching || cartClearing) return;
+            if (modeSwitching || cartClearing || paymentPanelPending) return;
             var newTax = TO === 'Y' ? 'N' : 'Y';
-            var btn = taxForm.querySelector('button');
-            if (btn) btn.disabled = true;
-            modeSwitching = true;
-            OPT.whenIdle().then(function() {
-                var fd = new FormData(taxForm);
-                fd.set('transactionId',TX); fd.set('sessionId',SI); fd.set('taxOn',newTax);
-                fd.set('salesModeId',SM); fd.set('moquiSessionToken',TK);
-                return fetch(taxForm.action,{method:'POST',body:new URLSearchParams(fd),credentials:'same-origin'});
-            }).then(function(response) {
-                if (!response.ok) throw new Error('Tax mode could not be changed. Reload the bill and try again.');
-                return response.text();
-            }).then(function(html) {
-                var doc=new DOMParser().parseFromString(html,'text/html');
-                var saved=doc.querySelector('#cartInlineAddForm input[name="taxOn"]');
-                var error=doc.querySelector('#posModeSwitchErr,.alert-danger');
-                if (!saved || saved.value!==newTax || error) throw new Error(error ? error.textContent.trim() : 'Tax mode was not saved. Reload the bill.');
-                applyTaxMode(newTax);
-                var url=new URL(location.href);url.searchParams.set('taxOn',TO);history.replaceState(history.state,'',url.href);
-                return post({action:'refresh',transactionId:TX});
-            }).then(function(data) { if(data)renderCart(data); })
-                .catch(function(error){showToast(error.message,'#c62828');})
-                .finally(function(){modeSwitching=false;if(btn)btn.disabled=false;});
+            var button = taxForm.querySelector('button');
+            var label = taxForm.querySelector('.nb-tax__lbl');
+            var settledCart = OPT.whenIdle();
+            modeSwitching = taxModePending = true;
+            button.disabled = true;
+            taxForm.setAttribute('aria-busy','true');
+            label.textContent = 'Updating tax…';
+            settledCart.then(function() {
+                // Let any earlier catalog response settle before it can repaint the old tax total.
+                return catalogCheck && catalogCheck.catch(function() {});
+            }).then(function() {
+                var transaction = TX;
+                return post({action:'toggleTax',transactionId:transaction,taxOn:newTax}, AbortSignal.timeout?.(15000))
+                    .catch(function() {
+                        unconfirmedTaxTx = transaction;
+                        throw new Error('Could not confirm tax mode. Retry the tax switch before taking payment.');
+                    });
+            }).then(function(data) {
+                if (!data || !data.success || data.taxOn !== newTax)
+                    throw new Error(data && data.error || 'Tax mode could not be changed. Try again.');
+                unconfirmedTaxTx = null;
+                if (catalogDirtyTx === TX) catalogDirtyTx = '';
+                if (!af.isConnected || (window._posOffline && window._posOffline.active())) return;
+                applyTaxMode(data.taxOn);
+                var url = new URL(location.href);
+                url.searchParams.set('taxOn',TO);
+                history.replaceState(history.state,'',url.href);
+                renderCart(data);
+            }).catch(function(error) {
+                showToast(error.message,'#c62828');
+            }).finally(function() {
+                modeSwitching = taxModePending = false;
+                button.disabled = false;
+                taxForm.removeAttribute('aria-busy');
+                if (!window._posOffline || !window._posOffline.active())
+                    label.textContent = 'Tax: ' + (TO === 'Y' ? 'On' : 'Off');
+            });
         });
 
         /* --- Close Session: shared cash review --- */
@@ -5461,6 +5492,8 @@ window.posToggleFullscreen = function() {
         var paymentPanelPending = false;
         function openPaymentPanel(builder, onOpen) {
             if (paymentPanelPending) return;
+            var taxError = taxModeError();
+            if (taxError) { showToast(taxError,'#c62828'); return; }
             paymentPanelPending = true;
             smRoot.setAttribute('aria-busy','true');
             OPT.whenIdle().then(function() {

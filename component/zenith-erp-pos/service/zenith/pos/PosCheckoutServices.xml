@@ -21,6 +21,87 @@
             ec.service.sync().name('update#zenith.erp.pos.PosSession').parameters([sessionId:sessionId,lastActivityDate:ec.user.nowTimestamp]).call()
         ]]></script></actions>
     </service>
+    <service verb="change" noun="PosCartTaxMode" authenticate="true">
+        <in-parameters>
+            <parameter name="sessionId" required="true"/><parameter name="transactionId"/>
+            <parameter name="taxOn" required="true"/>
+        </in-parameters>
+        <out-parameters><parameter name="reason"/></out-parameters>
+        <actions><script><![CDATA[
+            def access = ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess')
+                .parameters([sessionId:sessionId, transactionId:transactionId]).call()
+            if (!access?.allowed) return
+            if (!(taxOn in ['Y','N'])) { reason = 'Choose Tax On or Tax Off.'; return }
+            def session = ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',sessionId).one()
+            if (session?.statusId != 'PsOpen') { reason = 'Open a POS session before changing tax mode.'; return }
+            if (!transactionId) return
+            def txn = ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',transactionId).forUpdate(true).one()
+            if (txn?.sessionId != sessionId || txn.statusId != 'PtCreated' || txn.transactionNumber || (txn.paidAmount ?: 0) > 0) {
+                reason = 'Only the open cart in this session can change tax mode.'; return
+            }
+            def lines = ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId',transactionId)
+                .orderBy('itemSeqId').list()
+            def taxes = [:]
+            if (taxOn == 'Y') {
+                def terminal = ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',session.terminalId).one()
+                def gstConfig = ec.entity.find('zenith.erp.india.IndiaGstConfig').condition('organizationPartyId',txn.organizationPartyId)
+                    .limit(1).one()
+                // State Code is editable. Only replace an inherited, invalid legacy terminal region.
+                def configuredOrigin = terminal?.stateCode ?: terminal?.regionGeoId ?: gstConfig?.stateCode
+                def isState = { code -> code && ec.entity.find('zenith.erp.india.IndiaState').condition('stateCode',code).one() != null }
+                def origin = txn.originRegionGeoId ?: configuredOrigin
+                def inheritedLegacyOrigin = txn.originRegionGeoId && txn.originRegionGeoId == terminal?.regionGeoId && !isState(origin)
+                if (inheritedLegacyOrigin) origin = configuredOrigin
+                def gstin = txn.customerTaxRegNumber
+                def gstinState = gstin && gstin ==~ /[0-9]{2}[A-Z0-9]{13}/ ? gstin.substring(0,2) : null
+                def destination = txn.destinationRegionGeoId ?: gstinState ?: origin
+                if (inheritedLegacyOrigin && txn.destinationRegionGeoId == txn.originRegionGeoId) destination = gstinState ?: origin
+                if (!isState(origin) || !isState(destination)) {
+                    reason = 'Set a valid POS terminal and customer supply state before enabling GST.'; return
+                }
+                if (lines) {
+                    def products = ec.entity.find('mantle.product.Product').condition('productId','in',lines*.productId.unique())
+                        .list().collectEntries { [(it.productId):it] }
+                    // Submit the whole ordered cart to the existing tax provider in one call.
+                    def taxInputs = lines.collect { line ->
+                        def product = products[line.productId]
+                        [productId:line.productId, productTaxCode:line.productTaxCode ?: product?.productTaxCode,
+                         taxCategoryId:product?.taxCategoryId, quantity:line.quantity, unitAmount:line.unitPrice,
+                         discountAmount:line.discountAmount ?: 0, isTaxInclusive:'N']
+                    }
+                    def result = ec.service.sync().name('zenith.tax.TaxServices.calculate#Tax').parameters([
+                        organizationPartyId:txn.organizationPartyId, originRegionGeoId:origin,
+                        destinationRegionGeoId:destination, transactionType:'SALE', items:taxInputs]).call()
+                    if (ec.message.hasError()) return
+                    taxes = (result?.taxedItems ?: []).collectEntries { [(it.itemIndex as Integer):it] }
+                    if (!(0..<lines.size()).every { taxes.containsKey(it) }) {
+                        reason = 'Tax could not be calculated for every item. Try again.'; return
+                    }
+                }
+                if (txn.originRegionGeoId != origin || txn.destinationRegionGeoId != destination) {
+                    txn.originRegionGeoId = origin
+                    txn.destinationRegionGeoId = destination
+                    txn.update()
+                }
+            }
+            if (taxOn == 'N') ec.entity.find('zenith.erp.tax.TaxLineDetail').condition('referenceType','PosTransactionItem')
+                .condition('referenceId',transactionId).deleteAll()
+            lines.eachWithIndex { line, index ->
+                def itemTax = taxes[index]
+                def amount = itemTax?.totalTaxAmount ?: BigDecimal.ZERO
+                def total = (line.taxableAmount ?: BigDecimal.ZERO) + amount
+                if (line.totalTaxAmount != amount || line.lineTotal != total) {
+                    line.totalTaxAmount = amount
+                    line.lineTotal = total
+                    line.update()
+                }
+                if (itemTax?.taxBreakdowns) ec.service.sync().name('zenith.tax.TaxServices.store#TaxLineDetails')
+                    .parameters([referenceType:'PosTransactionItem', referenceId:transactionId,
+                                 referenceSeqId:line.itemSeqId, taxBreakdowns:itemTax.taxBreakdowns]).call()
+            }
+            ec.service.sync().name('zenith.pos.PosServices.recalculate#TransactionTotals').parameter('transactionId',transactionId).call()
+        ]]></script></actions>
+    </service>
     <!-- One bounded, uncached batch for the visible product page; never sum another shop's lots. -->
     <service verb="get" noun="PosCardStock" authenticate="true">
         <in-parameters><parameter name="sessionId" required="true"/><parameter name="productIds" type="List" required="true"/></in-parameters>
