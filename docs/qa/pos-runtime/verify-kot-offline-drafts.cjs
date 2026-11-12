@@ -462,9 +462,9 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     await cash.fill('40');
     await page.locator('#kb-payment [name=upiAmount]').fill('49');
     const confirmOther = page.locator('#kb-other-payment button[type=submit]:visible');
-    const confirmUpi = async (print = true) => {
+    const confirmUpi = async () => {
       await page.locator('#posPayConfOk').click();
-      await page.locator(print ? '#posPaySavePrint' : '#posPaySave').click();
+      await page.locator('#kb-print-choice').waitFor();
     };
     await confirmOther.click();
     await page.locator('#kb-payment-error').getByText(/add up to the bill total/i).waitFor();
@@ -633,9 +633,9 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     const [savedTicket] = ticketRow();
     assert.ok(savedTicket && !savedTicket.transaction_id,'The server has acknowledged the ticket while the tender dialog stays open');
     assert.equal(await page.locator('#kb-payment-total').textContent(),pendingTotal);
-    await confirmUpi(false);
+    await confirmUpi();
     await page.locator('#kb-payment').waitFor({state:'hidden'});
-    assert.equal(await page.locator('#kb-print-choice').isVisible(),false,'Save leaves the print dialog closed');
+    await page.locator('#kb-print-close').click();
     await page.waitForFunction(scope => window.KotOffline.createWorkspace(scope.org,scope.terminalId,scope.user).queue().length === 0,scope);
     const linkedTicket = ticketRow();
     const linkedPayments = q("SELECT payment_method,amount FROM pos_payment WHERE transaction_id='" + linkedTicket[0]?.transaction_id + "'");

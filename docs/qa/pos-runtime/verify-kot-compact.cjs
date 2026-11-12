@@ -126,6 +126,18 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await page.locator('#kb-grand').getByText('₹100.00').waitFor();
   await page.getByRole('button',{name:/^UPI F5$/}).click();
   check('Grid payment buttons open the existing checkout with the selected tender',await page.locator('#kb-payment-method').inputValue()==='UPI');
+  const paymentStyle=()=>page.locator('.kb-checkout-actions :is([data-kb-payment],#kb-draft)').evaluateAll(buttons=>
+   buttons.map(button=>{
+    const style=getComputedStyle(button), icon=getComputedStyle(button,'::before');
+    return {fill:style.backgroundColor,icon:icon.maskImage.startsWith('url('),shortcut:getComputedStyle(button.querySelector('kbd')).display!=='none'};
+   }));
+  const expectedFills=['rgb(224, 245, 239)','rgb(225, 240, 255)','rgb(255, 240, 229)','rgb(240, 232, 255)','rgb(229, 240, 255)','rgb(255, 240, 229)'];
+  const gridPaymentStyle=await paymentStyle();
+  const upiConfirmType=await page.locator('#posPayConfOk').getAttribute('type');
+  check('Grid uses the POS action artwork and UPI confirms directly',
+   gridPaymentStyle.length===expectedFills.length&&gridPaymentStyle.every((button,index)=>button.icon&&button.shortcut&&button.fill===expectedFills[index])&&
+   upiConfirmType==='submit',{gridPaymentStyle,upiConfirmType});
+  await page.screenshot({path:path.join(out,'kot-grid-upi-payment.png')});
   await page.locator('#kb-payment-close').click();
   await page.locator('[data-kb-payment="Cash"]').click();
   const cash=page.locator('#kb-cash'), confirmCash=page.locator('.pos-cash-confirm');
@@ -372,7 +384,20 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await page.locator('#kb-grand').getByText('₹450.00').waitFor();
    check(view+' Right and Enter select Card',await page.locator('#kb-payment-method').inputValue()==='Card');
    if(view==='List'){
+    check('List uses the same POS action artwork, colors and shortcuts as Grid',
+     JSON.stringify(await paymentStyle())===JSON.stringify(gridPaymentStyle));
+    await page.screenshot({path:path.join(out,'kot-list-card-payment.png')});
+    await page.setViewportSize({width:390,height:300});
+    const bounds=await page.locator('#kb-payment').evaluate(dialog=>{
+     const box=dialog.getBoundingClientRect();
+     return {centered:Math.abs((box.left+box.right)/2-innerWidth/2)<=1&&Math.abs((box.top+box.bottom)/2-innerHeight/2)<=1,
+      inset:box.left>=12&&box.top>=12&&box.right<=innerWidth-12&&box.bottom<=innerHeight-12,
+      scrollable:dialog.scrollHeight>dialog.clientHeight&&getComputedStyle(dialog).overflowY==='auto'};
+    });
+    check('Card stays centered and scrollable on a short screen',bounds.centered&&bounds.inset&&bounds.scrollable,bounds);
     await page.locator('#kb-payment-close').click();
+    check('Cancelling Card leaves the bill and total intact',await page.locator('#kb-grand').innerText()==='₹450.00');
+    await page.setViewportSize({width:1366,height:768});
     page.once('dialog',dialog=>dialog.accept());
     await page.locator('#kb-clear').click();
     continue;
@@ -394,6 +419,20 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   }
   await modes.locator('summary').click();
   await listMode.click();
+  await page.locator('[data-ot="Take Away"]').click();
+  await search.fill('Disposable POS A P18');
+  await card.waitFor();
+  await card.click();
+  await page.locator('#kb-grand').getByText('₹100.00').waitFor();
+  await page.locator('[data-kb-payment=UPI]').click();
+  await page.locator('#kb-payment [name=referenceNumber]').fill('KOT-QA-UPI');
+  await page.locator('#posPayConfOk').click();
+  await page.locator('#kb-print-choice').waitFor();
+  await page.locator('#kb-print-close').click();
+  const upi=q("SELECT p.amount,p.reference_number FROM pos_payment p JOIN pos_transaction t ON t.transaction_id=p.transaction_id WHERE t.session_id='"+session.sessionId+"' AND t.status_id='PtCompleted' AND p.payment_method='UPI'");
+  check('One UPI confirmation saves one tender and closing print options skips printing',
+   upi.length===1&&Number(upi[0].amount)===100&&upi[0].reference_number==='KOT-QA-UPI'&&
+   await page.evaluate(()=>window.kotPrints.length===6)&&!await page.locator('#kb-payment').isVisible(),upi);
   const held=await json('saveDraft',{itemsJson:JSON.stringify([{productId:'POS_QA_A_P18',quantity:1.25,manualPrice:'Y',unitPrice:120}]),
    salesModeId:'RETAIL',customerPartyId:'POS_QA_A_CUST_SAME',orderType:'Take Away',taxOn:'N',notes:'Held order QA',wantJson:'Y'});
   check('A named customer and fractional line can be held',held.data?.success,held);

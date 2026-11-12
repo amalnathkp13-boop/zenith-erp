@@ -904,9 +904,9 @@
     <div class="kb-total-row"><span>KOT TOTAL</span><strong id="kb-grand">&#8377;0.00</strong></div>
     <#if modCanWrite><div class="kb-checkout-actions" role="group" aria-label="Payment and kitchen actions">
       <#list ['Cash','Card','Credit','UPI','Split'] as tender>
-      <button type="button" class="kg-tender" data-kb-payment="${tender}" disabled><@ic tender?lower_case 24/> ${(tender == 'Split')?then('Split Payment',tender)} <kbd>F${tender?index + 2}</kbd></button>
+      <button type="button" class="kg-tender" data-kb-payment="${tender}" disabled><span>${(tender == 'Split')?then('Split Payment',tender)}</span> <kbd>F${tender?index + 2}</kbd></button>
       </#list>
-      <button type="button" id="kb-draft" class="kb-action-hold" disabled><span aria-hidden="true">Ⅱ</span> Hold <kbd>F7</kbd></button>
+      <button type="button" id="kb-draft" class="kb-action-hold" disabled><span>Hold</span> <kbd>F7</kbd></button>
       <button type="button" id="kb-send" class="kb-action-send" title="Press Shift by itself" <#if !kitchenDisplayEnabled>style="display:none"</#if> disabled><@ic 'printer'/> Send to KOT <kbd>Shift</kbd></button>
       <button type="button" id="kb-bill" class="kb-action-bill" disabled><@ic 'box'/> Bill Out <kbd>Space</kbd></button>
     </div></#if>

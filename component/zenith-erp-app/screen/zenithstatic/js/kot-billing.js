@@ -853,7 +853,6 @@
     $('payment-error').textContent='';
     $('payment-heading').hidden=$('payment-picker').hidden=Boolean(method);
     $('payment-continue').disabled=!method;
-    dialog.classList.toggle('kb-cash-dialog',method==='Cash');
     dialog.dataset.tender=method;
     dialog.setAttribute('aria-labelledby',{
       Cash:'pos-cash-title',Card:'pos-digital-title',UPI:'pos-digital-title',
@@ -872,8 +871,8 @@
       panel.querySelector('#posPayConfCancel').id='kb-payment-close';
       const confirm=panel.querySelector('#posPayConfOk');
       confirm.parentElement.insertAdjacentHTML('beforebegin',
-        '<label>Reference number (optional)<input name="referenceNumber" type="text" maxlength="80"></label>');
-      if(method==='Card')confirm.type='submit';
+        '<label class="kb-payment-reference">Reference number (optional)<input name="referenceNumber" type="text" maxlength="80"></label>');
+      confirm.type='submit';
       confirm.focus();
     }else if(method==='Split'){
       panel.innerHTML=PosTillDialogs.splitMarkup(paymentAmount);
@@ -890,17 +889,6 @@
     }else{
       $('payment-method').focus();
     }
-  }
-  function showUpiReceiptChoices() {
-    const panel=$('other-payment');
-    const reference=panel.querySelector('[name=referenceNumber]');
-    panel.innerHTML='<div class="kb-upi-save">'+PosTillDialogs.upiReceiptMarkup(paymentAmount)+'</div>';
-    reference.type='hidden';
-    panel.append(reference);
-    $('payment').setAttribute('aria-labelledby','pos-upi-title');
-    const choices=panel.querySelectorAll('button');
-    for(const choice of choices)choice.type='submit';
-    choices[0].focus();
   }
   function setupCreditTender(panel) {
     const field=id=>panel.querySelector('#credit-'+id);
@@ -1199,7 +1187,6 @@
       }
     }
     const payment=Object.fromEntries(new FormData(form)), data=orderData(), fingerprint=JSON.stringify(data);
-    const saveWithoutPrint=submit.id==='posPaySave';
     const actions=Array.from(form.querySelectorAll('button:enabled'));
     let bill;
     busy=true;controls();actions.forEach(button=>button.disabled=true);$('payment-error').textContent='';
@@ -1258,11 +1245,6 @@
     historyPrintRow=null;
     $('print-title').textContent='Payment complete';
     $('print-error').textContent='';
-    if(saveWithoutPrint){
-      $('order-status').textContent=notice+change;
-      if(bill.local)syncDeviceOrders();
-      return;
-    }
     updatePrintOptions();
     $('print-choice').showModal();
     $('print-choice').querySelector('[data-kb-print="bill"]').focus();
@@ -1708,7 +1690,6 @@
       if(PosTillDialogs.updateCash(slot,paymentAmount)&&e.detail===0)slot.querySelector('.pos-cash-confirm').focus();
     }
     else if(button.id==='kb-payment-continue')tenderFields($('payment-method').value);
-    else if(button.id==='posPayConfOk'&&$('payment-method').value==='UPI')showUpiReceiptChoices();
     else if(button.id==='kb-payment-close'||button.id==='kb-payment-picker-close'||button.classList.contains('pos-cash-cancel'))$('payment').close();
     else if(button.dataset.kbPrint)printChoice(button.dataset.kbPrint);
     else if(button.id==='kb-print-close')$('print-choice').close();
