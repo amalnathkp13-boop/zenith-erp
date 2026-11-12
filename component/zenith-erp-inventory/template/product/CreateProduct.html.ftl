@@ -9,7 +9,11 @@
                 <option value="KGS">Kilograms (Kg)</option><option value="MTR">Metres (M)</option>
                 <option value="PCS">Pieces (Pcs)</option><option value="LTR">Litres (L)</option>
             </select></label>
-            <label>Item Code<input value="Generated on save" readonly/></label>
+            <div>
+                <label for="CreateProductForm_pseudoId">Item Code</label>
+                <input id="CreateProductForm_pseudoId" name="pseudoId" maxlength="100" autocomplete="off" aria-describedby="pe-create-code-help"/>
+                <small id="pe-create-code-help">Leave blank to generate a code on save.</small>
+            </div>
             <label>Barcode<input value="Generated on save" readonly/></label>
             <label>Print Name<input id="CreateProductForm_printName" name="printName" maxlength="255"/>
                 <small>Defaults to Product Name. Used on printed bills.</small></label>
