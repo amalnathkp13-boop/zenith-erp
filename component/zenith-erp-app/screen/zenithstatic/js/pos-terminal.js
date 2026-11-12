@@ -594,6 +594,7 @@ window._posOffline = (function () {
                 var source = form && form.querySelector('[name=transactionId]');
                 var id = source && source.value;
                 if (!id || localEditing || (snapshot && snapshot.transactionId === id)) return config.products.length;
+                var previousSnapshot = snapshot;
                 var data = new URLSearchParams(new FormData(form));
                 data.set('action', 'refresh');
                 return fetch('Terminal/ajaxCart', {
@@ -602,7 +603,9 @@ window._posOffline = (function () {
                     if (!response.ok) return null;
                     return response.json();
                 }).then(function (result) {
-                    if (!localEditing && source.value === id && result && result.success && result.transactionId === id) remember(result);
+                    // A confirmed cart edit or tax change is newer than this background read.
+                    if (!localEditing && snapshot === previousSnapshot && source.value === id &&
+                        result && result.success && result.transactionId === id) remember(result);
                 }).catch(function () {}).then(function () { return config.products.length; });
             });
         }).catch(function () { return 0; }).finally(function () { catalogRefresh = null; });
@@ -2566,7 +2569,8 @@ window._posOffline = (function () {
                 renderRows();
                 histToast('Added ' + (name || pid) + ' to bill', '#2e7d32');
             };
-            setTimeout(function(){ var r=ed.querySelector('.ced-price'); if(r) r.focus(); }, 50);
+            var firstRate = ed.querySelector('.ced-price');
+            if (firstRate) firstRate.focus();
         }
         window.posOpenCartEditor = openCartEditor;
 
@@ -3606,6 +3610,7 @@ window.posToggleFullscreen = function() {
         var CS = '₹';
         var busy = false;
         var modeSwitching = false;
+        var taxModePending = false, unconfirmedTaxTx = null;
         var cartClearing = false;
         var lastTxnNum = '';
         var lastPay = 0;
@@ -4070,46 +4075,12 @@ window.posToggleFullscreen = function() {
         }
 
         /* === QZ Tray - Silent Thermal Printing === */
-        var qzConnection = null;
         var qzSetup = null;
         var qzPrinter = '';
         try { qzPrinter = localStorage.getItem('posPrinter') || ''; } catch(e) {}
 
-        var QZ_CERT = "-----BEGIN CERTIFICATE-----\nMIIDQzCCAiugAwIBAgIUZkbpbAL3gGfcBrr5rxN1X7YE1s0wDQYJKoZIhvcNAQEL\nBQAwMTEUMBIGA1UEAwwLWmV0YUVSUCBQT1MxGTAXBgNVBAoMEFpldGFFUlAgUGxh\ndGZvcm0wHhcNMjYxMDMxMTYwNDE2WhcNMzYxMDI4MTYwNDE2WjAxMRQwEgYDVQQD\nDAtaZXRhRVJQIFBPUzEZMBcGA1UECgwQWmV0YUVSUCBQbGF0Zm9ybTCCASIwDQYJ\nKoZIhvcNAQEBBQADggEPADCCAQoCggEBALngd59q7TFHGEwWXSa6lX8RMf7FJfyk\nNe5LRUgQkzvDrFrwHsmWT6xHPZv4LiEl2hfTvr3cQAu+zqadGFMoNk5ZISNHclXl\nwzDOYwZ/vtV4hmGWd2U80bpJb1jA1GDh4MbnQrFwnTn+YjW5g87HzAc61rH1qevC\njr11aD5PeclGgAFlSxYgKWg9JH6WyoF7AJBTGKiKT0Q+RqRuaeSsEif/fBmQkhLE\npj/R/Oewg53ghd0zxE8yz/errgS0iHc6ryY52uHxhFT23eiiO5Rnc+25fAqSJNX6\n2Pw+OJ0QKnSF4aOOmSpnP5c5aW3UwdaNWdUZjYK6Y/eELChB7PnwNQ8CAwEAAaNT\nMFEwHQYDVR0OBBYEFOLJawO9QyRTntz0Q3Icj2806j1FMB8GA1UdIwQYMBaAFOLJ\nawO9QyRTntz0Q3Icj2806j1FMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQEL\nBQADggEBAJsomo0uSqFqg42WgA+E7bTifHdLfjUogqszxFjtawDAN6MXaoDL/x1R\n50GICuqGCMy9Gw6EZ/6M9mNp305+PVySZT27Nvvayj4/uCBENL2/CIZtHPPAgyLA\n41B1Lbsz+WcYz8s2yo5fxKXNdzNyzOo1B6A8VJbE6SFBFz8P26Q/iFHbIz0s7AkX\np9QvCSwGcwdyhcZe4RLWyoWWVwplFKghrm5obv2m33Cz3qaM+oUvZF6g5LmHRfPb\nkWVRze3558Z6MB2IicvDqlT9KqFXw3t8/L/RYnhRHvh1N41EOSauLNWy5sKQzMaS\nhDdKy72Sct97bx4uhhwKtrGm0jHfWBM=\n-----END CERTIFICATE-----";
-        var qzSecured = false;
-        function qzSecuritySetup() {
-            if (qzSecured || typeof qz === 'undefined' || !qz.security) return;
-            qzSecured = true;
-            try {
-                qz.security.setSignatureAlgorithm('SHA1');  // Moqui /apps/qzSign signs SHA1withRSA
-                qz.security.setCertificatePromise(function(resolve) { resolve(QZ_CERT); });
-                qz.security.setSignaturePromise(function(toSign) {
-                    return function(resolve) {
-                        fetch('/apps/qzSign?message=' + encodeURIComponent(toSign), { credentials: 'same-origin' })
-                            .then(function(r) { if (!r.ok) throw new Error('qzSign HTTP ' + r.status); return r.text(); })
-                            .then(function(sig) { console.log('[qz-signing] signed OK len=' + (sig||'').length); resolve(sig); },
-                                  function(e) { console.warn('[qz-signing] SIGN FAILED:', (e && e.message) || e); resolve(); });
-                    };
-                });
-            } catch (e) {}
-        }
-
         function qzConnect() {
-            if (typeof qz === 'undefined') return Promise.reject('QZ Tray library not loaded');
-            qzSecuritySetup();  // trusted-cert signing -> QZ Tray silent print (no per-print prompt)
-            if (!qzConnection && qz.websocket.isActive()) return Promise.resolve();
-            // Checkout can overlap the background probe or QZ's permission prompt.
-            // Share the real connection, including after a caller's deadline expires.
-            if (!qzConnection) {
-                qzConnection = Promise.resolve().then(function() {
-                    return qz.websocket.connect({ retries: 0, delay: 0 });
-                }).finally(function() { qzConnection = null; });
-            }
-            var timer;
-            var guard = new Promise(function(_, reject) {
-                timer = setTimeout(function() { reject('QZ connection timed out'); }, 30000);
-            });
-            return Promise.race([qzConnection, guard]).finally(function() { clearTimeout(timer); });
+            return window.PosQzPrint.connect();
         }
 
         function qzShowSetup() {
@@ -4171,13 +4142,7 @@ window.posToggleFullscreen = function() {
                 if (!qzPrinter) return qzShowSetup();
                 return qzPrinter;
             }).then(function(printer) {
-                var cfg = qz.configs.create(printer, {
-                    size: {width: /data-paper-width="58"/.test(html) ? 58 : 80}, units: 'mm', colorType: 'grayscale',
-                    margins: {top: 0, right: 0, bottom: 0, left: 0}, scaleContent: false
-                });
-                var data = [{type: 'pixel', format: 'html', flavor: 'plain', data: html,
-                    options: {pageWidth: /data-paper-width="58"/.test(html) ? 58 : 80, pageHeight: null}}];
-                return qz.print(cfg, data);
+                return window.PosQzPrint.printHtml(printer, html);
             }).then(function() {
                 showBanner(billNum, 'qz');
             });
@@ -4262,7 +4227,7 @@ window.posToggleFullscreen = function() {
             function render(d) {
                 if (!d || !d.success) return;
                 var html = buildReceiptHtml(d, isTax, edited);
-                if (typeof qz !== 'undefined') {
+                if (typeof qz !== 'undefined' && window.PosQzPrint) {
                     var connecting = !qz.websocket.isActive() ? showToast('Connecting to QZ Tray. Allow the connection if prompted.', '#7C3AED') : null;
                     return qzPrint(html + '</body></html>', billNum).catch(function(err) {
                         if (err === 'cancelled') return;
@@ -4306,13 +4271,13 @@ window.posToggleFullscreen = function() {
         }
 
         /* --- Cart AJAX --- */
-        function post(params) {
+        function post(params, signal) {
             if (busy) return Promise.resolve(null);
             busy = true;
-            params.sessionId = SI; params.taxOn = TO; params.salesModeId = SM; params.moquiSessionToken = TK;
+            params.sessionId = SI; params.taxOn = params.taxOn || TO; params.salesModeId = SM; params.moquiSessionToken = TK;
             return fetch('Terminal/ajaxCart', {
                 method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                body: new URLSearchParams(params), credentials: 'same-origin'
+                body: new URLSearchParams(params), credentials: 'same-origin', signal: signal
             }).then(function(r) { return r.json(); }).finally(function() { busy = false; });
         }
 
@@ -5280,7 +5245,7 @@ window.posToggleFullscreen = function() {
                     if (previous && window._posOffline) window._posOffline.cacheCatalog();
                 }
                 if (checkedTx && (data.cartChanged || (previous && data.changed))) catalogDirtyTx = checkedTx;
-                if (!TX || catalogDirtyTx !== TX || busy || OPT._drainPending() ||
+                if (!TX || catalogDirtyTx !== TX || taxModePending || busy || OPT._drainPending() ||
                     document.querySelector('.pos-cart [aria-invalid="true"]')) return data;
                 var cartBefore = lastCartData;
                 return post({action:'refresh', transactionId:TX}).then(function(current) {
@@ -5312,9 +5277,20 @@ window.posToggleFullscreen = function() {
                 if (data.cartChanged) showToast('Product prices changed. Review the updated bill total.', '#b45309');
             }).catch(function() {});
         }
+        function taxModeError() {
+            if (taxModePending) return 'Wait for the tax mode to finish updating.';
+            if (unconfirmedTaxTx === TX) return 'Retry the tax switch before taking payment.';
+            return '';
+        }
         function confirmCatalogTender() {
             var total = Number(lastPay), checkedTx = TX;
-            return OPT.whenIdle().then(function() { return refreshCatalog(true); }).then(function(data) {
+            return OPT.whenIdle().then(function() {
+                var error = taxModeError();
+                if (error) throw new Error(error);
+                return refreshCatalog(true);
+            }).then(function(data) {
+                var error = taxModeError();
+                if (error) throw new Error(error);
                 if (TX !== checkedTx) throw new Error('The active bill changed. Review it before taking payment.');
                 if (!af.isConnected || !TX || catalogDirtyTx === TX) throw new Error('Could not verify the current bill. Try again.');
                 if (data.cartChanged || Number(lastPay) !== total)
@@ -5436,30 +5412,45 @@ window.posToggleFullscreen = function() {
         }
         if (taxForm) taxForm.addEventListener('submit', function(e) {
             e.preventDefault();
-            if (modeSwitching || cartClearing) return;
+            if (modeSwitching || cartClearing || paymentPanelPending) return;
             var newTax = TO === 'Y' ? 'N' : 'Y';
-            var btn = taxForm.querySelector('button');
-            if (btn) btn.disabled = true;
-            modeSwitching = true;
-            OPT.whenIdle().then(function() {
-                var fd = new FormData(taxForm);
-                fd.set('transactionId',TX); fd.set('sessionId',SI); fd.set('taxOn',newTax);
-                fd.set('salesModeId',SM); fd.set('moquiSessionToken',TK);
-                return fetch(taxForm.action,{method:'POST',body:new URLSearchParams(fd),credentials:'same-origin'});
-            }).then(function(response) {
-                if (!response.ok) throw new Error('Tax mode could not be changed. Reload the bill and try again.');
-                return response.text();
-            }).then(function(html) {
-                var doc=new DOMParser().parseFromString(html,'text/html');
-                var saved=doc.querySelector('#cartInlineAddForm input[name="taxOn"]');
-                var error=doc.querySelector('#posModeSwitchErr,.alert-danger');
-                if (!saved || saved.value!==newTax || error) throw new Error(error ? error.textContent.trim() : 'Tax mode was not saved. Reload the bill.');
-                applyTaxMode(newTax);
-                var url=new URL(location.href);url.searchParams.set('taxOn',TO);history.replaceState(history.state,'',url.href);
-                return post({action:'refresh',transactionId:TX});
-            }).then(function(data) { if(data)renderCart(data); })
-                .catch(function(error){showToast(error.message,'#c62828');})
-                .finally(function(){modeSwitching=false;if(btn)btn.disabled=false;});
+            var button = taxForm.querySelector('button');
+            var label = taxForm.querySelector('.nb-tax__lbl');
+            var settledCart = OPT.whenIdle();
+            modeSwitching = taxModePending = true;
+            button.disabled = true;
+            taxForm.setAttribute('aria-busy','true');
+            label.textContent = 'Updating tax…';
+            settledCart.then(function() {
+                // Let any earlier catalog response settle before it can repaint the old tax total.
+                return catalogCheck && catalogCheck.catch(function() {});
+            }).then(function() {
+                var transaction = TX;
+                return post({action:'toggleTax',transactionId:transaction,taxOn:newTax}, AbortSignal.timeout?.(15000))
+                    .catch(function() {
+                        unconfirmedTaxTx = transaction;
+                        throw new Error('Could not confirm tax mode. Retry the tax switch before taking payment.');
+                    });
+            }).then(function(data) {
+                if (!data || !data.success || data.taxOn !== newTax)
+                    throw new Error(data && data.error || 'Tax mode could not be changed. Try again.');
+                unconfirmedTaxTx = null;
+                if (catalogDirtyTx === TX) catalogDirtyTx = '';
+                if (!af.isConnected || (window._posOffline && window._posOffline.active())) return;
+                applyTaxMode(data.taxOn);
+                var url = new URL(location.href);
+                url.searchParams.set('taxOn',TO);
+                history.replaceState(history.state,'',url.href);
+                renderCart(data);
+            }).catch(function(error) {
+                showToast(error.message,'#c62828');
+            }).finally(function() {
+                modeSwitching = taxModePending = false;
+                button.disabled = false;
+                taxForm.removeAttribute('aria-busy');
+                if (!window._posOffline || !window._posOffline.active())
+                    label.textContent = 'Tax: ' + (TO === 'Y' ? 'On' : 'Off');
+            });
         });
 
         /* --- Close Session: shared cash review --- */
@@ -5501,6 +5492,8 @@ window.posToggleFullscreen = function() {
         var paymentPanelPending = false;
         function openPaymentPanel(builder, onOpen) {
             if (paymentPanelPending) return;
+            var taxError = taxModeError();
+            if (taxError) { showToast(taxError,'#c62828'); return; }
             paymentPanelPending = true;
             smRoot.setAttribute('aria-busy','true');
             OPT.whenIdle().then(function() {

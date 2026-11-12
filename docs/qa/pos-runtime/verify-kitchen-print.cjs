@@ -17,7 +17,8 @@ module.exports=async function({a,foreign,base,post,rows,count,check,out}){
  for(const payload of [[],[{productId:'POS_QA_B_P18',quantity:1}],[{productId:'POS_QA_A_P18',quantity:0}]]){
   r=await post('Kitchen/KotBilling','cartReceipt',{itemsJson:JSON.stringify(payload)});check('customer quote rejects invalid items '+JSON.stringify(payload),r.status()===403||!(await r.json()).success);
  }
- const page=await a.c.newPage();
+ const printContext=await require('./browser-print-context.cjs')(a.c);
+ const page=await printContext.newPage();
  async function stubPrint(fail=false){
   await page.evaluate(fail=>{
    window.__printHtml=[];
@@ -123,5 +124,5 @@ module.exports=async function({a,foreign,base,post,rows,count,check,out}){
  check('bulk Bill Print reports missing linkage and prints only the linked bill',bulkStatus.includes('1 selected KOT(s) have no finalized customer bill')&&await page.evaluate(()=>window.__printCalls===1&&window.__printHtml.join('').includes('118.00')),{bulkStatus,prints:await page.evaluate(()=>window.__printCalls)});
  check('History displays acknowledged print counts immediately',Number(await page.locator(`[data-kitchen-print-count="${kot.kot_id}"]`).innerText())===counts[0]+1);
  await page.screenshot({path:path.join(out,'history-print-actions.png')});
- await invoke('close',{sessionId:session.sessionId,closingCash:'0'});await page.close();
+ await invoke('close',{sessionId:session.sessionId,closingCash:'0'});await printContext.close();
 };

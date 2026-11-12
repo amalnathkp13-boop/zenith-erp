@@ -32,8 +32,11 @@
     </service>
 
     <service verb="get" noun="BillingSession">
-        <in-parameters><parameter name="sessionId" required="true"/></in-parameters>
-        <out-parameters><parameter name="session" type="Map"/><parameter name="terminal" type="Map"/></out-parameters>
+        <in-parameters><parameter name="sessionId" required="true"/><parameter name="includeBillSummary" type="Boolean"/></in-parameters>
+        <out-parameters>
+            <parameter name="session" type="Map"/><parameter name="terminal" type="Map"/>
+            <parameter name="billSummary" type="Map"/>
+        </out-parameters>
         <actions>
             <service-call name="zenith.pos.KotServices.get#BillingScope" in-map="[sessionId:sessionId]" out-map="context"/>
             <if condition="!scope.allowed"><return/></if>
@@ -51,6 +54,27 @@
                 }
                 session=row.getMap(); terminal=counter.getMap()
             ]]></script>
+            <if condition="includeBillSummary"><script><![CDATA[
+                def completedBills = {
+                    def bills = ec.entity.find('zenith.erp.pos.KotTransactionDetailView')
+                        .condition([kotOrganizationPartyId:scope.organizationPartyId,facilityId:terminal.facilityId,statusId:'PtCompleted'])
+                    if (scope.terminalRestricted) bills.condition([terminalId:terminal.terminalId,operatorPartyId:session.operatorPartyId])
+                    return bills.useCache(false)
+                }
+                def last = completedBills().condition('sessionId',session.sessionId)
+                    .selectFields(['transactionNumber','payableAmount']).orderBy('-completedDate,-transactionId').limit(1).list()[0]
+                def zone = java.time.ZoneId.of('Asia/Kolkata')
+                def day = ec.user.nowTimestamp.toInstant().atZone(zone).toLocalDate()
+                def today = {
+                    completedBills()
+                        .condition('completedDate',org.moqui.entity.EntityCondition.GREATER_THAN_EQUAL_TO,java.sql.Timestamp.from(day.atStartOfDay(zone).toInstant()))
+                        .condition('completedDate',org.moqui.entity.EntityCondition.LESS_THAN,java.sql.Timestamp.from(day.plusDays(1).atStartOfDay(zone).toInstant()))
+                }
+                billSummary = [lastCompleted:last?.getMap(),
+                    todayBillCount:today().selectField('transactionId').distinct(true).count(),
+                    latestIssuedBillNo:today().selectField('transactionNumber')
+                        .orderBy('-completedDate,-lastUpdatedStamp').limit(1).list()[0]?.transactionNumber ?: '—']
+            ]]></script></if>
         </actions>
     </service>
 
