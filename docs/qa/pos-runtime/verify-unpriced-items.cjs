@@ -72,7 +72,7 @@ module.exports = async function ({a, base, check, q, invoke, post}) {
   await kotRate.waitFor();
   await kot.getByText('Enter a price above ₹0 for ' + name + ' before payment.',{exact:true}).waitFor();
   check('KOT blocks payment with a visible instruction to enter a rate',
-   Number(await kotRate.inputValue()) === 0 && await kot.locator('#kb-bill').isDisabled() &&
+   Number(await kotRate.inputValue()) === 0 && await kot.locator('[data-kb-payment="Cash"]').isDisabled() &&
    /enter a price/i.test(await kot.locator('#kb-quote-error').innerText()));
   await kotRate.fill('30');
   await kotRate.press('Enter');
@@ -94,10 +94,10 @@ module.exports = async function ({a, base, check, q, invoke, post}) {
   await kot.locator('#kb-suggestions [data-result]').filter({hasText:name}).click();
   await kot.getByText('Enter a price above ₹0 for ' + name + ' before payment.',{exact:true}).waitFor();
   check('Cached KOT product also stays at ₹0 with checkout blocked',
-   Number(await kotRate.inputValue()) === 0 && await kot.locator('#kb-bill').isDisabled());
+   Number(await kotRate.inputValue()) === 0 && await kot.locator('[data-kb-payment="Cash"]').isDisabled());
   await kotRate.fill('35');
   await kotRate.press('Enter');
-  await kot.locator('#kb-bill').click();
+  await kot.locator('[data-kb-payment="Cash"]').click();
   await kot.locator('#kb-payment input[name=cashAmount]:visible').fill('35');
   await kot.locator('#kb-payment .pos-cash-confirm').click();
   await kot.locator('#kb-print-choice').waitFor();

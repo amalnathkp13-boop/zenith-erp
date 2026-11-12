@@ -20,10 +20,25 @@
                 moduleIds = (plan == null ? granted : granted.findAll { plan.contains(it) }) as List
                 def catalogue = ec.service.sync().name('zenith.base.RoleAccessServices.get#RoleCatalogue')
                     .parameter('moduleIds', moduleIds).disableAuthz().call()
+                // Match the standard sidebar and give modules outside that sidebar their own icon.
+                def sidebarIcons = [contacts:'groups', sales:'trending_up', purchase:'shopping_cart', crm:'campaign',
+                    pos:'point_of_sale', kot:'restaurant', pricing:'sell', inventory:'inventory_2',
+                    manufacturing:'precision_manufacturing', project:'folder_open', stores:'storefront',
+                    barcode:'qr_code_scanner', accounting:'account_balance', tax:'percent', payroll:'payments',
+                    expenses:'savings', analytics:'analytics', approvals:'fact_check', assets:'domain',
+                    attendance:'how_to_reg', discuss:'forum', distribution:'local_shipping', documents:'description',
+                    ecommerce:'shopping_bag', events:'event', fieldservice:'build', fleet:'directions_car',
+                    franchise:'store_mall_directory', giftcard:'card_giftcard', helpdesk:'support_agent', hr:'badge',
+                    integrations:'hub', loyalty:'loyalty', maintenance:'handyman', marketing:'campaign',
+                    omnichannel:'alt_route', plm:'account_tree', promotions:'local_offer', quality:'verified',
+                    recruitment:'person_search', rental:'vpn_key', returns:'assignment_return', sign:'draw',
+                    studio:'tune', subscriptions:'autorenew', timeoff:'event_busy', timesheets:'schedule',
+                    website:'language', workshop:'construction']
                 roleSections = (catalogue.modules ?: []).collect { module ->
                     def routes = scoped[module.id] ?: []
                     def screens = module.screens.findAll { screen -> customScope.legacyModules.contains(module.id) || routes.contains(screen.id) }
-                    [mount:module.mount, name:module.name, screens:screens.collect { [id:it.id, name:it.name] }]
+                    [mount:module.mount, name:module.name, icon:sidebarIcons[module.id] ?: 'apps',
+                        screens:screens.collect { [id:it.id, name:it.name] }]
                 }.findAll { it.screens }
                 return
             }
