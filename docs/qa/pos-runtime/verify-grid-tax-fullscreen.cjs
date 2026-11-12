@@ -18,7 +18,8 @@ module.exports = async function ({a, foreign, base, check, q, invoke, post}) {
         await page.waitForFunction(() => typeof window._posCurrentTax === 'function');
         const fullscreen = page.locator('#posFullscreenBtn');
         await fullscreen.click();
-        await page.waitForFunction(() => !!(document.fullscreenElement || document.webkitFullscreenElement));
+        await page.waitForFunction(() => !!(document.fullscreenElement || document.webkitFullscreenElement) &&
+            document.getElementById('posFullscreenBtn').getAttribute('aria-pressed')==='true');
         const resize = await page.evaluate(async () => {
             const root = document.getElementById('pos-terminal-root');
             const icon = document.querySelector('#fsBtnIcon svg');
@@ -122,7 +123,9 @@ module.exports = async function ({a, foreign, base, check, q, invoke, post}) {
         check('Retry confirms the same tax mode without duplicate GST details',
             retried.length===4 && retried.reduce((sum,row) => sum+Number(row.tax_amount),0)===56);
         await fullscreen.click();
-        await page.waitForFunction(() => !document.fullscreenElement && !document.webkitFullscreenElement);
+        await page.waitForFunction(() => !document.fullscreenElement && !document.webkitFullscreenElement &&
+            document.getElementById('posFullscreenBtn').getAttribute('aria-pressed')==='false' &&
+            Math.abs(document.getElementById('pos-terminal-root').getBoundingClientRect().height-innerHeight)<=2);
         check('Fullscreen exit restores the billing control and CSS-sized viewport',
             await fullscreen.getAttribute('aria-pressed')==='false' && await page.evaluate(() =>
                 Math.abs(document.getElementById('pos-terminal-root').getBoundingClientRect().height-innerHeight)<=2));
