@@ -14,7 +14,7 @@ module.exports=async function({browser,base,check,q,sessionId}) {
    await page.clock.fastForward('29:00');
    check(shell+' general ERP shows no idle warning',await page.locator('#zIdleCountdown').count()===0);
    await page.clock.fastForward('01:31:00');
-   check(shell+' general ERP stays signed in after two idle hours',
+   check(shell+' general ERP page stays open after two hours on the browser clock',
     new URL(page.url()).pathname===productsPath&&await page.locator('body').isVisible());
    await page.clock.resume();
    await page.goto(base+'/'+shell+'/zenith/kot/KotBilling?sessionId='+sessionId);

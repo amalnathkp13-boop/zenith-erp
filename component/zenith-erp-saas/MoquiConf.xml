@@ -23,10 +23,11 @@
                 menu-include="false"/>
         </screen>
     </screen-facade>
-    <!-- ERP login stays active while idle. KOT Billing applies its own inactivity timer. -->
+    <!-- ZE-AUTH-012 hardening: tighten the HTTP session idle timeout 60->30 minutes (defense-in-depth so a
+         browser-restored session self-expires). This overrides web.xml's <session-timeout>. Value is in MINUTES. -->
     <webapp-list>
         <webapp name="webroot">
-            <session-config timeout="0"/>
+            <session-config timeout="30"/>
         </webapp>
     </webapp-list>
 </moqui-conf>

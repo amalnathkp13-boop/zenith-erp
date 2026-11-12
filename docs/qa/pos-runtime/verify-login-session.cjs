@@ -1,6 +1,12 @@
 const assert = require('node:assert/strict');
+const { readFileSync } = require('node:fs');
+const { resolve } = require('node:path');
 
 module.exports = async ({ browser, base, check }) => {
+  const config = readFileSync(resolve(__dirname, '../../../component/zenith-erp-saas/MoquiConf.xml'), 'utf8');
+  const timeout = Number(config.match(/<session-config\b[^>]*\btimeout="(\d+)"/)?.[1]);
+  check('The server HTTP session has a positive idle timeout', Number.isSafeInteger(timeout) && timeout > 0);
+
   const dashboard = base + '/qapps/zenith/Dashboard';
   const login = base + '/Login#login';
 
