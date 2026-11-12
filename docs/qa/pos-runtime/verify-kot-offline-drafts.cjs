@@ -351,7 +351,13 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
       qzPrint.algorithm === 'SHA1' && qzPrint.signed &&
       qzPrint.browser === existingBrowserJobs);
     await syncedRow.locator('[data-kb-history-detail]').click();
+    await page.locator('#kb-history-detail').getByRole('button',{name:'Print bill',exact:true}).waitFor();
+    await page.evaluate(() => { window.kotQzRejectBill=true; });
     await page.locator('#kb-history-detail-reprint').click();
+    await page.locator('#kb-print-error').getByText(/Disposable printer is unavailable/).waitFor();
+    check('When editor reprint fails in QZ, it offers an explicit browser fallback',
+      await page.locator('#kb-print-choice').isVisible()&&
+      await page.evaluate(previous => window.kotQzJobs.length===1&&window.kotOfflinePrints.length===previous,existingBrowserJobs));
     await page.locator('[data-kb-print=bill]').focus();
     for (const [selector, label] of [['[data-kb-print=kot]', 'KOT Print'], ['[data-kb-print=both]', 'Print both'], ['#kb-print-close', 'Done']]) {
       await page.keyboard.press('ArrowRight');
@@ -363,7 +369,6 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
       await page.locator('#kb-print-via').inputValue()==='qz' &&
       await page.evaluate(() => localStorage.getItem('kotPrinter')==='Second disposable printer' &&
         localStorage.getItem('posPrinter')==='Disposable QZ printer' && window.kotQzJobs.length===1));
-    await page.evaluate(() => { window.kotQzRejectBill=true; });
     await page.locator('[data-kb-print=both]').click();
     await page.locator('#kb-print-error').getByText(/Kitchen ticket sent/).waitFor();
     check('A failed customer job after a successful QZ kitchen job keeps browser fallback explicit',
