@@ -2569,7 +2569,8 @@ window._posOffline = (function () {
                 renderRows();
                 histToast('Added ' + (name || pid) + ' to bill', '#2e7d32');
             };
-            setTimeout(function(){ var r=ed.querySelector('.ced-price'); if(r) r.focus(); }, 50);
+            var firstRate = ed.querySelector('.ced-price');
+            if (firstRate) firstRate.focus();
         }
         window.posOpenCartEditor = openCartEditor;
 

@@ -11,7 +11,7 @@ const playwright = require('playwright');
         const terminal = 'http://127.0.0.1:18084/apps/zenith/pos/Terminal';
         const bill = {txId:'QA-HISTORY',billNo:'QA-HISTORY',grand:100,date:'05/11/2026 10:00 am',customer:'Synthetic',itemCount:1,payments:[]};
         let calls = [], failure = 'transient';
-        await page.route(terminal, route => route.fulfill({contentType:'text/html',body:'<button id="pos-history-btn">History</button><form id="cartInlineAddForm"><input name="sessionId" value="QA-SESSION"><input name="moquiSessionToken" value="QA-CSRF"></form>'}));
+        await page.route(terminal, route => route.fulfill({contentType:'text/html',body:'<button id="pos-history-btn">History</button><div class="pos-cart" style="height:400px"></div><form id="cartInlineAddForm"><input name="sessionId" value="QA-SESSION"><input name="moquiSessionToken" value="QA-CSRF"></form>'}));
         await page.route(terminal+'.qvt?*',route=>route.fulfill({contentType:'text/html',body:'<p>Sign in required</p>'}));
         await page.route(terminal + '/ajaxCart', async route => {
             const params = Object.fromEntries(new URLSearchParams(route.request().postData()));
@@ -96,5 +96,28 @@ const playwright = require('playwright');
         assert.equal(calls.length,1,'closing cancels the scheduled retry and reconnect listener');
         assert.equal(await page.locator('#pos-history-overlay').count(),0);
         console.log('PASS '+engine+' Bill History: bounded recovery, Retry, reconnect, filters, auth/permission isolation, offline queue and close cancellation.');
+
+        await page.route(terminal + '/ajaxCart', route => {
+            const params = new URLSearchParams(route.request().postData());
+            assert.equal(params.get('action'), 'searchProductsJson');
+            assert.equal(params.get('q'), 'water cup');
+            return route.fulfill({json:{success:true,products:[{pid:'QA-WATER',name:'Water Cup',price:45}]}});
+        });
+        await page.clock.install();
+        await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now()) + 1000));
+        await page.evaluate(savedBill => {
+            window.posOpenCartEditor(savedBill);
+            document.getElementById('ced-add').focus();
+        }, {...bill,items:[{seq:'01',pid:'QA-TEA',name:'Tea Cup',price:100,qty:1}]});
+        const focused = () => page.evaluate(() => document.activeElement.id || document.activeElement.className);
+        assert.equal(await focused(), 'ced-add');
+        await page.clock.runFor(100);
+        assert.equal(await focused(), 'ced-add',
+            'opening the editor must not steal focus from product search');
+        await page.clock.resume();
+        await page.keyboard.insertText('water cup');
+        await page.locator('#ced-add-res [data-pid="QA-WATER"]').click();
+        assert.match(await page.locator('#ced-rows').innerText(), /Water Cup/);
+        console.log('PASS '+engine+' Bill History editor keeps early search input focused and adds the matching product.');
     } finally { await browser.close(); }
 })().catch(error => {console.error(error.stack); process.exitCode=1;});
