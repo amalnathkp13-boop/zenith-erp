@@ -230,8 +230,15 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
     historical.amount===133&&historical.chart===133&&nextDay.amount===0&&nextDay.chart===0,
     {historical,nextDay});
    await page.goto(base+'/apps/zenith/kot/KotDashboard?dashDate='+historicalDate);
-   check('KOT Dashboard excludes ordinary POS and counts a sale with two kitchen tickets once',
-    Number(await completedOrders.innerText())===4);
+   const completedCount = Number(await completedOrders.innerText());
+   const renderedDate = await page.locator('.kd-datepill input').inputValue();
+   const activeShop = await page.locator('#z-shopdata').getAttribute('data-active');
+   check('KOT Dashboard includes late bills, excludes ordinary POS and counts a sale with two kitchen tickets once',
+    completedCount===4&&renderedDate===historicalDate&&!activeShop,
+    {completedCount,renderedDate,activeShop});
+   await page.goto(base+'/apps/zenith/kot/KotDashboard?dashDate=2040-02-02');
+   const nextDayCount = Number(await completedOrders.innerText());
+   check('KOT Dashboard excludes prior-day bills after midnight',nextDayCount===0,{nextDayCount});
   } finally {
    const cleaned=await fixture('clean');
    check('disposable KOT reporting records are removed',cleaned.ok()&&(await cleaned.json()).success&&

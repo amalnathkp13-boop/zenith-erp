@@ -55,6 +55,16 @@
                 facilityId:ec.web.parameters.facilityId,includePosScope:true]).call()
             ec.web.sendJsonResponse(value); return
         }
+        if (op == 'roleNavigationPlan' && ec.user.username == 'pos.qa') {
+            def plan = ec.web.parameters.planId
+            if (!(plan in ['PROFESSIONAL','STARTER'])) { ec.web.response.setStatus(400); return }
+            boolean disabled = ec.artifactExecution.disableAuthz()
+            try {
+                ec.entity.makeValue('zenith.erp.saas.SaasTenant').setAll([tenantId:'POS_QA_ROLE_NAV',
+                    organizationPartyId:'POS_QA_A',tenantName:'Disposable role navigation',planId:plan,statusId:'SaasTenantActive']).createOrUpdate()
+            } finally { if (!disabled) ec.artifactExecution.enableAuthz() }
+            ec.web.sendJsonResponse([planId:plan]); return
+        }
         ec.web.response.setStatus(400); ec.web.sendJsonResponse([invalid:true])
     ]]></script></actions><default-response type="none"/></transition>
 </screen>

@@ -7,9 +7,10 @@
         if (!ec.user.isInGroup('ADMIN') && !ec.user.isInGroup('ZENITH_ADMIN'))
             throw new org.moqui.context.ArtifactAuthorizationException('Only an administrator can manage POS terminals and assignments.')
     ]]></script></always-actions>
-    <transition name="saveAssignment" method="post" begin-transaction="true">
+    <transition name="saveAssignment" begin-transaction="true">
         <actions>
-            <if condition="!ec.web.parameters.moquiSessionToken || ec.web.parameters.moquiSessionToken != ec.web.sessionToken"><return error="true" message="Submit the assignment form with a valid session token."/></if>
+            <!-- Quasar needs a resolvable form target. Only POST with the current session token can write. -->
+            <if condition="ec.web.request.method != 'POST' || !ec.web.parameters.moquiSessionToken || ec.web.parameters.moquiSessionToken != ec.web.sessionToken"><return error="true" message="Submit the assignment form with a valid session token."/></if>
             <service-call name="zenith.base.SecurityServices.check#ModuleWriteAccess" in-map="[moduleId:kitchenModuleId ?: 'pos']" out-map="_writeAccess"/>
             <if condition="_writeAccess.canWrite != true"><return error="true" message="Module write access is required to assign a terminal."/></if>
             <service-call name="zenith.pos.PosAccessServices.save#TerminalAssignment" in-map="[userId:userId,terminalId:terminalId]"/>
