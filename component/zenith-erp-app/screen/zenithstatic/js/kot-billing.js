@@ -851,7 +851,6 @@
     $('payment-error').textContent='';
     $('payment-heading').hidden=$('payment-picker').hidden=Boolean(method);
     $('payment-continue').disabled=!method;
-    dialog.classList.toggle('kb-cash-dialog',method==='Cash');
     dialog.dataset.tender=method;
     dialog.setAttribute('aria-labelledby',{
       Cash:'pos-cash-title',Card:'pos-digital-title',UPI:'pos-digital-title',
@@ -870,8 +869,8 @@
       panel.querySelector('#posPayConfCancel').id='kb-payment-close';
       const confirm=panel.querySelector('#posPayConfOk');
       confirm.parentElement.insertAdjacentHTML('beforebegin',
-        '<label>Reference number (optional)<input name="referenceNumber" type="text" maxlength="80"></label>');
-      if(method==='Card')confirm.type='submit';
+        '<label class="kb-payment-reference">Reference number (optional)<input name="referenceNumber" type="text" maxlength="80"></label>');
+      confirm.type='submit';
       confirm.focus();
     }else if(method==='Split'){
       panel.innerHTML=PosTillDialogs.splitMarkup(paymentAmount);
@@ -888,17 +887,6 @@
     }else{
       $('payment-method').focus();
     }
-  }
-  function showUpiReceiptChoices() {
-    const panel=$('other-payment');
-    const reference=panel.querySelector('[name=referenceNumber]');
-    panel.innerHTML='<div class="kb-upi-save">'+PosTillDialogs.upiReceiptMarkup(paymentAmount)+'</div>';
-    reference.type='hidden';
-    panel.append(reference);
-    $('payment').setAttribute('aria-labelledby','pos-upi-title');
-    const choices=panel.querySelectorAll('button');
-    for(const choice of choices)choice.type='submit';
-    choices[0].focus();
   }
   function setupCreditTender(panel) {
     const field=id=>panel.querySelector('#credit-'+id);
@@ -1084,6 +1072,10 @@
       if(printWindow&&!printWindow.closed)printWindow.close();
       busy=false;controls();
       updatePrintOptions();
+      if(chooser.open&&chooser.classList.contains('kb-payment-complete')&&
+        (document.activeElement===chooser||!chooser.contains(document.activeElement))){
+        chooser.querySelector('[data-kb-print="'+kind+'"]:enabled')?.focus();
+      }
     }
   }
   const heldOrderData=()=>({...orderData(),billingView:grid?'grid':'list'});
@@ -1202,7 +1194,6 @@
       }
     }
     const payment=Object.fromEntries(new FormData(form)), data=orderData(), fingerprint=JSON.stringify(data);
-    const saveWithoutPrint=submit.id==='posPaySave';
     const actions=Array.from(form.querySelectorAll('button:enabled'));
     let bill;
     busy=true;controls();actions.forEach(button=>button.disabled=true);$('payment-error').textContent='';
@@ -1259,14 +1250,10 @@
     $('order-status').textContent=bill.local?notice+change:'';
     $('print-summary').textContent=notice+change+' Choose a print option.';
     historyPrintRow=null;
-    $('print-title').textContent='Payment complete';
+    $('print-title').textContent='Payment Complete';
     $('print-error').textContent='';
-    if(saveWithoutPrint){
-      $('order-status').textContent=notice+change;
-      if(bill.local)syncDeviceOrders();
-      return;
-    }
     updatePrintOptions();
+    setPrintChoiceLayout(true);
     $('print-choice').showModal();
     $('print-choice').querySelector('[data-kb-print="bill"]').focus();
     if(bill.local)syncDeviceOrders();
@@ -1435,6 +1422,7 @@
   }
   function openReprint(row){
     if(!row||!$('print-choice'))return;
+    setPrintChoiceLayout(false);
     historyPrintRow=row;
     $('print-title').textContent='Reprint';
     $('print-summary').textContent='Choose what to print for '+row.querySelector('[data-kb-history-detail]').textContent.trim()+'.';
@@ -1442,6 +1430,15 @@
     updatePrintOptions();
     $('print-choice').showModal();
     $('print-choice').querySelector('[data-kb-print]:enabled')?.focus();
+  }
+
+  function setPrintChoiceLayout(complete){
+    const dialog=$('print-choice'), close=$('print-close');
+    dialog.classList.toggle('kb-payment-complete',complete);
+    $('print-both-label').textContent=complete?'Print Both':'Print both';
+    $('print-close-label').textContent=complete?'Save':'Done';
+    if(complete)dialog.querySelector('.kb-print-options').append(close);
+    else $('print-error').after(close);
   }
 
   function billLine(item, canEdit){
@@ -1691,6 +1688,7 @@
         completedKotId='';localReceipt=queued;historyPrintRow=null;
         resetOrder();refreshOpenHistory();
         status.textContent='Kitchen ticket saved on this device and queued to sync.';
+        setPrintChoiceLayout(false);
         $('print-title').textContent='Kitchen ticket saved';
         $('print-summary').textContent='Print the ticket while the order is pending sync.';
         $('print-error').textContent='';
@@ -1771,7 +1769,6 @@
       if(PosTillDialogs.updateCash(slot,paymentAmount)&&e.detail===0)slot.querySelector('.pos-cash-confirm').focus();
     }
     else if(button.id==='kb-payment-continue')tenderFields($('payment-method').value);
-    else if(button.id==='posPayConfOk'&&$('payment-method').value==='UPI')showUpiReceiptChoices();
     else if(button.id==='kb-payment-close'||button.id==='kb-payment-picker-close'||button.classList.contains('pos-cash-cancel'))$('payment').close();
     else if(button.dataset.kbPrint)printChoice(button.dataset.kbPrint);
     else if(button.id==='kb-print-close')$('print-choice').close();
@@ -2066,14 +2063,36 @@
     }
   });
   $('print-choice')?.addEventListener('keydown',e=>{
+    const dialog=e.currentTarget;
+    if(!dialog.open)return;
+    const complete=dialog.classList.contains('kb-payment-complete');
+    if(complete&&e.key==='Tab'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.defaultPrevented){
+      const controls=Array.from(dialog.querySelectorAll('button:enabled,select:enabled'))
+        .filter(control=>control.getClientRects().length);
+      const boundary=e.shiftKey?controls[0]:controls.at(-1);
+      if(e.target===boundary||!controls.includes(e.target)){
+        e.preventDefault();
+        (e.shiftKey?controls.at(-1):controls[0])?.focus();
+      }
+      return;
+    }
     if(ignoreDialogKey(e))return;
-    if(e.key==='Enter'&&e.repeat){e.preventDefault();return;}
+    if(e.key==='Enter'){
+      if(e.repeat)e.preventDefault();
+      if(complete)e.stopPropagation();
+      return;
+    }
     if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;
-    const buttons=Array.from(e.currentTarget.querySelectorAll('button:enabled'));
+    const buttons=Array.from(dialog.querySelectorAll(complete?'.kb-print-options button:enabled':'button:enabled'));
     const index=buttons.indexOf(e.target);
     if(index<0)return;
     e.preventDefault();
+    if(complete)e.stopPropagation();
     buttons[(index+(e.key==='ArrowRight'?1:-1)+buttons.length)%buttons.length].focus();
+  });
+  $('print-choice')?.addEventListener('close',e=>{
+    if(!e.currentTarget.open&&e.currentTarget.classList.contains('kb-payment-complete')&&
+      root.isConnected&&!root.querySelector('dialog[open]'))search.focus({preventScroll:true});
   });
   $('printer-list')?.addEventListener('change',event=>{
     const printer=event.target.value;

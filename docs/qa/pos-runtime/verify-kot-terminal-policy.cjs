@@ -154,9 +154,10 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
     await payment.locator('[name=upiRef]').fill('SAMPLE-UPI');
     await payment.locator('button[type=submit]').click();
    }else{
-    await page.keyboard.press('Enter');
-    await payment.getByRole('button',{name:'Save',exact:true}).waitFor();
-    await page.keyboard.press('ArrowRight');
+    const confirmUpi=payment.getByRole('button',{name:'Confirm Payment Received',exact:true});
+    await confirmUpi.waitFor();
+    check('UPI waits for explicit confirmation before settling the sent order',
+     await confirmUpi.evaluate(button=>button===document.activeElement)&&!q(ticketSql)[0].transaction_id);
     await page.keyboard.press('Enter');
    }
    await page.locator('#kb-print-choice[open]').waitFor();

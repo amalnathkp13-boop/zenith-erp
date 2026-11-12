@@ -111,7 +111,6 @@
 #kb-wrap .kb-search-message{padding:8px 12px;margin:0}
 #kb-wrap .kb-checkout-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 #kb-wrap :is(.kb-control,.kb-action-hold,.kb-action-send,.kb-action-bill){min-height:37px;border:1px solid #e4dff3;border-radius:8px;background:#fff;color:#46356c;font-weight:650;padding:7px 12px;cursor:pointer}
-#kb-wrap .kb-action-hold{background:#ffefd0;color:#854600;border-color:#f1d398}
 #kb-wrap .kb-action-send{background:#0b766d;color:#fff;border-color:#0b766d}
 #kb-wrap .kb-action-bill{background:#6d28d9;color:#fff;border-color:#6d28d9}
 #kb-wrap button:disabled{opacity:.55;cursor:default}
