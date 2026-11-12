@@ -427,7 +427,7 @@
             html_scripts.add('/zenithstatic/js/cpe-tabs.js?v=16')
             footer_scripts.add('/zenithstatic/js/zenith-copilot.js?v=8')
             footer_scripts.add('/zenithstatic/js/pw-autofill-guard.js?v=2')
-            footer_scripts.add('/zenithstatic/js/idle-logout.js?v=6')
+            footer_scripts.add('/zenithstatic/js/idle-logout.js?v=7')
             footer_scripts.add('/zenithstatic/js/nav-tabfix.js?v=2')
             footer_scripts.add('/zenithstatic/js/bfcache-guard.js?v=1')
             footer_scripts.add('/zenithstatic/js/sw-tenant-guard.js?v=1')
