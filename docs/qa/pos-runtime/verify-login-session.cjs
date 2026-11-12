@@ -1,6 +1,12 @@
 const assert = require('node:assert/strict');
+const { readFileSync } = require('node:fs');
+const { resolve } = require('node:path');
 
 module.exports = async ({ browser, base, check }) => {
+  const config = readFileSync(resolve(__dirname, '../../../component/zenith-erp-saas/MoquiConf.xml'), 'utf8');
+  const timeout = Number(config.match(/<session-config\b[^>]*\btimeout="(\d+)"/)?.[1]);
+  check('The server HTTP session has a positive idle timeout', Number.isSafeInteger(timeout) && timeout > 0);
+
   const dashboard = base + '/qapps/zenith/Dashboard';
   const login = base + '/Login#login';
 
@@ -36,11 +42,7 @@ module.exports = async ({ browser, base, check }) => {
         await restarted.close();
       }
 
-      await page.waitForFunction(() => window.__zIdleLogout);
-      await page.evaluate(() => {
-        localStorage.setItem('zIdleLastActivity', String(Date.now() - 31 * 60 * 1000));
-        window.dispatchEvent(new Event('focus'));
-      });
+      await page.goto(base + '/Login/idleLogout');
       await form.waitFor();
       await page.goto(login);
       check('Revisiting ERP after idle sign-out honors Remember Me ' + (remember ? 'on' : 'off'),
