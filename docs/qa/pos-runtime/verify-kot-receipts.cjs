@@ -12,7 +12,8 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
  const kot=(path,form={},actor=a,shell='apps')=>actor.c.request.post(route(shell,path),{
   form:{moquiSessionToken:actor.t,...form},maxRedirects:0
  });
- const page=await a.c.newPage();
+ const printContext=await require('./browser-print-context.cjs')(a.c);
+ const page=await printContext.newPage();
  let sessionId;
  try {
   const templates={};
@@ -120,7 +121,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   check('KOT Tables opens KOT Transactions without leaving the module',
    nav.status()===302&&new URL(nav.headers().location,base).pathname.endsWith('/zenith/kot/PosTransactions'));
  } finally {
-  await page.close();
+  await printContext.close();
   if(sessionId) await invoke('close',{sessionId,closingCash:'0'});
  }
 };

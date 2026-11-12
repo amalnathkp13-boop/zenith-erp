@@ -12,6 +12,7 @@ const printChoice = billing.match(/  async function printChoice\([\s\S]*?(?=\r?\
 const fixture = `
 <button id="print">Print both</button>
 <dialog id="kb-print-choice">
+  <select id="kb-print-via"><option value="browser">Browser</option></select>
   <span id="kb-print-error"></span>
 </dialog>
 <p id="kb-order-status"></p>
@@ -20,6 +21,9 @@ const fixture = `
   const root = document.body, $ = id => document.getElementById('kb-' + id);
   let historyPrintRow, completedKotId, busy = false;
   function controls() {}
+  function savedPrinter() { return 'Synthetic printer'; }
+  function disconnected() { return false; }
+  window.PosQzPrint = { printHtml() { throw Error('Browser was selected'); } };
   function updatePrintOptions() {}
   const receipt = { success: true, items: [{ name: 'Kitchen item', qty: 2 }] };
   const localReceipt = location.search === '?ack-error' ? null : { receipt };
@@ -83,9 +87,11 @@ const server = http.createServer((request, response) => {
       const page = await browser.newPage();
       try {
         await page.goto(url + '?' + scenario);
-        const opened = page.waitForEvent('popup');
-        await page.locator('#print').click();
-        const popup = await opened;
+        const opened = Promise.race([
+          page.waitForEvent('popup'),
+          page.waitForEvent('pageerror').then(error => { throw error; })
+        ]);
+        const [popup] = await Promise.all([opened, page.locator('#print').click()]);
         await page.waitForFunction(() => window.prints.length || document.getElementById('kb-print-error').textContent);
         const error = await page.locator('#kb-print-error').textContent();
         assert.equal(error, '', 'Print both must work with browser popup blocking');
@@ -112,8 +118,11 @@ const server = http.createServer((request, response) => {
           scenario === 'manual' ? ['kitchen', 'customer', 'customer retained'] :
             ['kitchen', 'kitchen retained', 'customer', 'customer retained']);
         await page.waitForFunction(() => !window.isBusy());
+        const status = await page.locator('#kb-order-status').textContent();
         if (scenario === 'ack-error') {
-          assert.match(await page.locator('#kb-order-status').textContent(), /kitchen print count could not be updated/i);
+          assert.match(status, /kitchen print count could not be updated/i);
+        } else {
+          assert.equal(status, '', 'Printing must keep the cart clear of confirmation messages');
         }
       } finally {
         await page.close();

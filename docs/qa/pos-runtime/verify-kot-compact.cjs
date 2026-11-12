@@ -18,7 +18,8 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
  const terminalId='POS_QA_A_KB_'+Date.now().toString(36);
  await post('PosTerminals','createTerminal',{terminalId,terminalName:'Disposable KOT checkout',facilityId:'POS_QA_A_FAC',organizationPartyId:'POS_QA_A',stateCode:'33',isActive:'Y'});
  session=await invoke('open',{terminalId,openingCash:'100'});
- const page=await a.c.newPage();
+ const printContext=await require('./browser-print-context.cjs')(a.c);
+ const page=await printContext.newPage();
  const waiterName='Disposable compact KOT waiter '+Date.now().toString(36);
  await post('Kitchen/WaiterManagement','createWaiter',{waiterName,phone:'0000000000',isActive:'Y'});
  try{
@@ -457,7 +458,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    firstPage.data.hasMore&&!secondPage.data.hasMore&&new Set(products.map(product=>product.id)).size===67&&
    products.every(product=>product.name.startsWith('PP ')&&product.id!=='POS_QA_SEARCH_FOREIGN'));
  }finally{
-  await page.close();
+  await printContext.close();
   const paid=q("SELECT paid_amount FROM pos_transaction WHERE session_id='"+session.sessionId+"' AND status_id='PtCompleted'").reduce((sum,x)=>sum+Number(x.paid_amount),0);
   await invoke('close',{sessionId:session.sessionId,closingCash:String(paid)});
  }

@@ -5772,6 +5772,7 @@ window.sendWhatsAppWithPdf=function() {
 
 <script src="/zenithstatic/js/pos-checkout.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-checkout.js').getLastModified()?c}"></script>
 <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
+<script src="/zenithstatic/js/pos-qz-print.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-qz-print.js').getLastModified()?c}"></script>
 
 
 <script src="/zenithstatic/js/pos-clock.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-clock.js').getLastModified()?c}"></script>

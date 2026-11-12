@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../../../component/zenith-erp-app/screen/zenithstatic/js/pos-terminal.js'), 'utf8');
+const qzSource = fs.readFileSync(path.join(__dirname, '../../../component/zenith-erp-app/screen/zenithstatic/js/pos-qz-print.js'), 'utf8');
 const tick = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
 function harness({missing = false, fullscreen = false} = {}) {
     let now = 0, active = false, serial = 0;
@@ -23,6 +24,8 @@ function harness({missing = false, fullscreen = false} = {}) {
         }
     });
     const start = source.indexOf('/* === QZ Tray');
+    context.window.qz = context.qz;
+    vm.runInContext(qzSource, context);
     vm.runInContext(source.slice(start, source.indexOf('function buildReceiptHtml', start)), context);
     const render = source.indexOf('function printReceipt(', start);
     vm.runInContext(source.slice(render, source.indexOf('function approvedPaymentFetch', render)), context);

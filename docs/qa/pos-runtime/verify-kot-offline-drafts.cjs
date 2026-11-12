@@ -230,7 +230,7 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     await page.locator('#kb-print-choice').waitFor();
     check('Normal disconnected Cash checkout queues the sale without requiring a server receipt',
       matchingOrders().length === 0 && await page.locator('#kb-print-summary').getByText(/23\.00/).isVisible() &&
-      await page.locator('#kb-close-session').isDisabled());
+      await page.locator('#kb-close-session').isDisabled() && await page.locator('#kb-printer-options').isHidden());
     if (out) await page.screenshot({path:join(out,'kot-offline-disconnected-checkout.png')});
     await page.locator('[data-kb-print="both"]').click();
     await page.waitForFunction(() => window.kotOfflinePrints.length === 2);
@@ -278,19 +278,33 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     await queue.getByText(sale.offlineId,{exact:false}).waitFor();
     check('KOT Offline Mode can still see the pending device entry after acknowledgement loss', await queue.isVisible());
     await dashboard.close();
+    check('A bill remains pending on the billing screen until its server acknowledgement',
+      (await page.locator('#kb-list-last-bill').textContent()).trim() === 'Pending sync' &&
+      /queued to sync/.test(await orderStatus.textContent()));
     const replayResponse = page.waitForResponse(response => response.url().endsWith('/syncOfflineSale') && response.ok());
-    // Keep withholding any acknowledgement from the old document, including focus-triggered sync.
-    const allowReplay = frame => {
-      if (frame !== page.mainFrame()) return;
-      acknowledgeReplay = true;
-      page.off('framenavigated',allowReplay);
-    };
-    page.on('framenavigated',allowReplay);
-    await page.reload();
+    acknowledgeReplay = true;
+    await page.evaluate(() => {
+      window.kotReconnectDocument = true;
+      window.dispatchEvent(new Event('online'));
+    });
     const replay = await (await replayResponse).json();
     await page.unroute(syncRoute, dropAcknowledgement);
     assert.equal(replay.success,true);
-    check('Reload replays the same sale without a duplicate KOT ticket, transaction or tender',
+    const officialNumber = payment[0].transaction_number;
+    await page.waitForFunction(({ number, count }) =>
+      document.querySelector('#kb-header-today-bills').textContent.trim() === String(count) &&
+      document.querySelector('#kb-header-last-bill').textContent.trim() === number,
+      {number:officialNumber,count:initialToday+1});
+    const printSummary = await page.locator('#kb-print-summary').textContent();
+    check('Acknowledgement updates the bill number and clears the queued message without reloading',
+      await page.evaluate(() => window.kotReconnectDocument) &&
+      (await page.locator('#kb-list-last-bill').textContent()).trim() === officialNumber &&
+      await orderStatus.isHidden() &&
+      printSummary.includes('Bill '+officialNumber+' is saved.') &&
+      printSummary.includes('Change given: ₹23.00.') &&
+      !printSummary.includes('queued to sync'));
+    if (out) await page.screenshot({path:join(out,'kot-offline-reconnected-billing.png')});
+    check('Same-tab reconnect replays the sale without a duplicate KOT ticket, transaction or tender',
       JSON.stringify(matchingOrders()) === JSON.stringify(firstSave) &&
       q("SELECT transaction_id FROM pos_payment WHERE transaction_id='" + firstSave[0].transaction_id + "'").length === 1);
 
@@ -299,6 +313,78 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     check('KOT clears its local queue after verified server acknowledgement', await ack.queue.isVisible());
     if (out) await ack.dashboard.screenshot({path:join(out,'kot-offline-synced.png')});
     await ack.dashboard.close();
+
+    await page.route('**/apps/qzSign?*',route=>route.fulfill({body:'U1lOVEhFVElD',contentType:'text/plain'}));
+    await page.evaluate(() => {
+      localStorage.setItem('posPrinter','Disposable QZ printer');
+      window.kotQzJobs = [];
+      let active = false;
+      window.qz = {
+        security:{
+          setSignatureAlgorithm:value => { window.kotQzAlgorithm = value; },
+          setCertificatePromise:() => {},
+          setSignaturePromise:handler => { window.kotQzSigner = handler; }
+        },
+        websocket:{isActive:() => active,connect:async () => { active = true; }},
+        printers:{find:async () => ['Disposable QZ printer','Second disposable printer']},
+        configs:{create:(printer,options) => ({printer,options})},
+        print:async (config,data) => {
+          const signature=await new Promise(window.kotQzSigner('synthetic print request'));
+          if(window.kotQzRejectBill&&!data[0].data.includes('<title>KOT</title>'))throw Error('Disposable printer is unavailable');
+          window.kotQzJobs.push({config,data,signature});
+        }
+      };
+    });
+    const existingBrowserJobs = await page.evaluate(() => window.kotOfflinePrints.length);
+    await page.locator('#kb-history-open').click();
+    await history.locator('#kb-history-status').selectOption('');
+    const syncedRow = history.locator('[data-kot-id="' + firstSave[0].kot_id + '"]');
+    await syncedRow.locator('[data-kb-history-print=bill]').click();
+    await page.waitForFunction(previous => window.kotQzJobs.length || window.kotOfflinePrints.length > previous,existingBrowserJobs);
+    const qzPrint = await page.evaluate(() => ({
+      jobs:window.kotQzJobs,algorithm:window.kotQzAlgorithm,signed:typeof window.kotQzSigner==='function',
+      browser:window.kotOfflinePrints.length
+    }));
+    check('KOT Billing reprints the confirmed receipt through the saved QZ printer without a browser dialog',
+      qzPrint.jobs.length === 1 && qzPrint.jobs[0].config.printer === 'Disposable QZ printer' &&
+      qzPrint.jobs[0].data[0].data.includes(officialNumber) && qzPrint.jobs[0].signature === 'U1lOVEhFVElD' &&
+      qzPrint.algorithm === 'SHA1' && qzPrint.signed &&
+      qzPrint.browser === existingBrowserJobs);
+    await syncedRow.locator('[data-kb-history-detail]').click();
+    await page.locator('#kb-history-detail-reprint').click();
+    await page.locator('[data-kb-print=bill]').focus();
+    for (const [selector, label] of [['[data-kb-print=kot]', 'KOT Print'], ['[data-kb-print=both]', 'Print both'], ['#kb-print-close', 'Done']]) {
+      await page.keyboard.press('ArrowRight');
+      check('The print chooser moves focus to '+label, await page.locator(selector).evaluate(el => el === document.activeElement));
+    }
+    await page.locator('#kb-printer-setup').click();
+    await page.locator('#kb-printer-list').selectOption('Second disposable printer');
+    check('KOT can change the saved QZ printer without opening a print dialog',
+      await page.locator('#kb-print-via').inputValue()==='qz' &&
+      await page.evaluate(() => localStorage.getItem('kotPrinter')==='Second disposable printer' &&
+        localStorage.getItem('posPrinter')==='Disposable QZ printer' && window.kotQzJobs.length===1));
+    await page.evaluate(() => { window.kotQzRejectBill=true; });
+    await page.locator('[data-kb-print=both]').click();
+    await page.locator('#kb-print-error').getByText(/Kitchen ticket sent/).waitFor();
+    check('A failed customer job after a successful QZ kitchen job keeps browser fallback explicit',
+      await page.evaluate(previous => window.kotQzJobs.length===2 &&
+        window.kotQzJobs[1].config.printer==='Second disposable printer' &&
+        window.kotQzJobs[1].data[0].data.includes('<title>KOT</title>') &&
+        window.kotOfflinePrints.length===previous,existingBrowserJobs));
+    await page.locator('#kb-print-via').selectOption('browser');
+    await page.locator('[data-kb-print=bill]').click();
+    await page.locator('#kb-print-choice').waitFor({state:'hidden'});
+    check('Browser fallback prints only the remaining customer bill without charging again',
+      await page.evaluate(({previous,number}) => window.kotOfflinePrints.length===previous+1 &&
+        window.kotOfflinePrints.at(-1).includes(number),{previous:existingBrowserJobs,number:officialNumber}) &&
+      JSON.stringify(matchingOrders())===JSON.stringify(firstSave));
+    await page.locator('#kb-history-detail-close').click();
+    await page.locator('#kb-history-close').click();
+    await page.evaluate(() => {
+      localStorage.removeItem('kotPrinter');
+      localStorage.removeItem('posPrinter');
+      delete window.qz;
+    });
 
     const direct = (actor, route, payload) => actor.c.request.post(base + '/apps/zenith/' + route, {
       form: {moquiSessionToken:actor.t, sessionId, saleJson:JSON.stringify(payload)}, maxRedirects:0

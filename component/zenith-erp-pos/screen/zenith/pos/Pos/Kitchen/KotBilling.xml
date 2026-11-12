@@ -555,6 +555,15 @@
 
     <transition name="goKotHistory"><default-response url="../KotHistory"/></transition>
 
+    <transition name="billSummary" method="post">
+        <actions><script><![CDATA[
+            def summary = ec.service.sync().name('zenith.pos.KotServices.get#BillingSession')
+                .parameters([sessionId:ec.context.sessionId,includeBillSummary:true]).call()?.billSummary
+            ec.web.sendJsonResponse(summary ? [success:true,summary:summary] :
+                [success:false,error:ec.message.errorsString ?: 'Could not refresh the bill summary.'])
+        ]]></script></actions><default-response type="none"/>
+    </transition>
+
     <actions>
         <script><![CDATA[
             import org.moqui.entity.EntityCondition
@@ -568,12 +577,16 @@
             entryTerminals=[]
             if(!org) return
             if(ec.context.sessionId) {
-                def billing=ec.service.sync().name('zenith.pos.KotServices.get#BillingSession').parameter('sessionId',ec.context.sessionId).call()
+                def billing=ec.service.sync().name('zenith.pos.KotServices.get#BillingSession')
+                    .parameters([sessionId:ec.context.sessionId,includeBillSummary:true]).call()
                 if(!billing?.session || !billing?.terminal) {
                     kotSessionUnavailable=true
                     return
                 }
                 billingSession=billing.session; billingTerminal=billing.terminal
+                lastCompleted=billing.billSummary?.lastCompleted
+                todayBillCount=billing.billSummary?.todayBillCount
+                latestIssuedBillNo=billing.billSummary?.latestIssuedBillNo
             }
             if(!billingSession) {
                 def shopScope=ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call()
@@ -588,28 +601,6 @@
             kitchenDisplayEnabled=ec.service.sync().name('zenith.pos.KotServices.get#KitchenDisplayPolicy').parameter('facilityId',shop).call().enabled
             modes=ec.service.sync().name('zenith.pos.PosModeServices.get#TerminalModes').parameter('terminalId',billingTerminal.terminalId).call().modes ?: []
             waiters=org ? ec.entity.find('zenith.erp.pos.Waiter').condition('organizationPartyId',org).condition('isActive','Y').orderBy('waiterName').list() : []
-            def completedKotBills={
-                def bills=ec.entity.find('zenith.erp.pos.KotTransactionDetailView')
-                    .condition([kotOrganizationPartyId:org,facilityId:shop,statusId:'PtCompleted'])
-                if (scope.terminalRestricted) bills.condition([terminalId:billingTerminal.terminalId,
-                    operatorPartyId:ec.user.userAccount?.partyId ?: '__NONE__'])
-                return bills
-            }
-            lastCompleted=completedKotBills().condition('sessionId',billingSession.sessionId)
-                .selectFields(['transactionNumber','payableAmount']).orderBy('-completedDate,-transactionId').limit(1).list().find { true }
-            def billDay=java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone('Asia/Kolkata'))
-            billDay.setTime(ec.user.nowTimestamp)
-            billDay.set(java.util.Calendar.HOUR_OF_DAY,0); billDay.set(java.util.Calendar.MINUTE,0)
-            billDay.set(java.util.Calendar.SECOND,0); billDay.set(java.util.Calendar.MILLISECOND,0)
-            def dayStart=new java.sql.Timestamp(billDay.timeInMillis)
-            billDay.add(java.util.Calendar.DATE,1)
-            def dayEnd=new java.sql.Timestamp(billDay.timeInMillis)
-            def todayKotBills={ completedKotBills()
-                .condition('completedDate',EntityCondition.GREATER_THAN_EQUAL_TO,dayStart)
-                .condition('completedDate',EntityCondition.LESS_THAN,dayEnd) }
-            todayBillCount=todayKotBills().selectField('transactionId').distinct(true).count()
-            latestIssuedBillNo=todayKotBills()
-                .useCache(false).orderBy('-completedDate,-lastUpdatedStamp').limit(1).list()[0]?.transactionNumber ?: '—'
             gridCategories=org ? ec.entity.find('mantle.product.category.ProductCategory').condition('ownerPartyId',org)
                 .orderBy('categoryName,productCategoryId').limit(60).list() : []
             // BillingSession already validates ownership of the terminal's shop.
@@ -1006,6 +997,13 @@
   </dialog></#if>
   <#if modCanWrite><dialog id="kb-print-choice" class="zk-history-view" aria-labelledby="kb-print-title">
     <h2 id="kb-print-title">Payment complete</h2><p id="kb-print-summary"></p>
+    <div id="kb-printer-options" hidden>
+      <div class="kb-dialog-fields">
+        <label>Print via <select id="kb-print-via"><option value="browser">Browser</option><option value="qz">QZ Tray</option></select></label>
+        <button type="button" class="kb-control" id="kb-printer-setup">Choose QZ printer</button>
+        <div id="kb-printer-field" hidden><label>QZ printer <select id="kb-printer-list"></select></label></div>
+      </div>
+    </div>
     <div class="zk-history-actions kb-print-options" role="group" aria-label="Print options">
       <button type="button" class="kb-control" data-kb-print="bill">Bill Print</button>
       <button type="button" class="kb-control" data-kb-print="kot">KOT Print</button>
@@ -1045,7 +1043,8 @@
          var dependencies = [
            load(window.PosTillDialogs, 'pos-till-dialogs.js', ${kbScriptVersion('pos-till-dialogs.js')}),
            load(window.PosReceiptLayout, 'pos-receipt-layout.js', ${kbScriptVersion('pos-receipt-layout.js')}),
-           load(window.KitchenPrint, 'kitchen-print.js', ${kbScriptVersion('kitchen-print.js')})
+           load(window.KitchenPrint, 'kitchen-print.js', ${kbScriptVersion('kitchen-print.js')}),
+           load(window.PosQzPrint, 'pos-qz-print.js', ${kbScriptVersion('pos-qz-print.js')})
          ];
          <#if kitchenModuleId == 'kot' && modCanWrite>
          dependencies.push(load(window.KotOfflineDrafts, 'kot-offline.js', ${kbScriptVersion('kot-offline.js')}));
