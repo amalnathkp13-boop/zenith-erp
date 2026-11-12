@@ -1036,7 +1036,7 @@
     const printer=savedPrinter();
     const useQz=!printWindow&&!disconnected()&&window.PosQzPrint&&(chooser.open?$('print-via').value==='qz':!!printer);
     if(useQz&&!printer) { await chooseQzPrinter();return; }
-    const detailStatus=$('history-detail').open?$('history-detail-message'):null;
+    const detailStatus=row&&$('history-detail')?.open?$('history-detail-message'):null;
     const errorOutput=chooser.open?$('print-error'):(detailStatus||$('history-error'));
     errorOutput.textContent='';
     let acknowledgement, ticketSent=false;
