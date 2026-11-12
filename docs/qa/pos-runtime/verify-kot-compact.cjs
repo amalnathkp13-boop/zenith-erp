@@ -430,10 +430,12 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    check('Completed payment is confirmed in the print dialog', (await page.locator('#kb-print-summary').innerText()).includes('is saved.'));
    await page.keyboard.press('ArrowLeft');
    check('Card completion can focus Save with one Left press',await focused(saveButton));
+   const printCountBeforeSave=await page.evaluate(()=>window.kotPrints.length);
    await page.keyboard.press('Enter');
    await completion.waitFor({state:'hidden'});
    await page.waitForFunction(()=>document.activeElement?.id==='kb-search');
-   check('Save returns to billing without printing',await page.evaluate(()=>window.kotPrints.length===6));
+   check('Save returns to billing without printing',
+    await page.evaluate(count=>window.kotPrints.length===count,printCountBeforeSave));
    check('Completed payment leaves no message under Add Note',await page.locator('#kb-order-status').isHidden());
    const lines=q("SELECT i.unit_price,i.quantity,i.manual_price,t.payable_amount,p.payment_method FROM pos_transaction_item i JOIN pos_transaction t ON t.transaction_id=i.transaction_id JOIN pos_payment p ON p.transaction_id=t.transaction_id WHERE t.session_id='"+session.sessionId+"' AND t.status_id='PtCompleted' AND i.manual_price='Y'");
    check('Card checkout persists the keypad rate and quantity',lines.length===1&&lines[0].payment_method==='Card'&&Number(lines[0].unit_price)===150&&Number(lines[0].quantity)===3&&Number(lines[0].payable_amount)===450,lines);
