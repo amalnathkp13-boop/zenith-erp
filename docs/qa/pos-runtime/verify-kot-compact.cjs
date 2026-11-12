@@ -69,6 +69,8 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await page.getByRole('button',{name:/^(Grid|List) View/}).count()===2);
   await gridMode.click();
   check('Grid View has no table picker',await page.locator('#kb-table-field').count()===0&&await page.locator('#kb-table').isHidden());
+  check('Grid puts Hold Bills between Tax and History',
+   await page.locator('#kb-tax-toggle + #kb-held-open:has(+ #kb-history-open)').isVisible());
   const card=page.locator('#kb-suggestions [data-result]').filter({hasText:'Disposable POS A P18'});
   await card.waitFor();
   check('Grid View shows a product catalogue with empty search',await search.inputValue()===''&&
@@ -398,7 +400,6 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
     await page.locator('#kb-payment-close').click();
     check('Cancelling Card leaves the bill and total intact',await page.locator('#kb-grand').innerText()==='₹450.00');
     await page.setViewportSize({width:1366,height:768});
-    page.once('dialog',dialog=>dialog.accept());
     await page.locator('#kb-clear').click();
     continue;
    }
@@ -433,10 +434,60 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   check('One UPI confirmation saves one tender and closing print options skips printing',
    upi.length===1&&Number(upi[0].amount)===100&&upi[0].reference_number==='KOT-QA-UPI'&&
    await page.evaluate(()=>window.kotPrints.length===6)&&!await page.locator('#kb-payment').isVisible(),upi);
+  check('List puts Hold Bills between Tax and History',
+   await page.locator('#kb-tax-toggle + #kb-held-open:has(+ #kb-history-open)').isVisible());
+  check('List has the same five payment buttons and Hold as Grid',
+   await page.locator('.kb-checkout-actions #kb-bill').count()===0&&
+   await page.locator('.kb-checkout-actions [data-kb-payment]:visible').count()===5&&
+   await page.locator('.kb-checkout-actions #kb-draft').isVisible());
   const held=await json('saveDraft',{itemsJson:JSON.stringify([{productId:'POS_QA_A_P18',quantity:1.25,manualPrice:'Y',unitPrice:120}]),
-   salesModeId:'RETAIL',customerPartyId:'POS_QA_A_CUST_SAME',orderType:'Take Away',taxOn:'N',notes:'Held order QA',wantJson:'Y'});
+   salesModeId:'RETAIL',customerPartyId:'POS_QA_A_CUST_SAME',orderType:'Take Away',taxOn:'N',notes:'Held order QA',billingView:'list',wantJson:'Y'});
   check('A named customer and fractional line can be held',held.data?.success,held);
-  await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling?sessionId='+session.sessionId+'&loadDraft='+held.data.kotId);
+  await page.goto(base+'/apps/zenith/kot/KotBilling?sessionId='+session.sessionId);
+  await page.locator('#kb-wrap[data-ready=true]').waitFor();
+  await modes.locator('summary').click();
+  await gridMode.click();
+  await search.fill('POS_QA_A_P18');
+  await card.click();
+  const holdResponse=page.waitForResponse(response=>response.url().endsWith('/saveDraft'));
+  await page.locator('#kb-draft').click();
+  const newerHold=await (await holdResponse).json();
+  check('A second bill can be held in Grid View',newerHold.success,newerHold);
+  await page.locator('#kb-cart tr[data-product]').waitFor({state:'hidden'});
+  await modes.locator('summary').click();
+  await listMode.click();
+  await fullscreen.click();
+  await page.waitForFunction(()=>document.fullscreenElement?.id==='kb-wrap');
+  await page.keyboard.press('F9');
+  const heldBills=page.getByRole('dialog',{name:'Hold Bills'});
+  const rows=heldBills.locator('.kb-history-row:visible');
+  await rows.first().waitFor();
+  const heldIds=await rows.evaluateAll(visible=>visible.map(row=>row.dataset.kotId));
+  check('Hold Bills shows only drafts and puts the latest first',
+   JSON.stringify(heldIds)===JSON.stringify([newerHold.kotId,held.data.kotId]),heldIds);
+  await rows.first().getByRole('button',{name:'Resume'}).click();
+  await page.waitForURL(url=>url.searchParams.get('loadDraft')===newerHold.kotId);
+  await page.locator('#kb-wrap.kg-grid[data-ready=true]').waitFor();
+  check('Resuming the Grid hold from List restores Grid View in fullscreen',
+   await page.locator('[data-kb-view=grid]').getAttribute('aria-pressed')==='true'&&
+   await page.evaluate(()=>document.fullscreenElement?.id==='kb-wrap'));
+  await post(screen,'deleteDraft',{sessionId:session.sessionId,kotId:newerHold.kotId});
+  let clearPrompt=false;
+  const onClearPrompt=dialog=>{clearPrompt=true;return dialog.dismiss();};
+  page.on('dialog',onClearPrompt);
+  await page.locator('#kb-clear').click();
+  page.off('dialog',onClearPrompt);
+  check('Clear Cart empties the order without a browser prompt or leaving fullscreen',
+   !clearPrompt&&await page.locator('#kb-cart tr[data-product]').count()===0&&
+   await page.evaluate(()=>document.fullscreenElement?.id==='kb-wrap'));
+  await page.keyboard.press('F9');
+  await heldBills.locator('[data-kot-id="'+held.data.kotId+'"]').getByRole('button',{name:'Resume'}).click();
+  await page.waitForURL(url=>url.searchParams.get('loadDraft')===held.data.kotId);
+  await page.locator('#kb-wrap:not(.kg-grid)[data-ready=true]').waitFor();
+  check('Resuming the List hold from Grid restores List View in fullscreen',
+   await page.locator('[data-kb-view=list]').getAttribute('aria-pressed')==='true'&&
+   await page.evaluate(()=>document.fullscreenElement?.id==='kb-wrap'));
+  await fullscreen.click();
   await page.locator('#kb-grand').getByText('₹150.00').waitFor();
   check('Resuming a hold restores the customer, rate and quantity',
    await page.locator('#kb-customer-name').innerText()===customerName&&

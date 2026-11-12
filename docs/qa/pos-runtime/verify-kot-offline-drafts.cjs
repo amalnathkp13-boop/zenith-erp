@@ -179,12 +179,22 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     await page.locator('#kb-instr').fill(note + ' hold and checkout');
     await page.locator('#kb-instr').blur();
     check('Disconnected KOT accepts keyboard product lookup, rate, fractional quantity and tax changes',
-      await search.inputValue() === '' && await page.locator('#kb-bill').isEnabled() &&
+      await search.inputValue() === '' && await page.locator('[data-kb-payment="Cash"]').isEnabled() &&
       !browserRequests.some(url => /\/(?:searchMenu|cartReceipt)$/.test(url)));
 
     await page.keyboard.press('F7');
     await cart.locator('tr[data-product]').waitFor({state:'hidden'});
     check('Normal F7 Hold clears the cart and keeps the disconnected order on this device', matchingOrders().length === 0);
+    await page.locator('.kg-modes summary').click();
+    await page.locator('[data-kb-view=grid]').click();
+    await page.locator('#kb-held-open').click();
+    const heldBills = page.getByRole('dialog',{name:'Hold Bills'});
+    await heldBills.locator('[data-kb-resume-local]').getByRole('button',{name:'Resume'}).click();
+    await waitTotal('₹177.00');
+    check('Hold Bills restores the offline order in its original List View',
+      await page.locator('#kb-wrap:not(.kg-grid)').isVisible());
+    await page.keyboard.press('F7');
+    await cart.locator('tr[data-product]').waitFor({state:'hidden'});
     await page.locator('#kb-history-open').click();
     await history.locator('#kb-history-filter').click();
     await history.locator('#kb-history-status').selectOption('draft');
@@ -578,7 +588,6 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
       Number(await newQuantity.inputValue()) === 2 && !await page.locator('#kb-payment').isVisible() &&
       JSON.stringify(await page.evaluate(queuedSales,scope)) === JSON.stringify([sent]));
     await page.locator('#kb-history-close').click();
-    page.once('dialog',dialog => dialog.accept());
     await page.locator('#kb-clear').click();
 
     await openSentPayment('UPI');
@@ -664,10 +673,7 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     const catalogRoute = '**/kot/KotBilling/searchMenu';
     const healthRoute = '**/kot/KotBilling/touchSession';
     const blockRequest = route => route.abort('failed');
-    const clearCart = async () => {
-      page.once('dialog',dialog => dialog.accept());
-      await page.locator('#kb-clear').click();
-    };
+    const clearCart = () => page.locator('#kb-clear').click();
     await page.route(catalogRoute,blockRequest);
     const isolatedSearch = page.waitForRequest(request => request.url().endsWith('/searchMenu'));
     const healthy = page.waitForResponse(response => response.url().endsWith('/touchSession') && response.ok());
@@ -700,7 +706,7 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     await orderStatus.getByText(/could not be confirmed|could not be completed/i).waitFor();
     await switchOffline(true);
     check('A committed online Hold with a lost response cannot be resubmitted from the offline cart',
-      await page.locator('#kb-draft').isDisabled() && await page.locator('#kb-bill').isDisabled() &&
+      await page.locator('#kb-draft').isDisabled() && await page.locator('[data-kb-payment="Cash"]').isDisabled() &&
       matchingOrders().filter(order => order.status_id === 'KotDraft').length === 2);
   } finally {
     await context.setOffline(false);

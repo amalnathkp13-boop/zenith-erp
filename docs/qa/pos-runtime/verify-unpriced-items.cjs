@@ -71,12 +71,13 @@ module.exports = async function ({a, base, check, q, invoke, post}) {
   const kotRate = kot.getByRole('textbox',{name:'Rate for ' + name});
   await kotRate.waitFor();
   await kot.getByText('Enter a price above ₹0 for ' + name + ' before payment.',{exact:true}).waitFor();
+  const kotCash = kot.locator('[data-kb-payment="Cash"]');
   check('KOT blocks payment with a visible instruction to enter a rate',
-   Number(await kotRate.inputValue()) === 0 && await kot.locator('#kb-bill').isDisabled() &&
+   Number(await kotRate.inputValue()) === 0 && await kotCash.isDisabled() &&
    /enter a price/i.test(await kot.locator('#kb-quote-error').innerText()));
   await kotRate.fill('30');
   await kotRate.press('Enter');
-  await kot.waitForFunction(() => !document.getElementById('kb-bill').disabled);
+  await kot.locator('[data-kb-payment="Cash"][aria-disabled="false"]').waitFor();
   const draft = await saveDraft({...item,unitPrice:30,manualPrice:'Y'},held.kotId);
   check('KOT saves a draft with the entered rate', draft.success && Number(draft.total) === 30, {error:draft.error});
   const sale = await (await post(screen,'checkoutKot',{sessionId,kotId:draft.kotId,paymentMethod:'Cash',cashAmount:'30',confirmedTotal:'30'})).json();
@@ -94,10 +95,10 @@ module.exports = async function ({a, base, check, q, invoke, post}) {
   await kot.locator('#kb-suggestions [data-result]').filter({hasText:name}).click();
   await kot.getByText('Enter a price above ₹0 for ' + name + ' before payment.',{exact:true}).waitFor();
   check('Cached KOT product also stays at ₹0 with checkout blocked',
-   Number(await kotRate.inputValue()) === 0 && await kot.locator('#kb-bill').isDisabled());
+   Number(await kotRate.inputValue()) === 0 && await kotCash.isDisabled());
   await kotRate.fill('35');
   await kotRate.press('Enter');
-  await kot.locator('#kb-bill').click();
+  await kotCash.click();
   await kot.locator('#kb-payment input[name=cashAmount]:visible').fill('35');
   await kot.locator('#kb-payment .pos-cash-confirm').click();
   await kot.locator('#kb-print-choice').waitFor();
