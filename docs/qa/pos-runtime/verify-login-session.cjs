@@ -36,11 +36,7 @@ module.exports = async ({ browser, base, check }) => {
         await restarted.close();
       }
 
-      await page.waitForFunction(() => window.__zIdleLogout);
-      await page.evaluate(() => {
-        localStorage.setItem('zIdleLastActivity', String(Date.now() - 31 * 60 * 1000));
-        window.dispatchEvent(new Event('focus'));
-      });
+      await page.goto(base + '/Login/idleLogout');
       await form.waitFor();
       await page.goto(login);
       check('Revisiting ERP after idle sign-out honors Remember Me ' + (remember ? 'on' : 'off'),
