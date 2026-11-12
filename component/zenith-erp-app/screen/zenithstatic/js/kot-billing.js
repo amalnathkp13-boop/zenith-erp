@@ -3,6 +3,7 @@
   'use strict';
   const root=document.getElementById('kb-wrap');
   if (!root || root.dataset.ready) return;
+  root.querySelector('#kb-send')?.remove();
   root.dataset.ready='true';
   const $=id=>root.querySelector('#kb-'+id);
   const search=$('search'), suggestions=$('suggestions'), cart=new Map();
@@ -164,14 +165,6 @@
       closeSession.title=pendingSales?'Wait for pending KOT orders to sync before closing the session.':'';
     }
     if($('draft')) $('draft').disabled=!hasQuote;
-    if($('send')) {
-      const displayDisabled=cfg.displayEnabled==='false';
-      root.classList.toggle('kb-display-disabled',displayDisabled);
-      $('send').style.display=displayDisabled?'none':'';
-      $('send').disabled=busy||sessionLost||unconfirmedOrder||!available||!cart.size||displayDisabled||!editError.hidden||pendingPrice||
-        (needsLocalOrder()&&!readyToPay);
-      $('send').title=displayDisabled?'Kitchen Display is disabled for this shop. Use KOT printing.':'Press Shift by itself';
-    }
   }
   function resetOrder() {
     unconfirmedOrder=false;
@@ -1637,7 +1630,9 @@
     }catch(error){if(version===editSearchVersion&&editingBill===state)host.textContent=error.message;}
   }
   async function sendToKitchen() {
-    if($('send').disabled)return;
+    if(!paymentButtons.length||cfg.displayEnabled!=='true'||busy||sessionLost||unconfirmedOrder||
+        (disconnected()&&!catalogue)||!cart.size||!editError.hidden||hasPendingPrice()||
+        (needsLocalOrder()&&!hasCartQuote()))return;
     busy=true;controls();
     const status=$('order-status');
     status.textContent='Sending to kitchen…';
@@ -1713,7 +1708,6 @@
         customer:{id:button.dataset.kbBillCustomer,name:button.dataset.kbBillName,phone:button.dataset.kbBillPhone}});
     }
     else if(button.id==='kb-resume')resumeBilling();
-    else if(button.id==='kb-send')sendToKitchen();
     else if(button.id==='kb-draft'){
       if(deviceDrafts)holdOrder();
       else {
@@ -2021,7 +2015,7 @@
     if(!root.isConnected){document.removeEventListener('keydown',shortcut);document.removeEventListener('keyup',shortcut);return;}
     if(document.documentElement.classList.contains('zk-billing-pending')||document.getElementById('posCloseSessionOverlay')){shiftAlone=false;return;}
     if(e.type==='keyup'){
-      if(e.key==='Shift'&&shiftAlone&&!editable(e)&&!root.querySelector('dialog[open]'))$('send')?.click();
+      if(e.key==='Shift'&&shiftAlone&&!editable(e)&&!root.querySelector('dialog[open]'))sendToKitchen();
       if(e.key==='Shift')shiftAlone=false;
       return;
     }
@@ -2117,7 +2111,7 @@
       if(root.isConnected){warmWorkspace();syncDeviceOrders();}
     });
   }
-  if($('send')) {
+  if(paymentButtons.length) {
     const keepSessionOpen=()=>{
       if(!root.isConnected) {
         clearInterval(heartbeat);

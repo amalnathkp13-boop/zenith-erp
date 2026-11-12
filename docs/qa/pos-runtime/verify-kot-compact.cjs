@@ -71,6 +71,8 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   check('Grid View has no table picker',await page.locator('#kb-table-field').count()===0&&await page.locator('#kb-table').isHidden());
   check('Grid puts Hold Bills between Tax and History',
    await page.locator('#kb-tax-toggle + #kb-held-open:has(+ #kb-history-open)').isVisible());
+  check('Grid checkout has six controls and no Send to KOT button',
+   await page.locator('.kb-checkout-actions button:visible').count()===6&&await page.locator('#kb-send').count()===0);
   const card=page.locator('#kb-suggestions [data-result]').filter({hasText:'Disposable POS A P18'});
   await card.waitFor();
   check('Grid View shows a product catalogue with empty search',await search.inputValue()===''&&
@@ -397,8 +399,9 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await listMode.click();
   check('List puts Hold Bills between Tax and History',
    await page.locator('#kb-tax-toggle + #kb-held-open:has(+ #kb-history-open)').isVisible());
-  check('List has the same five payment buttons and Hold as Grid',
-   await page.locator('.kb-checkout-actions #kb-bill').count()===0&&
+  check('List checkout has the same six controls as Grid',
+   await page.locator('.kb-checkout-actions button:visible').count()===6&&
+   await page.locator('.kb-checkout-actions :is(#kb-bill,#kb-send)').count()===0&&
    await page.locator('.kb-checkout-actions [data-kb-payment]:visible').count()===5&&
    await page.locator('.kb-checkout-actions #kb-draft').isVisible());
   const held=await json('saveDraft',{itemsJson:JSON.stringify([{productId:'POS_QA_A_P18',quantity:1.25,manualPrice:'Y',unitPrice:120}]),

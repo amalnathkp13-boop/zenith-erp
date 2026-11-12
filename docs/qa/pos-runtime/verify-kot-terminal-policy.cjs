@@ -51,7 +51,16 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await page.locator('#kb-search').fill('POS_QA_A_P18');
   await page.locator('#kb-suggestions [data-result]').first().click();
   await page.locator('#kb-grand').getByText('₹118.00').waitFor();
-  check('disabled shop keeps checkout and Hold available but disables Send to KOT',await page.locator('#kb-send').isDisabled()&&await page.locator('[data-kb-payment="Cash"]').isEnabled()&&await page.locator('#kb-draft').isEnabled());
+  const sendShortcut=async()=>{
+   await page.evaluate(()=>document.activeElement?.blur());
+   await page.keyboard.press('Shift');
+  };
+  const orderStatus=page.locator('#kb-order-status');
+  const initialStatus=await orderStatus.textContent();
+  await sendShortcut();
+  check('disabled shop keeps checkout and Hold available and ignores the send shortcut',
+   await orderStatus.textContent()===initialStatus&&await page.locator('[data-kb-payment="Cash"]').isEnabled()&&
+   await page.locator('#kb-draft').isEnabled());
   await page.screenshot({path:require('node:path').join(out,'kot-disabled-billing.png')});
   const saved=await (await request('saveDraft',{itemsJson,orderType:'Take Away',taxOn:'N',salesModeId:'RETAIL',wantJson:'Y'})).json();
   check('printed-ticket workflow can hold an order',saved.success&&!!saved.kotId,saved);
@@ -96,15 +105,16 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
     await page.locator('#kb-instr').fill(note);
     if(!grid) {
      await policy('N');
-     await page.locator('#kb-send').click();
+     await sendShortcut();
      await page.locator('#kb-order-status').filter({hasText:'Kitchen Display is disabled'}).waitFor();
      check('server rejection keeps the order available for retry',await page.locator('#kb-cart tr').count()===1);
      await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
-     await page.waitForFunction(()=>document.getElementById('kb-send').disabled);
+     await page.waitForFunction(()=>document.getElementById('kb-data').dataset.displayEnabled==='false');
      await policy('Y');
      await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+     await page.waitForFunction(()=>document.getElementById('kb-data').dataset.displayEnabled==='true');
     }
-    await page.locator('#kb-send').click();
+    await sendShortcut();
     await page.locator('#kb-order-status').filter({hasText:'sent to the kitchen'}).waitFor();
     check(shell+' sends from '+(grid?'grid':'list')+' when the preview request fails',
      await page.locator('#kb-cart tr').count()===0 &&

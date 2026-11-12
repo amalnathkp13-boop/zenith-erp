@@ -104,7 +104,7 @@ module.exports = async function verifyKot({a,foreign,base,post,rows,count,check}
   await menu.goto(base+`/apps/zenith/pos/Kitchen/KotBilling?sessionId=${kotSessionId}&loadDraft=${draft.kot_id}`,{waitUntil:'networkidle'});
   await menu.locator('#kb-wrap[data-ready=true]').waitFor();
   check('Load Draft restores the browser cart',await menu.locator('#kb-badge').innerText()==='Editing Held Order'&&await menu.locator('#kb-cart').innerText().then(x=>x.includes('Disposable POS A P18')));
-  await menu.locator('#kb-send').click();
+  await menu.keyboard.press('Shift');
   await menu.locator('#kb-order-status').filter({hasText:'sent to the kitchen'}).waitFor();
   const sent=kotRows().find(row=>!before.has(row.kot_id)&&row.status_id==='KotNew'&&row.kot_id!==ticket.kot_id);
   check('Send to Kitchen replaces the draft and keeps ticket numbers unique',!!sent&&count('kitchen_order_ticket',`kot_id='${draft.kot_id}'`)===0&&sent.kot_number!==ticket.kot_number&&count('kot_item',`kot_id='${sent.kot_id}'`)===1,{sent});

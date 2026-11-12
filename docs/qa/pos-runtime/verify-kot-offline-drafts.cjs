@@ -545,7 +545,8 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     assert.equal(await page.locator('#kb-table').inputValue(),tableId,'Table selected in the Tables workflow carries through to offline billing');
     await addItem(product,product);
     await page.locator('#kb-instr').fill(note + ' dine-in');
-    await page.locator('#kb-send').click();
+    await page.locator('#kb-instr').blur();
+    await page.keyboard.press('Shift');
     await page.locator('#kb-print-close').click();
     const queuedSales = ({org,terminalId,user}) => window.KotOffline.createWorkspace(org,terminalId,user).queue().map(entry => entry.sale);
     const sent = (await page.evaluate(queuedSales,scope)).find(sale => sale.operation === 'send');
@@ -630,7 +631,8 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     await addItem(product,product);
     const reconnectNote = note + ' reconnect during sent payment';
     await page.locator('#kb-instr').fill(reconnectNote);
-    await page.locator('#kb-send').click();
+    await page.locator('#kb-instr').blur();
+    await page.keyboard.press('Shift');
     await page.locator('#kb-print-close').click();
     const pendingTicket = (await page.evaluate(queuedSales,scope)).find(sale => sale.operation === 'send');
     assert.ok(pendingTicket,'The ticket is queued before reconnecting');

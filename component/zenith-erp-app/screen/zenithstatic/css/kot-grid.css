@@ -9,6 +9,7 @@ body:has(#kb-wrap) :is(#top,#footer,#z-sidebar,#z-side-burger,#z-subnav,#pos-mod
   margin:0;box-sizing:border-box;overflow:auto;isolation:isolate;
 }
 #kb-wrap .kg-header{flex-shrink:0}
+#kb-wrap #kb-send{display:none}
 #kb-wrap #kb-fullscreen-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 
 #kb-wrap:not(.kg-grid) .kg-only,
@@ -169,9 +170,8 @@ body:has(#kb-wrap) :is(#top,#footer,#z-sidebar,#z-side-burger,#z-subnav,#pos-mod
   clip-path:polygon(24px 0,100% 0,100% 100%,0 100%);background:var(--kb-total-value-bg);color:#fff;font-size:32px;
 }
 #kb-wrap.kg-grid .kb-checkout-actions{
-  grid-row:7;grid-template-columns:repeat(4,minmax(0,1fr)) minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.45fr);margin:0;
+  grid-row:7;grid-template-columns:repeat(4,minmax(0,1fr)) minmax(0,1.4fr) minmax(0,1fr);margin:0;
 }
-#kb-wrap.kg-grid.kb-display-disabled .kb-checkout-actions{grid-template-columns:repeat(4,minmax(0,1fr)) minmax(0,1.4fr) minmax(0,1fr)}
 #kb-wrap.kg-grid .kb-checkout-actions button{
   min-width:0;min-height:0;padding:6px;border:1px solid transparent;border-radius:9px;
   font:inherit;font-weight:650;cursor:pointer;
@@ -206,7 +206,6 @@ body:has(#kb-wrap) :is(#top,#footer,#z-sidebar,#z-side-burger,#z-subnav,#pos-mod
   #kb-wrap.kg-grid .kb-stats{order:4}
   #kb-wrap.kg-grid .kb-total-row{min-height:var(--kg-total);order:5}
   #kb-wrap.kg-grid .kb-checkout-actions{grid-template-columns:repeat(3,minmax(0,1fr));order:6}
-  #kb-wrap.kg-grid.kb-display-disabled .kb-checkout-actions{grid-template-columns:repeat(3,minmax(0,1fr))}
   #kb-wrap.kg-grid .kb-checkout-actions button{min-height:44px}
 }
 @media(max-width:520px){
