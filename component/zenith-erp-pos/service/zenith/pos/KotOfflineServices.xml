@@ -122,7 +122,7 @@
                         tenders[tender.method]=value
                         total+=value
                     }
-                    if (method=='Credit' ? (tenders || change!=0 || (!customerId && (!customer.name || !customer.phone))) :
+                    if (method=='Credit' ? (tenders.size()>1 || total>expectedTotal || change!=0 || (!customerId && (!customer.name || !customer.phone))) :
                         (total-change!=expectedTotal || (method=='Split' ? tenders.size()<2 : tenders.keySet()!=([method] as Set)) ||
                             (change>0 && method!='Cash'))) {
                         reject('Payment or change does not match the KOT order. Credit requires a customer name and phone.'); return
@@ -232,10 +232,16 @@
                 if (ec.message.hasError()) return
                 def bill=[:]
                 if (operation=='checkout') {
+                    def upfrontMethod=method=='Credit' ? tenders.keySet().find() : null
                     bill=ec.service.sync().name('zenith.pos.KotServices.complete#KotBill').parameters([sessionId:sessionId,kotId:ticket.kotId,
                         confirmedTotal:expectedTotal.toPlainString(),confirmedTax:expectedTax,paymentMethod:method,cashAmount:tenders.Cash?.toPlainString(),
                         cardAmount:tenders.Card?.toPlainString(),upiAmount:tenders.UPI?.toPlainString(),
                         customerName:customerName,customerPhone:customerPhone,
+                        creditCustomerPartyId:method=='Credit' ? sale.creditCustomerPartyId : null,
+                        upfrontAmount:upfrontMethod ? tenders[upfrontMethod] : null,upfrontMethod:upfrontMethod,
+                        creditDays:method=='Credit' ? sale.creditDays : null,termsReason:method=='Credit' ? sale.termsReason : null,
+                        cardRef:method=='Split' ? sale.cardRef?.toString()?.take(80) : null,
+                        upiRef:method=='Split' ? sale.upiRef?.toString()?.take(80) : null,
                         referenceNumber:(sale.referenceNumber ?: 'KOT-OFFLINE:'+sale.offlineId).toString().take(120)]).call().checkout
                     if (!bill || ec.message.hasError()) return
                     if (amount(bill.changeAmount)!=change) { reject('Recorded change differs from the offline order.'); return }

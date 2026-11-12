@@ -60,6 +60,9 @@
             <parameter name="confirmedTotal"/><parameter name="confirmedTax" type="BigDecimal"/><parameter name="paymentMethod"/>
             <parameter name="cashAmount"/><parameter name="cardAmount"/><parameter name="upiAmount"/>
             <parameter name="customerName"/><parameter name="customerPhone"/><parameter name="referenceNumber"/>
+            <parameter name="cardRef"/><parameter name="upiRef"/><parameter name="creditCustomerPartyId"/>
+            <parameter name="upfrontAmount" type="BigDecimal"/><parameter name="upfrontMethod"/>
+            <parameter name="creditDays" type="Integer"/><parameter name="termsReason"/>
         </in-parameters>
         <out-parameters><parameter name="checkout" type="Map"/></out-parameters>
         <actions>
@@ -123,9 +126,10 @@
                     def method=paymentMethod
                     if(method=='Credit') {
                         ec.service.sync().name('zenith.pos.PosServices.complete#PosTransactionCredit')
-                            .parameters([transactionId:tx,customerPartyId:custPid,
+                            .parameters([transactionId:tx,customerPartyId:custPid ?: creditCustomerPartyId,
                                 customerName:(custPid && quote.bill.customer) ? quote.bill.customer : customerName,
                                 customerPhone:(custPid && quote.bill.customerPhone) ? quote.bill.customerPhone : customerPhone,
+                                upfrontAmount:upfrontAmount,upfrontMethod:upfrontMethod,creditDays:creditDays,termsReason:termsReason,
                                 attachMissingCustomerPhone:true]).call()
                     } else {
                         if(!(method in ['Cash','UPI','Card','Split'])) { reject('Choose a valid payment method.'); return }
@@ -142,8 +146,9 @@
                             reject('Enter valid amounts for the selected payment methods.'); return
                         }
                         for(def payment in payments.findAll { it[1]>0 }) {
+                            def reference=method=='Split' ? [Card:cardRef,UPI:upiRef][payment[0]] : null
                             ec.service.sync().name('zenith.pos.PosServices.process#PosPayment')
-                                .parameters([transactionId:tx,paymentMethod:payment[0],amount:payment[1],referenceNumber:referenceNumber]).call()
+                                .parameters([transactionId:tx,paymentMethod:payment[0],amount:payment[1],referenceNumber:reference ?: referenceNumber]).call()
                             if(ec.message.hasError()) return
                         }
                         ec.service.sync().name('zenith.pos.PosServices.complete#PosTransaction').parameter('transactionId',tx).call()

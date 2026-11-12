@@ -156,7 +156,23 @@
 #kb-wrap .kb-print-options [data-kb-print=both]{background:#e0edfd;color:#0e65be;border-color:#c5dbf8}
 #kb-wrap #kb-print-close{background:#f5f0ff;color:#5d17cb}
 #kb-wrap .kb-print-options button:hover:enabled{border-color:currentColor}
-#kb-wrap :is(.kb-cash-dialog,#kb-print-choice) button:focus{outline:3px solid #6332ff;outline-offset:2px}
+#kb-wrap :is(#kb-payment,#kb-print-choice) :is(button,input,select):focus{outline:2px solid #6332ff!important;outline-offset:2px}
+#kb-wrap #kb-payment:is([data-tender=Card],[data-tender=UPI],[data-tender=Split],[data-tender=Credit]){
+  width:min(420px,90vw);max-height:90dvh;padding:0;border:0;background:#fff;border-radius:14px;
+}
+#kb-wrap #kb-payment:is([data-tender=Card],[data-tender=UPI]){box-shadow:0 10px 40px rgba(0,0,0,.4)}
+#kb-wrap #kb-payment:is([data-tender=Card],[data-tender=UPI],[data-tender=Split],[data-tender=Credit])::backdrop{background:rgba(0,0,0,.55)}
+#kb-wrap #kb-payment[data-tender=Split]{width:min(540px,94vw);border-radius:10px;background:#ece8fb}
+#kb-wrap #kb-payment[data-tender=Split]::backdrop{background:#12132980}
+#kb-wrap #kb-payment[data-tender=Credit]{border-radius:16px;box-shadow:0 12px 48px rgba(0,0,0,.3)}
+#kb-wrap #kb-payment[data-tender=Credit]::backdrop{background:rgba(0,0,0,.6)}
+#kb-wrap #kb-payment #kb-other-payment .kb-upi-save{padding:20px}
+#kb-wrap #kb-other-payment input{min-width:0}
+#kb-wrap #kb-other-payment [data-pos-tender-row]>label{min-width:0}
+#kb-wrap #kb-payment-picker label{display:block;margin-bottom:12px}
+#kb-wrap #kb-payment-picker select{display:block;width:100%;padding:8px}
+#kb-wrap #kb-payment-error{padding:0 14px 12px;color:#b71c1c}
+#kb-wrap .kb-credit-customer{display:block;width:100%;text-align:left;padding:10px 12px;border:0;border-bottom:1px solid #f0f0f0;background:#fff;color:#e65100;font-weight:700}
 #kb-wrap:not(.kg-grid) [data-kb-payment=Cash]{background:#e1f4f0;color:#007d69}
 #kb-wrap:not(.kg-grid) :is([data-kb-payment=Card],[data-kb-payment=Split]){background:#e0edfd;color:#0062c9}
 #kb-wrap:not(.kg-grid) [data-kb-payment=Credit]{background:#fff0e1;color:#ad3900}

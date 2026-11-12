@@ -376,7 +376,13 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
     await page.locator('#kb-clear').click();
     continue;
    }
-   await page.locator('#kb-other-payment').getByRole('button',{name:'Confirm payment'}).click();
+   const confirmCard=page.locator('#posPayConfOk');
+   const cancelCard=page.locator('#kb-payment-close');
+   check('Card starts on Confirm Payment Received',await focused(confirmCard));
+   await page.keyboard.press('ArrowLeft');
+   check('Card Left moves to Cancel',await focused(cancelCard));
+   await page.keyboard.press('ArrowRight');
+   await page.keyboard.press('Enter');
    await page.locator('#kb-payment').waitFor({state:'hidden'});
    await page.locator('#kb-print-choice').waitFor();
    check('Completed payment is confirmed in the print dialog', (await page.locator('#kb-print-summary').innerText()).includes('is saved.'));

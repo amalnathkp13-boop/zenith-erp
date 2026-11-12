@@ -136,30 +136,41 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await billButton.click();
    const payment=page.locator('#kb-other-payment');
    const method=page.locator('#kb-payment-method');
-   const submit=payment.locator('button[type=submit]');
-   check(shell+' asks which tender to use for an already sent KOT',await method.inputValue()===''&&await submit.isDisabled());
+   const proceed=page.locator('#kb-payment-continue');
+   check(shell+' asks which tender to use for an already sent KOT',await method.inputValue()===''&&await proceed.isDisabled());
    await method.selectOption(grid?'Split':'UPI');
+   await method.press('Enter');
    if(grid) {
     await payment.locator('[name=cardAmount]').fill('17');
     await page.locator('#kb-payment-close').click();
     await page.locator('#kb-history-open').click();
     await billButton.click();
     await method.selectOption('Split');
-    check('Reopening checkout discards the abandoned split amounts',await payment.locator('[name=cardAmount]').inputValue()==='');
+    await method.press('Enter');
+    check('Reopening checkout discards the abandoned split amounts',await payment.locator('[name=cardAmount]').inputValue()==='0');
     await payment.locator('[name=cardAmount]').fill('50');
+    await payment.locator('[name=cardRef]').fill('SAMPLE-CARD');
     await payment.locator('[name=upiAmount]').fill((due-50).toFixed(2));
+    await payment.locator('[name=upiRef]').fill('SAMPLE-UPI');
+    await payment.locator('button[type=submit]').click();
+   }else{
+    await page.keyboard.press('Enter');
+    await payment.getByRole('button',{name:'Save',exact:true}).waitFor();
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('Enter');
    }
-   await submit.click();
    await page.locator('#kb-print-choice[open]').waitFor();
    await page.locator('#kb-print-close').click();
    const billed=q(ticketSql)[0];
-   const tenders=()=>q(`SELECT payment_method,amount FROM pos_payment WHERE transaction_id='${billed.transaction_id}' ORDER BY payment_method`);
+   const tenders=()=>q(`SELECT payment_method,amount,reference_number FROM pos_payment WHERE transaction_id='${billed.transaction_id}' ORDER BY payment_method`);
    const bill=q(`SELECT transaction_number,payable_amount,status_id FROM pos_transaction WHERE transaction_id='${billed.transaction_id}'`)[0];
    const expected=grid?[['Card',50],['UPI',due-50]]:[['UPI',due]];
    check(shell+' bills the sent KOT at its saved price and preserves kitchen status and the new cart',
     billed.status_id===status&&billed.kot_date===ticket.kot_date&&bill?.status_id==='PtCompleted'&&Number(bill.payable_amount)===due&&
     JSON.stringify(tenders().map(row=>[row.payment_method,Number(row.amount)]))===JSON.stringify(expected)&&
     await page.locator('#kb-cart tr').filter({hasText:'Disposable POS A P5'}).count()===1,{billed,bill,expected});
+   if(grid)check('Split persists each digital payment reference',
+    JSON.stringify(tenders().map(row=>row.reference_number))===JSON.stringify(['SAMPLE-CARD','SAMPLE-UPI']));
    const retry=await (await request('checkoutKot',{kotId:ticket.kot_id,paymentMethod:'UPI',confirmedTotal:String(due)})).json();
    check(shell+' retry reuses the issued bill without another tender',retry.billNumber===bill.transaction_number&&tenders().length===expected.length);
    await page.locator('#kb-history-open').click();
@@ -176,11 +187,11 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    maxRedirects:0,form:{moquiSessionToken:a.t,kotId:creditOrder.kotId,statusId}});
   await advance('KotPreparing');
   const credit=await (await request('checkoutKot',{kotId:creditOrder.kotId,paymentMethod:'Credit',
-   customerName:'Synthetic KOT credit customer',customerPhone:creditPhone})).json();
-  const receivable=q(`SELECT is_credit,customer_party_id,payable_amount,paid_amount FROM pos_transaction WHERE transaction_id='${creditTicket()?.transaction_id}'`)[0];
+   customerName:'Synthetic KOT credit customer',customerPhone:creditPhone,upfrontAmount:'30',upfrontMethod:'Card',creditDays:'7'})).json();
+  const receivable=q(`SELECT is_credit,customer_party_id,payable_amount,paid_amount,credit_days FROM pos_transaction WHERE transaction_id='${creditTicket()?.transaction_id}'`)[0];
   check('Credit checkout preserves the named customer and keeps its table occupied until serving',
    credit.success&&receivable?.is_credit==='Y'&&receivable.customer_party_id==='POSCUST_POS_QA_A_'+creditPhone&&Number(receivable.payable_amount)===100&&
-   Number(receivable.paid_amount)===0&&creditTicket().status_id==='KotPreparing'&&tableStatus()==='TblOccupied',{creditOrder,credit,receivable});
+   Number(receivable.paid_amount)===30&&Number(receivable.credit_days)===7&&creditTicket().status_id==='KotPreparing'&&tableStatus()==='TblOccupied',{creditOrder,credit,receivable});
   await advance('KotReady');
   await advance('KotServed');
   check('Serving the last paid dine-in ticket releases its table',creditTicket().status_id==='KotServed'&&tableStatus()==='TblAvailable');

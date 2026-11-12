@@ -447,6 +447,9 @@
                     out.add([id:r.partyId,name:nm,phone:phone])
                     if(out.size()>=30) break
                 }
+                def terms=out ? ec.entity.find('mantle.party.Party').condition('partyId','in',out*.id)
+                    .list().collectEntries { [(it.partyId):it.creditDays] } : [:]
+                out.each { it.creditDays=terms[it.id] }
                 ec.web.sendJsonResponse([success:true,customers:out])
             } catch(Exception e) { ec.web.sendJsonResponse([success:false,customers:[]]) }
         ]]></script></actions>
@@ -525,7 +528,8 @@
         <actions><script><![CDATA[
             def payment=ec.service.sync().name('zenith.pos.KotServices.complete#KotBill')
                 .parameters(['sessionId','kotId','confirmedTotal','paymentMethod','cashAmount','cardAmount','upiAmount',
-                    'customerName','customerPhone','referenceNumber'].collectEntries { [(it):ec.context[it]] }).call()?.checkout
+                    'customerName','customerPhone','referenceNumber','cardRef','upiRef','creditCustomerPartyId',
+                    'upfrontAmount','upfrontMethod','creditDays','termsReason'].collectEntries { [(it):ec.context[it]] }).call()?.checkout
             ec.web.sendJsonResponse(payment ?: [success:false,error:ec.message.errorsString ?: 'Could not complete this order.'])
         ]]></script></actions><default-response type="none"/>
     </transition>
@@ -669,6 +673,7 @@
                     [ billNumber:issuedBill ? (issuedBill.transactionNumber ?: issuedBill.transactionId) : '',
                       total:issuedBill ? issuedBill.payableAmount : snapshot?.summary?.total,
                       customer:issuedBill?.customerName ?: snapshot?.bill?.customer ?: 'Walk-in',
+                      customerPartyId:snapshot?.bill?.customerPartyId ?: '', customerPhone:snapshot?.bill?.customerPhone ?: '',
                       payment:(methods[k.transactionId] ?: [])*.paymentMethod.findAll { it }.unique().join(', '),
                       searchText:([k.kotNumber,k.kotId,k.waiterName,issuedBill ? issuedBill.payableAmount : snapshot?.summary?.total] +
                           (byKot[k.kotId] ?: [])*.name).findAll { it != null }.join(' '),
@@ -948,7 +953,9 @@
           <div class="kb-history-row-actions" role="group" aria-label="Print options">
             <button type="button" class="kb-history-button" data-kb-history-print="bill" <#if !k.hasBill>disabled title="No saved bill or order pricing is available."</#if>><@ic 'printer' 14/> Bill Print</button>
             <button type="button" class="kb-history-button" data-kb-history-print="kot"><@ic 'printer' 14/> KOT Print</button>
-            <#if k.canBill><button type="button" class="kb-history-button kb-history-primary" data-kb-bill-order="${k.id?html}" data-kb-bill-total="${k.total?c}" aria-label="Bill out KOT ${k.num?html}"><@ic 'cash' 14/> Bill Out</button></#if>
+            <#if k.canBill><button type="button" class="kb-history-button kb-history-primary" data-kb-bill-order="${k.id?html}" data-kb-bill-total="${k.total?c}"
+              data-kb-bill-customer="${k.customerPartyId?html}" data-kb-bill-name="${k.customer?html}" data-kb-bill-phone="${k.customerPhone?html}"
+              aria-label="Bill out KOT ${k.num?html}"><@ic 'cash' 14/> Bill Out</button></#if>
           </div>
           </#if>
         </article>
@@ -987,20 +994,14 @@
   </dialog>
   <#if modCanWrite><dialog id="kb-payment" class="zk-history-view" aria-labelledby="kb-payment-title">
     <div id="kb-payment-heading"><h2 id="kb-payment-title">Bill Out</h2><p id="kb-payment-total"></p></div>
-    <form id="kb-payment-form">
+    <form id="kb-payment-form" data-credit-date="${ec.l10n.format(ec.user.nowTimestamp,'yyyy-MM-dd')?html}" data-credit-zone="${ec.user.timeZone.ID?html}">
       <input type="hidden" name="sessionId" value="${billingSession.sessionId?html}"/>
-      <div id="kb-cash-slot"></div>
-      <div id="kb-other-payment">
-      <div class="kb-dialog-fields">
-        <p>Terminal: ${(billingTerminal.terminalName!billingTerminal.terminalId)?html}</p>
+      <div id="kb-payment-picker">
         <label>Payment method<select name="paymentMethod" id="kb-payment-method"><option value="" disabled>Choose payment method</option><option>Cash</option><option>Card</option><option>UPI</option><option>Split</option><option>Credit</option></select></label>
-        <label data-kb-tender="Split" hidden>Cash received<input name="cashAmount" type="number" min="0" step="0.01" inputmode="decimal"></label>
-        <label data-kb-tender="Split" hidden>Card amount<input name="cardAmount" type="number" min="0" step="0.01"></label>
-        <label data-kb-tender="Split" hidden>UPI amount<input name="upiAmount" type="number" min="0" step="0.01"></label>
-        <label data-kb-tender="Card UPI Split" hidden>Payment reference<input name="referenceNumber" maxlength="80"></label>
-        <label data-kb-tender="Credit" hidden>Customer name<input name="customerName" maxlength="80"></label>
-        <label data-kb-tender="Credit" hidden>Customer phone<input name="customerPhone" type="tel" maxlength="20"></label>
-      </div><button class="kb-action-bill" type="submit">Confirm payment</button><button class="kb-control" type="button" id="kb-payment-close">Cancel</button></div>
+        <div class="zk-history-actions"><button class="kb-control" type="button" id="kb-payment-continue" disabled>Continue</button><button class="kb-control" type="button" id="kb-payment-picker-close">Cancel</button></div>
+      </div>
+      <div id="kb-cash-slot"></div>
+      <div id="kb-other-payment"></div>
       <p id="kb-payment-error" role="alert"></p>
     </form>
   </dialog></#if>
