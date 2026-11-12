@@ -6,6 +6,7 @@
   root.dataset.ready='true';
   const $=id=>root.querySelector('#kb-'+id);
   const search=$('search'), suggestions=$('suggestions'), cart=new Map();
+  const stats=$('stats'), summaryStack=stats.parentElement, checkout=root.querySelector('.kb-bottom');
   const modesMenu=root.querySelector('.kg-modes');
   const modeOptions=modesMenu.querySelectorAll('[data-kb-view]');
   const salesModeOptions=modesMenu.querySelectorAll('[data-kb-sales-mode]');
@@ -349,12 +350,15 @@
   function renderCustomer() {
     const name=customer.name||'Walk-in Customer';
     $('customer-name').textContent=name;
+    const headerName=$('header-customer-name');
+    if(headerName)headerName.textContent=name;
     $('list-phone').textContent=customer.phone||'—';
   }
   function openCustomerDialog() {
     const dlg=$('customer-dialog');if(!dlg)return;
     $('customer-error').textContent='';$('customer-search').value='';
-    renderCustomerResults([]);dlg.showModal();
+    $('customer-tax').checked=taxOn==='Y';
+    $('customer-results').replaceChildren();dlg.showModal();
     searchCustomers('');$('customer-search').focus();
   }
   async function searchCustomers(term) {
@@ -377,6 +381,10 @@
   }
   function selectCustomer(el) {
     customer={id:el.dataset.custId,name:el.dataset.custName,phone:el.dataset.custPhone||''};
+    if(grid){
+      taxOn=$('customer-tax').checked?'Y':'N';
+      paintTax();
+    }
     $('customer-dialog')?.close();renderCustomer();quote();
   }
   function walkInCustomer() {
@@ -534,13 +542,11 @@
     }
     const toQty=field==='rate' && (e.key==='ArrowRight'||e.key==='Enter');
     const toRate=field==='qty' && e.key==='ArrowLeft';
-    const toSearch=field==='qty' && e.key==='ArrowDown';
-    const toPayment=(field==='rate'&&e.key==='ArrowDown')||(field==='qty'&&e.key==='Enter');
-    if(!toQty&&!toRate&&!toSearch&&!toPayment)return;
+    const toSearch=field==='qty' && (e.key==='ArrowDown'||e.key==='Enter');
+    if(!toQty&&!toRate&&!toSearch)return;
     e.preventDefault();
     if(!commitEdit(input))return;
     if(toSearch)search.focus();
-    else if(toPayment)paymentButtons[0]?.focus();
     else focusEditor(editorFor(id,toQty?'qty':'rate'));
   });
   for(const [index,button] of paymentButtons.entries()) {
@@ -678,6 +684,7 @@
     panel.hidden=!grid;
     for(const option of modeOptions)option.setAttribute('aria-pressed',String((option.dataset.kbView==='grid')===grid));
     (grid?panel:search.parentElement).append(suggestions);
+    (grid?checkout:summaryStack).append(stats);
     if(!grid||search.value.trim())renderMatches();
     else lookup();
   }
@@ -857,7 +864,7 @@
       if(row) {
         const status=$('history-detail').open?$('history-detail-message'):$('history-print-status');
         status.textContent='Print request opened.'+warning;
-      } else $('order-status').textContent+=' Print request opened. The completed bill is also in History.'+warning;
+      } else if(warning) $('order-status').textContent+=warning;
       if(chooser.open)chooser.close();
     } catch(error) {
       errorOutput.textContent=error.message;
@@ -1008,8 +1015,8 @@
     $('payment').close();
     if(!existingOrder)resetOrder();
     const change=Number(bill.changeAmount)>0?' Change given: '+money.format(bill.changeAmount)+'.':'';
-    const notice=bill.local?'Bill '+bill.billNumber+' is saved on this device and queued to sync.':'Saved bill '+bill.billNumber+'.';
-    $('order-status').textContent=notice+change;
+    const notice=bill.local?'Bill '+bill.billNumber+' is saved on this device and queued to sync.':'Bill '+bill.billNumber+' is saved.';
+    $('order-status').textContent=bill.local?notice+change:'';
     $('print-summary').textContent=notice+change+' Choose a print option.';
     historyPrintRow=null;
     $('print-title').textContent='Payment complete';
