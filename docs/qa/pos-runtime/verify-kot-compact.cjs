@@ -130,6 +130,18 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await page.locator('#kb-grand').getByText('₹100.00').waitFor();
   await page.getByRole('button',{name:/^UPI F5$/}).click();
   check('Grid payment buttons open the existing checkout with the selected tender',await page.locator('#kb-payment-method').inputValue()==='UPI');
+  const paymentStyle=()=>page.locator('.kb-checkout-actions :is([data-kb-payment],#kb-draft)').evaluateAll(buttons=>
+   buttons.map(button=>{
+    const style=getComputedStyle(button), icon=getComputedStyle(button,'::before');
+    return {fill:style.backgroundColor,icon:icon.maskImage.startsWith('url('),shortcut:getComputedStyle(button.querySelector('kbd')).display!=='none'};
+   }));
+  const expectedFills=['rgb(224, 245, 239)','rgb(225, 240, 255)','rgb(255, 240, 229)','rgb(240, 232, 255)','rgb(229, 240, 255)','rgb(255, 240, 229)'];
+  const gridPaymentStyle=await paymentStyle();
+  const upiConfirmType=await page.locator('#posPayConfOk').getAttribute('type');
+  check('Grid uses the POS action artwork and UPI confirms directly',
+   gridPaymentStyle.length===expectedFills.length&&gridPaymentStyle.every((button,index)=>button.icon&&button.shortcut&&button.fill===expectedFills[index])&&
+   upiConfirmType==='submit',{gridPaymentStyle,upiConfirmType});
+  await page.screenshot({path:path.join(out,'kot-grid-upi-payment.png')});
   await page.locator('#kb-payment-close').click();
   await page.locator('[data-kb-payment="Cash"]').click();
   const cash=page.locator('#kb-cash'), confirmCash=page.locator('.pos-cash-confirm');
@@ -253,12 +265,52 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   check('Payment waits for the selected print option',await page.evaluate(()=>window.kotPrints.length===0));
   check('The print choice shows the confirmed cash change',await page.locator('#kb-print-summary').getByText('Change given: ₹50.00.',{exact:false}).isVisible());
   check('Payment complete opens focused on Print Bill',await focused(page.locator('[data-kb-print="bill"]')));
+  const completion=page.locator('#kb-print-choice');
+  const completionButtons=completion.locator('.kb-print-options button');
+  for(const width of [1366,320]){
+   await page.setViewportSize({width,height:768});
+   const layout=await completionButtons.evaluateAll(buttons=>buttons.map(button=>{
+    const box=button.getBoundingClientRect();
+    return {label:button.textContent.trim(),top:box.top,left:box.left,right:box.right};
+   }));
+   check('Payment Complete keeps four ordered actions in one row at '+width+'px',
+    layout.map(button=>button.label).join('|')==='Bill Print|KOT Print|Print Both|Save'&&
+    layout.every((button,index)=>button.top===layout[0].top&&button.left>=0&&button.right<=width&&
+     (index===0||button.left>=layout[index-1].right)),layout);
+  }
+  await page.setViewportSize({width:1366,height:768});
+  const saveButton=completion.getByRole('button',{name:'Save',exact:true});
+  await page.keyboard.press('ArrowLeft');
+  check('Left wraps from Bill Print to Save',await focused(saveButton));
+  await page.keyboard.press('Tab');
+  const firstControl=completion.locator(':is(button,select):visible:enabled').first();
+  check('Tab from Save wraps to the first control in Payment Complete',await focused(firstControl));
+  await page.keyboard.press('Shift+Tab');
+  check('Shift+Tab from the first control stays in Payment Complete',await focused(saveButton));
+  await page.keyboard.press('ArrowRight');
+  check('Right wraps from Save to Bill Print',await focused(completionButtons.first()));
+  await page.keyboard.press('F10');
+  check('Billing shortcuts stay in the completion modal',await completion.isVisible()&&!await page.locator('#kb-history').isVisible());
+  const focusStyle=await completionButtons.first().evaluate(button=>{
+   const style=getComputedStyle(button);
+   return {outline:style.outlineWidth,offset:style.outlineOffset,color:style.outlineColor,duration:style.transitionDuration};
+  });
+  check('The selected action has a visible blue outline and brief focus animation',
+   focusStyle.outline==='2px'&&focusStyle.offset==='2px'&&focusStyle.color==='rgb(37, 99, 235)'&&focusStyle.duration==='0.15s',focusStyle);
+  await page.emulateMedia({reducedMotion:'reduce'});
+  const reducedDuration=await completionButtons.first().evaluate(button=>getComputedStyle(button).transitionDuration);
+  check('Receipt-action focus stops animating for reduced motion',reducedDuration==='0s',reducedDuration);
+  await page.emulateMedia({reducedMotion:'no-preference'});
+  await page.screenshot({path:path.join(out,'kot-payment-complete.png')});
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('ArrowRight');
   check('Print Right moves to Print both',await focused(page.locator('[data-kb-print="both"]')));
-  await page.keyboard.press('Enter');
+  await page.keyboard.down('Enter');
+  await page.keyboard.down('Enter');
+  await page.keyboard.up('Enter');
   await page.waitForFunction(()=>window.kotPrints.length===2);
   await page.locator('#kb-print-choice').waitFor({state:'hidden'});
+  await page.waitForFunction(()=>document.activeElement?.id==='kb-search');
   const kot=q("SELECT kot_id,transaction_id,waiter_name,table_id,notes FROM kitchen_order_ticket WHERE waiter_name='"+waiterName+"' AND transaction_id IS NOT NULL ORDER BY kot_id DESC")[0];
   const tx=q("SELECT transaction_number,payable_amount,change_amount,status_id,customer_party_id FROM pos_transaction WHERE transaction_id='"+kot.transaction_id+"'")[0];
   const printed=await page.evaluate(()=>window.kotPrints);
@@ -291,24 +343,32 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await page.locator('#kb-history-detail [data-edit-quantity]').first().waitFor();
   check('Enter opens the saved bill in the editor without loading it into the sale cart',
    await page.locator('#kb-history-detail-number').innerText()==='#'+tx.transaction_number&&await page.locator('#kb-cart [data-product]').count()===0);
+  const billEditor=page.locator('#kb-history-detail');
+  const editorLayout=await billEditor.evaluate(dialog=>{
+   const bounds=dialog.getBoundingClientRect();
+   const actions=Array.from(dialog.querySelectorAll('footer button')).filter(button=>button.getClientRects().length);
+   return {fillsWorkspace:bounds.width===innerWidth&&bounds.height===innerHeight,
+    actions:actions.map(button=>button.textContent.trim()),title:dialog.querySelector('h2').textContent.trim()};
+  });
+  check('Selecting an editable KOT bill opens the POS-style billing workspace',
+   editorLayout.fillsWorkspace&&editorLayout.title.includes(tx.transaction_number)&&
+   editorLayout.actions.join('|')==='Cancel|Print bill|Save & print revised bill',editorLayout);
   await page.keyboard.press('Space');
-  check('Space focuses Reprint in Edit Bill',await page.locator('#kb-history-detail-reprint').evaluate(el=>el===document.activeElement));
-  await page.keyboard.press('Enter');
-  await page.locator('#kb-print-choice').waitFor();
-  await page.keyboard.press('ArrowRight');
-  await page.keyboard.press('ArrowRight');
-  check('Right arrows select Print both',await page.locator('[data-kb-print="both"]').evaluate(el=>el===document.activeElement));
-  await page.keyboard.press('Enter');
-  await page.waitForFunction(()=>window.kotPrints.length===4);
-  await page.locator('#kb-print-choice').waitFor({state:'hidden'});
-  check('History reprints both saved documents',await page.evaluate(()=>window.kotPrints[2]===window.kotPrints[0]&&window.kotPrints[3]===window.kotPrints[1]));
-  check('History Print both uses one browser window',await page.evaluate(()=>window.kotPrintWindows===2));
+  const editorPrint=page.locator('#kb-history-detail-reprint');
+  check('Space focuses Print bill in the editor',await focused(editorPrint));
   const editQuantity=page.locator('#kb-history-detail [data-edit-quantity]').first();
-  await editQuantity.fill('3');
-  check('Edit Bill shows the new amount before Save Changes',
+  await billEditor.getByRole('button',{name:'Increase quantity for Disposable POS A P18'}).click();
+  check('Edit Bill shows the new amount before saving',
    await page.locator('#kb-history-detail [data-edit-total]').first().innerText()==='₹300.00'&&
    await page.locator('#kb-history-detail-total').innerText()==='Estimated total ₹300.00');
+  await editorPrint.press('Enter');
+  await page.waitForFunction(()=>window.kotPrints.length===3);
+  check('Print bill uses the saved receipt despite unsaved edits',
+   await page.evaluate(()=>window.kotPrints[2]===window.kotPrints[1]&&window.kotPrintWindows===2)&&
+   q("SELECT amendment_id FROM pos_transaction_amendment WHERE transaction_id='"+kot.transaction_id+"'").length===0);
   const addItem=page.locator('#kb-history-add');
+  await editQuantity.press('Enter');
+  check('Enter from the quantity field returns to product search',await focused(addItem));
   await addItem.fill('Disposable POS A NOWS');
   await page.locator('#kb-history-products button').filter({hasText:'POS_QA_A_NOWS'}).waitFor();
   await addItem.fill('POS_QA_A_UNPRICED');
@@ -319,6 +379,12 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   check('Name and code search can add an item without a saved rate',
    await added.locator('[data-edit-total]').innerText()==='₹25.00'&&
    await page.locator('#kb-history-detail-total').innerText()==='Estimated total ₹325.00');
+  const removeAdded=added.getByRole('button',{name:'Remove Disposable unpriced item'});
+  await removeAdded.click();
+  check('Removing an added item updates the estimate',
+   await page.locator('#kb-history-detail-total').innerText()==='Estimated total ₹300.00');
+  await removeAdded.click();
+  await page.screenshot({path:path.join(out,'kot-history-pos-editor.png')});
   page.once('dialog',dialog=>dialog.accept());
   await page.locator('#kb-history-back').click();
   const printActions=historyBill.locator('..');
@@ -328,12 +394,12 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    bill:document.activeElement?.closest('.kb-history-row')?.querySelector('[data-kb-history-detail]')?.textContent.trim()}));
   check('Space moves from the bill number to Bill Print',focusedPrint.action==='bill'&&focusedPrint.bill==='#'+tx.transaction_number,focusedPrint);
   await page.keyboard.press('Enter');
-  await page.waitForFunction(()=>window.kotPrints.length===5);
+  await page.waitForFunction(()=>window.kotPrints.length===4);
   await printActions.getByRole('button',{name:'KOT Print'}).click();
-  await page.waitForFunction(()=>window.kotPrints.length===6);
+  await page.waitForFunction(()=>window.kotPrints.length===5);
   check('History has direct Bill Print and KOT Print actions',
    !await page.locator('#kb-print-choice').isVisible()&&
-   await page.evaluate(()=>window.kotPrints[4]===window.kotPrints[1]&&window.kotPrints[5]===window.kotPrints[0]));
+   await page.evaluate(()=>window.kotPrints[3]===window.kotPrints[1]&&window.kotPrints[4]===window.kotPrints[0]));
   await page.locator('#kb-history-close').click();
   for(const [view,option] of [['List',listMode],['Grid',gridMode]]) {
    await modes.locator('summary').click();
@@ -376,7 +442,20 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await page.locator('#kb-grand').getByText('₹450.00').waitFor();
    check(view+' Right and Enter select Card',await page.locator('#kb-payment-method').inputValue()==='Card');
    if(view==='List'){
+    check('List uses the same POS action artwork, colors and shortcuts as Grid',
+     JSON.stringify(await paymentStyle())===JSON.stringify(gridPaymentStyle));
+    await page.screenshot({path:path.join(out,'kot-list-card-payment.png')});
+    await page.setViewportSize({width:390,height:300});
+    const bounds=await page.locator('#kb-payment').evaluate(dialog=>{
+     const box=dialog.getBoundingClientRect();
+     return {centered:Math.abs((box.left+box.right)/2-innerWidth/2)<=1&&Math.abs((box.top+box.bottom)/2-innerHeight/2)<=1,
+      inset:box.left>=12&&box.top>=12&&box.right<=innerWidth-12&&box.bottom<=innerHeight-12,
+      scrollable:dialog.scrollHeight>dialog.clientHeight&&getComputedStyle(dialog).overflowY==='auto'};
+    });
+    check('Card stays centered and scrollable on a short screen',bounds.centered&&bounds.inset&&bounds.scrollable,bounds);
     await page.locator('#kb-payment-close').click();
+    check('Cancelling Card leaves the bill and total intact',await page.locator('#kb-grand').innerText()==='₹450.00');
+    await page.setViewportSize({width:1366,height:768});
     await page.locator('#kb-clear').click();
     continue;
    }
@@ -390,13 +469,57 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await page.locator('#kb-payment').waitFor({state:'hidden'});
    await page.locator('#kb-print-choice').waitFor();
    check('Completed payment is confirmed in the print dialog', (await page.locator('#kb-print-summary').innerText()).includes('is saved.'));
-   await page.locator('#kb-print-close').click();
+   await page.keyboard.press('ArrowLeft');
+   check('Card completion can focus Save with one Left press',await focused(saveButton));
+   const printCountBeforeSave=await page.evaluate(()=>window.kotPrints.length);
+   await page.keyboard.press('Enter');
+   await completion.waitFor({state:'hidden'});
+   await page.waitForFunction(()=>document.activeElement?.id==='kb-search');
+   check('Save returns to billing without printing',
+    await page.evaluate(count=>window.kotPrints.length===count,printCountBeforeSave));
    check('Completed payment leaves no message under Add Note',await page.locator('#kb-order-status').isHidden());
-   const lines=q("SELECT i.unit_price,i.quantity,i.manual_price,t.payable_amount,p.payment_method FROM pos_transaction_item i JOIN pos_transaction t ON t.transaction_id=i.transaction_id JOIN pos_payment p ON p.transaction_id=t.transaction_id WHERE t.session_id='"+session.sessionId+"' AND t.status_id='PtCompleted' AND i.manual_price='Y'");
+   const lines=q("SELECT i.unit_price,i.quantity,i.manual_price,t.transaction_id,t.transaction_number,t.payable_amount,p.payment_method FROM pos_transaction_item i JOIN pos_transaction t ON t.transaction_id=i.transaction_id JOIN pos_payment p ON p.transaction_id=t.transaction_id WHERE t.session_id='"+session.sessionId+"' AND t.status_id='PtCompleted' AND i.manual_price='Y'");
    check('Card checkout persists the keypad rate and quantity',lines.length===1&&lines[0].payment_method==='Card'&&Number(lines[0].unit_price)===150&&Number(lines[0].quantity)===3&&Number(lines[0].payable_amount)===450,lines);
+   const cardBill=lines[0];
+   await page.locator('#kb-history-open').click();
+   await page.locator('#kb-history [data-kb-history-detail]').filter({hasText:cardBill.transaction_number}).click();
+   await billEditor.locator('[data-edit-rate]').fill('160');
+   await billEditor.locator('[data-edit-rate]').press('Enter');
+   check('Enter from the rate field moves to quantity',await focused(billEditor.locator('[data-edit-quantity]')));
+   await billEditor.getByRole('button',{name:'Save & print revised bill'}).click();
+   const reason=page.locator('#kb-history-edit-reason');
+   await reason.waitFor();
+   check('Selecting a bill by click opens the same editor and requires an audit reason',await focused(reason)&&
+    await reason.getAttribute('required')!==null);
+   await reason.fill('Synthetic KOT rate correction');
+   await page.locator('#kb-history-revision-save').click();
+   await page.waitForFunction(()=>window.kotPrints.length===6);
+   const revised=q("SELECT transaction_number,payable_amount FROM pos_transaction WHERE transaction_id='"+cardBill.transaction_id+"'")[0];
+   const audit=q("SELECT change_type,reason FROM pos_transaction_amendment WHERE transaction_id='"+cardBill.transaction_id+"'");
+   check('Saving a KOT revision audits one change, keeps the number, and prints the saved total',
+    revised.transaction_number===cardBill.transaction_number&&Number(revised.payable_amount)===480&&
+    audit.length===1&&audit[0].change_type==='PRICE_CHANGE'&&audit[0].reason==='Synthetic KOT rate correction'&&
+    await page.evaluate(number=>window.kotPrints[5].includes(number)&&window.kotPrints[5].includes('480.00'),cardBill.transaction_number),
+    {revised,audit});
+   await page.locator('#kb-history-back').click();
+   await page.locator('#kb-history-close').click();
   }
   await modes.locator('summary').click();
   await listMode.click();
+  await page.locator('[data-ot="Take Away"]').click();
+  await search.fill('Disposable POS A P18');
+  await card.waitFor();
+  await card.click();
+  await page.locator('#kb-grand').getByText('₹100.00').waitFor();
+  await page.locator('[data-kb-payment=UPI]').click();
+  await page.locator('#kb-payment [name=referenceNumber]').fill('KOT-QA-UPI');
+  await page.locator('#posPayConfOk').click();
+  await page.locator('#kb-print-choice').waitFor();
+  await page.locator('#kb-print-close').click();
+  const upi=q("SELECT p.amount,p.reference_number FROM pos_payment p JOIN pos_transaction t ON t.transaction_id=p.transaction_id WHERE t.session_id='"+session.sessionId+"' AND t.status_id='PtCompleted' AND p.payment_method='UPI'");
+  check('One UPI confirmation saves one tender and closing print options skips printing',
+   upi.length===1&&Number(upi[0].amount)===100&&upi[0].reference_number==='KOT-QA-UPI'&&
+   await page.evaluate(()=>window.kotPrints.length===6)&&!await page.locator('#kb-payment').isVisible(),upi);
   check('List puts Hold Bills between Tax and History',
    await page.locator('#kb-tax-toggle + #kb-held-open:has(+ #kb-history-open)').isVisible());
   check('List checkout has the same six controls as Grid',

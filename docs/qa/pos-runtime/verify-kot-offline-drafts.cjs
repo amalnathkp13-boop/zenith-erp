@@ -361,7 +361,13 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
       qzPrint.algorithm === 'SHA1' && qzPrint.signed &&
       qzPrint.browser === existingBrowserJobs);
     await syncedRow.locator('[data-kb-history-detail]').click();
+    await page.locator('#kb-history-detail').getByRole('button',{name:'Print bill',exact:true}).waitFor();
+    await page.evaluate(() => { window.kotQzRejectBill=true; });
     await page.locator('#kb-history-detail-reprint').click();
+    await page.locator('#kb-print-error').getByText(/Disposable printer is unavailable/).waitFor();
+    check('When editor reprint fails in QZ, it offers an explicit browser fallback',
+      await page.locator('#kb-print-choice').isVisible()&&
+      await page.evaluate(previous => window.kotQzJobs.length===1&&window.kotOfflinePrints.length===previous,existingBrowserJobs));
     await page.locator('[data-kb-print=bill]').focus();
     for (const [selector, label] of [['[data-kb-print=kot]', 'KOT Print'], ['[data-kb-print=both]', 'Print both'], ['#kb-print-close', 'Done']]) {
       await page.keyboard.press('ArrowRight');
@@ -373,7 +379,6 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
       await page.locator('#kb-print-via').inputValue()==='qz' &&
       await page.evaluate(() => localStorage.getItem('kotPrinter')==='Second disposable printer' &&
         localStorage.getItem('posPrinter')==='Disposable QZ printer' && window.kotQzJobs.length===1));
-    await page.evaluate(() => { window.kotQzRejectBill=true; });
     await page.locator('[data-kb-print=both]').click();
     await page.locator('#kb-print-error').getByText(/Kitchen ticket sent/).waitFor();
     check('A failed customer job after a successful QZ kitchen job keeps browser fallback explicit',
@@ -472,9 +477,9 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     await cash.fill('40');
     await page.locator('#kb-payment [name=upiAmount]').fill('49');
     const confirmOther = page.locator('#kb-other-payment button[type=submit]:visible');
-    const confirmUpi = async (print = true) => {
+    const confirmUpi = async () => {
       await page.locator('#posPayConfOk').click();
-      await page.locator(print ? '#posPaySavePrint' : '#posPaySave').click();
+      await page.locator('#kb-print-choice').waitFor();
     };
     await confirmOther.click();
     await page.locator('#kb-payment-error').getByText(/add up to the bill total/i).waitFor();
@@ -644,9 +649,9 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     const [savedTicket] = ticketRow();
     assert.ok(savedTicket && !savedTicket.transaction_id,'The server has acknowledged the ticket while the tender dialog stays open');
     assert.equal(await page.locator('#kb-payment-total').textContent(),pendingTotal);
-    await confirmUpi(false);
+    await confirmUpi();
     await page.locator('#kb-payment').waitFor({state:'hidden'});
-    assert.equal(await page.locator('#kb-print-choice').isVisible(),false,'Save leaves the print dialog closed');
+    await page.locator('#kb-print-close').click();
     await page.waitForFunction(scope => window.KotOffline.createWorkspace(scope.org,scope.terminalId,scope.user).queue().length === 0,scope);
     const linkedTicket = ticketRow();
     const linkedPayments = q("SELECT payment_method,amount FROM pos_payment WHERE transaction_id='" + linkedTicket[0]?.transaction_id + "'");

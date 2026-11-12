@@ -740,6 +740,7 @@
 <#if name=='bag'><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/>
 <#elseif name=='box'><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.73Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>
 <#elseif name=='search'><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+<#elseif name=='check'><path d="m5 12 4 4L19 6"/>
 <#elseif name=='x'><path d="M18 6 6 18"/><path d="m6 6 12 12"/>
 <#elseif name=='chevron'><path d="m6 9 6 6 6-6"/>
 <#elseif name=='plus'><path d="M5 12h14"/><path d="M12 5v14"/>
@@ -784,7 +785,7 @@
   <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/kot-grid.css').getLastModified()?c}"/>
   <link rel="stylesheet" href="/zenithstatic/css/pos-checkout.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/pos-checkout.css').getLastModified()?c}"/>
   <link rel="stylesheet" href="/zenithstatic/css/kot-list.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/kot-list.css').getLastModified()?c}"/>
-  <link rel="stylesheet" href="/zenithstatic/css/kot-bill-history.css?v=3"/>
+  <link rel="stylesheet" href="/zenithstatic/css/kot-bill-history.css?v=4"/>
   <input type="hidden" id="kb-token" value="${(ec.web.sessionToken)!''}"/>
   <div id="kb-data" style="display:none" data-session="${billingSession.sessionId?html}" data-user="${(ec.user.userId!'')?html}" data-org="${billingTerminal.organizationPartyId?html}" data-terminal="${billingTerminal.terminalId?html}" data-display-enabled="${kitchenDisplayEnabled?c}" data-kot-module="${(kitchenModuleId!'pos')?html}" data-stock-session="${billingSession.sessionId?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftcustomer="${draftCustomerJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-draftrevision="${draftRevision?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}" data-draftview="${draftLoadView}"></div>
 
@@ -909,9 +910,9 @@
     <div class="kb-total-row"><span>KOT TOTAL</span><strong id="kb-grand">&#8377;0.00</strong></div>
     <#if modCanWrite><div class="kb-checkout-actions" role="group" aria-label="Payment and hold actions">
       <#list ['Cash','Card','Credit','UPI','Split'] as tender>
-      <button type="button" class="kg-tender" data-kb-payment="${tender}" disabled><@ic tender?lower_case 24/> ${(tender == 'Split')?then('Split Payment',tender)} <kbd>F${tender?index + 2}</kbd></button>
+      <button type="button" class="kg-tender" data-kb-payment="${tender}" disabled><span>${(tender == 'Split')?then('Split Payment',tender)}</span> <kbd>F${tender?index + 2}</kbd></button>
       </#list>
-      <button type="button" id="kb-draft" class="kb-action-hold" disabled><span aria-hidden="true">Ⅱ</span> Hold <kbd>F7</kbd></button>
+      <button type="button" id="kb-draft" class="kb-action-hold" disabled><span>Hold</span> <kbd>F7</kbd></button>
       <button type="button" id="kb-send" class="kb-action-send" title="Press Shift by itself" <#if !kitchenDisplayEnabled>style="display:none"</#if> disabled><@ic 'printer'/> Send to KOT <kbd>Shift</kbd></button>
     </div></#if>
     <div class="kb-search"><@ic 'search'/>
@@ -959,34 +960,52 @@
     </div>
   </dialog>
   <dialog id="kb-history-detail" class="kb-history-dialog" aria-labelledby="kb-history-detail-title">
-    <header class="kb-history-heading"><h2 id="kb-history-detail-title"><@ic 'receipt' 20/> <span id="kb-history-detail-label">Edit Bill</span></h2><button id="kb-history-detail-close" type="button" aria-label="Close bill details">×</button></header>
+    <header class="kb-history-heading">
+      <div>
+        <h2 id="kb-history-detail-title"><@ic 'receipt' 20/> <span id="kb-history-detail-label">Bill Details</span> <span id="kb-history-detail-number"></span></h2>
+        <p id="kb-history-edit-help" hidden>Change the rate or quantity, remove items, or search to add a product.</p>
+      </div>
+      <button id="kb-history-detail-close" type="button" aria-label="Close bill details">×</button>
+    </header>
     <div class="kb-history-scroll">
-      <p class="kb-history-detail-meta"><strong id="kb-history-detail-number"></strong><span id="kb-history-detail-total"></span></p>
-      <p id="kb-history-detail-message" role="status"></p>
       <form id="kb-history-edit">
         <div class="kb-history-table"><table>
-          <thead><tr><th scope="col">Item</th><th scope="col">Rate (₹)</th><th scope="col">Quantity</th><th scope="col">Tax (₹)</th><th scope="col">Total (₹)</th><th scope="col" class="kb-history-editable">Remove</th></tr></thead>
+          <thead><tr><th scope="col">Item</th><th scope="col">Rate (₹)</th><th scope="col">Qty</th><th scope="col">Tax (₹)</th><th scope="col">Total (₹)</th><th scope="col" class="kb-history-editable">Remove</th></tr></thead>
           <tbody id="kb-history-detail-lines"></tbody>
         </table></div>
-        <p id="kb-history-amount-note" class="kb-history-meta" hidden>Tax on newly added items is calculated when you save.</p>
         <div id="kb-history-edit-fields" hidden>
-          <label>Add item <input id="kb-history-add" type="search" placeholder="Search by product name or code" autocomplete="off" aria-controls="kb-history-products"></label>
+          <label>Add item <input id="kb-history-add" type="search" placeholder="Search by product name, code or barcode" autocomplete="off" aria-controls="kb-history-products"></label>
           <div id="kb-history-products" role="group" aria-label="Matching products"></div>
-          <label>Reason for change <textarea id="kb-history-edit-reason" maxlength="500" rows="2" required></textarea></label>
         </div>
+        <p class="kb-history-detail-meta"><span id="kb-history-amount-note" hidden>Tax on newly added items is calculated when you save.</span><strong id="kb-history-detail-total"></strong></p>
+        <p id="kb-history-detail-message" role="status"></p>
         <p id="kb-history-edit-error" class="kb-history-error" role="alert"></p>
         <footer class="kb-history-detail-actions">
           <button type="button" class="kb-history-button" id="kb-history-back">Back to History</button>
           <#if modCanWrite>
           <button type="button" class="kb-history-button" id="kb-history-resume" hidden>Resume Order</button>
           <button type="button" class="kb-history-button" id="kb-history-discard" hidden>Discard Held Order</button>
-          <button type="button" class="kb-history-button" id="kb-history-detail-reprint" aria-keyshortcuts="Space"><@ic 'printer' 14/> Reprint</button>
-          <button type="submit" class="kb-history-button kb-history-primary" id="kb-history-save" hidden>Save Changes</button>
+          <button type="button" class="kb-history-button" id="kb-history-detail-reprint" aria-keyshortcuts="Space"><@ic 'printer' 14/><span id="kb-history-reprint-label">Reprint</span></button>
+          <button type="submit" class="kb-history-button kb-history-primary" id="kb-history-save" hidden>Save &amp; print revised bill</button>
           </#if>
         </footer>
       </form>
     </div>
   </dialog>
+  <#if modCanWrite>
+  <dialog id="kb-history-revision" class="kb-history-dialog" aria-labelledby="kb-history-revision-title">
+    <header class="kb-history-heading"><h2 id="kb-history-revision-title">Reason for bill revision</h2></header>
+    <form id="kb-history-revision-form" class="kb-history-scroll">
+      <label for="kb-history-edit-reason">Reason for change</label>
+      <textarea id="kb-history-edit-reason" maxlength="500" rows="3" required></textarea>
+      <p id="kb-history-revision-error" class="kb-history-error" role="alert"></p>
+      <footer class="kb-history-detail-actions">
+        <button type="button" class="kb-history-button" id="kb-history-revision-back">Back</button>
+        <button type="submit" class="kb-history-button kb-history-primary" id="kb-history-revision-save">Confirm, save &amp; print</button>
+      </footer>
+    </form>
+  </dialog>
+  </#if>
   <#if modCanWrite><dialog id="kb-payment" class="zk-history-view" aria-labelledby="kb-payment-title">
     <div id="kb-payment-heading"><h2 id="kb-payment-title">Bill Out</h2><p id="kb-payment-total"></p></div>
     <form id="kb-payment-form" data-credit-date="${ec.l10n.format(ec.user.nowTimestamp,'yyyy-MM-dd')?html}" data-credit-zone="${ec.user.timeZone.ID?html}">
@@ -1001,6 +1020,7 @@
     </form>
   </dialog></#if>
   <#if modCanWrite><dialog id="kb-print-choice" class="zk-history-view" aria-labelledby="kb-print-title">
+    <span class="kb-completion-icon kb-print-success" aria-hidden="true"><@ic 'check' 26/></span>
     <h2 id="kb-print-title">Payment complete</h2><p id="kb-print-summary"></p>
     <div id="kb-printer-options" hidden>
       <div class="kb-dialog-fields">
@@ -1010,11 +1030,12 @@
       </div>
     </div>
     <div class="zk-history-actions kb-print-options" role="group" aria-label="Print options">
-      <button type="button" class="kb-control" data-kb-print="bill">Bill Print</button>
-      <button type="button" class="kb-control" data-kb-print="kot">KOT Print</button>
-      <button type="button" class="kb-control" data-kb-print="both">Print both</button>
+      <button type="button" class="kb-control" data-kb-print="bill"><span class="kb-completion-icon" aria-hidden="true"><@ic 'printer' 18/></span>Bill Print</button>
+      <button type="button" class="kb-control" data-kb-print="kot"><span class="kb-completion-icon" aria-hidden="true"><@ic 'printer' 18/></span>KOT Print</button>
+      <button type="button" class="kb-control" data-kb-print="both"><span class="kb-completion-icon" aria-hidden="true"><@ic 'printer' 18/></span><span id="kb-print-both-label">Print both</span></button>
     </div>
-    <p id="kb-print-error" role="alert"></p><button type="button" class="kb-control" id="kb-print-close">Done</button>
+    <p id="kb-print-error" role="alert"></p>
+    <button type="button" class="kb-control" id="kb-print-close"><span class="kb-completion-icon" aria-hidden="true"><@ic 'save' 18/></span><span id="kb-print-close-label">Done</span></button>
   </dialog></#if>
   <#if modCanWrite><dialog id="kb-customer-dialog" class="zk-history-view" aria-labelledby="kb-customer-title">
     <header class="kb-customer-heading">

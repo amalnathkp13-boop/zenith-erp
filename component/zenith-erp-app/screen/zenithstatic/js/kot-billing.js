@@ -844,7 +844,6 @@
     $('payment-error').textContent='';
     $('payment-heading').hidden=$('payment-picker').hidden=Boolean(method);
     $('payment-continue').disabled=!method;
-    dialog.classList.toggle('kb-cash-dialog',method==='Cash');
     dialog.dataset.tender=method;
     dialog.setAttribute('aria-labelledby',{
       Cash:'pos-cash-title',Card:'pos-digital-title',UPI:'pos-digital-title',
@@ -863,8 +862,8 @@
       panel.querySelector('#posPayConfCancel').id='kb-payment-close';
       const confirm=panel.querySelector('#posPayConfOk');
       confirm.parentElement.insertAdjacentHTML('beforebegin',
-        '<label>Reference number (optional)<input name="referenceNumber" type="text" maxlength="80"></label>');
-      if(method==='Card')confirm.type='submit';
+        '<label class="kb-payment-reference">Reference number (optional)<input name="referenceNumber" type="text" maxlength="80"></label>');
+      confirm.type='submit';
       confirm.focus();
     }else if(method==='Split'){
       panel.innerHTML=PosTillDialogs.splitMarkup(paymentAmount);
@@ -881,17 +880,6 @@
     }else{
       $('payment-method').focus();
     }
-  }
-  function showUpiReceiptChoices() {
-    const panel=$('other-payment');
-    const reference=panel.querySelector('[name=referenceNumber]');
-    panel.innerHTML='<div class="kb-upi-save">'+PosTillDialogs.upiReceiptMarkup(paymentAmount)+'</div>';
-    reference.type='hidden';
-    panel.append(reference);
-    $('payment').setAttribute('aria-labelledby','pos-upi-title');
-    const choices=panel.querySelectorAll('button');
-    for(const choice of choices)choice.type='submit';
-    choices[0].focus();
   }
   function setupCreditTender(panel) {
     const field=id=>panel.querySelector('#credit-'+id);
@@ -1019,20 +1007,21 @@
     finally { busy=false;updatePrintOptions(); }
     if(!$('printer-field').hidden)list.focus();
   }
-  async function printChoice(kind,row=historyPrintRow) {
+  async function printChoice(kind,row=historyPrintRow,{printWindow,statusPrefix=''}={}) {
     const queued=row?.dataset.kbLocalSale?device?.queue().find(entry=>entry.sale.offlineId===row.dataset.kbLocalSale):row?null:localReceipt;
     const kotId=row?.dataset.kotId||completedKotId;
     if(busy||(!kotId&&!queued))return;
     const chooser=$('print-choice');
     const printer=savedPrinter();
-    const useQz=!disconnected()&&window.PosQzPrint&&(chooser.open?$('print-via').value==='qz':!!printer);
+    const useQz=!printWindow&&!disconnected()&&window.PosQzPrint&&(chooser.open?$('print-via').value==='qz':!!printer);
     if(useQz&&!printer) { await chooseQzPrinter();return; }
-    const errorOutput=chooser.open?$('print-error'):$('history-error');
+    const detailStatus=row&&$('history-detail')?.open?$('history-detail-message'):null;
+    const errorOutput=chooser.open?$('print-error'):(detailStatus||$('history-error'));
     errorOutput.textContent='';
-    let printWindow, acknowledgement, ticketSent=false;
+    let acknowledgement, ticketSent=false;
     try {
       // Browser fallback opens one window before the async receipt request.
-      if(!useQz)printWindow=KitchenPrint.open();
+      if(!useQz&&!printWindow)printWindow=KitchenPrint.open();
       busy=true;controls();
       for(const button of root.querySelectorAll('[data-kb-print]'))button.disabled=true;
       if(kind==='kot'||kind==='both') {
@@ -1057,22 +1046,29 @@
       const warning=(await acknowledgement)||'';
       const message=useQz?'Print request sent to QZ Tray.':'Print request opened.';
       if(row) {
-        const status=$('history-detail').open?$('history-detail-message'):$('history-print-status');
-        status.textContent=message+warning;
+        const status=detailStatus||$('history-print-status');
+        status.textContent=statusPrefix+message+warning;
       } else if(warning) $('order-status').textContent+=warning;
       if(chooser.open)chooser.close();
     } catch(error) {
       const reason=error.message||String(error);
       const output=useQz&&row&&!chooser.open?$('print-error'):errorOutput;
-      if(output!==errorOutput)openReprint(row);
+      if(output!==errorOutput){
+        if(detailStatus)detailStatus.textContent=statusPrefix;
+        openReprint(row);
+      }
       output.textContent=useQz
         ? (ticketSent&&kind==='both'?'Kitchen ticket sent. Use Bill Print for the customer receipt. ':'')+
           'QZ Tray did not confirm printing. '+reason+' Check the printer before retrying, or choose Browser.'
-        : reason;
+        : statusPrefix+reason;
     } finally {
       if(printWindow&&!printWindow.closed)printWindow.close();
       busy=false;controls();
       updatePrintOptions();
+      if(chooser.open&&chooser.classList.contains('kb-payment-complete')&&
+        (document.activeElement===chooser||!chooser.contains(document.activeElement))){
+        chooser.querySelector('[data-kb-print="'+kind+'"]:enabled')?.focus();
+      }
     }
   }
   const heldOrderData=()=>({...orderData(),billingView:grid?'grid':'list'});
@@ -1191,7 +1187,6 @@
       }
     }
     const payment=Object.fromEntries(new FormData(form)), data=orderData(), fingerprint=JSON.stringify(data);
-    const saveWithoutPrint=submit.id==='posPaySave';
     const actions=Array.from(form.querySelectorAll('button:enabled'));
     let bill;
     busy=true;controls();actions.forEach(button=>button.disabled=true);$('payment-error').textContent='';
@@ -1248,20 +1243,17 @@
     $('order-status').textContent=bill.local?notice+change:'';
     $('print-summary').textContent=notice+change+' Choose a print option.';
     historyPrintRow=null;
-    $('print-title').textContent='Payment complete';
+    $('print-title').textContent='Payment Complete';
     $('print-error').textContent='';
-    if(saveWithoutPrint){
-      $('order-status').textContent=notice+change;
-      if(bill.local)syncDeviceOrders();
-      return;
-    }
     updatePrintOptions();
+    setPrintChoiceLayout(true);
     $('print-choice').showModal();
     $('print-choice').querySelector('[data-kb-print="bill"]').focus();
     if(bill.local)syncDeviceOrders();
   }
 
   const history=$('history'), historyDetail=$('history-detail'), historyEdit=$('history-edit');
+  const historyRevision=$('history-revision');
   let activeHistoryRow, editingBill, editSearchTimer, editSearchVersion=0, savingBill=false;
   const historyRows=()=>Array.from($('history-rows').children).filter(row=>!row.hidden);
   function selectHistoryRow(row, focus=false){
@@ -1423,6 +1415,7 @@
   }
   function openReprint(row){
     if(!row||!$('print-choice'))return;
+    setPrintChoiceLayout(false);
     historyPrintRow=row;
     $('print-title').textContent='Reprint';
     $('print-summary').textContent='Choose what to print for '+row.querySelector('[data-kb-history-detail]').textContent.trim()+'.';
@@ -1432,15 +1425,27 @@
     $('print-choice').querySelector('[data-kb-print]:enabled')?.focus();
   }
 
+  function setPrintChoiceLayout(complete){
+    const dialog=$('print-choice'), close=$('print-close');
+    dialog.classList.toggle('kb-payment-complete',complete);
+    $('print-both-label').textContent=complete?'Print Both':'Print both';
+    $('print-close-label').textContent=complete?'Save':'Done';
+    if(complete)dialog.querySelector('.kb-print-options').append(close);
+    else $('print-error').after(close);
+  }
+
   function billLine(item, canEdit){
     const name=esc(item.name), amount=value=>value==null?'—':money.format(value);
     const field=(type,value,min,step)=>canEdit
       ? '<input type="number" data-edit-'+type+' aria-label="'+type+' for '+name+'" value="'+esc(value)+'" min="'+min+'" step="'+step+'" required>'
       : type==='Rate'?amount(value):esc(value??'—');
+    const quantity=field('Quantity',item.qty,0.001,0.001);
+    const stepButton=(step,label,symbol)=>'<button type="button" class="kb-history-button" data-edit-step="'+step+'" aria-label="'+label+' quantity for '+name+'">'+symbol+'</button>';
     const row=document.createElement('tr');
     row.innerHTML='<th scope="row">'+name+'</th><td>'+field('Rate',item.rate,item.seq?0:0.01,0.01)+'</td><td>'+
-      field('Quantity',item.qty,0.001,0.001)+'</td><td data-edit-tax>'+amount(item.tax)+'</td><td data-edit-total>'+amount(item.total)+'</td>'+
-      (canEdit?'<td class="kb-history-editable"><input type="checkbox" data-edit-remove aria-label="Remove '+name+'"></td>':'');
+      (canEdit?'<div class="kb-history-qty">'+stepButton(-1,'Decrease','−')+quantity+stepButton(1,'Increase','+')+'</div>':quantity)+
+      '</td><td data-edit-tax>'+amount(item.tax)+'</td><td data-edit-total>'+amount(item.total)+'</td>'+
+      (canEdit?'<td class="kb-history-editable"><button type="button" class="kb-history-button" data-edit-remove aria-pressed="false" aria-label="Remove '+name+'">×</button></td>':'');
     $('history-detail-lines').append(row);
     return row;
   }
@@ -1449,7 +1454,7 @@
     if(!state?.canEdit)return;
     let total=0, changed=false, incomplete=false, newTax=false;
     for(const line of state.lines){
-      const row=line.element, removed=row.querySelector('[data-edit-remove]').checked;
+      const row=line.element, removed=row.querySelector('[data-edit-remove]').getAttribute('aria-pressed')==='true';
       const qty=row.querySelector('[data-edit-quantity]').valueAsNumber;
       const rate=row.querySelector('[data-edit-rate]').valueAsNumber;
       const edited=!line.seq||qty!==Number(line.qty)||rate!==Number(line.rate);
@@ -1491,8 +1496,11 @@
     const state={row,lines:[]};
     editingBill=state;
     historyEdit.reset();
+    historyDetail.classList.remove('kb-bill-editor');
     historyEdit.classList.remove('is-editable');
     $('history-edit-fields').hidden=true;
+    $('history-edit-help').hidden=true;
+    $('history-back').textContent='Back to History';
     $('history-detail-label').textContent=billed?'Bill Details':held?'Held Order':'Order Details';
     $('history-detail-number').textContent=row.querySelector('[data-kb-history-detail]').textContent.trim();
     $('history-detail-total').textContent=row.querySelector('.kb-history-amount').textContent;
@@ -1502,6 +1510,7 @@
     $('history-edit-error').textContent='';
     $('history-detail-message').textContent='Loading items…';
     if($('history-save')){
+      $('history-reprint-label').textContent='Reprint';
       $('history-save').hidden=true;
       $('history-resume').hidden=$('history-discard').hidden=!held;
       $('history-detail-reprint').hidden=!!row.dataset.kbResumeLocal;
@@ -1530,19 +1539,25 @@
       state.hasTax=data.items?.some(item=>Number(item.tax)>0);
       const canEdit=Boolean(data.canEdit&&$('history-save'));
       state.canEdit=canEdit;
-      if(canEdit)$('history-detail-label').textContent='Edit Bill';
+      if(canEdit){
+        $('history-detail-label').textContent='Editing Bill';
+        $('history-back').textContent='Cancel';
+        $('history-reprint-label').textContent='Print bill';
+      }
       for(const item of data.items||[])state.lines.push({...item,element:billLine(item,canEdit)});
       historyEdit.classList.toggle('is-editable',canEdit);
+      historyDetail.classList.toggle('kb-bill-editor',canEdit);
+      $('history-edit-help').hidden=!canEdit;
       $('history-edit-fields').hidden=!canEdit;
       if($('history-save'))$('history-save').hidden=!canEdit;
-      $('history-detail-message').textContent=canEdit?'Enter a reason to save a revision.':'';
+      $('history-detail-message').textContent='';
     }catch(error){if(editingBill===state)$('history-detail-message').textContent=error.message;}
   }
   function billChanges(){
     const ops=[];
     for(const line of editingBill?.lines||[]){
       const row=line.element;
-      if(row.querySelector('[data-edit-remove]').checked){
+      if(row.querySelector('[data-edit-remove]').getAttribute('aria-pressed')==='true'){
         if(line.seq)ops.push({type:'ITEM_REMOVED',seq:line.seq});
         continue;
       }
@@ -1565,10 +1580,21 @@
     if(loadedHistoryVersion!==historyVersion)showHistory();
     else filterHistory(true);
   }
+  function promptHistoryRevision(event){
+    event.preventDefault();
+    if(busy||savingBill||!editingBill?.canEdit)return;
+    const error=$('history-edit-error');
+    error.textContent='';
+    if(!billChanges().length){error.textContent='No changes to save.';return;}
+    $('history-revision-form').reset();
+    $('history-revision-error').textContent='';
+    historyRevision.showModal();
+    $('history-edit-reason').focus();
+  }
   async function saveHistoryBill(event){
     event.preventDefault();
-    if(savingBill||!editingBill?.canEdit)return;
-    const error=$('history-edit-error'), reason=$('history-edit-reason').value.trim(), ops=billChanges();
+    if(busy||savingBill||!editingBill?.canEdit)return;
+    const error=$('history-revision-error'), reason=$('history-edit-reason').value.trim(), ops=billChanges();
     error.textContent='';
     if(!ops.length||!reason){
       error.textContent=!ops.length?'No changes to save.':'Enter a reason for the change.';
@@ -1576,7 +1602,12 @@
     }
     const state=editingBill;
     savingBill=true;
-    $('history-save').disabled=true;
+    $('history-revision-save').disabled=$('history-revision-back').disabled=true;
+    let printWindow, printError;
+    // Reserve the browser window while the cashier's confirm gesture is active.
+    if(disconnected()||!window.PosQzPrint||!savedPrinter()){
+      try{printWindow=KitchenPrint.open();}catch(failure){printError=failure;}
+    }
     try{
       const {bill}=await request('ajaxCart',{action:'amendBill',editTxId:state.transactionId,editReason:reason,
         editOps:JSON.stringify(ops)},undefined,'/apps/zenith/pos/Terminal');
@@ -1587,14 +1618,24 @@
       });
       state.savedTotal=bill.payable;
       state.hasTax=state.lines.some(line=>Number(line.tax)>0);
-      $('history-edit-reason').value='';
       previewBillAmounts();
       const adjustment=Number(bill.refundDue)>0?' Refund '+money.format(bill.refundDue)+'.':
         Number(bill.balanceDue)>0?' Collect '+money.format(bill.balanceDue)+'.':'';
-      $('history-detail-message').textContent='Bill revision saved.'+adjustment;
       historyVersion++;
+      historyRevision.close();
+      const savedMessage='Bill revision saved.'+adjustment;
+      if(printError)$('history-detail-message').textContent=savedMessage+' '+printError.message+' Use Print bill to retry.';
+      else{
+        const receiptWindow=printWindow;
+        printWindow=null;
+        await printChoice('bill',state.row,{printWindow:receiptWindow,statusPrefix:savedMessage+' '});
+      }
     }catch(failure){error.textContent=failure.message;}
-    finally{savingBill=false;$('history-save').disabled=false;}
+    finally{
+      if(printWindow&&!printWindow.closed)printWindow.close();
+      savingBill=false;
+      $('history-revision-save').disabled=$('history-revision-back').disabled=false;
+    }
   }
   async function lookupBillProducts(term,version){
     const host=$('history-products'), state=editingBill;
@@ -1642,6 +1683,7 @@
         completedKotId='';localReceipt=queued;historyPrintRow=null;
         resetOrder();refreshOpenHistory();
         status.textContent='Kitchen ticket saved on this device and queued to sync.';
+        setPrintChoiceLayout(false);
         $('print-title').textContent='Kitchen ticket saved';
         $('print-summary').textContent='Print the ticket while the order is pending sync.';
         $('print-error').textContent='';
@@ -1721,7 +1763,6 @@
       if(PosTillDialogs.updateCash(slot,paymentAmount)&&e.detail===0)slot.querySelector('.pos-cash-confirm').focus();
     }
     else if(button.id==='kb-payment-continue')tenderFields($('payment-method').value);
-    else if(button.id==='posPayConfOk'&&$('payment-method').value==='UPI')showUpiReceiptChoices();
     else if(button.id==='kb-payment-close'||button.id==='kb-payment-picker-close'||button.classList.contains('pos-cash-cancel'))$('payment').close();
     else if(button.dataset.kbPrint)printChoice(button.dataset.kbPrint);
     else if(button.id==='kb-print-close')$('print-choice').close();
@@ -1797,7 +1838,11 @@
   });
   for(const id of ['history-back','history-detail-close'])$(id).addEventListener('click',closeHistoryDetail);
   historyDetail.addEventListener('cancel',event=>{event.preventDefault();closeHistoryDetail();});
-  $('history-detail-reprint')?.addEventListener('click',()=>openReprint(editingBill?.row));
+  $('history-detail-reprint')?.addEventListener('click',()=>{
+    if(busy||savingBill)return;
+    if(editingBill?.canEdit)printChoice('bill',editingBill.row);
+    else openReprint(editingBill?.row);
+  });
   function restoreServerDraft(draft, freshPage) {
     const snapshot=JSON.parse(draft.draftreceipt);
     const items=JSON.parse(draft.draftload);
@@ -1884,16 +1929,37 @@
       refreshOpenHistory();
     }catch(error){$('history-detail-message').textContent=error.message;}
   });
-  historyEdit.addEventListener('submit',saveHistoryBill);
+  historyEdit.addEventListener('submit',promptHistoryRevision);
+  $('history-revision-form')?.addEventListener('submit',saveHistoryBill);
+  $('history-revision-back')?.addEventListener('click',()=>historyRevision.close());
+  historyRevision?.addEventListener('cancel',event=>{if(savingBill)event.preventDefault();});
   historyEdit.addEventListener('input',event=>{
     if(event.target.matches('[data-edit-quantity],[data-edit-rate]'))previewBillAmounts();
   });
-  historyEdit.addEventListener('change',event=>{
-    if(!event.target.matches('[data-edit-remove]'))return;
-    for(const field of event.target.closest('tr').querySelectorAll('input[type=number]')){
-      field.disabled=event.target.checked;
+  historyEdit.addEventListener('click',event=>{
+    const button=event.target.closest('[data-edit-remove],[data-edit-step]');
+    if(!button)return;
+    const row=button.closest('tr');
+    if(button.matches('[data-edit-remove]')){
+      const removed=button.getAttribute('aria-pressed')!=='true';
+      button.setAttribute('aria-pressed',String(removed));
+      button.textContent=removed?'↶':'×';
+      for(const field of row.querySelectorAll('input,[data-edit-step]'))field.disabled=removed;
+    }else{
+      const quantity=row.querySelector('[data-edit-quantity]');
+      const next=Math.round((quantity.valueAsNumber+Number(button.dataset.editStep))*1000)/1000;
+      if(next>0)quantity.value=next;
     }
     previewBillAmounts();
+  });
+  historyEdit.addEventListener('keydown',event=>{
+    if(event.key!=='Enter'||event.isComposing||!event.target.matches('[data-edit-rate],[data-edit-quantity]'))return;
+    event.preventDefault();
+    if(!event.target.reportValidity())return;
+    const next=event.target.matches('[data-edit-rate]')
+      ?event.target.closest('tr').querySelector('[data-edit-quantity]'):$('history-add');
+    next.focus();
+    next.select();
   });
   $('history-add').addEventListener('input',event=>{
     clearTimeout(editSearchTimer);
@@ -1917,7 +1983,7 @@
   });
   historyDetail.addEventListener('keydown',event=>{
     const reprint=$('history-detail-reprint');
-    if(event.key===' '&&reprint&&event.target!==reprint&&!event.target.closest('input,textarea,select,[contenteditable]')){
+    if(event.key===' '&&reprint&&!reprint.hidden&&(event.target===$('history-back')||event.target===historyDetail)){
       event.preventDefault();reprint.focus();
     }
   });
@@ -1991,14 +2057,36 @@
     }
   });
   $('print-choice')?.addEventListener('keydown',e=>{
+    const dialog=e.currentTarget;
+    if(!dialog.open)return;
+    const complete=dialog.classList.contains('kb-payment-complete');
+    if(complete&&e.key==='Tab'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.defaultPrevented){
+      const controls=Array.from(dialog.querySelectorAll('button:enabled,select:enabled'))
+        .filter(control=>control.getClientRects().length);
+      const boundary=e.shiftKey?controls[0]:controls.at(-1);
+      if(e.target===boundary||!controls.includes(e.target)){
+        e.preventDefault();
+        (e.shiftKey?controls.at(-1):controls[0])?.focus();
+      }
+      return;
+    }
     if(ignoreDialogKey(e))return;
-    if(e.key==='Enter'&&e.repeat){e.preventDefault();return;}
+    if(e.key==='Enter'){
+      if(e.repeat)e.preventDefault();
+      if(complete)e.stopPropagation();
+      return;
+    }
     if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;
-    const buttons=Array.from(e.currentTarget.querySelectorAll('button:enabled'));
+    const buttons=Array.from(dialog.querySelectorAll(complete?'.kb-print-options button:enabled':'button:enabled'));
     const index=buttons.indexOf(e.target);
     if(index<0)return;
     e.preventDefault();
+    if(complete)e.stopPropagation();
     buttons[(index+(e.key==='ArrowRight'?1:-1)+buttons.length)%buttons.length].focus();
+  });
+  $('print-choice')?.addEventListener('close',e=>{
+    if(!e.currentTarget.open&&e.currentTarget.classList.contains('kb-payment-complete')&&
+      root.isConnected&&!root.querySelector('dialog[open]'))search.focus({preventScroll:true});
   });
   $('printer-list')?.addEventListener('change',event=>{
     const printer=event.target.value;

@@ -44,6 +44,9 @@
   line-height: 1;
 }
 #kb-wrap .kb-history-heading button:hover { background: #fff2; }
+#kb-wrap .kb-history-heading h2 { flex-wrap: wrap; }
+#kb-wrap .kb-history-heading button { flex: none; }
+#kb-wrap #kb-history-edit-help { margin: 4px 0 0; }
 #kb-wrap .kb-history-toolbar,
 #kb-wrap .kb-history-filters {
   display: flex;
@@ -139,10 +142,10 @@
 #kb-wrap .kb-history-table :is(th,td) { padding: 8px; border-bottom: 1px solid #eae8ef; }
 #kb-wrap .kb-history-table th { background: #f2f1f7; }
 #kb-wrap .kb-history-table input[type=number] { width: 88px; }
-#kb-wrap .kb-history-table tr:has(input:checked) th { text-decoration: line-through; }
+#kb-wrap .kb-history-table tr:has([data-edit-remove][aria-pressed="true"]) th { text-decoration: line-through; }
 #kb-wrap .kb-history-table .kb-history-editable { display: none; }
 #kb-wrap #kb-history-edit.is-editable .kb-history-editable { display: table-cell; }
-#kb-wrap #kb-history-edit-fields { display: grid; gap: 8px; padding: 12px 0; }
+#kb-wrap #kb-history-edit-fields:not([hidden]) { display: grid; gap: 8px; padding: 12px 0; }
 #kb-wrap #kb-history-edit-fields label { display: grid; gap: 4px; }
 #kb-wrap #kb-history-products:not(:empty) {
   display: grid;
@@ -169,11 +172,54 @@
 #kb-wrap .kb-history-match:is(:hover,:focus-visible) { background: #f1ebff; outline-offset: -2px; }
 #kb-wrap .kb-history-match small { grid-row: 2; color: #666; }
 #kb-wrap .kb-history-match span { grid-column: 2; grid-row: 1 / span 2; align-self: center; color: #5b21b6; }
-#kb-wrap #kb-history-amount-note { margin: 8px 0 0; }
-#kb-wrap .kb-history-detail-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-#kb-wrap .kb-history-detail-actions { justify-content: flex-end; padding-top: 12px; }
+#kb-wrap #kb-history-detail-total { margin-inline-start: auto; text-align: end; }
+#kb-wrap .kb-history-detail-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding-top: 12px; }
 #kb-wrap:has(#kb-history[open]) #kb-history-detail::backdrop,
 #kb-wrap:has(#kb-history[open]) #kb-print-choice::backdrop { background: #0004; }
+
+#kb-wrap #kb-history-detail.kb-bill-editor {
+  position: fixed;
+  inset: 0;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  border-radius: 0;
+}
+#kb-wrap .kb-bill-editor > .kb-history-scroll {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+#kb-wrap .kb-bill-editor #kb-history-edit {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0;
+}
+#kb-wrap .kb-bill-editor .kb-history-table { flex: 1; min-height: 6rem; }
+#kb-wrap .kb-bill-editor .kb-history-table table { min-width: 540px; }
+#kb-wrap .kb-bill-editor .kb-history-table thead { position: sticky; top: 0; }
+#kb-wrap .kb-bill-editor .kb-history-table tbody th { background: transparent; }
+#kb-wrap .kb-bill-editor .kb-history-table tbody tr:nth-child(even) { background: #f8f7fb; }
+#kb-wrap .kb-bill-editor .kb-history-table :is(th,td):not(:first-child) { text-align: right; }
+#kb-wrap .kb-bill-editor .kb-history-table input { text-align: center; }
+#kb-wrap .kb-history-qty { display: inline-flex; gap: 3px; align-items: center; }
+#kb-wrap .kb-history-qty button,
+#kb-wrap [data-edit-remove] { min-width: 30px; min-height: 34px; padding: 4px 8px; }
+#kb-wrap [data-edit-remove] { border-color: #fecaca; color: #b91c1c; background: #fff5f5; }
+#kb-wrap .kb-bill-editor #kb-history-edit-fields { padding-bottom: 4px; }
+#kb-wrap .kb-bill-editor #kb-history-products { max-height: min(22vh, 210px); }
+#kb-wrap .kb-bill-editor .kb-history-detail-meta { margin-bottom: 0; }
+#kb-wrap .kb-bill-editor .kb-history-detail-actions > button { flex: 1 1 auto; }
+#kb-wrap .kb-bill-editor #kb-history-save,
+#kb-wrap #kb-history-revision-save { border-color: #2e7d32; background: #2e7d32; }
+#kb-wrap #kb-history-revision { width: min(440px, calc(100vw - 24px)); }
+#kb-wrap #kb-history-revision-form { display: grid; gap: 8px; margin: 0; }
+#kb-wrap #kb-history-edit-reason { width: 100%; resize: vertical; }
 @media (max-width: 520px) {
   #kb-wrap .kb-history-row { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; padding: 10px; }
   #kb-wrap .kb-history-info { grid-column: 1 / span 2; grid-row: 3; text-align: left; }
