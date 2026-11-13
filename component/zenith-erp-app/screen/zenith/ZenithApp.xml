@@ -378,7 +378,7 @@
             html_stylesheets.add('https://fonts.googleapis.com/icon?family=Material+Icons')
             if (footer_scripts == null) footer_scripts = []
             footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=14')
-            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=57')
+            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=58')
             footer_scripts.add('/zenithstatic/js/profile-menu.js?v=1')
             footer_scripts.add('/zenithstatic/js/sidebar-manager.js?v=3')
             footer_scripts.add('/zenithstatic/js/subnav-manager.js?v=5')
@@ -982,7 +982,11 @@
             <a class="zsub-tab" data-match="/Crm/Leads" href="/apps/zenith/Crm/Leads">Leads</a>
             <a class="zsub-tab" data-match="/Crm/Pipeline" href="/apps/zenith/Crm/Pipeline">Pipeline</a>
             <a class="zsub-tab" data-match="/Crm/Activities" href="/apps/zenith/Crm/Activities">Activities</a>
+            <a class="zsub-tab" data-match="/Crm/Contacts" href="/apps/zenith/Crm/Contacts">Contacts</a>
+            <a class="zsub-tab" data-match="/Crm/SourcesCampaigns" href="/apps/zenith/Crm/SourcesCampaigns">Sources &amp; Campaigns</a>
             <a class="zsub-tab" data-match="/Crm/Segments" href="/apps/zenith/Crm/Segments">Segments</a>
+            <a class="zsub-tab" data-match="/Crm/Reports" href="/apps/zenith/Crm/Reports">Reports</a>
+            <a class="zsub-tab" data-match="/Crm/Workflows" href="/apps/zenith/Crm/Workflows">Workflows</a>
           </div>
 ]]></text></render-mode>
         <render-mode><text type="html" template="true"><![CDATA[

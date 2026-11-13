@@ -135,6 +135,20 @@ async function scenario(name,fn){try{await fn();}catch(error){check(name,false,{
    const id=created.result?.salesOpportunityId;
    check('CRM: owned opportunity persists in pipeline',!!id&&q(`SELECT organization_party_id FROM sales_opportunity WHERE sales_opportunity_id=${quote(id)}`)[0]?.organization_party_id==='AUDIT_QA_A');
    if(id){
+    const rule = {opportunityStageId:'SoQualification',taskSubject:'Disposable qualification follow-up',daysUntilDue:'2',isActive:'Y'};
+    await a.post('Crm/Workflows/saveWorkflow',rule);
+    const taskFilter = `sales_opportunity_id=${quote(id)} AND subject=${quote(rule.taskSubject)}`;
+    const move = {salesOpportunityId:id,opportunityStageId:rule.opportunityStageId};
+    await a.invoke('opportunity.advance',move);
+    await a.invoke('opportunity.advance',{...move,opportunityStageId:'SoProspecting'});
+    await a.invoke('opportunity.advance',move);
+    const tasks = q(`SELECT organization_party_id, activity_type, status_id, due_date FROM crm_activity WHERE ${taskFilter}`);
+    check('CRM: stage workflow schedules one owned task across retries and re-entry',
+     tasks.length===1&&tasks[0].organization_party_id==='AUDIT_QA_A'&&
+     tasks[0].activity_type==='Task'&&tasks[0].status_id==='Scheduled'&&!!tasks[0].due_date);
+    await a.post('Crm/EditOpportunity/addNote',{salesOpportunityId:id,subject:'Disposable pipeline note',description:'Disposable note body'});
+    check('CRM: opportunity note is stored on the deal',
+     count('crm_activity',`sales_opportunity_id=${quote(id)} AND organization_party_id='AUDIT_QA_A' AND activity_type='Note' AND description='Disposable note body'`)===1);
     await a.invoke('opportunity.advance',{salesOpportunityId:id,opportunityStageId:'SoClosedWon',confirmOutcome:'Y'});
     const won=q(`SELECT * FROM sales_opportunity WHERE sales_opportunity_id=${quote(id)}`)[0];
     check('CRM: won stage records full expected revenue',won.opportunity_stage_id==='SoClosedWon'&&Number(won.expected_revenue)===100);

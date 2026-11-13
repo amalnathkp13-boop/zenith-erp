@@ -22,7 +22,7 @@
         <script><![CDATA[
             import org.moqui.entity.EntityCondition
             period = period == 'all' ? 'all' : 'month'
-            view = ['today','overdue','upcoming','mine','completed','agenda'].contains(view) ? view : 'all'
+            view = ['today','overdue','upcoming','mine','completed','agenda','tasks','notes'].contains(view) ? view : 'all'
             def today = java.time.LocalDate.parse(new java.text.SimpleDateFormat('yyyy-MM-dd').format(ec.user.nowTimestamp))
             periodStart = view == 'all' && period == 'month' ? java.sql.Timestamp.valueOf(today.withDayOfMonth(1).atStartOfDay()) : null
             periodEnd = view == 'all' && period == 'month' ? java.sql.Timestamp.valueOf(today.withDayOfMonth(1).plusMonths(1).atStartOfDay()) : null
@@ -30,7 +30,8 @@
             tomorrowStart = java.sql.Timestamp.valueOf(today.plusDays(1).atStartOfDay())
             dueStart = view in ['today','upcoming'] ? (view == 'today' ? todayStart : tomorrowStart) : null
             dueEnd = view == 'today' ? tomorrowStart : (view == 'overdue' ? ec.user.nowTimestamp : null)
-            statusFilter = view == 'completed' ? 'Completed' : (view in ['today','upcoming','overdue','agenda'] ? 'Scheduled' : null)
+            statusFilter = view == 'completed' ? 'Completed' : (view in ['today','upcoming','overdue','agenda','tasks'] ? 'Scheduled' : null)
+            activityTypeFilter = [tasks:'Task',notes:'Note'][view]
             ownerFilter = view == 'mine' ? ec.user.userId : null
             def orgId = (crmOrganization.activeOrgId ?: '_NA_') ?: '__NO_ORGANIZATION__'
             def find = ec.entity.find('zenith.erp.crm.CrmActivity').condition('organizationPartyId', orgId)
@@ -52,6 +53,7 @@
             <econdition field-name="dueDate" operator="greater-equals" from="dueStart" ignore-if-empty="true"/>
             <econdition field-name="dueDate" operator="less" from="dueEnd" ignore-if-empty="true"/>
             <econdition field-name="statusId" from="statusFilter" ignore-if-empty="true"/>
+            <econdition field-name="activityType" from="activityTypeFilter" ignore-if-empty="true"/>
             <econdition field-name="assignedToUserId" from="ownerFilter" ignore-if-empty="true"/>
         </entity-find>
         <set field="agendaDays" from="activityList.findAll { it.dueDate != null }.groupBy { ec.l10n.format(it.dueDate, 'dd MMM yyyy') }.collect { day, rows -> [day:day, rows:rows.sort { it.dueDate }] }.sort { it.rows[0].dueDate }"/>
@@ -120,6 +122,8 @@
             <link url="." text="Overdue" parameter-map="[view:'overdue']" style="${view == 'overdue' ? 'zcrm-period-active' : ''}"/>
             <link url="." text="Upcoming" parameter-map="[view:'upcoming']" style="${view == 'upcoming' ? 'zcrm-period-active' : ''}"/>
             <link url="." text="Mine" parameter-map="[view:'mine']" style="${view == 'mine' ? 'zcrm-period-active' : ''}"/>
+            <link url="." text="Open tasks" parameter-map="[view:'tasks']" style="${view == 'tasks' ? 'zcrm-period-active' : ''}"/>
+            <link url="." text="Notes" parameter-map="[view:'notes']" style="${view == 'notes' ? 'zcrm-period-active' : ''}"/>
             <link url="." text="Completed" parameter-map="[view:'completed']" style="${view == 'completed' ? 'zcrm-period-active' : ''}"/>
             <link url="." text="Agenda" parameter-map="[view:'agenda']" style="${view == 'agenda' ? 'zcrm-period-active' : ''}"/>
         </container>

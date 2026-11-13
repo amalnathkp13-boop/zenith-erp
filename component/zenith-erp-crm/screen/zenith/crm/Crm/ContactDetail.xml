@@ -3,6 +3,13 @@
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         default-menu-title="Contact Detail" default-menu-include="false">
     <parameter name="partyId" required="true"/>
+    <transition name="addNote" method="post">
+        <actions>
+            <service-call name="zenith.crm.CrmServices.log#Activity"
+                          in-map="[activityType:'Note', subject:subject, description:description, contactPartyId:partyId]"/>
+        </actions>
+        <default-response url="."/><error-response url="."/>
+    </transition>
     <actions>
         <set field="activeOrg" from="(crmOrganization.activeOrgId ?: '_NA_')"/>
         <entity-find-one entity-name="mantle.party.Party" value-field="contact"/>
@@ -54,12 +61,23 @@
                 <field name="stageName"><default-field title="Stage"><display/></default-field></field>
             </form-list>
         </box-body></container-box>
-        <container-box><box-header title="Activity history"/><box-body>
+        <container-box><box-header title="Activity history"/><box-toolbar>
+            <section name="ContactNote_write" condition="modCanWrite"><widgets>
+                <container-dialog id="ContactNoteDialog" button-text="Add Note">
+                    <form-single name="ContactNoteForm" transition="addNote">
+                        <field name="partyId"><default-field><hidden default-value="${partyId}"/></default-field></field>
+                        <field name="subject"><default-field title="Title"><text-line size="36" maxlength="100"/></default-field></field>
+                        <field name="description"><default-field title="Note"><text-area rows="4" cols="45"/></default-field></field>
+                        <field name="submitButton"><default-field title="Save note"><submit/></default-field></field>
+                    </form-single>
+                </container-dialog>
+            </widgets></section>
+        </box-toolbar><box-body>
             <section name="NoLinkedActivities" condition="linkedActivities.isEmpty()"><widgets><label text="No activities linked to this contact." type="p"/></widgets></section>
             <form-list name="ContactActivities" list="linkedActivities" skip-form="true">
                 <field name="activityDate"><default-field title="Date"><display format="dd MMM yyyy HH:mm"/></default-field></field>
                 <field name="activityType"><default-field title="Type"><display/></default-field></field>
-                <field name="subject"><default-field><display/></default-field></field>
+                <field name="subject"><default-field><link url="../ActivityDetail" text="${subject}" parameter-map="[activityId:activityId]"/></default-field></field>
                 <field name="statusId"><default-field title="Status"><display/></default-field></field>
             </form-list>
         </box-body></container-box>

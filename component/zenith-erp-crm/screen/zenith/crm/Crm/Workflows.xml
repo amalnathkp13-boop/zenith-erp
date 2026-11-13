@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
+        default-menu-title="Workflows" default-menu-index="9">
+    <parameter name="editStageId"/>
+    <transition name="saveWorkflow" method="post">
+        <service-call name="zenith.crm.CrmServices.save#StageWorkflow"/>
+        <default-response url="."/><error-response url="."/>
+    </transition>
+    <actions>
+        <set field="canManageWorkflows" from="modCanWrite &amp;&amp; crmOrganization.activeOrgId &amp;&amp; (ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN'))"/>
+        <entity-find entity-name="mantle.sales.opportunity.SalesOpportunityStage" list="stages">
+            <econdition field-name="opportunityStageId" operator="not-in" from="['SoClosedWon','SoClosedLost']"/>
+            <order-by field-name="sequenceNum"/>
+        </entity-find>
+        <entity-find entity-name="zenith.erp.crm.CrmStageSetting" list="stageSettings">
+            <econdition field-name="organizationPartyId" from="crmOrganization.activeOrgId ?: '__NO_ORGANIZATION__'"/>
+        </entity-find>
+        <set field="workflowRules" from="crmOrganization.activeOrgId ?
+            ec.entity.find('zenith.erp.crm.CrmStageWorkflow').condition('organizationPartyId',crmOrganization.activeOrgId).disableAuthz().list() : []"/>
+        <script><![CDATA[
+            def settings = stageSettings.collectEntries { [(it.opportunityStageId): it] }
+            stageOptions = stages.collect { stage ->
+                [id:stage.opportunityStageId, label:settings[stage.opportunityStageId]?.displayName ?: stage.description]
+            }
+            def labels = stageOptions.collectEntries { [(it.id):it.label] }
+            workflowRows = workflowRules.collect { rule ->
+                [stageId:rule.opportunityStageId, stageLabel:labels[rule.opportunityStageId] ?: rule.opportunityStageId, taskSubject:rule.taskSubject,
+                 daysUntilDue:rule.daysUntilDue, ruleStatus:rule.isActive == 'Y' ? 'Enabled' : 'Paused']
+            }.sort { it.stageLabel }
+            selectedRule = workflowRules.find { it.opportunityStageId == editStageId } ?: [daysUntilDue:1, isActive:'Y']
+        ]]></script>
+    </actions>
+    <widgets>
+        <container style="zcrm-intro">
+            <label text="Workflows" type="h3"/>
+            <label text="Schedule a follow-up when an opportunity moves into a stage." type="p"/>
+        </container>
+        <container-box><box-header title="Stage follow-up rules"/><box-body>
+            <section name="NoStageWorkflows" condition="workflowRows.isEmpty()"><widgets>
+                <container style="zcrm-empty"><label text="No stage follow-up rules configured." type="p"/></container>
+            </widgets></section>
+            <section name="StageWorkflows" condition="!workflowRows.isEmpty()"><widgets>
+                <form-list name="StageWorkflowList" list="workflowRows" skip-form="true">
+                    <field name="stageLabel"><default-field title="Stage"><display/></default-field></field>
+                    <field name="taskSubject"><default-field title="Task"><display/></default-field></field>
+                    <field name="daysUntilDue"><default-field title="Days until due"><display/></default-field></field>
+                    <field name="ruleStatus"><default-field title="Status"><display/></default-field></field>
+                    <field name="editRule" hide="!canManageWorkflows"><default-field title="Actions">
+                        <link url="." text="Edit rule" parameter-map="[editStageId:stageId]"/>
+                    </default-field></field>
+                </form-list>
+            </widgets></section>
+        </box-body></container-box>
+        <section name="ManageStageWorkflows" condition="canManageWorkflows"><widgets>
+            <container-box><box-header title="Configure a stage rule"/><box-body>
+                <label text="Each stage has one rule. A deal gets one task per stage, assigned to the user who moves it." type="p"/>
+                <form-single name="SaveStageWorkflow" map="selectedRule" transition="saveWorkflow">
+                    <field name="opportunityStageId"><default-field title="Stage"><drop-down>
+                        <list-options list="stageOptions" key="${id}" text="${label}"/>
+                    </drop-down></default-field></field>
+                    <field name="taskSubject"><default-field title="Task title"><text-line maxlength="100" size="38"/></default-field></field>
+                    <field name="daysUntilDue"><default-field title="Days until due (0–90)"><text-line size="8"/></default-field></field>
+                    <field name="isActive"><default-field title="Status"><drop-down>
+                        <option key="Y" text="Enabled"/><option key="N" text="Paused"/>
+                    </drop-down></default-field></field>
+                    <field name="submitButton"><default-field title="Save rule"><submit/></default-field></field>
+                </form-single>
+            </box-body></container-box>
+        </widgets></section>
+    </widgets>
+</screen>

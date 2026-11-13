@@ -3,6 +3,13 @@
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         default-menu-title="Opportunity Detail" default-menu-include="false">
     <parameter name="salesOpportunityId" required="true"/>
+    <transition name="addNote" method="post">
+        <actions>
+            <service-call name="zenith.crm.CrmServices.log#Activity"
+                          in-map="[activityType:'Note', subject:subject, description:description, salesOpportunityId:salesOpportunityId]"/>
+        </actions>
+        <default-response url="."/><error-response url="."/>
+    </transition>
     <transition name="updateOpportunity">
         <service-call name="zenith.crm.CrmServices.update#Opportunity"/>
         <default-response url="."/><error-response url="."/>
@@ -66,12 +73,21 @@
                         <field name="submitButton"><default-field title="Schedule"><submit/></default-field></field>
                     </form-single>
                 </container-dialog>
+                <container-dialog id="OpportunityNoteDialog" button-text="Add Note">
+                    <form-single name="OpportunityNoteForm" transition="addNote">
+                        <field name="salesOpportunityId"><default-field><hidden default-value="${salesOpportunityId}"/></default-field></field>
+                        <field name="subject"><default-field title="Title"><text-line size="36" maxlength="100"/></default-field></field>
+                        <field name="description"><default-field title="Note"><text-area rows="4" cols="45"/></default-field></field>
+                        <field name="submitButton"><default-field title="Save note"><submit/></default-field></field>
+                    </form-single>
+                </container-dialog>
             </widgets></section>
         </box-toolbar><box-body>
             <section name="NoOppActivities" condition="activities.isEmpty()"><widgets><label text="No activities linked to this opportunity." type="p"/></widgets></section>
             <form-list name="OpportunityActivities" list="activities" skip-form="true">
                 <field name="activityDate"><default-field title="Created"><display format="dd MMM yyyy HH:mm"/></default-field></field>
-                <field name="subject"><default-field><display/></default-field></field>
+                <field name="subject"><default-field><link url="../ActivityDetail" text="${subject}" parameter-map="[activityId:activityId]"/></default-field></field>
+                <field name="activityType"><default-field title="Type"><display/></default-field></field>
                 <field name="dueDate"><default-field title="Due"><display format="dd MMM yyyy HH:mm"/></default-field></field>
                 <field name="statusId"><default-field title="Status"><display/></default-field></field>
                 <field name="outcome"><default-field><display/></default-field></field>

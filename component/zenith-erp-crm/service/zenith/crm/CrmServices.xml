@@ -52,7 +52,7 @@
 
     <service verb="create" noun="Lead" authenticate="true">
         <in-parameters>
-            <parameter name="organizationPartyId" required="true"/>
+            <parameter name="organizationPartyId"/>
             <parameter name="firstName" required="true"/>
             <parameter name="lastName"/>
             <parameter name="companyName"/>
@@ -93,7 +93,7 @@
         <actions>
             <service-call name="zenith.crm.CrmServices.assert#CrmWrite" out-map="crmWrite"/>
             <if condition="!crmWrite.allowed"><return error="true" message="CRM write access and an active organization are required."/></if>
-            <set field="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
+            <set field="organizationPartyId" from="crmWrite.activeOrg"/>
             <set field="firstName" from="firstName?.trim()"/>
             <set field="email" from="email?.trim()?.toLowerCase(java.util.Locale.ROOT)"/>
             <set field="mobile" from="mobile?.trim()?.replaceAll(/[\s().-]/, '')"/>
@@ -414,24 +414,18 @@
                     ec.message.addError('Matching contact ' + match.partyId + ' exists. Enter its ID to link it instead of creating a duplicate.')
             ]]></script>
             <if condition="ec.message.hasError()"><return/></if>
-            <set field="contactType" from="lead.companyName ? 'Organization' : 'Person'"/>
-            <if condition="reusePartyId">
-                <set field="partyId" from="reusePartyId"/>
-            <else-if condition="contactType == 'Organization'">
-                <service-call name="zenith.contacts.ContactServices.create#Contact" out-map="cOut"
-                              in-map="[partyTypeEnumId:'PtyOrganization', organizationName:lead.companyName,
-                                       emailAddress:lead.email, contactNumber:lead.mobile ?: lead.phone,
-                                       taxRegistrationNumber:lead.taxRegistrationNumber,
-                                       countryGeoId:lead.countryGeoId, regionGeoId:lead.regionCode]"/>
-            <else>
-                <service-call name="zenith.contacts.ContactServices.create#Contact" out-map="cOut"
-                              in-map="[partyTypeEnumId:'PtyPerson', firstName:lead.firstName,
-                                       lastName:lead.lastName, emailAddress:lead.email,
+            <set field="partyId" from="reusePartyId"/>
+            <if condition="!partyId">
+                <service-call name="zenith.contacts.ContactServices.create#Contact" out-map="contactResult"
+                              in-map="[partyTypeEnumId:(lead.companyName ? 'PtyOrganization' : 'PtyPerson'),
+                                       organizationName:lead.companyName, firstName:(lead.companyName ? null : lead.firstName),
+                                       lastName:(lead.companyName ? null : lead.lastName), emailAddress:lead.email,
                                        contactNumber:lead.mobile ?: lead.phone,
                                        taxRegistrationNumber:lead.taxRegistrationNumber,
                                        countryGeoId:lead.countryGeoId, regionGeoId:lead.regionCode]"/>
-            </else></else-if></if>
-            <if condition="!reusePartyId"><set field="partyId" from="cOut.partyId"/></if>
+                <set field="partyId" from="contactResult?.partyId"/>
+                <if condition="!partyId"><return error="true" message="The lead contact could not be created."/></if>
+            </if>
 
             <if condition="createOpportunity == 'Y'">
                 <service-call name="create#mantle.sales.opportunity.SalesOpportunity" out-map="oppOut"
@@ -657,6 +651,32 @@
         </actions>
     </service>
 
+    <service verb="save" noun="StageWorkflow" authenticate="true">
+        <in-parameters>
+            <parameter name="opportunityStageId" required="true"/>
+            <parameter name="taskSubject" required="true"/>
+            <parameter name="daysUntilDue" type="Integer" required="true"/>
+            <parameter name="isActive" required="true"/>
+        </in-parameters>
+        <actions>
+            <service-call name="zenith.crm.CrmServices.assert#CrmWrite" out-map="crmWrite"/>
+            <if condition="!crmWrite.allowed || !(ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN'))">
+                <return error="true" message="CRM administrator access is required to configure workflows."/>
+            </if>
+            <entity-find-one entity-name="mantle.sales.opportunity.SalesOpportunityStage" value-field="stage"/>
+            <if condition="!stage || opportunityStageId in ['SoClosedWon','SoClosedLost']">
+                <return error="true" message="Choose an open pipeline stage."/>
+            </if>
+            <set field="taskSubject" from="taskSubject.trim()"/>
+            <if condition="!taskSubject || taskSubject.length() &gt; 100 || daysUntilDue &lt; 0 || daysUntilDue &gt; 90 || !(isActive in ['Y','N'])">
+                <return error="true" message="Enter a task title up to 100 characters, 0 to 90 days, and a valid enabled state."/>
+            </if>
+            <service-call name="store#zenith.erp.crm.CrmStageWorkflow" disable-authz="true"
+                          in-map="[organizationPartyId:crmWrite.activeOrg, opportunityStageId:opportunityStageId,
+                                   taskSubject:taskSubject, daysUntilDue:daysUntilDue, isActive:isActive]"/>
+        </actions>
+    </service>
+
     <service verb="create" noun="Opportunity" authenticate="true">
         <in-parameters>
             <parameter name="opportunityName" required="true"/>
@@ -757,9 +777,12 @@
                                           opportunityStageId:opportunityStageId,
                                           estimatedProbability:stageProbability]"/>
 
-            <entity-find-one entity-name="mantle.sales.opportunity.SalesOpportunity" value-field="opp">
+            <entity-find-one entity-name="mantle.sales.opportunity.SalesOpportunity" value-field="opp" for-update="true">
                 <field-map field-name="salesOpportunityId"/>
             </entity-find-one>
+            <if condition="!opp || opp.organizationPartyId != organizationPartyId">
+                <return error="true" message="Opportunity not found for your organization."/>
+            </if>
             <if condition="['SoClosedWon','SoClosedLost'].contains(opp.opportunityStageId) &amp;&amp; opp.opportunityStageId != opportunityStageId &amp;&amp; !ec.user.isInGroup('ADMIN') &amp;&amp; !ec.user.isInGroup('ZENITH_ADMIN')">
                 <return error="true" message="Only a CRM administrator may reopen a closed opportunity."/>
             </if>
@@ -786,6 +809,20 @@
                                        previousValue:opp.opportunityStageId, newValue:opportunityStageId,
                                        actorUserId:ec.user.userId, eventDate:ec.user.nowTimestamp,
                                        note:lostReason]"/>
+                <set field="stageWorkflow" from="ec.entity.find('zenith.erp.crm.CrmStageWorkflow').condition('organizationPartyId',organizationPartyId)
+                    .condition('opportunityStageId',opportunityStageId).disableAuthz().one()"/>
+                <if condition="stageWorkflow?.isActive == 'Y'">
+                    <script><![CDATA[
+                        def due = java.util.Calendar.getInstance(ec.user.timeZone)
+                        due.time = ec.user.nowTimestamp
+                        due.add(java.util.Calendar.DAY_OF_MONTH, stageWorkflow.daysUntilDue.intValue())
+                        workflowDueDate = new java.sql.Timestamp(due.timeInMillis)
+                    ]]></script>
+                    <service-call name="zenith.crm.CrmServices.schedule#Activity"
+                                  in-map="[activityType:'Task', subject:stageWorkflow.taskSubject, dueDate:workflowDueDate,
+                                           salesOpportunityId:salesOpportunityId,
+                                           externalSubmissionId:'stage:' + salesOpportunityId + ':' + opportunityStageId]"/>
+                </if>
             </if>
         </actions>
     </service>

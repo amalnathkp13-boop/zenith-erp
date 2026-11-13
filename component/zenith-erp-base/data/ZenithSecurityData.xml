@@ -715,4 +715,10 @@
     <moqui.security.ArtifactAuthz artifactAuthzId="ZA_ROLE_PRIVATE" userGroupId="ZENITH_ALL" artifactGroupId="ORG_ROLE_PRIVATE"
         authzTypeEnumId="AUTHZT_DENY" authzActionEnumId="AUTHZA_ALL"/>
 
+    <moqui.security.ArtifactGroup artifactGroupId="CRM_WORKFLOW_PRIVATE" description="CRM workflow configuration"/>
+    <moqui.security.ArtifactGroupMember artifactGroupId="CRM_WORKFLOW_PRIVATE" artifactName="zenith.erp.crm.CrmStageWorkflow"
+        artifactTypeEnumId="AT_ENTITY" inheritAuthz="N"/>
+    <moqui.security.ArtifactAuthz artifactAuthzId="ZA_CRM_WORKFLOW_PRIVATE" userGroupId="ZENITH_ALL"
+        artifactGroupId="CRM_WORKFLOW_PRIVATE" authzTypeEnumId="AUTHZT_DENY" authzActionEnumId="AUTHZA_ALL"/>
+
 </entity-facade-xml>

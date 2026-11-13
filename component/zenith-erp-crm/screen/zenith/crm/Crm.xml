@@ -26,6 +26,8 @@
                          menu-title="Segments" menu-index="7"/>
         <subscreens-item name="Reports" location="component://zenith-erp-crm/screen/zenith/crm/Crm/Reports.xml"
                          menu-title="Reports" menu-index="8"/>
+        <subscreens-item name="Workflows" location="component://zenith-erp-crm/screen/zenith/crm/Crm/Workflows.xml"
+                         menu-title="Workflows" menu-index="9"/>
         <subscreens-item name="EditSegment" location="component://zenith-erp-crm/screen/zenith/crm/Crm/EditSegment.xml" menu-include="false"/>
         <subscreens-item name="EditOpportunity" location="component://zenith-erp-crm/screen/zenith/crm/Crm/EditOpportunity.xml" menu-include="false"/>
         <subscreens-item name="ContactDetail" location="component://zenith-erp-crm/screen/zenith/crm/Crm/ContactDetail.xml" menu-include="false"/>

@@ -170,6 +170,14 @@
         <field name="isActive" type="text-indicator" default="'Y'"/>
     </entity>
 
+    <entity entity-name="CrmStageWorkflow" package="zenith.erp.crm">
+        <field name="organizationPartyId" type="id" is-pk="true"/>
+        <field name="opportunityStageId" type="id" is-pk="true"/>
+        <field name="taskSubject" type="text-medium"/>
+        <field name="daysUntilDue" type="number-integer"/>
+        <field name="isActive" type="text-indicator"/>
+    </entity>
+
     <entity entity-name="ActivitySubmission" package="zenith.erp.crm">
         <field name="organizationPartyId" type="id" is-pk="true"/>
         <field name="externalSubmissionId" type="text-medium" is-pk="true"/>
