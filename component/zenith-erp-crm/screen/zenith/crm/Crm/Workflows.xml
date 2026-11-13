@@ -3,8 +3,12 @@
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         default-menu-title="Workflows" default-menu-index="9">
     <parameter name="editStageId"/>
-    <transition name="saveWorkflow" method="post">
-        <service-call name="zenith.crm.CrmServices.save#StageWorkflow"/>
+    <transition name="saveWorkflow">
+        <actions>
+            <if condition="ec.web.request.method != 'POST'"><return error="true" message="Submit the workflow form to save changes."/></if>
+            <service-call name="zenith.crm.CrmServices.save#StageWorkflow"
+                          in-map="[opportunityStageId:opportunityStageId, taskSubject:taskSubject, daysUntilDue:daysUntilDue, isActive:isActive]"/>
+        </actions>
         <default-response url="."/><error-response url="."/>
     </transition>
     <actions>

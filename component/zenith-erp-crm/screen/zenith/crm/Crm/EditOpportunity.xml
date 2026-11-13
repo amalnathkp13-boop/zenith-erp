@@ -3,8 +3,9 @@
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         default-menu-title="Opportunity Detail" default-menu-include="false">
     <parameter name="salesOpportunityId" required="true"/>
-    <transition name="addNote" method="post">
+    <transition name="addNote">
         <actions>
+            <if condition="ec.web.request.method != 'POST'"><return error="true" message="Submit the note form to save a note."/></if>
             <service-call name="zenith.crm.CrmServices.log#Activity"
                           in-map="[activityType:'Note', subject:subject, description:description, salesOpportunityId:salesOpportunityId]"/>
         </actions>
