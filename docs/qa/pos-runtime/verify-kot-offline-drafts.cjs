@@ -336,11 +336,15 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
           setSignaturePromise:handler => { window.kotQzSigner = handler; }
         },
         websocket:{isActive:() => active,connect:async () => { active = true; }},
-        printers:{find:async () => ['Disposable QZ printer','Second disposable printer']},
+        printers:{
+          find:async () => ['Disposable QZ printer','Second disposable printer'],
+          getDefault:async () => 'Disposable QZ printer'
+        },
         configs:{create:(printer,options) => ({printer,options})},
         print:async (config,data) => {
           const signature=await new Promise(window.kotQzSigner('synthetic print request'));
           if(window.kotQzRejectBill&&!data[0].data.includes('<title>KOT</title>'))throw Error('Disposable printer is unavailable');
+          if(window.kotQzWait)await new Promise(resolve=>{window.kotQzRelease=resolve;});
           window.kotQzJobs.push({config,data,signature});
         }
       };
@@ -360,6 +364,26 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
       qzPrint.jobs[0].data[0].data.includes(officialNumber) && qzPrint.jobs[0].signature === 'U1lOVEhFVElD' &&
       qzPrint.algorithm === 'SHA1' && qzPrint.signed &&
       qzPrint.browser === existingBrowserJobs);
+    const printBanner=page.locator('.kb-print-banner');
+    await printBanner.waitFor();
+    check('QZ print confirmation shows the bill number after the print job is accepted',
+      (await printBanner.textContent()).includes('BILL-'+officialNumber+' sent to printer'));
+    await page.evaluate(() => {
+      localStorage.removeItem('posPrinter');
+      document.querySelector('.kb-print-banner')?.remove();
+      window.kotQzWait=true;
+    });
+    await syncedRow.locator('[data-kb-history-print=bill]').click();
+    await page.waitForFunction(() => typeof window.kotQzRelease==='function');
+    check('A queued QZ job waits for acceptance without opening browser print or showing success',
+      await printBanner.count()===0 &&
+      await page.evaluate(previous => window.kotOfflinePrints.length===previous,existingBrowserJobs));
+    await page.evaluate(() => { window.kotQzWait=false; window.kotQzRelease(); });
+    await page.waitForFunction(() => window.kotQzJobs.length===2);
+    check('A second print uses QZ and its system default printer when no printer is saved',
+      await page.evaluate(previous => window.kotQzJobs[1].config.printer==='Disposable QZ printer' &&
+        window.kotOfflinePrints.length===previous,existingBrowserJobs));
+    await page.evaluate(() => localStorage.setItem('posPrinter','Disposable QZ printer'));
     await syncedRow.locator('[data-kb-history-detail]').click();
     await page.locator('#kb-history-detail').getByRole('button',{name:'Print bill',exact:true}).waitFor();
     await page.evaluate(() => { window.kotQzRejectBill=true; });
@@ -367,7 +391,8 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     await page.locator('#kb-print-error').getByText(/Disposable printer is unavailable/).waitFor();
     check('When editor reprint fails in QZ, it offers an explicit browser fallback',
       await page.locator('#kb-print-choice').isVisible()&&
-      await page.evaluate(previous => window.kotQzJobs.length===1&&window.kotOfflinePrints.length===previous,existingBrowserJobs));
+      await page.locator('#kb-print-browser').isVisible()&&
+      await page.evaluate(previous => window.kotQzJobs.length===2&&window.kotOfflinePrints.length===previous,existingBrowserJobs));
     await page.locator('[data-kb-print=bill]').focus();
     for (const [selector, label] of [['[data-kb-print=kot]', 'KOT Print'], ['[data-kb-print=both]', 'Print both'], ['#kb-print-close', 'Done']]) {
       await page.keyboard.press('ArrowRight');
@@ -376,22 +401,23 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     await page.locator('#kb-printer-setup').click();
     await page.locator('#kb-printer-list').selectOption('Second disposable printer');
     check('KOT can change the saved QZ printer without opening a print dialog',
-      await page.locator('#kb-print-via').inputValue()==='qz' &&
       await page.evaluate(() => localStorage.getItem('kotPrinter')==='Second disposable printer' &&
-        localStorage.getItem('posPrinter')==='Disposable QZ printer' && window.kotQzJobs.length===1));
+        localStorage.getItem('posPrinter')==='Disposable QZ printer' && window.kotQzJobs.length===2));
     await page.locator('[data-kb-print=both]').click();
     await page.locator('#kb-print-error').getByText(/Kitchen ticket sent/).waitFor();
     check('A failed customer job after a successful QZ kitchen job keeps browser fallback explicit',
-      await page.evaluate(previous => window.kotQzJobs.length===2 &&
-        window.kotQzJobs[1].config.printer==='Second disposable printer' &&
-        window.kotQzJobs[1].data[0].data.includes('<title>KOT</title>') &&
+      await page.locator('[data-kb-print=both]').isDisabled() &&
+      await page.evaluate(previous => window.kotQzJobs.length===3 &&
+        window.kotQzJobs[2].config.printer==='Second disposable printer' &&
+        window.kotQzJobs[2].data[0].data.includes('<title>KOT</title>') &&
         window.kotOfflinePrints.length===previous,existingBrowserJobs));
-    await page.locator('#kb-print-via').selectOption('browser');
-    await page.locator('[data-kb-print=bill]').click();
+    await page.locator('#kb-print-browser').click();
     await page.locator('#kb-print-choice').waitFor({state:'hidden'});
     check('Browser fallback prints only the remaining customer bill without charging again',
       await page.evaluate(({previous,number}) => window.kotOfflinePrints.length===previous+1 &&
-        window.kotOfflinePrints.at(-1).includes(number),{previous:existingBrowserJobs,number:officialNumber}) &&
+        window.kotOfflinePrints.at(-1).includes(number) && window.kotQzJobs.length===3,
+        {previous:existingBrowserJobs,number:officialNumber}) &&
+      (await printBanner.textContent()).includes('browser print requested') &&
       JSON.stringify(matchingOrders())===JSON.stringify(firstSave));
     await page.locator('#kb-history-detail-close').click();
     await page.locator('#kb-history-close').click();

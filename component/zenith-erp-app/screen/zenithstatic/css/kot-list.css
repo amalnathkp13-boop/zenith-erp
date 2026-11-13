@@ -270,7 +270,9 @@
 }
 #kb-wrap .kb-payment-complete #kb-print-title{margin:0 0 8px;font-size:clamp(22px,4vw,28px);line-height:1.2;font-weight:750}
 #kb-wrap .kb-payment-complete #kb-print-summary{margin:0;font-size:14px;line-height:1.5}
-#kb-wrap .kb-payment-complete #kb-printer-options{text-align:start}
+#kb-wrap .kb-payment-complete #kb-printer-options{margin-top:10px;text-align:end}
+#kb-wrap #kb-print-choice :is(#kb-printer-field,#kb-print-recovery)[hidden]{display:none}
+#kb-wrap #kb-printer-field{margin-top:8px}
 #kb-wrap .kb-payment-complete .kb-print-options{
   grid-template-columns:repeat(3,minmax(0,1fr)) minmax(0,1.08fr);align-items:stretch;
   gap:8px;margin:20px 0 0;padding-top:18px;border-top:1px solid #e2e8f0;
@@ -290,6 +292,18 @@
 #kb-wrap .kb-payment-complete .kb-print-options .kb-completion-icon{display:flex;flex:none}
 #kb-wrap .kb-payment-complete #kb-print-error{margin:12px 0 0;color:#b91c1c}
 #kb-wrap .kb-payment-complete #kb-print-error:empty{display:none}
+#kb-wrap #kb-print-recovery{margin:8px 0}
+#kb-wrap :is(.kb-sale-toast,.kb-print-banner){
+  position:fixed;inset:24px 16px auto;z-index:2147483647;margin:0 auto;
+  box-sizing:border-box;max-width:calc(100vw - 32px);border:0;padding:14px 22px;
+  background:#2e7d32;color:#fff;text-align:center;font-size:18px;font-weight:700;
+  box-shadow:0 6px 32px #0004;overflow-wrap:anywhere;pointer-events:none;
+}
+#kb-wrap .kb-sale-toast{width:max-content;border-radius:12px}
+#kb-wrap .kb-print-banner{
+  inset:0 0 auto;max-width:none;width:100%;padding:18px 24px;
+  background:linear-gradient(135deg,#1b5e20,#2e7d32);
+}
 @media (max-width:420px){
   #kb-wrap .kb-payment-complete .kb-print-options .kb-completion-icon{display:none}
 }

@@ -130,6 +130,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await page.locator('#kb-grand').getByText('₹100.00').waitFor();
   await page.getByRole('button',{name:/^UPI F5$/}).click();
   check('Grid payment buttons open the existing checkout with the selected tender',await page.locator('#kb-payment-method').inputValue()==='UPI');
+  check('Grid UPI confirmation has no reference field',await page.locator('#kb-payment [name=referenceNumber]').count()===0);
   const paymentStyle=()=>page.locator('.kb-checkout-actions :is([data-kb-payment],#kb-draft)').evaluateAll(buttons=>
    buttons.map(button=>{
     const style=getComputedStyle(button), icon=getComputedStyle(button,'::before');
@@ -266,6 +267,8 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   check('The print choice shows the confirmed cash change',await page.locator('#kb-print-summary').getByText('Change given: ₹50.00.',{exact:false}).isVisible());
   check('Payment complete opens focused on Print Bill',await focused(page.locator('[data-kb-print="bill"]')));
   const completion=page.locator('#kb-print-choice');
+  check('Payment Complete has no print method selector',
+   await completion.getByText('Print via',{exact:true}).count()===0);
   const completionButtons=completion.locator('.kb-print-options button');
   for(const width of [1366,320]){
    await page.setViewportSize({width,height:768});
@@ -512,13 +515,18 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await card.click();
   await page.locator('#kb-grand').getByText('₹100.00').waitFor();
   await page.locator('[data-kb-payment=UPI]').click();
-  await page.locator('#kb-payment [name=referenceNumber]').fill('KOT-QA-UPI');
+  check('List UPI confirmation has no reference field',await page.locator('#kb-payment [name=referenceNumber]').count()===0);
   await page.locator('#posPayConfOk').click();
   await page.locator('#kb-print-choice').waitFor();
+  const upiToast=page.locator('.kb-sale-toast');
+  await upiToast.waitFor();
+  check('KOT shows the POS-style sale toast after saving UPI and before printing',
+   (await upiToast.textContent())==='✔ Sale Complete — '+(await page.locator('#kb-header-last-bill').textContent())+' — ₹100 UPI'&&
+   await page.evaluate(()=>window.kotPrints.length===6));
   await page.locator('#kb-print-close').click();
   const upi=q("SELECT p.amount,p.reference_number FROM pos_payment p JOIN pos_transaction t ON t.transaction_id=p.transaction_id WHERE t.session_id='"+session.sessionId+"' AND t.status_id='PtCompleted' AND p.payment_method='UPI'");
   check('One UPI confirmation saves one tender and closing print options skips printing',
-   upi.length===1&&Number(upi[0].amount)===100&&upi[0].reference_number==='KOT-QA-UPI'&&
+   upi.length===1&&Number(upi[0].amount)===100&&!upi[0].reference_number&&
    await page.evaluate(()=>window.kotPrints.length===6)&&!await page.locator('#kb-payment').isVisible(),upi);
   check('List puts Hold Bills between Tax and History',
    await page.locator('#kb-tax-toggle + #kb-held-open:has(+ #kb-history-open)').isVisible());

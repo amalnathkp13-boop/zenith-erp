@@ -861,7 +861,7 @@
       panel.innerHTML=PosTillDialogs.digitalMarkup(method,paymentAmount);
       panel.querySelector('#posPayConfCancel').id='kb-payment-close';
       const confirm=panel.querySelector('#posPayConfOk');
-      confirm.parentElement.insertAdjacentHTML('beforebegin',
+      if(method==='Card')confirm.parentElement.insertAdjacentHTML('beforebegin',
         '<label class="kb-payment-reference">Reference number (optional)<input name="referenceNumber" type="text" maxlength="80"></label>');
       confirm.type='submit';
       confirm.focus();
@@ -990,6 +990,13 @@
   function savedPrinter() {
     try { return localStorage.getItem('kotPrinter')||localStorage.getItem('posPrinter')||''; } catch { return ''; }
   }
+  let browserPrintRetry;
+  function clearPrintFeedback() {
+    browserPrintRetry=null;
+    $('print-error').textContent='';
+    $('print-recovery').hidden=true;
+    $('printer-field').hidden=true;
+  }
   async function chooseQzPrinter() {
     if(busy||disconnected())return;
     busy=true;updatePrintOptions();
@@ -1007,69 +1014,125 @@
     finally { busy=false;updatePrintOptions(); }
     if(!$('printer-field').hidden)list.focus();
   }
-  async function printChoice(kind,row=historyPrintRow,{printWindow,statusPrefix=''}={}) {
+  async function printChoice(kind,row=historyPrintRow,{printWindow,statusPrefix='',browserOnly=false}={}) {
     const queued=row?.dataset.kbLocalSale?device?.queue().find(entry=>entry.sale.offlineId===row.dataset.kbLocalSale):row?null:localReceipt;
     const kotId=row?.dataset.kotId||completedKotId;
     if(busy||(!kotId&&!queued))return;
     const chooser=$('print-choice');
-    const printer=savedPrinter();
-    const useQz=!printWindow&&!disconnected()&&window.PosQzPrint&&(chooser.open?$('print-via').value==='qz':!!printer);
-    if(useQz&&!printer) { await chooseQzPrinter();return; }
     const detailStatus=row&&$('history-detail')?.open?$('history-detail-message'):null;
     const errorOutput=chooser.open?$('print-error'):(detailStatus||$('history-error'));
-    errorOutput.textContent='';
-    let acknowledgement, ticketSent=false;
+    const pending=chooser.open?browserPrintRetry:null;
+    if(pending?.ticketSent&&kind!=='bill')return;
+    statusPrefix=statusPrefix||pending?.statusPrefix||'';
+    const previousWarning=pending?.previousWarning||'';
+    if(chooser.open)clearPrintFeedback();
+    else errorOutput.textContent='';
+    let printer, acknowledgement, ticketSent=Boolean(pending?.ticketSent), retryBrowser=false, printLabel;
     try {
-      // Browser fallback opens one window before the async receipt request.
-      if(!useQz&&!printWindow)printWindow=KitchenPrint.open();
       busy=true;controls();
       for(const button of root.querySelectorAll('[data-kb-print]'))button.disabled=true;
+      if(!browserOnly&&!printWindow&&!disconnected()&&window.PosQzPrint){
+        // Until the connection and printer are resolved, no job has been submitted.
+        let client;
+        try {
+          client=await window.PosQzPrint.connect();
+        } catch { /* Use browser printing when QZ is unreachable. */ }
+        if(client){
+          printer=savedPrinter();
+          if(!printer){
+            try { printer=await client.printers.getDefault(); } catch { /* The cashier can choose a printer. */ }
+          }
+          if(!printer){
+            if(row&&!chooser.open)openReprint(row);
+            $('print-error').textContent='Choose a QZ printer, then try printing again.';
+            return;
+          }
+        }
+      }
+      if(!printer&&!printWindow){
+        retryBrowser=true;
+        printWindow=KitchenPrint.open();
+        retryBrowser=false;
+      }
       if(kind==='kot'||kind==='both') {
         const record=queued?.receipt||(await request('printRecord',{kotId,kind:'kot'})).record;
         const html=KitchenPrint.kotHtml(record);
-        if(useQz)await window.PosQzPrint.printHtml(printer,html);
+        if(printer){
+          retryBrowser=true;
+          await window.PosQzPrint.printHtml(printer,html);
+          retryBrowser=false;
+        }
         else await KitchenPrint.browserPrint(printWindow,html,kind==='both'?{nextLabel:'Print customer bill'}:{closeAfterPrint:true});
         ticketSent=true;
+        printLabel=queued?'KOT':'KOT '+record.number;
         if(kind==='kot')printWindow=null;
         if(!queued) {
-          const recordPrint=request('ackKotPrint',{kotId},AbortSignal.timeout?.(8000));
-          if(kind==='both')acknowledgement=recordPrint.then(()=>'',()=>' The kitchen print count could not be updated.');
-          else await recordPrint;
+          acknowledgement=request('ackKotPrint',{kotId},AbortSignal.timeout?.(8000))
+            .then(()=>'',()=>' The kitchen print count could not be updated.');
         }
       }
       if(kind==='bill'||kind==='both') {
         const record=queued?.receipt||(await request('printRecord',{kotId,kind:row?.dataset.billed==='false'?'orderBill':'bill'})).record;
-        if(useQz)await window.PosQzPrint.printHtml(printer,KitchenPrint.customerHtml(record));
+        if(printer){
+          const html=KitchenPrint.customerHtml(record);
+          retryBrowser=true;
+          await window.PosQzPrint.printHtml(printer,html);
+          retryBrowser=false;
+        }
         else await KitchenPrint.customer(printWindow,record,{closeAfterPrint:true});
         printWindow=null;
+        printLabel=queued?'Bill':record.bill?.number?'BILL-'+record.bill.number:'Bill';
       }
-      const warning=(await acknowledgement)||'';
-      const message=useQz?'Print request sent to QZ Tray.':'Print request opened.';
+      const warning=previousWarning+((await acknowledgement)||'');
+      const message=printer?'Print request sent to QZ Tray.':'Print request opened.';
       if(row) {
         const status=detailStatus||$('history-print-status');
         status.textContent=statusPrefix+message+warning;
       } else if(warning) $('order-status').textContent+=warning;
       if(chooser.open)chooser.close();
+      showBillingNotice('🖨 '+printLabel+(kind==='both'?' + KOT':'')+
+        (printer?' sent to printer  ✔':' — browser print requested'),true);
     } catch(error) {
       const reason=error.message||String(error);
-      const output=useQz&&row&&!chooser.open?$('print-error'):errorOutput;
-      if(output!==errorOutput){
-        if(detailStatus)detailStatus.textContent=statusPrefix;
-        openReprint(row);
+      const warning=previousWarning+((await acknowledgement)||'');
+      if(retryBrowser||(ticketSent&&kind!=='kot')){
+        if(row&&!chooser.open){
+          if(detailStatus)detailStatus.textContent=statusPrefix;
+          openReprint(row);
+        }
+        browserPrintRetry={kind:ticketSent?'bill':kind,row,ticketSent,statusPrefix,previousWarning:warning};
+        $('print-error').textContent=(ticketSent?'Kitchen ticket sent. ':'')+
+          (printer?'QZ Tray did not confirm printing. Check the printer before retrying. ':'')+reason+warning;
+        $('print-recovery').hidden=false;
+      }else{
+        errorOutput.textContent=statusPrefix+reason+warning;
       }
-      output.textContent=useQz
-        ? (ticketSent&&kind==='both'?'Kitchen ticket sent. Use Bill Print for the customer receipt. ':'')+
-          'QZ Tray did not confirm printing. '+reason+' Check the printer before retrying, or choose Browser.'
-        : statusPrefix+reason;
     } finally {
       if(printWindow&&!printWindow.closed)printWindow.close();
       busy=false;controls();
       updatePrintOptions();
-      if(chooser.open&&chooser.classList.contains('kb-payment-complete')&&
+      if(chooser.open&&browserPrintRetry)$('print-browser').focus();
+      else if(chooser.open&&chooser.classList.contains('kb-payment-complete')&&
         (document.activeElement===chooser||!chooser.contains(document.activeElement))){
         chooser.querySelector('[data-kb-print="'+kind+'"]:enabled')?.focus();
       }
     }
+  }
+  let billingNotice;
+  function showBillingNotice(message,banner=false) {
+    billingNotice?.remove();
+    const notice=document.createElement('div');
+    billingNotice=notice;
+    notice.className=banner?'kb-print-banner':'kb-sale-toast';
+    notice.setAttribute('role','status');
+    notice.textContent=message;
+    const dialog=$('print-choice');
+    (dialog?.open?dialog:root).append(notice);
+    if(typeof notice.showPopover==='function'){
+      notice.setAttribute('popover','manual');
+      notice.showPopover();
+    }
+    setTimeout(()=>notice.remove(),3500);
   }
   const heldOrderData=()=>({...orderData(),billingView:grid?'grid':'list'});
   async function holdOrder() {
@@ -1244,11 +1307,18 @@
     $('print-summary').textContent=notice+change+' Choose a print option.';
     historyPrintRow=null;
     $('print-title').textContent='Payment Complete';
-    $('print-error').textContent='';
+    clearPrintFeedback();
     updatePrintOptions();
     setPrintChoiceLayout(true);
     $('print-choice').showModal();
     $('print-choice').querySelector('[data-kb-print="bill"]').focus();
+    if(!bill.local){
+      const tender=method==='Split'
+        ? ['Cash','Card','UPI'].filter(name=>Number(payment[name.toLowerCase()+'Amount'])>0)
+          .map(name=>cardMoney.format(Number(payment[name.toLowerCase()+'Amount']))+' '+name).join(' + ')
+        : cardMoney.format(confirmedTotal)+' '+method.toUpperCase();
+      showBillingNotice('✔ Sale Complete — '+bill.billNumber+' — '+tender+change);
+    }
     if(bill.local)syncDeviceOrders();
   }
 
@@ -1398,20 +1468,14 @@
     const chooser=$('print-choice');
     const ticketOnly=historyPrintRow?.dataset.hasBill==='false'||(!historyPrintRow&&localReceipt?.sale.operation==='send');
     for(const button of chooser?.querySelectorAll('[data-kb-print]')||[]){
-      button.disabled=busy||(ticketOnly&&button.dataset.kbPrint!=='kot');
+      button.disabled=busy||(ticketOnly&&button.dataset.kbPrint!=='kot')||
+        (browserPrintRetry?.ticketSent&&button.dataset.kbPrint!=='bill');
     }
-    const via=$('print-via');
-    if(!via)return;
+    if(!chooser)return;
     const qzAvailable=!disconnected()&&!!window.PosQzPrint;
     $('printer-options').hidden=!qzAvailable;
-    via.querySelector('[value=qz]').disabled=!qzAvailable;
-    if(!chooser.open){
-      $('printer-field').hidden=true;
-      via.value=qzAvailable&&savedPrinter()?'qz':'browser';
-    }else if(!qzAvailable)via.value='browser';
-    via.disabled=busy;
-    $('printer-setup').disabled=busy||!qzAvailable;
-    $('printer-list').disabled=busy||!qzAvailable;
+    $('print-browser').disabled=busy;
+    $('printer-setup').disabled=$('printer-list').disabled=busy||!qzAvailable;
   }
   function openReprint(row){
     if(!row||!$('print-choice'))return;
@@ -1419,7 +1483,7 @@
     historyPrintRow=row;
     $('print-title').textContent='Reprint';
     $('print-summary').textContent='Choose what to print for '+row.querySelector('[data-kb-history-detail]').textContent.trim()+'.';
-    $('print-error').textContent='';
+    clearPrintFeedback();
     updatePrintOptions();
     $('print-choice').showModal();
     $('print-choice').querySelector('[data-kb-print]:enabled')?.focus();
@@ -1605,7 +1669,7 @@
     $('history-revision-save').disabled=$('history-revision-back').disabled=true;
     let printWindow, printError;
     // Reserve the browser window while the cashier's confirm gesture is active.
-    if(disconnected()||!window.PosQzPrint||!savedPrinter()){
+    if(disconnected()||!window.PosQzPrint){
       try{printWindow=KitchenPrint.open();}catch(failure){printError=failure;}
     }
     try{
@@ -1686,7 +1750,7 @@
         setPrintChoiceLayout(false);
         $('print-title').textContent='Kitchen ticket saved';
         $('print-summary').textContent='Print the ticket while the order is pending sync.';
-        $('print-error').textContent='';
+        clearPrintFeedback();
         updatePrintOptions();
         $('print-choice').showModal();
         return;
@@ -1766,6 +1830,10 @@
     else if(button.id==='kb-payment-close'||button.id==='kb-payment-picker-close'||button.classList.contains('pos-cash-cancel'))$('payment').close();
     else if(button.dataset.kbPrint)printChoice(button.dataset.kbPrint);
     else if(button.id==='kb-print-close')$('print-choice').close();
+    else if(button.id==='kb-print-browser'&&browserPrintRetry){
+      const {kind,row}=browserPrintRetry;
+      printChoice(kind,row,{browserOnly:true});
+    }
     else if(button.id==='kb-printer-setup')chooseQzPrinter();
     else if(button.id==='kb-customer-open'||button.hasAttribute('data-kb-customer-change'))openCustomerDialog();
     else if(button.id==='kb-customer-walkin')walkInCustomer();
@@ -2077,7 +2145,8 @@
       return;
     }
     if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;
-    const buttons=Array.from(dialog.querySelectorAll(complete?'.kb-print-options button:enabled':'button:enabled'));
+    const buttons=Array.from(dialog.querySelectorAll(complete?'.kb-print-options button:enabled':'button:enabled'))
+      .filter(button=>button.getClientRects().length);
     const index=buttons.indexOf(e.target);
     if(index<0)return;
     e.preventDefault();
@@ -2093,9 +2162,10 @@
     if(!printer)return;
     try {
       localStorage.setItem('kotPrinter',printer);
-      $('print-via').value='qz';
+      $('printer-field').hidden=true;
       $('print-error').textContent='';
-    } catch { $('print-error').textContent='This browser could not save the printer. Choose Browser to print.'; }
+      $('printer-setup').focus();
+    } catch { $('print-error').textContent='This browser could not save the printer. Use browser printing.'; }
   });
   let shiftAlone=false;
   const editable=e=>e.target?.closest?.('input,textarea,select,button,a,[contenteditable],dialog');
