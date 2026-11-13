@@ -2,7 +2,7 @@
 #kb-wrap:not(.kg-grid){
   --kl-ink:#10152e;--kl-muted:#525b80;--kl-line:#e1e7f0;
   --kl-pad:20px;
-  gap:0;max-width:none;
+  display:flex;flex-direction:column;gap:0;max-width:none;
   padding:0 var(--kl-pad) 12px;background:#fafbfe;color:var(--kl-ink);
 }
 #kb-wrap .kg-menu{
@@ -153,11 +153,11 @@
 #kb-wrap:not(.kg-grid) .kb-checkout-actions button:hover:enabled{border-color:currentColor}
 @media (min-width:901px){
   #kb-wrap:not(.kg-grid) .kl-side{
-    grid-template-rows:minmax(min-content,1fr) minmax(min-content,1fr);
+    grid-template-rows:minmax(0,1fr) minmax(min-content,1fr);
     align-content:stretch;min-height:0;overflow:auto;
   }
   #kb-wrap:not(.kg-grid) .kl-summary-stack{grid-template-rows:minmax(min-content,1fr) auto;align-content:stretch}
-  #kb-wrap:not(.kg-grid) .kl-side>.kl-card{display:flex;flex-direction:column}
+  #kb-wrap:not(.kg-grid) .kl-side>.kl-card{display:flex;flex-direction:column;overflow:auto}
   #kb-wrap:not(.kg-grid) .kl-details{flex:1}
   #kb-wrap:not(.kg-grid) .kl-details>div{display:grid;grid-template-rows:auto 1fr auto 1fr}
   #kb-wrap:not(.kg-grid) .kl-summary{display:grid;grid-template-rows:auto repeat(3,1fr)}

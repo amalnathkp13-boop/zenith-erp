@@ -453,15 +453,20 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await page.keyboard.press('ArrowDown');
    check(view+' Down from empty search moves to Cash',await page.locator('[data-kb-payment=Cash]').evaluate(el=>el===document.activeElement));
    if(view==='List'){
-    const fits=await page.locator('#kb-wrap').evaluate(root=>{
-     const payment=root.querySelector('.kb-checkout-actions').getBoundingClientRect();
-     const searchTop=root.querySelector('#kb-search').getBoundingClientRect().top;
-     const cartBottom=root.querySelector('.kb-panel').getBoundingClientRect().bottom;
-      const summaryBottom=root.querySelector('.kl-summary').getBoundingClientRect().bottom;
-     return root.scrollHeight<=root.clientHeight+1&&payment.bottom<=innerHeight&&
-      cartBottom<=searchTop&&summaryBottom<=searchTop;
-    });
-    check('List View keeps the cart and payment row in one viewport',fits);
+    const layout=await page.locator('#kb-wrap').evaluate(root=>({
+     scrollHeight:root.scrollHeight,clientHeight:root.clientHeight,viewportHeight:innerHeight,
+     paymentBottom:root.querySelector('.kb-checkout-actions').getBoundingClientRect().bottom,
+     searchTop:root.querySelector('#kb-search').getBoundingClientRect().top,
+     cartBottom:root.querySelector('.kb-panel').getBoundingClientRect().bottom,
+     summaryBottom:root.querySelector('.kl-summary').getBoundingClientRect().bottom,
+     sizes:['.kb-toolbar','.kl-workspace','.kl-side','.kl-side>.kl-card','.kl-summary-stack','.kl-summary','#kb-stats','.kb-bottom'].map(selector=>{
+      const el=root.querySelector(selector),rect=el.getBoundingClientRect();
+      return [selector,rect.top,rect.height,el.scrollHeight,getComputedStyle(el).gridTemplateRows];
+     })
+    }));
+    check('List View keeps the cart and payment row in one viewport',
+     layout.scrollHeight<=layout.clientHeight+1&&layout.paymentBottom<=layout.viewportHeight&&
+     layout.cartBottom<=layout.searchTop&&layout.summaryBottom<=layout.searchTop,layout);
    }
    await page.keyboard.press('ArrowRight');
    await page.keyboard.press('Enter');
