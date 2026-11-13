@@ -165,6 +165,49 @@
         refundForPaymentId:'POS_QA_KPI_POSTED',effectiveDate:now,statusId:'PmntConfirmed',amount:10,amountUomId:'INR']).create()
     ec.web.sendJsonResponse([success:true])
 ]]></script></actions><default-response type="none"/></transition>
+<transition name="kotHistoryPlanFixture" method="post" begin-transaction="true"><actions><script><![CDATA[
+    if (System.getProperty('pos.qa.disposable') != 'true' || ec.user.username != 'pos.b.qa' || ec.user.getPreference('ACTIVE_ORGANIZATION') != 'POS_QA_B') {
+        ec.web.response.setStatus(403); return
+    }
+    def org = 'POS_QA_A'
+    def plan = ec.web.parameters.plan
+    if (!(plan in ['STARTER','GROWTH','PROFESSIONAL','ENTERPRISE','KOT','restore'])) {
+        ec.web.response.setStatus(400); return
+    }
+    // The other disposable tenant can restore the fixture even when KOT Plan excludes POS.
+    boolean disabled = ec.artifactExecution.disableAuthz()
+    try {
+        def key = 'posQaKotHistoryPlan'
+        def saved = ec.web.sessionAttributes.get(key)
+        def tenant = ec.entity.find('zenith.erp.saas.SaasTenant').condition('organizationPartyId',org).one()
+        if (plan == 'restore') {
+            if (saved) {
+                if (saved.hadTenant) tenant.set('planId',saved.plan).update()
+                else tenant.delete()
+                saved.terminals.each { id ->
+                    ec.entity.find('zenith.erp.pos.PosTerminal').condition([organizationPartyId:org,terminalId:id]).one().set('isActive','Y').update()
+                }
+                ec.web.sessionAttributes.remove(key)
+            }
+            ec.web.sendJsonResponse([success:true]); return
+        }
+        def terminalId = ec.web.parameters.fixtureTerminalId
+        def terminals = ec.entity.find('zenith.erp.pos.PosTerminal').condition([organizationPartyId:org,isActive:'Y']).list()
+        if (!terminalId?.startsWith('KOT_CLERK_') || !terminals.any { it.terminalId == terminalId }) {
+            ec.web.response.setStatus(400); return
+        }
+        if (!saved) {
+            def others = terminals.findAll { it.terminalId != terminalId }
+            ec.web.sessionAttributes.put(key,[hadTenant:tenant != null,plan:tenant?.planId,terminals:others*.terminalId])
+            others.each { it.set('isActive','N').update() }
+        }
+        if (tenant) tenant.set('planId',plan).update()
+        else ec.entity.makeValue('zenith.erp.saas.SaasTenant').setAll([tenantId:'POS_QA_KOT_HISTORY',
+            organizationPartyId:org,tenantName:'Disposable KOT history plan',subdomain:'posqakothistory',
+            statusId:'SaasTenantActive',planId:plan,currencyUomId:'INR']).create()
+        ec.web.sendJsonResponse([success:!ec.message.hasError()])
+    } finally { if (!disabled) ec.artifactExecution.enableAuthz() }
+]]></script></actions><default-response type="none"/></transition>
 <transition name="kotSalesReportFixture" method="post" begin-transaction="true"><actions><script><![CDATA[
     def mode = ec.web.parameters.mode
     if (System.getProperty('pos.qa.disposable') != 'true' || ec.user.username != 'pos.qa' || !(mode in ['seed','clean'])) {

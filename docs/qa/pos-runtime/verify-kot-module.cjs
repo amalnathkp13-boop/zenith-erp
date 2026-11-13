@@ -181,9 +181,9 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   check('the paid KOT has a linked transaction and bill number',!!transactionId&&!!settled.billNumber);
   const billDetails=await post(kit,'kot/KotBilling/historyBillDetails',{sessionId,kotId:draft.kotId});
   const historyBill=await billDetails.json().catch(()=>null);
-  check('KOT-only clerk can view the issued bill without POS amendment access',
+  check('KOT-only clerk can edit an issued bill without POS access',
    billDetails.ok()&&historyBill?.success===true&&historyBill.transactionId===transactionId&&
-   historyBill.number===settled.billNumber&&historyBill.canEdit===false,
+   historyBill.number===settled.billNumber&&historyBill.canEdit===true,
    {status:billDetails.status(),historyBill});
   for (const route of ['PosTransactions','EditTransaction?transactionId='+transactionId,'BillNumberRegister/printDoc']) {
    const report=await a.c.request.get(base+'/apps/zenith/kot/'+route);
@@ -219,6 +219,54 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
     homeAfter.amount===homeBefore.amount+100&&homeAfter.chart===homeAfter.amount&&homeAfter.hourly===homeAfter.amount,
     {homeBefore,homeAfter});
   }
+  const revisionReason='Disposable KOT history revision';
+  const setPlan=async plan=>{
+   const response=await post(foreign,'pos/PosQaAcceptance/kotHistoryPlanFixture',{plan,fixtureTerminalId:terminalId});
+   const result=await response.json().catch(()=>({}));
+   check('Disposable KOT history plan fixture '+plan,response.ok()&&result.success,{status:response.status()});
+  };
+  try {
+   for(const plan of ['ENTERPRISE','STARTER','GROWTH','PROFESSIONAL','KOT']) {
+    await setPlan(plan);
+    const tenant=q("SELECT plan_id FROM saas_tenant WHERE organization_party_id='POS_QA_A'")[0];
+    check('The cashier workspace has the active '+plan+' plan',tenant?.plan_id===plan);
+    for(const [shell,view] of (plan==='KOT'?[['apps','list'],['qapps','grid']]:[['apps','list']])) {
+     await clerkPage.goto(base+'/'+shell+'/zenith/kot/KotBilling?sessionId='+sessionId);
+     await clerkPage.locator('#kb-wrap[data-ready=true]').waitFor();
+     await clerkPage.locator('.kg-modes summary').click();
+     await clerkPage.locator('[data-kb-view="'+view+'"]').click();
+     await clerkPage.locator('#kb-history-open').click();
+     await clerkPage.locator('#kb-history [data-kb-history-detail]').filter({hasText:settled.billNumber}).click();
+     const editor=clerkPage.locator('#kb-history-detail.kb-bill-editor');
+     const quantity=editor.locator('[data-edit-quantity]').first();
+     await quantity.waitFor();
+     const expected=shell==='apps'?'1':'2';
+     check(plan+' '+shell+' '+view+' opens the full KOT editor with the saved bill',
+      await quantity.inputValue()===expected&&
+      await editor.locator('[data-edit-rate]').first().isVisible()&&await editor.locator('[data-edit-remove]').first().isVisible()&&
+      await editor.locator('#kb-history-add').isVisible()&&await editor.locator('#kb-history-detail-reprint').innerText()==='Print bill'&&
+      await editor.locator('#kb-history-save').innerText()==='Save & print revised bill');
+     if(plan==='KOT'&&shell==='apps'){
+      await clerkPage.screenshot({path:path.join(out,'kot-cashier-history-editor.png')});
+      await quantity.fill('2');
+      await editor.locator('#kb-history-save').click();
+      await clerkPage.locator('#kb-history-edit-reason').fill(revisionReason);
+      const savedResponse=clerkPage.waitForResponse(r=>r.url().endsWith('/kot/KotBilling/reviseHistoryBill'));
+      await clerkPage.locator('#kb-history-revision-save').click();
+      const response=await savedResponse;
+      const saved=await response.json();
+      const issued=q("SELECT transaction_number,payable_amount FROM pos_transaction WHERE transaction_id='"+transactionId+"'")[0];
+      check('KOT-plan cashier saves an audited revision under the same bill number',response.ok()&&saved.success&&
+       issued.transaction_number===settled.billNumber&&Number(issued.payable_amount)===200&&
+       q("SELECT reason FROM pos_transaction_amendment WHERE transaction_id='"+transactionId+"'").some(row=>row.reason===revisionReason),saved);
+      const receipt=await post(kit,'kot/KotBilling/printRecord',{kotId:draft.kotId,kind:'bill'});
+      const printable=await receipt.json();
+      check('KOT-plan cashier can print the revised receipt',receipt.ok()&&printable.success&&
+       printable.record?.bill?.number===settled.billNumber&&Number(printable.record?.summary?.total)===200,printable);
+     }
+    }
+   }
+  } finally { await setPlan('restore'); }
   const fixture = mode => post(a,'pos/PosQaAcceptance/kotSalesReportFixture',{mode,sessionId});
   const historicalDate='2040-02-01';
   try {
@@ -256,6 +304,14 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   const response=await post(kit,'kot/KotBilling/printRecord',{kotId:foreignId,kind:'kot'});
   const foreignBody=await response.json().catch(()=>({}));
   check('a KOT-only clerk cannot retrieve another organization’s ticket',response.status()===403||foreignBody.success===false,{status:response.status(),success:foreignBody.success});
+  const deniedRevision=await post(foreign,'kot/KotBilling/reviseHistoryBill',{
+   sessionId:foreignSession,kotId:draft.kotId,editReason:revisionReason,
+   editOps:JSON.stringify([{type:'QTY_CHANGE',seq:historyBill.items[0].seq,newQty:'3'}])
+  });
+  const deniedResult=await deniedRevision.json().catch(()=>({}));
+  check('KOT bill revision denies another organization and leaves the issued total unchanged',
+   (deniedRevision.status()===403||deniedResult.success===false)&&
+   Number(q("SELECT payable_amount FROM pos_transaction WHERE transaction_id='"+transactionId+"'")[0].payable_amount)===200);
   await require('./verify-kot-offline-drafts.cjs')({a,foreign,base,check,q,out});
  } finally { await clerk.close(); await page.close(); }
 };
