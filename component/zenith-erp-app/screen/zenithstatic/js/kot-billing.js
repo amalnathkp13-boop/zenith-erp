@@ -34,7 +34,11 @@
   const cardMoney=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',minimumFractionDigits:0});
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const token=()=>$('token').value||window.moqui?.webrootVue?.moquiSessionToken;
-  let orderType='Dine In', taxOn='Y', draftId='';
+  const taxPreferenceKey='zenith-kot-tax:'+JSON.stringify([cfg.org,cfg.user]);
+  let savedTax=$('tax-toggle').dataset.preference, pendingTax, savingTax=false;
+  try { pendingTax=localStorage.getItem(taxPreferenceKey); } catch {}
+  if(pendingTax!=='Y'&&pendingTax!=='N')pendingTax=null;
+  let orderType='Dine In', taxOn=pendingTax||savedTax, draftId='';
   let salesModeId=$('mode').value, quoteVersion=0, quoteTimer, total=null, busy=false, savedFingerprint='';
   let searchVersion=0, searchTimer, searchAbort, results=[], selected=0, exactId, ambiguous=false, hasMore=false, offset=0;
   let browsePage, pendingLookup, searchMessage='';
@@ -142,7 +146,26 @@
   }
   function paintTax() {
     const on=taxOn==='Y',b=$('tax-toggle');
-    b.textContent=on?'Tax: ON':'Tax: OFF';b.classList.toggle('is-on',on);b.setAttribute('aria-checked',on);
+    $('tax-label').textContent=on?'Tax: On':'Tax: Off';
+    b.querySelector('.nb-toggle').classList.toggle('on',on);
+    b.setAttribute('aria-checked',on);
+  }
+  async function saveTaxPreference() {
+    if(savingTax||!pendingTax||disconnected()||sessionLost)return;
+    savingTax=true;
+    try {
+      while(pendingTax&&root.isConnected){
+        const value=pendingTax;
+        await request('saveTaxPreference',{taxOn:value});
+        savedTax=value;
+        if(pendingTax===value){
+          pendingTax=null;
+          try { if(localStorage.getItem(taxPreferenceKey)===value)localStorage.removeItem(taxPreferenceKey); } catch {}
+        }
+      }
+    }catch(error){
+      if(root.isConnected&&!disconnected()&&!sessionLost)$('order-status').textContent='Tax preference could not be saved. '+error.message;
+    }finally{savingTax=false;}
   }
   const hasCartQuote=()=>paymentButtons.length>0&&!busy&&!sessionLost&&!unconfirmedOrder&&
     (!disconnected()||!!catalogue)&&cart.size>0&&total!==null&&editError.hidden;
@@ -179,6 +202,7 @@
       localOrderId='';
     }
     $('badge').textContent='New KOT';$('instr').value='';
+    taxOn=pendingTax||savedTax;paintTax();
     renderCustomer();
     quote();
   }
@@ -452,7 +476,7 @@
       +'<td><span class="kb-ostep"><button type="button" data-qty="-1" aria-label="Decrease quantity" '+(it.qty<=1||search.disabled?'disabled':'')+'>−</button><input type="text" inputmode="decimal" data-kb-edit="qty" aria-label="Quantity for '+esc(it.name)+'" value="'+esc(it.qty)+'"'+readOnly+'><button type="button" data-qty="1" aria-label="Increase quantity" '+(search.disabled?'disabled':'')+'>+</button></span></td>'
       +'<td class="kg-normal">'+(it.tax==null?'—':money.format(it.tax))+'</td>'
       +'<td class="r kb-oamt">'+money.format(it.amount??it.qty*it.price)+'</td>'
-      +'<td class="r"><button type="button" class="kb-orm" data-remove="true" aria-label="Remove '+esc(it.name)+'"><span class="kg-only">×</span><svg class="kg-normal" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18m-2 0-1 15H6L5 6m4 0V3h6v3m-5 4v7m4-7v7"/></svg></button></td></tr>').join('');
+      +'<td class="r"><button type="button" class="kb-orm" data-remove="true" aria-label="Remove '+esc(it.name)+'"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18m-2 0-1 15H6L5 6m4 0V3h6v3m-5 4v7m4-7v7"/></svg></button></td></tr>').join('');
     const next=cursor && editorFor(cursor.id,cursor.field);
     const invalid=invalidEdit && editorFor(invalidEdit.id,invalidEdit.field);
     if(invalid) {
@@ -476,7 +500,7 @@
     const display=value=>summary?money.format(value??0):'—';
     $('list-subtotal').textContent=display(summary?.subtotal);
     $('list-tax').textContent=display(summary?.tax);
-    $('list-grand').textContent=display(summary?.total);
+    $('list-round').textContent=display(summary?.roundOff);
     $('list-tax-stat').textContent=display(summary?.tax);
   }
   function applyQuote(receipt) {
@@ -543,7 +567,7 @@
     editError.textContent=message;
     editError.hidden=!message;
   }
-  function commitEdit(input) {
+  function commitEdit(input, live=false) {
     if(input.readOnly||busy)return false;
     if(input.value===input.defaultValue) {
       if(input.hasAttribute('aria-invalid')){setEditError('');controls();}
@@ -559,7 +583,9 @@
       return false;
     }
     if(input.hasAttribute('aria-invalid'))setEditError('');
-    input.defaultValue=input.value=String(value);
+    input.defaultValue=String(value);
+    if(!live)input.value=input.defaultValue;
+    if(!rate&&item.qty===value){controls();return true;}
     if(rate){item.manualRate=value;item.price=value;}
     else item.qty=value;
     item.amount=null;
@@ -568,6 +594,9 @@
   }
   cartRows.addEventListener('change',e=>{
     if(e.target.dataset.kbEdit)commitEdit(e.target);
+  });
+  cartRows.addEventListener('input',e=>{
+    if(e.target.dataset.kbEdit==='qty'&&!e.isComposing)commitEdit(e.target,true);
   });
   cartRows.addEventListener('keydown',e=>{
     const input=e.target, field=input.dataset.kbEdit;
@@ -731,7 +760,7 @@
     $('online').classList.toggle('is-offline',disconnected());
     const now=new Date();
     $('clock').dateTime=now.toISOString();
-    $('clock').textContent=now.toLocaleTimeString('en-IN');
+    $('clock').textContent=now.toLocaleTimeString('en-US');
   }
   let headerTimer=setInterval(()=>{
     if(!root.isConnected){
@@ -752,6 +781,7 @@
     const label=active?'Exit fullscreen':'Enter fullscreen';
     $('fullscreen-label').textContent=label;
     $('fullscreen').title=label;
+    $('fullscreen').setAttribute('aria-pressed',active);
   }
   async function toggleFullscreen() {
     const status=$('fullscreen-status');
@@ -1706,7 +1736,11 @@
   root.addEventListener('click',e=>{
     const button=e.target.closest('button');if(!button||button.disabled||busy)return;
     if(button.dataset.ot){setType(button.dataset.ot);quote();}
-    else if(button.id==='kb-tax-toggle'){taxOn=taxOn==='Y'?'N':'Y';paintTax();quote();}
+    else if(button.id==='kb-tax-toggle'){
+      pendingTax=taxOn=taxOn==='Y'?'N':'Y';
+      try { localStorage.setItem(taxPreferenceKey,pendingTax); } catch {}
+      paintTax();quote();saveTaxPreference();
+    }
     else if(button.dataset.kbView){
       modesMenu.open=false;
       modesMenu.querySelector('summary').focus({preventScroll:true});
@@ -2140,12 +2174,13 @@
     $('table').value=cfg.selectedTable||'';
     setType(orderType);paintTax();paintSalesMode();renderCustomer();quote();
   }
+  saveTaxPreference();
   function connectionChanged() {
     if(!root.isConnected)return;
     updateHeader();browsePage=null;quote(false);lookup();
     if($('print-choice')?.open)updatePrintOptions();
     if(history.open)showHistory();
-    if(!disconnected()){warmWorkspace();syncDeviceOrders();}
+    if(!disconnected()){warmWorkspace();syncDeviceOrders();saveTaxPreference();}
     else if(transportDown&&navigator.onLine&&!sessionLost) {
       clearTimeout(reconnectTimer);
       reconnectTimer=setTimeout(async()=>{

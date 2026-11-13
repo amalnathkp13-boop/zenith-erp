@@ -1,4 +1,3 @@
-#kb-wrap .kb-toolbar #kb-held-open { background: #fff7ed; color: #c65a00; border-color: transparent; }
 #kb-wrap #kb-history:not([data-held-only]) .kb-held-resume,
 #kb-wrap #kb-history[data-held-only] :is(.kb-history-toolbar,.kb-history-filters,.kb-history-row-actions:not(.kb-held-resume)) { display: none; }
 
