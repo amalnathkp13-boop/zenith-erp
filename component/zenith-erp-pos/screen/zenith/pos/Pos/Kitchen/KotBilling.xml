@@ -44,31 +44,28 @@
 
     <transition name="historyBillDetails" method="post" begin-transaction="false">
         <actions><script><![CDATA[
-            def billing=ec.service.sync().name('zenith.pos.KotServices.get#BillingSession').parameter('sessionId',sessionId).call()
-            def k=billing?.terminal ? ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('kotId',kotId)
-                .condition('organizationPartyId',billing.terminal.organizationPartyId).one() : null
-            def tx=k?.transactionId ? ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',k.transactionId)
-                .condition('organizationPartyId',k.organizationPartyId).condition('statusId','PtCompleted').one() : null
-            def issuedAt=tx ? ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',tx.sessionId).one() : null
-            def scope=tx ? ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess').parameter('transactionId',tx.transactionId).call() : null
-            if (!scope?.allowed || issuedAt?.terminalId!=billing.terminal?.terminalId || (k.terminalId && k.terminalId!=issuedAt.terminalId)) {
-                ec.web.sendJsonResponse([success:false,error:'This bill is unavailable for the current terminal and login.']); return
-            }
-            def kitchenWrite=ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess')
-                .parameter('moduleId',ec.context.kitchenModuleId ?: 'pos').call().canWrite
-            def posWrite=ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId','pos').call().canWrite
-            // The audited amendment is submitted through POS Terminal.
-            def posInPlan=ec.user.isInGroup('ADMIN') || !ec.entity.isEntityDefined('zenith.erp.saas.SaasTenant') ||
-                ec.service.sync().name('zenith.saas.SaasGateServices.check#ModuleAccess')
-                    .parameter('moduleId','pos').disableAuthz().call()?.allowed == true
-            def role=ec.service.sync().name('zenith.base.RoleAccessServices.get#AssignedRoleScope').disableAuthz().call()
-            def hasPosTerminal=!role.restricted || role.legacyWriteModules.contains('pos') || role.selections.pos?.contains('/pos/Terminal')
-            def lines=ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId',tx.transactionId).orderBy('itemSeqId').list()
+            def tx = ec.service.sync().name('zenith.pos.KotServices.get#HistoryBill').parameters([sessionId:sessionId,kotId:kotId]).call()?.bill
+            if (!tx) { ec.web.sendJsonResponse([success:false,error:'This bill is unavailable for the current terminal and login.']); return }
+            def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess')
+                .parameter('moduleId',ec.context.kitchenModuleId ?: 'pos').call()
+            def lines = ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId',tx.transactionId).orderBy('itemSeqId').list()
             ec.web.sendJsonResponse([success:true,transactionId:tx.transactionId,number:tx.transactionNumber ?: tx.transactionId,
-                total:tx.payableAmount ?: 0, salesModeId:tx.salesModeId, canEdit:kitchenWrite == true && posWrite == true && posInPlan && hasPosTerminal,
-                items:lines.collect { [seq:it.itemSeqId, name:it.productName ?: it.productId, qty:it.quantity,
-                    rate:it.unitPrice, discountPercent:it.discountPercent, discountAmount:it.discountAmount,
-                    taxableAmount:it.taxableAmount, tax:it.totalTaxAmount ?: 0, total:it.lineTotal ?: 0] }])
+                total:tx.payableAmount ?: 0,salesModeId:tx.salesModeId,canEdit:access.canWrite == true,
+                items:lines.collect { [seq:it.itemSeqId,name:it.productName ?: it.productId,qty:it.quantity,
+                    rate:it.unitPrice,discountPercent:it.discountPercent,discountAmount:it.discountAmount,
+                    taxableAmount:it.taxableAmount,tax:it.totalTaxAmount ?: 0,total:it.lineTotal ?: 0] }])
+        ]]></script></actions><default-response type="none"/>
+    </transition>
+
+    <transition name="reviseHistoryBill" method="post" begin-transaction="true">
+        <actions><script><![CDATA[
+            def p = ec.web.parameters
+            if (!p.kotId || !p.sessionId) { ec.web.sendJsonResponse([success:false,error:'Choose an issued KOT bill to revise.']); return }
+            def revision = ec.service.sync().name('zenith.pos.PosBillRevisionServices.save#BillRevision').parameters([
+                moduleId:ec.context.kitchenModuleId ?: 'pos',sessionId:p.sessionId,kotId:p.kotId,
+                editReason:p.editReason,editOps:p.editOps]).call()?.revision
+            if (revision?.needFreeApproval) revision.error = 'Ask a manager to approve the free items before revising this bill.'
+            ec.web.sendJsonResponse(revision ?: [success:false,error:ec.message.errorsString ?: 'Bill revision could not be saved.'])
         ]]></script></actions><default-response type="none"/>
     </transition>
 

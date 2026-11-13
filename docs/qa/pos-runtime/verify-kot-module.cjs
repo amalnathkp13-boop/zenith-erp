@@ -181,9 +181,9 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   check('the paid KOT has a linked transaction and bill number',!!transactionId&&!!settled.billNumber);
   const billDetails=await post(kit,'kot/KotBilling/historyBillDetails',{sessionId,kotId:draft.kotId});
   const historyBill=await billDetails.json().catch(()=>null);
-  check('KOT-only clerk can view the issued bill without POS amendment access',
+  check('KOT-only clerk can edit an issued bill without POS access',
    billDetails.ok()&&historyBill?.success===true&&historyBill.transactionId===transactionId&&
-   historyBill.number===settled.billNumber&&historyBill.canEdit===false,
+   historyBill.number===settled.billNumber&&historyBill.canEdit===true,
    {status:billDetails.status(),historyBill});
   for (const route of ['PosTransactions','EditTransaction?transactionId='+transactionId,'BillNumberRegister/printDoc']) {
    const report=await a.c.request.get(base+'/apps/zenith/kot/'+route);
@@ -218,6 +218,37 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
    check(shell+' Home Dashboard adds the KOT bill exactly once to sales and charts',
     homeAfter.amount===homeBefore.amount+100&&homeAfter.chart===homeAfter.amount&&homeAfter.hourly===homeAfter.amount,
     {homeBefore,homeAfter});
+  }
+  const revisionReason='Disposable KOT history revision';
+  for (const [shell,view] of [['apps','list'],['qapps','grid']]) {
+   await clerkPage.goto(base+'/'+shell+'/zenith/kot/KotBilling?sessionId='+sessionId);
+   await clerkPage.locator('#kb-wrap[data-ready=true]').waitFor();
+   await clerkPage.locator('.kg-modes summary').click();
+   await clerkPage.locator('[data-kb-view="'+view+'"]').click();
+   await clerkPage.locator('#kb-history-open').click();
+   await clerkPage.locator('#kb-history [data-kb-history-detail]').filter({hasText:settled.billNumber}).click();
+   const editor=clerkPage.locator('#kb-history-detail.kb-bill-editor');
+   await editor.locator('[data-edit-quantity]').first().waitFor();
+   const expected=shell==='apps'?'1':'2';
+   check(shell+' '+view+' opens the full KOT editor with the saved bill',
+    await editor.locator('[data-edit-quantity]').first().inputValue()===expected&&
+    await editor.locator('[data-edit-rate]').first().isVisible()&&await editor.locator('[data-edit-remove]').first().isVisible()&&
+    await editor.locator('#kb-history-add').isVisible()&&await editor.locator('#kb-history-detail-reprint').innerText()==='Print bill'&&
+    await editor.locator('#kb-history-save').innerText()==='Save & print revised bill');
+   if(shell==='apps'){
+    await clerkPage.screenshot({path:path.join(out,'kot-cashier-history-editor.png')});
+    await editor.locator('[data-edit-quantity]').first().fill('2');
+    await editor.locator('#kb-history-save').click();
+    await clerkPage.locator('#kb-history-edit-reason').fill(revisionReason);
+    const savedResponse=clerkPage.waitForResponse(r=>r.url().endsWith('/kot/KotBilling/reviseHistoryBill'));
+    await clerkPage.locator('#kb-history-revision-save').click();
+    const response=await savedResponse;
+    const saved=await response.json();
+    const issued=q("SELECT transaction_number,payable_amount FROM pos_transaction WHERE transaction_id='"+transactionId+"'")[0];
+    check('KOT-only cashier saves an audited revision under the same bill number',response.ok()&&saved.success&&
+     issued.transaction_number===settled.billNumber&&Number(issued.payable_amount)===200&&
+     q("SELECT reason FROM pos_transaction_amendment WHERE transaction_id='"+transactionId+"'").some(row=>row.reason===revisionReason),saved);
+   }
   }
   const fixture = mode => post(a,'pos/PosQaAcceptance/kotSalesReportFixture',{mode,sessionId});
   const historicalDate='2040-02-01';
@@ -256,6 +287,14 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   const response=await post(kit,'kot/KotBilling/printRecord',{kotId:foreignId,kind:'kot'});
   const foreignBody=await response.json().catch(()=>({}));
   check('a KOT-only clerk cannot retrieve another organization’s ticket',response.status()===403||foreignBody.success===false,{status:response.status(),success:foreignBody.success});
+  const deniedRevision=await post(foreign,'kot/KotBilling/reviseHistoryBill',{
+   sessionId:foreignSession,kotId:draft.kotId,editReason:revisionReason,
+   editOps:JSON.stringify([{type:'QTY_CHANGE',seq:historyBill.items[0].seq,newQty:'3'}])
+  });
+  const deniedResult=await deniedRevision.json().catch(()=>({}));
+  check('KOT bill revision denies another organization and leaves the issued total unchanged',
+   (deniedRevision.status()===403||deniedResult.success===false)&&
+   Number(q("SELECT payable_amount FROM pos_transaction WHERE transaction_id='"+transactionId+"'")[0].payable_amount)===200);
   await require('./verify-kot-offline-drafts.cjs')({a,foreign,base,check,q,out});
  } finally { await clerk.close(); await page.close(); }
 };

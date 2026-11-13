@@ -78,6 +78,26 @@
         </actions>
     </service>
 
+    <service verb="get" noun="HistoryBill" authenticate="true" transaction="ignore">
+        <in-parameters><parameter name="sessionId" required="true"/><parameter name="kotId" required="true"/></in-parameters>
+        <out-parameters><parameter name="bill" type="Map"/></out-parameters>
+        <actions><script><![CDATA[
+            def billing = ec.service.sync().name('zenith.pos.KotServices.get#BillingSession').parameter('sessionId',sessionId).call()
+            if (!billing?.terminal) return
+            def org = billing.terminal.organizationPartyId
+            def ticket = ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('kotId',kotId)
+                .condition('organizationPartyId',org).one()
+            def tx = ticket?.transactionId ? ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',ticket.transactionId)
+                .condition('organizationPartyId',org).condition('statusId','PtCompleted').one() : null
+            if (!tx) return
+            def issuedAt = ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',tx.sessionId)
+                .condition('organizationPartyId',org).one()
+            if (issuedAt?.terminalId != billing.terminal.terminalId || (ticket.terminalId && ticket.terminalId != issuedAt.terminalId)) return
+            def scope = ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess').parameter('transactionId',tx.transactionId).call()
+            if (scope?.allowed) bill = tx.getMap()
+        ]]></script></actions>
+    </service>
+
     <service verb="complete" noun="KotBill">
         <in-parameters>
             <parameter name="sessionId" required="true"/><parameter name="kotId" required="true"/>

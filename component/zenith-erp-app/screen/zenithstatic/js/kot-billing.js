@@ -50,22 +50,22 @@
     for(const option of modesMenu.querySelectorAll('[data-kb-sales-mode]'))option.setAttribute('aria-pressed',String(option.dataset.kbSalesMode===salesModeId));
   }
 
-  function postRequest(path,action,data,signal) {
-    return fetch(path+'/'+action,{method:'POST',credentials:'same-origin',signal,
+  function postRequest(action,data,signal) {
+    return fetch(base+'/'+action,{method:'POST',credentials:'same-origin',signal,
       body:new URLSearchParams({...data,sessionId:cfg.session,moquiSessionToken:token()})});
   }
   const transportError=error=>error.name==='TypeError'||error.name==='TimeoutError';
   function probeConnection() {
-    if(!transportProbe)transportProbe=postRequest(base,'touchSession',{},AbortSignal.timeout?.(2500))
+    if(!transportProbe)transportProbe=postRequest('touchSession',{},AbortSignal.timeout?.(2500))
       .then(()=>true,()=>false).finally(()=>{transportProbe=null;});
     return transportProbe;
   }
-  async function request(action,data,signal,path=base) {
+  async function request(action,data,signal) {
     if(sessionLost)throw Error(signInMessage);
     const changesOrder=deviceDrafts&&(action==='checkoutKot'||action==='createKot'||(action==='saveDraft'&&!data.offlineDraftId));
     let response;
     try {
-      response=await postRequest(path,action,data,signal??AbortSignal.timeout?.(15000));
+      response=await postRequest(action,data,signal??AbortSignal.timeout?.(15000));
     } catch (error) {
       if(changesOrder)unconfirmedOrder=true;
       if(catalogue&&transportError(error)&&!transportDown) {
@@ -1533,7 +1533,6 @@
         })};
       } else data=billed?await request('historyBillDetails',params):(await request('printRecord',{...params,kind:'view'})).record;
       if(editingBill!==state||!historyDetail.open)return;
-      state.transactionId=data.transactionId;
       state.salesModeId=data.salesModeId||salesModeId;
       state.savedTotal=data.total;
       state.hasTax=data.items?.some(item=>Number(item.tax)>0);
@@ -1609,8 +1608,8 @@
       try{printWindow=KitchenPrint.open();}catch(failure){printError=failure;}
     }
     try{
-      const {bill}=await request('ajaxCart',{action:'amendBill',editTxId:state.transactionId,editReason:reason,
-        editOps:JSON.stringify(ops)},undefined,'/apps/zenith/pos/Terminal');
+      const {bill}=await request('reviseHistoryBill',{kotId:state.row.dataset.kotId,editReason:reason,
+        editOps:JSON.stringify(ops)});
       $('history-detail-lines').replaceChildren();
       state.lines=bill.items.map(item=>{
         const line={...item,rate:item.price};
