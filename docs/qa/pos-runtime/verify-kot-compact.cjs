@@ -457,7 +457,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
      const payment=root.querySelector('.kb-checkout-actions').getBoundingClientRect();
      const searchTop=root.querySelector('#kb-search').getBoundingClientRect().top;
      const cartBottom=root.querySelector('.kb-panel').getBoundingClientRect().bottom;
-     const summaryBottom=root.querySelector('.kl-grand').getBoundingClientRect().bottom;
+      const summaryBottom=root.querySelector('.kl-summary').getBoundingClientRect().bottom;
      return root.scrollHeight<=root.clientHeight+1&&payment.bottom<=innerHeight&&
       cartBottom<=searchTop&&summaryBottom<=searchTop;
     });
