@@ -189,7 +189,7 @@
         <container-box><box-header title="Manage opportunities"/><box-body>
             <render-mode><text type="html,qvt"><![CDATA[<span class="zlc-ph" data-ph="Search Pipeline..." style="display:none"></span>]]></text></render-mode>
             <section name="NoOpportunities" condition="oppList.isEmpty()"><widgets><container style="zcrm-empty"><label text="No opportunities match this search. Clear filters or create an opportunity." type="p"/></container></widgets></section>
-            <form-list name="OppListForm" list="oppList" skip-form="true" header-dialog="true"
+            <form-list name="OppListForm" list="oppList" transition="advanceStage" header-dialog="true"
                        show-csv-button="true" show-xlsx-button="true" show-page-size="true">
                 <field name="salesOpportunityId">
                     <default-field title="ID"><display/></default-field>
@@ -227,16 +227,17 @@
                 </field>
                 <field name="assignedToUserId"><default-field title="Owner"><display/></default-field></field>
                 <field name="leadSourceId"><default-field title="Source"><display text="${leadSourceId ?: 'Unknown'}"/></default-field></field>
-                <field name="stageAction">
-                    <conditional-field name="stageAction_write" condition="modCanWrite" title="Action">
-                    <drop-down allow-empty="true" submit-on-change="true" transition="advanceStage"
-                               parameter-map="[salesOpportunityId:salesOpportunityId]" parameter-name="opportunityStageId">
-                        <list-options list="openStages" key="${opportunityStageId}" text="${description}"/>
-                    </drop-down>
+                <field name="opportunityStageId">
+                    <conditional-field name="stageAction_write" condition="modCanWrite" title="Move to stage">
+                        <drop-down><list-options list="openStages" key="${opportunityStageId}" text="${description}"/></drop-down>
                     </conditional-field>
                     <default-field><label text="" type="span"/></default-field>
                 </field>
-                <field name="submitButton"><header-field title="Find"><submit/></header-field></field>
+                <field name="submitButton">
+                    <header-field title="Find"><submit/></header-field>
+                    <conditional-field name="saveStage_write" condition="modCanWrite" title="Action"><submit text="Move"/></conditional-field>
+                    <default-field><label text="" type="span"/></default-field>
+                </field>
             </form-list>
         </box-body></container-box>
     </widgets>

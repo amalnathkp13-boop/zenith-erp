@@ -139,7 +139,7 @@ async function scenario(name,fn){try{await fn();}catch(error){check(name,false,{
     await a.post('Crm/Workflows/saveWorkflow',rule);
     const taskFilter = `sales_opportunity_id=${quote(id)} AND subject=${quote(rule.taskSubject)}`;
     const move = {salesOpportunityId:id,opportunityStageId:rule.opportunityStageId};
-    await a.invoke('opportunity.advance',move);
+    await a.post('Crm/Pipeline/advanceStage',move);
     await a.invoke('opportunity.advance',{...move,opportunityStageId:'SoProspecting'});
     await a.invoke('opportunity.advance',move);
     const tasks = q(`SELECT organization_party_id, activity_type, status_id, due_date FROM crm_activity WHERE ${taskFilter}`);
