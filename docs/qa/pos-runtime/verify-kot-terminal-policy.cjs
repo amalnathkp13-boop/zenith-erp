@@ -48,9 +48,10 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await invoke('void',{transactionId:tx.transactionId});
   await page.goto(base+'/qapps/zenith/kot/KotBilling?sessionId='+sessionId);
   await page.locator('#kb-wrap[data-ready=true]').waitFor();
+  check('KOT billing defaults to tax off',await page.getByRole('switch',{name:'Tax'}).getAttribute('aria-checked')==='false');
   await page.locator('#kb-search').fill('POS_QA_A_P18');
   await page.locator('#kb-suggestions [data-result]').first().click();
-  await page.locator('#kb-grand').getByText('₹118.00').waitFor();
+  await page.locator('#kb-grand').getByText('₹100.00').waitFor();
   const sendShortcut=async()=>{
    await page.evaluate(()=>document.activeElement?.blur());
    await page.keyboard.press('Shift');

@@ -237,11 +237,22 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await page.locator('#kb-instr').fill('No onion');
   await page.locator('#kb-instr').press('Space');
   check('Space in kitchen notes does not open checkout',!await page.locator('#kb-payment').isVisible());
-  await page.getByRole('switch',{name:'Tax'}).click();
+  const taxOnSaved=page.waitForResponse(response=>response.url().endsWith('/saveTaxPreference'));
+  await taxSwitch.click();
   await page.locator('#kb-grand').getByText('₹236.00').waitFor();
   check('List View shows tax from the shared quote',await page.locator('#kb-list-tax').innerText()==='₹36.00');
-  await page.getByRole('switch',{name:'Tax'}).click();
+  check('KOT saves the enabled tax preference',(await (await taxOnSaved).json()).success);
+  const freshPage=await printContext.newPage();
+  try {
+   await freshPage.goto(billingUrl);
+   await freshPage.locator('#kb-wrap[data-ready=true]').waitFor();
+   check('A fresh KOT billing page reads the saved tax preference',
+    await freshPage.getByRole('switch',{name:'Tax'}).getAttribute('data-preference')==='Y');
+  } finally { await freshPage.close(); }
+  const taxOffSaved=page.waitForResponse(response=>response.url().endsWith('/saveTaxPreference'));
+  await taxSwitch.click();
   await page.locator('#kb-grand').getByText('₹200.00').waitFor();
+  check('KOT saves the disabled tax preference',(await (await taxOffSaved).json()).success);
   await page.screenshot({path:path.join(out,'kot-compact-billing.png')});
   await search.press('Space');
   await page.locator('#kb-payment').waitFor();
