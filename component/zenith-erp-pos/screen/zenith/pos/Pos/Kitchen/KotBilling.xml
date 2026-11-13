@@ -847,7 +847,7 @@
     <input type="hidden" id="kb-table" value="" data-labels="${tableLabelsJson?html}"/>
     <label class="kb-fld"><select class="nb-pill" id="kb-waiter" aria-label="Waiter"><option value="">Choose waiter</option><#list waiters as w><option value="${w.waiterId?html}">${w.waiterName?html}</option></#list></select></label>
     <div class="kb-toolbar-end">
-      <#if modCanWrite><button type="button" class="kb-control nb-power" id="kb-close-session" aria-label="Close session" aria-keyshortcuts="C" title="Review cash and close this POS session"><@ic 'close-session' 22/> Close session <kbd aria-hidden="true">C</kbd></button></#if>
+      <#if modCanWrite><button type="button" class="kb-control nb-power" id="kb-close-session" aria-label="Close" aria-keyshortcuts="C" title="Review cash and close this POS session"><@ic 'close-session' 22/> Close <kbd aria-hidden="true">C</kbd></button></#if>
       <button type="button" class="kb-control nb-abtn nb-abtn--icon" id="kb-fullscreen" title="Enter fullscreen" aria-pressed="false"><@ic 'fullscreen' 22 'kb-enter-fullscreen'/><@ic 'x' 22 'kb-exit-fullscreen'/><span id="kb-fullscreen-label">Enter fullscreen</span></button>
     </div>
   </div>
