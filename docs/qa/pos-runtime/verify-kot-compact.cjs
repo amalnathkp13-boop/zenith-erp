@@ -57,7 +57,9 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await page.locator('#kb-waiter').selectOption({label:waiterName});
   await page.locator('[data-ot="Take Away"]').click();
   check('List View has no table picker',await page.locator('#kb-table-field').count()===0&&await page.locator('#kb-table').isHidden());
-  await page.getByRole('switch',{name:'Tax'}).click();
+  const taxSwitch=page.getByRole('switch',{name:'Tax'});
+  if(await taxSwitch.getAttribute('aria-checked')==='true')await taxSwitch.click();
+  check('List View omits the keypad instructions',await page.locator('#kb-key-help').count()===0);
   const search=page.locator('#kb-search');
   const fullscreen=page.locator('#kb-fullscreen');
   const listMode=modes.getByRole('button',{name:'List View',exact:true});
@@ -68,6 +70,8 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await listMode.getAttribute('aria-pressed')==='true'&&
    await page.getByRole('button',{name:/^(Grid|List) View/}).count()===2);
   await gridMode.click();
+  check('Grid View keeps the tax setting and omits the keypad instructions',
+   await taxSwitch.getAttribute('aria-checked')==='false'&&await page.locator('#kb-key-help').count()===0);
   check('Grid View has no table picker',await page.locator('#kb-table-field').count()===0&&await page.locator('#kb-table').isHidden());
   check('Grid puts Hold Bills between Tax and History',
    await page.locator('#kb-tax-toggle + #kb-held-open:has(+ #kb-history-open)').isVisible());
@@ -128,6 +132,12 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   check('Spaces within product names stay in search',await search.inputValue()==='Disposable POS A P18'&&!await page.locator('#kb-payment').isVisible());
   await card.click();
   await page.locator('#kb-grand').getByText('₹100.00').waitFor();
+  const quantity=page.locator('#kb-cart [data-kb-edit="qty"]');
+  await quantity.fill('2');
+  await page.locator('#kb-grand').getByText('₹200.00').waitFor();
+  check('Grid recalculates while quantity still has focus',await quantity.evaluate(el=>el===document.activeElement));
+  await quantity.fill('1');
+  await page.locator('#kb-grand').getByText('₹100.00').waitFor();
   await page.getByRole('button',{name:/^UPI F5$/}).click();
   check('Grid payment buttons open the existing checkout with the selected tender',await page.locator('#kb-payment-method').inputValue()==='UPI');
   check('Grid UPI confirmation has no reference field',await page.locator('#kb-payment [name=referenceNumber]').count()===0);
@@ -181,7 +191,8 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   check('List View shows the same cart and quote with a bill summary and no grid controls',
    !await page.locator('#kb-product-grid').isVisible()&&
    await page.getByRole('heading',{name:'Bill Items (1)'}).isVisible()&&
-   await page.locator('#kb-list-grand').innerText()==='₹100.00'&&
+   await page.locator('#kb-list-subtotal').innerText()==='₹100.00'&&
+   await page.locator('#kb-list-round').innerText()==='₹0.00'&&
    await page.locator('#kb-list-type').innerText()==='Take Away'&&
    await page.locator('#kb-list-waiter').innerText()===waiterName&&
    await page.getByRole('button',{name:/^(Grid|List) View/}).count()===0);
@@ -219,14 +230,30 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await page.unroute('**/searchMenu',interceptLookup);
   check('An exact product code increments the existing line',await page.locator('#kb-cart tr').count()===1);
   check('Enter during a pending lookup reuses the request and adds the product once',codeRequests.length===1);
+  await quantity.fill('3');
+  await page.locator('#kb-list-subtotal').getByText('₹300.00').waitFor();
+  check('List recalculates while quantity still has focus',await quantity.evaluate(el=>el===document.activeElement));
+  await quantity.fill('2');
+  await page.locator('#kb-list-subtotal').getByText('₹200.00').waitFor();
   await page.locator('#kb-instr').fill('No onion');
   await page.locator('#kb-instr').press('Space');
   check('Space in kitchen notes does not open checkout',!await page.locator('#kb-payment').isVisible());
-  await page.getByRole('switch',{name:'Tax'}).click();
+  const taxOnSaved=page.waitForResponse(response=>response.url().endsWith('/saveTaxPreference'));
+  await taxSwitch.click();
   await page.locator('#kb-grand').getByText('₹236.00').waitFor();
   check('List View shows tax from the shared quote',await page.locator('#kb-list-tax').innerText()==='₹36.00');
-  await page.getByRole('switch',{name:'Tax'}).click();
+  check('KOT saves the enabled tax preference',(await (await taxOnSaved).json()).success);
+  const freshPage=await printContext.newPage();
+  try {
+   await freshPage.goto(billingUrl);
+   await freshPage.locator('#kb-wrap[data-ready=true]').waitFor();
+   check('A fresh KOT billing page reads the saved tax preference',
+    await freshPage.getByRole('switch',{name:'Tax'}).getAttribute('data-preference')==='Y');
+  } finally { await freshPage.close(); }
+  const taxOffSaved=page.waitForResponse(response=>response.url().endsWith('/saveTaxPreference'));
+  await taxSwitch.click();
   await page.locator('#kb-grand').getByText('₹200.00').waitFor();
+  check('KOT saves the disabled tax preference',(await (await taxOffSaved).json()).success);
   await page.screenshot({path:path.join(out,'kot-compact-billing.png')});
   await search.press('Space');
   await page.locator('#kb-payment').waitFor();
@@ -429,15 +456,20 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await page.keyboard.press('ArrowDown');
    check(view+' Down from empty search moves to Cash',await page.locator('[data-kb-payment=Cash]').evaluate(el=>el===document.activeElement));
    if(view==='List'){
-    const fits=await page.locator('#kb-wrap').evaluate(root=>{
-     const payment=root.querySelector('.kb-checkout-actions').getBoundingClientRect();
-     const searchTop=root.querySelector('#kb-search').getBoundingClientRect().top;
-     const cartBottom=root.querySelector('.kb-panel').getBoundingClientRect().bottom;
-     const summaryBottom=root.querySelector('.kl-grand').getBoundingClientRect().bottom;
-     return root.scrollHeight<=root.clientHeight+1&&payment.bottom<=innerHeight&&
-      cartBottom<=searchTop&&summaryBottom<=searchTop;
-    });
-    check('List View keeps the cart and payment row in one viewport',fits);
+    const layout=await page.locator('#kb-wrap').evaluate(root=>({
+     scrollHeight:root.scrollHeight,clientHeight:root.clientHeight,viewportHeight:innerHeight,
+     paymentBottom:root.querySelector('.kb-checkout-actions').getBoundingClientRect().bottom,
+     searchTop:root.querySelector('#kb-search').getBoundingClientRect().top,
+     cartBottom:root.querySelector('.kb-panel').getBoundingClientRect().bottom,
+     summaryBottom:root.querySelector('.kl-summary').getBoundingClientRect().bottom,
+     sizes:['.kb-toolbar','.kl-workspace','.kl-side','.kl-side>.kl-card','.kl-summary-stack','.kl-summary','#kb-stats','.kb-bottom'].map(selector=>{
+      const el=root.querySelector(selector),rect=el.getBoundingClientRect();
+      return [selector,rect.top,rect.height,el.scrollHeight,getComputedStyle(el).gridTemplateRows];
+     })
+    }));
+    check('List View keeps the cart and payment row in one viewport',
+     layout.scrollHeight<=layout.clientHeight+1&&layout.paymentBottom<=layout.viewportHeight&&
+     layout.cartBottom<=layout.searchTop&&layout.summaryBottom<=layout.searchTop,layout);
    }
    await page.keyboard.press('ArrowRight');
    await page.keyboard.press('Enter');

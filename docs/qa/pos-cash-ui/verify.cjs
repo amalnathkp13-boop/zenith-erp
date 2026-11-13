@@ -15,12 +15,18 @@ async function run(){for(const engine of (process.env.POS_CASH_BROWSERS||'chrome
  try{for(const dark of [false,true])for(const due of [247,118]){
   const p=await browser.newPage({viewport:{width:800,height:900}}),name=`${engine} ${dark?'dark':'light'} due ${due}`;
   try{
-   await p.setContent('<body><form id="cash"><input name="amount" type="hidden" value="'+due+'"></form></body>');
+   await p.setContent('<body><input id="rate" value="30"><form id="cash"><input name="amount" type="hidden" value="'+due+'"></form></body>');
    await p.addStyleTag({content:css});await p.evaluate(d=>document.body.classList.toggle('body--dark',d),dark);
    await p.addScriptTag({content:shared});
    await p.evaluate(d=>document.body.insertAdjacentHTML('beforeend',window.PosTillDialogs.cashMarkup(d)),due);
    await p.addScriptTag({content:source.slice(start,end)});
-   await p.evaluate(()=>{const f=document.getElementById('cash');f.addEventListener('submit',e=>{e.preventDefault();window.submits=(window.submits||0)+1;});window.posPayCash(f);});
+   await p.evaluate(()=>{const f=document.getElementById('cash');f.addEventListener('submit',e=>{e.preventDefault();window.submits=(window.submits||0)+1;});document.getElementById('rate').focus();window.posPayCash(f);});
+   if(!await p.locator('#posCashTenderOverlay').evaluate(el=>el.matches(':modal'))||await p.evaluate(()=>document.activeElement.id)!=='posCashRecv')throw Error('Cash dialog did not take modal focus');
+   await p.keyboard.type('525');if(await p.locator('#rate').inputValue()!=='30')throw Error('Cash keystrokes changed the background Rate');
+   await p.keyboard.press('Escape');if(await p.locator('#posCashTenderOverlay').count())throw Error('Escape did not close Cash');
+   await p.evaluate(()=>window.posPayCash(document.getElementById('cash')));
+   await p.mouse.click(1,1);if(await p.locator('#posCashTenderOverlay').count())throw Error('Backdrop did not close Cash');
+   await p.evaluate(()=>window.posPayCash(document.getElementById('cash')));
    for(const selector of ['#posCashRecv','.pos-cash-input'])for(const state of ['default','focused','filled','blurred']){
     const field=p.locator(selector);if(state==='focused')await field.focus();if(state==='filled')await field.fill('300');if(state==='blurred')await field.blur();
     const style=await field.evaluate(e=>{const c=getComputedStyle(e);return{background:c.backgroundColor,color:c.color,scheme:c.colorScheme,caret:c.caretColor,outline:c.outlineStyle};});
@@ -34,6 +40,9 @@ async function run(){for(const engine of (process.env.POS_CASH_BROWSERS||'chrome
    await p.locator('.posCashDeno[data-deno="50"]').click();if(Number(await p.locator('#posCashRecv').inputValue())!==due+50)throw Error('Denomination');
    await p.screenshot({path:path.join(out,engine+'-'+(dark?'dark':'light')+'-'+due+'.png')});
    await p.locator('#posCashConfirm').click();if(!await p.evaluate(d=>window.submits===1&&Number(document.querySelector('#cash [name=amount]').value)===d+50,due))throw Error('Confirmation did not preserve tender');
+   await p.evaluate(d=>{const f=document.getElementById('cash');delete f.dataset.posPaymentConfirmed;f.querySelector('[name=amount]').value=d;window.posPayCash(f);},due);
+   await p.locator('#posCashExact').focus();await p.keyboard.press('Enter');
+   if(!await p.evaluate(d=>window.submits===2&&Number(document.querySelector('#cash [name=amount]').value)===d,due))throw Error('Enter on Exact did not confirm payment');
    results.push({name,passed:true,version:browser.version()});
   }catch(e){results.push({name,passed:false,error:e.message});}finally{await p.close();}
  }}finally{await browser.close();fs.writeFileSync(path.join(out,'report.json'),JSON.stringify(results,null,2));}

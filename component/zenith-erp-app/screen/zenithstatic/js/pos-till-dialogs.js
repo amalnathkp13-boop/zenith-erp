@@ -78,32 +78,82 @@
     }
 
     function splitMarkup(total, formOpen = '', formClose = '') {
-        return '<div class="pos-split-panel" style="border:2px solid #7C3AED;border-radius:10px;padding:14px;background:#ECE8FB">'
-            + '<div style="text-align:center;font-size:17px;font-weight:700;color:#7C3AED;margin-bottom:6px" id="pos-split-title">SPLIT PAYMENT</div>'
-            + '<div style="text-align:center;font-size:24px;font-weight:800;color:#333;margin-bottom:14px">Total: '+CS+fmt(total)+'</div>'
+        const methods = [
+            ['Cash', 'cash', '&#128176;'], ['UPI', 'upi', '&#128241;'], ['Card', 'card', '&#128179;']
+        ];
+        const rows = methods.map(([label, key, icon]) =>
+            '<div class="pos-split-method" data-method="'+key+'">'
+            + '<div class="pos-split-row"><label for="pos-split-'+key+'" class="pos-split-label"><span aria-hidden="true">'+icon+'</span> '+label+'</label>'
+            + '<div class="pos-split-amount"><span aria-hidden="true">'+CS+'</span><input id="pos-split-'+key+'" type="number" name="'+key+'Amount" aria-label="'+label+' amount" value="0" step="0.01" min="0" inputmode="decimal" autocomplete="off"/></div>'
+            + '<button type="button" class="pos-split-fill" data-fill="'+key+'" aria-label="Fill remaining with '+label+'">Fill remaining</button></div>'
+            + (key === 'cash' ? '' : '<div class="pos-split-ref" hidden><label for="pos-split-'+key+'-ref">'+label+' reference <span>(optional)</span></label><input id="pos-split-'+key+'-ref" type="text" name="'+key+'Ref" placeholder="Enter '+label+' reference" autocomplete="off"/></div>')
+            + '</div>'
+        ).join('');
+        return '<div class="pos-split-panel" role="group" aria-labelledby="pos-split-title">'
+            + '<header class="pos-split-header"><span class="pos-split-kicker">CHECKOUT</span><h2 id="pos-split-title">Split payment</h2><p>Allocate the bill across payment methods.</p></header>'
             + formOpen
-            + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
-            + '<span style="min-width:55px;font-size:14px;font-weight:700;color:#2e7d32;text-align:right">&#128176; Cash</span>'
-            + '<input type="number" name="cashAmount" aria-label="Cash amount" value="0" step="any" min="0" onfocus="this.select()" style="flex:1;padding:12px 10px;border:2px solid #4caf50;border-radius:8px;font-size:18px;text-align:right;box-sizing:border-box;outline:none"/>'
-            + '</div>'
-            + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'
-            + '<span style="min-width:55px;font-size:14px;font-weight:700;color:#7C3AED;text-align:right">&#128179; Card</span>'
-            + '<input type="number" name="cardAmount" aria-label="Card amount" value="0" step="any" min="0" onfocus="this.select()" style="flex:1;padding:12px 10px;border:2px solid #2196f3;border-radius:8px;font-size:18px;text-align:right;box-sizing:border-box;outline:none"/>'
-            + '</div>'
-            + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding-left:65px">'
-            + '<input type="text" name="cardRef" aria-label="Card reference number" placeholder="Card reference #" style="flex:1;padding:8px 10px;border:1px solid #ccc;border-radius:6px;font-size:13px;box-sizing:border-box;outline:none"/>'
-            + '</div>'
-            + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'
-            + '<span style="min-width:55px;font-size:14px;font-weight:700;color:#7b1fa2;text-align:right">&#128241; UPI</span>'
-            + '<input type="number" name="upiAmount" aria-label="UPI amount" value="0" step="any" min="0" onfocus="this.select()" style="flex:1;padding:12px 10px;border:2px solid #9c27b0;border-radius:8px;font-size:18px;text-align:right;box-sizing:border-box;outline:none"/>'
-            + '</div>'
-            + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-left:65px">'
-            + '<input type="text" name="upiRef" aria-label="UPI reference number" placeholder="UPI reference #" style="flex:1;padding:8px 10px;border:1px solid #ccc;border-radius:6px;font-size:13px;box-sizing:border-box;outline:none"/>'
-            + '</div>'
-            + '<button type="submit" style="width:100%;padding:16px;background:#7C3AED;color:#fff;border:none;border-radius:10px;font-size:17px;font-weight:700;cursor:pointer;margin-bottom:8px">&#10003; CONFIRM SPLIT</button>'
-            + formClose
-            + '<button type="button" class="pos-split-cancel" style="display:block;width:100%;text-align:center;padding:12px;background:#f5f5f5;border:none;border-radius:8px;color:#666;font-size:14px;font-weight:600;cursor:pointer">&#10006; CANCEL</button>'
-            + '</div>';
+            + '<div class="pos-split-summary" aria-live="polite">'
+            + '<div><span>Bill total</span><strong>'+CS+fmt2(total)+'</strong></div>'
+            + '<div><span>Total entered</span><strong class="pos-split-entered">'+CS+'0.00</strong></div>'
+            + '<div class="pos-split-balance"><span>Remaining balance</span><strong class="pos-split-remaining">'+CS+fmt2(total)+'</strong></div></div>'
+            + '<div class="pos-split-methods">'+rows+'</div>'
+            + '<p class="pos-split-hint" aria-live="polite">Enter the payment amounts to cover the bill.</p>'
+            + '<div class="pos-split-actions"><button type="button" class="pos-split-cancel">Cancel</button><button type="submit" class="pos-split-confirm" disabled>Confirm split</button></div>'
+            + formClose + '</div>';
+    }
+
+    function updateSplit(panel, total, options = {}) {
+        const keys = ['cash', 'card', 'upi'];
+        const inputs = keys.map(key => panel.querySelector('[name="'+key+'Amount"]'));
+        const valid = inputs.every(input => input.value !== '' && input.validity.valid && Number.isFinite(Number(input.value)));
+        const amounts = inputs.map(input => Math.round(Number(input.value || 0) * 100));
+        const bill = Math.round(Number(total) * 100);
+        const entered = amounts.reduce((sum, amount) => sum + amount, 0);
+        const remaining = Math.max(0, bill - entered);
+        const change = Math.max(0, entered - bill);
+        const noncash = amounts[1] + amounts[2];
+        const cashChange = change > 0 && noncash === 0 && !options.exact;
+        const canConfirm = valid && bill > 0 && entered >= bill && noncash <= bill
+            && (entered === bill || cashChange)
+            && amounts.filter(amount => amount > 0).length >= (options.minMethods || 1);
+        panel.querySelector('.pos-split-entered').textContent = CS + fmt2(entered / 100);
+        const balance = panel.querySelector('.pos-split-balance');
+        balance.classList.toggle('is-paid', remaining === 0 && canConfirm);
+        balance.classList.toggle('is-change', cashChange && valid);
+        balance.querySelector('span').textContent = cashChange ? 'Change due' : 'Remaining balance';
+        panel.querySelector('.pos-split-remaining').textContent = CS + fmt2((cashChange ? change : remaining) / 100);
+        keys.slice(1).forEach((key, index) => {
+            panel.querySelector('[data-method="'+key+'"] .pos-split-ref').hidden = amounts[index + 1] <= 0;
+        });
+        panel.querySelector('.pos-split-hint').textContent = !valid ? 'Enter valid amounts with up to two decimal places.'
+            : noncash > bill ? 'Card and UPI together cannot exceed the bill total.'
+            : entered > bill && !cashChange ? 'Card and UPI splits must add up exactly to the bill total.'
+            : remaining > 0 ? 'Add '+CS+fmt2(remaining / 100)+' to cover the bill.'
+            : options.minMethods && amounts.filter(amount => amount > 0).length < options.minMethods ? 'Use at least two payment methods.'
+            : change > 0 ? 'Return '+CS+fmt2(change / 100)+' in cash change.' : 'Ready to complete the bill.';
+        panel.querySelector('.pos-split-confirm').disabled = !canConfirm;
+        return canConfirm;
+    }
+
+    function bindSplit(panel, total, options = {}) {
+        panel.addEventListener('input', event => {
+            if (event.target.matches('.pos-split-amount input')) updateSplit(panel, total, options);
+        });
+        panel.addEventListener('focusin', event => {
+            if (event.target.matches('.pos-split-amount input')) event.target.select();
+        });
+        panel.addEventListener('click', event => {
+            const fill = event.target.closest('.pos-split-fill');
+            if (!fill) return;
+            const key = fill.dataset.fill;
+            const others = ['cash', 'card', 'upi'].filter(method => method !== key)
+                .reduce((sum, method) => sum + Math.round(Number(panel.querySelector('[name="'+method+'Amount"]').value || 0) * 100), 0);
+            const input = panel.querySelector('[name="'+key+'Amount"]');
+            input.value = (Math.max(0, Math.round(total * 100) - others) / 100).toFixed(2);
+            updateSplit(panel, total, options);
+            input.focus();
+        });
+        updateSplit(panel, total, options);
     }
 
     function creditMarkup() {
@@ -215,5 +265,5 @@
         dialog.showModal(); update(); input.focus(); input.select();
     }
 
-    window.PosTillDialogs = {cashMarkup, updateCash, digitalMarkup, upiReceiptMarkup, splitMarkup, creditMarkup, openClose};
+    window.PosTillDialogs = {cashMarkup, updateCash, digitalMarkup, upiReceiptMarkup, splitMarkup, updateSplit, bindSplit, creditMarkup, openClose};
 })();

@@ -3077,7 +3077,7 @@ window.posPayCash = function(form) {
     if (window._posWaitForEdits && window._posWaitForEdits(form)) return false;
     if (form.dataset.posPaymentConfirmed === '1') return true;
     // Cash tender modal: quick denomination buttons + editable amount + live change.
-    // Defensive: any script error must NOT block checkout -> fall through to a normal exact-amount submit.
+    // Keep the cart inert while the cashier enters received cash.
     try {
         var f = form.querySelector('input[name="amount"]');
         var due = parseFloat(f ? f.value : '0') || 0;
@@ -3085,9 +3085,9 @@ window.posPayCash = function(form) {
         var old = document.getElementById('posCashTenderOverlay');
         if (old && old.parentNode) old.parentNode.removeChild(old);
         var denoms = [10, 20, 50, 100, 200, 500, 2000];
-        var ov = document.createElement('div');
+        var ov = document.createElement('dialog');
         ov.id = 'posCashTenderOverlay';
-        ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.55);z-index:2147483600;display:flex;align-items:center;justify-content:center;padding:12px';
+        ov.style.cssText = 'border:0;padding:0;background:transparent;max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);overflow:visible';
         var denomBtns = denoms.map(function(d) {
             return '<button type="button" data-deno="' + d + '" class="posCashDeno" style="padding:14px 4px;font-size:16px;font-weight:700;border:2px solid #4caf50;background:#e8f5e9;color:#2e7d32;border-radius:10px;cursor:pointer">+' + d + '</button>';
         }).join('');
@@ -3105,7 +3105,9 @@ window.posPayCash = function(form) {
             + '<button type="button" id="posCashConfirm" style="flex:2;padding:14px;font-size:16px;font-weight:800;border:none;background:#4caf50;color:#fff;border-radius:10px;cursor:pointer">Confirm &amp; Complete</button></div>'
             + '</div>';
         document.body.appendChild(ov);
+        ov.showModal();
         var recvInp = ov.querySelector('#posCashRecv');
+        recvInp.focus(); recvInp.select();
         var changeEl = ov.querySelector('#posCashChange');
         var confirmBtn = ov.querySelector('#posCashConfirm');
         function refresh() {
@@ -3131,7 +3133,7 @@ window.posPayCash = function(form) {
         ov.querySelector('#posCashExact').addEventListener('click', function() { recvInp.value = due.toFixed(2); refresh(); });
         ov.querySelector('#posCashClear').addEventListener('click', function() { recvInp.value = '0'; refresh(); recvInp.focus(); });
         recvInp.addEventListener('input', refresh);
-        function closeOv() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
+        function closeOv() { if (ov.open) ov.close(); ov.remove(); }
         var confirmed = false;
         function doConfirm() {
             var r = parseFloat(recvInp.value) || 0;
@@ -3144,15 +3146,23 @@ window.posPayCash = function(form) {
         }
         ov.querySelector('#posCashCancel').addEventListener('click', closeOv);
         confirmBtn.addEventListener('click', doConfirm);
-        ov.addEventListener('click', function(e) { if (e.target === ov) closeOv(); });
+        ov.addEventListener('click', function(e) {
+            var box = ov.getBoundingClientRect();
+            if (e.target === ov && (e.clientX < box.left || e.clientX > box.right || e.clientY < box.top || e.clientY > box.bottom)) closeOv();
+        });
+        ov.addEventListener('cancel', function(e) { e.preventDefault(); closeOv(); });
         recvInp.addEventListener('keydown', function(e) {
             if (e.key === 'Enter') { e.preventDefault(); doConfirm(); }
-            else if (e.key === 'Escape') { closeOv(); }
+        });
+        ov.addEventListener('keydown', function(e) {
+            if (e.key !== 'Enter' || !e.target.matches('.posCashDeno,#posCashExact')) return;
+            e.preventDefault();
+            e.target.click();
+            doConfirm();
         });
         refresh();
-        setTimeout(function() { try { recvInp.focus(); recvInp.select(); } catch (e) {} }, 50);
         return false;
-    } catch (e) { return true; }
+    } catch (e) { console.error('Cash payment dialog failed', e); return false; }
 };
 
 window.posPayDigital = function(form) {
@@ -5665,6 +5675,10 @@ window.posToggleFullscreen = function() {
             }
             if (act.indexOf('splitPayAndComplete') !== -1) {
                 e.preventDefault();
+                if (!PosTillDialogs.updateSplit(form.closest('.pos-split-panel'), lastPay)) {
+                    showToast('Check the split amounts before completing the bill.', '#c62828');
+                    return;
+                }
                 var fd = new FormData(form);
                 fd.set('transactionId', TX); fd.set('sessionId', SI);
                 fd.set('salesModeId', SM); fd.set('moquiSessionToken', TK);
@@ -5672,11 +5686,6 @@ window.posToggleFullscreen = function() {
                 var cAmt = Number(fd.get('cashAmount') || 0);
                 var dAmt = Number(fd.get('cardAmount') || 0);
                 var uAmt = Number(fd.get('upiAmount') || 0);
-                var splitTotal = cAmt + dAmt + uAmt;
-                if (splitTotal < lastPay) {
-                    showToast('Split total (' + CS + fmt(splitTotal) + ') is less than the payable amount (' + CS + fmt(lastPay) + '). Please adjust.', '#c62828');
-                    return;
-                }
                 var splitParts = [];
                 if (cAmt > 0) splitParts.push(CS + fmt(cAmt) + ' Cash');
                 if (dAmt > 0) splitParts.push(CS + fmt(dAmt) + ' Card');
@@ -5708,7 +5717,7 @@ window.posToggleFullscreen = function() {
                     })
                     .catch(function(err) {
                         showToast('Split payment error: ' + err.message, '#c62828');
-                        if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.textContent = '✓ CONFIRM SPLIT'; }
+                        if (btn) { btn.style.opacity = ''; btn.textContent = 'Confirm split'; PosTillDialogs.updateSplit(form.closest('.pos-split-panel'), lastPay); }
                     });
             }
         }, true);
@@ -5726,7 +5735,9 @@ window.posToggleFullscreen = function() {
                     var totalEl = smRoot.querySelector('[style*="font-size:28px"], [style*="font-size: 28px"]');
                     if (totalEl) { var m = totalEl.textContent.replace(/[^\d.]/g, ''); lastPay = Number(m) || 0; lastCartData.pay = lastPay; }
                 }
-                openPaymentPanel(buildSplitPanel);
+                openPaymentPanel(buildSplitPanel, function() {
+                    PosTillDialogs.bindSplit(smRoot.querySelector('.pos-split-panel'), lastPay);
+                });
             }
             if (e.target.closest('.pos-split-cancel') || (link && link.href && link.href.indexOf('cancelSplitPay') !== -1)) {
                 e.preventDefault();

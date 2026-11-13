@@ -80,6 +80,18 @@
         <default-response type="none"/>
     </transition>
 
+    <transition name="saveTaxPreference" method="post">
+        <actions><script><![CDATA[
+            def billing = ec.service.sync().name('zenith.pos.KotServices.get#BillingSession')
+                .parameter('sessionId', sessionId).call()
+            if (!billing?.terminal || !(taxOn in ['Y', 'N'])) {
+                ec.web.sendJsonResponse([success:false, error:ec.message.errorsString ?: 'Could not save your tax preference.']); return
+            }
+            ec.user.setPreference('KOT_BILLING_TAX_' + billing.terminal.organizationPartyId, taxOn)
+            ec.web.sendJsonResponse([success:!ec.message.hasError(), error:ec.message.errorsString])
+        ]]></script></actions><default-response type="none"/>
+    </transition>
+
     <transition name="sessionDrawer" method="post" begin-transaction="true">
         <actions><script><![CDATA[
             def fail={ String reason -> ec.message.addError(reason); ec.web.sendJsonResponse([success:false,error:reason]) }
@@ -595,6 +607,7 @@
                 entryTerminals=terminals.list().findAll { !scope.terminalRestricted || it.terminalId in (scope.allowedTerminalIds ?: []) }
                 return
             }
+            billingTaxPreference = ec.user.getPreference('KOT_BILLING_TAX_' + billingTerminal.organizationPartyId) == 'Y' ? 'Y' : 'N'
             def shop=billingTerminal.facilityId
             kitchenDisplayEnabled=ec.service.sync().name('zenith.pos.KotServices.get#KitchenDisplayPolicy').parameter('facilityId',shop).call().enabled
             modes=ec.service.sync().name('zenith.pos.PosModeServices.get#TerminalModes').parameter('terminalId',billingTerminal.terminalId).call().modes ?: []
@@ -695,7 +708,7 @@
                 def selected = ec.service.sync().name('zenith.pos.KotServices.resolve#KotTable').parameters([tableId:ec.context.tableId]).call()?.table
                 if (selected && selected.facilityId == shop) selectedTableId = selected.tableId
             }
-            draftLoadTable = ''; draftLoadType = ''; draftLoadInstr = ''; draftLoadTax = 'Y'; draftLoadMode = ''; draftLoadWaiter = ''; draftReceiptLines = []
+            draftLoadTable = ''; draftLoadType = ''; draftLoadInstr = ''; draftLoadTax = billingTaxPreference; draftLoadMode = ''; draftLoadWaiter = ''; draftReceiptLines = []
             draftCustomer = [:]; draftRevision = ''; draftLoadView = 'list'
             if (loadedDraftId) {
                 def dk = ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('kotId', loadedDraftId).one()
@@ -732,18 +745,19 @@
 
     <widgets>
         <render-mode><text type="html,qvt" template="true"><![CDATA[
-<#macro ic name sz=15>
-<svg width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><#rt>
+<#macro ic name sz=15 extra=''>
+<svg <#if extra?has_content>class="${extra}" aria-hidden="true" </#if>width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><#rt>
 <#if name=='bag'><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/>
 <#elseif name=='box'><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.73Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>
 <#elseif name=='search'><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
 <#elseif name=='check'><path d="m5 12 4 4L19 6"/>
 <#elseif name=='x'><path d="M18 6 6 18"/><path d="m6 6 12 12"/>
-<#elseif name=='chevron'><path d="m6 9 6 6 6-6"/>
 <#elseif name=='plus'><path d="M5 12h14"/><path d="M12 5v14"/>
 <#elseif name=='minus'><path d="M5 12h14"/>
 <#elseif name=='trash'><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>
 <#elseif name=='clock'><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+<#elseif name=='history'><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8m0-5v5h5m4-1v5l4 2"/>
+<#elseif name=='back'><path d="m12 19-7-7 7-7M19 12H5"/>
 <#elseif name=='hold'><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/>
 <#elseif name=='save'><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/>
 <#elseif name=='printer'><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/>
@@ -782,28 +796,30 @@
   <link rel="stylesheet" href="/zenithstatic/css/kot-grid.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/kot-grid.css').getLastModified()?c}"/>
   <link rel="stylesheet" href="/zenithstatic/css/pos-checkout.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/pos-checkout.css').getLastModified()?c}"/>
   <link rel="stylesheet" href="/zenithstatic/css/kot-list.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/kot-list.css').getLastModified()?c}"/>
-  <link rel="stylesheet" href="/zenithstatic/css/kot-bill-history.css?v=4"/>
+  <link rel="stylesheet" href="/zenithstatic/css/kot-bill-history.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/kot-bill-history.css').getLastModified()?c}"/>
   <input type="hidden" id="kb-token" value="${(ec.web.sessionToken)!''}"/>
   <div id="kb-data" style="display:none" data-session="${billingSession.sessionId?html}" data-user="${(ec.user.userId!'')?html}" data-org="${billingTerminal.organizationPartyId?html}" data-terminal="${billingTerminal.terminalId?html}" data-display-enabled="${kitchenDisplayEnabled?c}" data-kot-module="${(kitchenModuleId!'pos')?html}" data-stock-session="${billingSession.sessionId?html}" data-selected-table="${selectedTableId?html}" data-draftload="${draftLoadJson?html}" data-draftreceipt="${draftReceiptLinesJson?html}" data-draftcustomer="${draftCustomerJson?html}" data-draftid="${(loadedDraftId!'')?html}" data-draftrevision="${draftRevision?html}" data-drafttable="${(draftLoadTable!'')?html}" data-drafttype="${(draftLoadType!'')?html}" data-draftinstr="${(draftLoadInstr!'')?html}" data-drafttax="${draftLoadTax}" data-draftmode="${draftLoadMode?html}" data-draftwaiter="${draftLoadWaiter?html}" data-draftview="${draftLoadView}"></div>
 
 
-  <header class="kg-header">
-    <img src="/zenithstatic/img/zetaerp-logo.svg?v=2" alt="ZetaERP"/>
-    <button type="button" class="kg-chip" title="Current terminal">${(billingTerminal.terminalName!billingTerminal.terminalId)?html}</button>
-    <span class="kg-online" id="kb-online"></span>
-    <span class="kg-meta"><span class="kg-normal"><@ic 'calendar'/></span> ${ec.l10n.format(ec.user.nowTimestamp, 'dd-MM-yyyy')?html}</span>
-    <span class="kg-meta"><@ic 'clock'/> <time id="kb-clock"></time></span>
-    <div class="kg-bill-status"><span class="kg-bill-last"><@ic 'receipt'/> Last bill <strong id="kb-header-last-bill">${latestIssuedBillNo?html}</strong></span><span class="kg-bill-today">Today: <strong id="kb-header-today-bills">${todayBillCount!0}</strong> bills</span></div>
+  <header class="kg-header nb-hrow">
+    <span class="nb-brand"><img src="/zenithstatic/img/zetaerp-logo.svg?v=2" alt="ZetaERP"/></span>
+    <button type="button" class="kg-chip nb-pill" title="Current terminal">${(billingTerminal.terminalName!billingTerminal.terminalId)?html}</button>
+    <span class="nb-status" role="status"><span class="nb-dot"></span><span id="kb-online"></span></span>
+    <span class="nb-meta"><@ic 'calendar'/> <span>${ec.l10n.format(ec.user.nowTimestamp, 'dd-MM-yyyy')?html}</span></span>
+    <span class="nb-meta"><@ic 'clock'/> <time id="kb-clock"></time></span>
+    <span class="nb-billno"><@ic 'receipt'/> Last bill <strong class="nb-billno__val" id="kb-header-last-bill">${latestIssuedBillNo?html}</strong></span>
+    <span class="nb-meta nb-today-bills">Today: <strong id="kb-header-today-bills">${todayBillCount!0}</strong> bills</span>
+    <span class="nb-hspace"></span>
     <#if modCanWrite>
-      <button type="button" class="kb-control kg-only" id="kb-customer-open" aria-haspopup="dialog" aria-controls="kb-customer-dialog">
-        <@ic 'user' 21/> <span id="kb-header-customer-name">Walk-in Customer</span> <@ic 'chevron' 17/>
+      <button type="button" class="kb-control nb-pill nb-customer-picker" id="kb-customer-open" aria-haspopup="dialog" aria-controls="kb-customer-dialog">
+        <@ic 'user' 21/> <span id="kb-header-customer-name">Walk-in Customer</span>
       </button>
     </#if>
   </header>
-  <div class="kb-toolbar">
-    <a class="kb-control kg-back" href="KotHistory" aria-label="Back to KOT History">← Back</a>
+  <div class="kb-toolbar nb-actionbar">
+    <a class="kb-control kg-back nb-back" href="KotHistory" aria-label="Back to KOT History"><@ic 'back'/> Back</a>
     <details class="kg-modes">
-      <summary class="kb-control">Modes</summary>
+      <summary class="kb-control nb-pill">Modes</summary>
       <div class="kg-menu" aria-label="Sales modes and billing views">
         <div class="kg-menu-section" role="group" aria-label="Sales mode"><span class="kg-menu-label">Sales mode</span>
           <#if draftModeUnavailable><span class="kg-menu-label" role="status">Previous mode unavailable</span></#if>
@@ -817,18 +833,19 @@
       </div>
     </details>
     <select id="kb-mode" hidden aria-label="Selected sales mode"><#if draftModeUnavailable><option value="${draftLoadMode?html}" disabled selected>Previous mode unavailable</option></#if><#if !modes?has_content><option value="">Standard</option></#if><#list modes as m><option value="${m.salesModeId?html}">${m.modeName?html}</option></#list></select>
-    <button type="button" class="kb-control kb-tax-toggle is-on" id="kb-tax-toggle" role="switch" aria-label="Tax" aria-checked="true">Tax: ON</button>
-    <#if modCanWrite><button type="button" class="kb-control" id="kb-held-open" aria-keyshortcuts="F9" aria-haspopup="dialog" aria-controls="kb-history"><@ic 'hold' 18/> Hold Bills <kbd>F9</kbd></button></#if>
-    <button type="button" class="kb-control" id="kb-history-open" aria-keyshortcuts="F10"><@ic 'clock'/> History <kbd>F10</kbd></button>
+    <#assign initialTaxOn = (loadedDraftId?has_content?then(draftLoadTax,billingTaxPreference) == 'Y')>
+    <button type="button" class="kb-control nb-tax" id="kb-tax-toggle" role="switch" aria-label="Tax" aria-checked="${initialTaxOn?c}" data-preference="${billingTaxPreference}"><span id="kb-tax-label">Tax: ${initialTaxOn?then('On','Off')}</span><span class="nb-toggle<#if initialTaxOn> on</#if>" aria-hidden="true"></span></button>
+    <#if modCanWrite><button type="button" class="kb-control nb-abtn nb-abtn--hold" id="kb-held-open" aria-keyshortcuts="F9" aria-haspopup="dialog" aria-controls="kb-history"><@ic 'hold' 18/> Hold Bills <kbd>F9</kbd></button></#if>
+    <button type="button" class="kb-control nb-abtn nb-abtn--history" id="kb-history-open" aria-keyshortcuts="F10"><@ic 'history'/> History <kbd>F10</kbd></button>
     <div class="kb-otype" role="group" aria-label="Service type">
-      <button type="button" class="kb-otbtn is-active" data-ot="Dine In"><@ic 'bag'/> Dine In</button>
-      <button type="button" class="kb-otbtn" data-ot="Take Away"><@ic 'box'/> Take Away</button>
+      <button type="button" class="kb-otbtn nb-abtn is-active" data-ot="Dine In"><@ic 'bag'/> Dine In</button>
+      <button type="button" class="kb-otbtn nb-abtn" data-ot="Take Away"><@ic 'box'/> Take Away</button>
     </div>
     <input type="hidden" id="kb-table" value="" data-labels="${tableLabelsJson?html}"/>
-    <label class="kb-fld"><select id="kb-waiter" aria-label="Waiter"><option value="">Choose waiter</option><#list waiters as w><option value="${w.waiterId?html}">${w.waiterName?html}</option></#list></select></label>
+    <label class="kb-fld"><select class="nb-pill" id="kb-waiter" aria-label="Waiter"><option value="">Choose waiter</option><#list waiters as w><option value="${w.waiterId?html}">${w.waiterName?html}</option></#list></select></label>
     <div class="kb-toolbar-end">
-      <#if modCanWrite><button type="button" class="kb-control" id="kb-close-session" aria-label="Close session" aria-keyshortcuts="C" title="Review cash and close this POS session"><@ic 'close-session' 22/> Close session <kbd aria-hidden="true">C</kbd></button></#if>
-      <button type="button" class="kb-control" id="kb-fullscreen" title="Enter fullscreen"><@ic 'fullscreen'/><span id="kb-fullscreen-label">Enter fullscreen</span></button>
+      <#if modCanWrite><button type="button" class="kb-control nb-power" id="kb-close-session" aria-label="Close" aria-keyshortcuts="C" title="Review cash and close this POS session"><@ic 'close-session' 22/> Close <kbd aria-hidden="true">C</kbd></button></#if>
+      <button type="button" class="kb-control nb-abtn nb-abtn--icon" id="kb-fullscreen" title="Enter fullscreen" aria-pressed="false"><@ic 'fullscreen' 22 'kb-enter-fullscreen'/><@ic 'x' 22 'kb-exit-fullscreen'/><span id="kb-fullscreen-label">Enter fullscreen</span></button>
     </div>
   </div>
 
@@ -848,17 +865,6 @@
       <a class="kb-control" href="/Login" target="_blank" rel="noopener">Sign in again</a>
       <button class="kb-control" id="kb-resume" type="button">Resume billing</button>
     </div>
-    <#if modCanWrite>
-      <p id="kb-key-help">
-        <span><kbd>/</kbd> Search</span>
-        <span><kbd><span class="kg-only">←</span>↑↓<span class="kg-only">→</span></kbd> Choose item</span>
-        <span><kbd>Enter</kbd> <span class="kg-normal">Add and edit rate</span><span class="kg-only">Add / Rate</span></span>
-        <span><kbd>Enter</kbd> <span class="kg-normal">Quantity</span><span class="kg-only">Qty</span></span>
-        <span><kbd>Enter</kbd> Search</span>
-        <span><kbd>↓</kbd> <span class="kg-normal">Payment from empty search</span><span class="kg-only">Pay (empty search)</span></span>
-        <span><kbd>←→</kbd> <span class="kg-normal">Choose method</span><span class="kg-only">Pick method</span></span>
-      </p>
-    </#if>
     <div class="kb-order-scroll"><table class="kb-otable" aria-label="Current Order"><thead><tr>
       <th scope="col">#</th><th scope="col"><span class="kg-only">Item</span><span class="kg-normal">Product</span></th>
       <th scope="col" class="kg-normal">Mode</th><th scope="col">Rate (&#8377;)</th>
@@ -891,9 +897,9 @@
     <div class="kl-summary-stack">
       <section class="kl-card kl-summary">
         <div class="kl-card-title"><span class="kl-icon"><@ic 'receipt' 23/></span><h2>Bill Summary</h2></div>
-        <div class="kl-sum-row"><span>Subtotal (<span id="kb-list-item-count">0</span>)</span><strong id="kb-list-subtotal">&#8377;0.00</strong></div>
-        <div class="kl-sum-row"><span>Tax</span><strong id="kb-list-tax">&#8377;0.00</strong></div>
-        <div class="kl-sum-row kl-grand"><span>Grand Total</span><strong id="kb-list-grand">&#8377;0.00</strong></div>
+        <div class="kl-sum-row"><span>Subtotal (<span id="kb-list-item-count">0 items</span>)</span><strong id="kb-list-subtotal">&#8377;0.00</strong></div>
+        <div class="kl-sum-row"><span>Tax Total</span><strong id="kb-list-tax">&#8377;0.00</strong></div>
+        <div class="kl-sum-row"><span>Round Off</span><strong id="kb-list-round">&#8377;0.00</strong></div>
       </section>
       <div class="kb-stats" id="kb-stats">
         <span>Last amount: <b id="kb-list-last-stat">${((lastCompleted.payableAmount)!0)?c}</b></span>
@@ -913,7 +919,7 @@
       <button type="button" id="kb-send" class="kb-action-send" title="Press Shift by itself" <#if !kitchenDisplayEnabled>style="display:none"</#if> disabled><@ic 'printer'/> Send to KOT <kbd>Shift</kbd></button>
     </div></#if>
     <div class="kb-search"><@ic 'search'/>
-      <input type="search" id="kb-search" placeholder="Scan barcode, or type product name or code… ( / )" autocomplete="off" aria-label="Search products" aria-keyshortcuts="/" aria-controls="kb-suggestions" <#if modCanWrite>aria-describedby="kb-key-help"<#else>disabled</#if>>
+      <input type="search" id="kb-search" placeholder="Scan barcode, or type product name or code… ( / )" autocomplete="off" aria-label="Search products" aria-keyshortcuts="/" aria-controls="kb-suggestions" <#if !modCanWrite>disabled</#if>>
       <span id="kb-match-status" role="status"></span>
       <div id="kb-suggestions" class="kb-suggestions" aria-label="Matching products" hidden></div>
     </div>

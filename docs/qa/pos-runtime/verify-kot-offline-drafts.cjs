@@ -507,10 +507,13 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
       await page.locator('#posPayConfOk').click();
       await page.locator('#kb-print-choice').waitFor();
     };
-    await confirmOther.click();
-    await page.locator('#kb-payment-error').getByText(/add up to the bill total/i).waitFor();
+    check('Underpaid offline Split keeps confirmation disabled and shows the remaining balance',
+      await confirmOther.isDisabled() &&
+      (await page.locator('.pos-split-hint').innerText()).includes('₹1.00') &&
+      (await page.locator('#kb-payment-error').innerText()).trim() === '');
     await page.locator('#kb-payment [name=upiAmount]').fill('50');
     await page.locator('#kb-payment [name=upiRef]').fill('KOT-QA-SPLIT-UPI');
+    check('Exact offline Split enables confirmation',await confirmOther.isEnabled());
     await confirmOther.click();
     await page.locator('#kb-print-close').click();
     check('Grid View finds multiword searches offline, uses Wholesale price, and validates split before checkout',
