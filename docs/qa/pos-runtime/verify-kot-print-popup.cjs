@@ -8,22 +8,30 @@ const { chromium, webkit } = require('playwright');
 const scripts = path.resolve(__dirname, '../../../component/zenith-erp-app/screen/zenithstatic/js');
 const kitchenPrint = fs.readFileSync(path.join(scripts, 'kitchen-print.js'), 'utf8');
 const billing = fs.readFileSync(path.join(scripts, 'kot-billing.js'), 'utf8');
-const printChoice = billing.match(/  async function printChoice\([\s\S]*?(?=\r?\n  async function holdOrder\()/)[0];
+const printChoice = billing.match(/  async function printChoice\([\s\S]*?(?=\r?\n  let billingNotice;)/)[0];
 const fixture = `
 <button id="print">Print both</button>
 <dialog id="kb-print-choice">
-  <select id="kb-print-via"><option value="browser">Browser</option></select>
   <span id="kb-print-error"></span>
+  <div id="kb-print-recovery" hidden><button id="kb-print-browser">Print using browser</button></div>
 </dialog>
 <p id="kb-order-status"></p>
 <script src="/kitchen-print.js"></script>
 <script>
   const root = document.body, $ = id => document.getElementById('kb-' + id);
-  let historyPrintRow, completedKotId, busy = false;
+  let historyPrintRow, completedKotId, browserPrintRetry, busy = false;
   function controls() {}
+  function clearPrintFeedback() { browserPrintRetry = null; $('print-error').textContent = ''; }
+  function showBillingNotice() {}
   function savedPrinter() { return 'Synthetic printer'; }
   function disconnected() { return false; }
-  window.PosQzPrint = { printHtml() { throw Error('Browser was selected'); } };
+  window.qzAttempts = 0;
+  if (location.search === '?qz-down') {
+    window.PosQzPrint = {
+      async connect() { window.qzAttempts++; throw Error('Synthetic QZ connection failure'); },
+      printHtml() { throw Error('A job must not reach an unavailable QZ connection'); }
+    };
+  }
   function updatePrintOptions() {}
   const receipt = { success: true, items: [{ name: 'Kitchen item', qty: 2 }] };
   const localReceipt = location.search === '?ack-error' ? null : { receipt };
@@ -83,7 +91,7 @@ const server = http.createServer((request, response) => {
       ignoreDefaultArgs: ['--disable-popup-blocking']
     };
     browser = await browserType.launch(launch);
-    for (const scenario of ['automatic', 'manual', 'closed', 'ack-error', 'kot', 'bill']) {
+    for (const scenario of ['automatic', 'manual', 'closed', 'ack-error', 'kot', 'bill', 'qz-down']) {
       const page = await browser.newPage();
       try {
         await page.goto(url + '?' + scenario);
@@ -96,6 +104,7 @@ const server = http.createServer((request, response) => {
         const error = await page.locator('#kb-print-error').textContent();
         assert.equal(error, '', 'Print both must work with browser popup blocking');
         assert.equal(await page.evaluate(() => window.opens), 1);
+        if (scenario === 'qz-down') assert.equal(await page.evaluate(() => window.qzAttempts), 1, 'Try QZ before falling back to the browser');
         if (scenario === 'kot' || scenario === 'bill') {
           const documentName = scenario === 'kot' ? 'kitchen' : 'customer';
           await page.waitForFunction(name => window.prints.includes(name + ' retained'), documentName);
