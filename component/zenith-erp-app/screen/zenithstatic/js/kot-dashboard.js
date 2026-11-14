@@ -1,130 +1,136 @@
-/* KOT Dashboard — inline-SVG sales chart + interactions.
- * Loaded via <img onload> from KotDashboard.xml so it runs on both /apps and /qapps. */
+/* KOT Dashboard sales chart, shared by /apps and /qapps. */
 (function () {
-  if (window.kdInit) { window.kdInit(); return; }
+  'use strict';
 
-  var CHART = { today: { values: [], points: [], axis: [] } };
-  var curRange = 'today';
-  var ptsFrac = [];   // [fracX, fracY] per point
-  var curVals = [];
-  var curPoints = [];
-  var peakIdx = 0;
+  const currency = new Intl.NumberFormat('en-IN', {style: 'currency', currency: 'INR'});
+  const compact = new Intl.NumberFormat('en-IN', {notation: 'compact', maximumFractionDigits: 1});
+  const byId = id => document.getElementById(id);
+  const width = 600;
+  const height = 180;
+  let chart;
+  let points = [];
+  let positions = [];
+  let peak = 0;
+  let selected = 0;
 
-  var VB_W = 600, VB_H = 220, padT = 12, padB = 8, padL = 2, padR = 2;
+  function selectPoint(index, announce = false) {
+    const point = points[index];
+    const box = byId('kd-chartbox');
+    if (!point || !box) return;
+    selected = index;
 
-  function $(id) { return document.getElementById(id); }
-  function base() { return location.pathname.replace(/\/$/, ''); }
-  function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+    const [x, y] = positions[index];
+    box.style.setProperty('--kd-point-x', `${x / width * 100}%`);
+    box.style.setProperty('--kd-point-y', `${y / height * 100}%`);
+    byId('kd-guide').hidden = false;
+    byId('kd-dot').hidden = false;
+    const sales = currency.format(point.sales);
+    byId('kd-tip-label').textContent = point.label;
+    byId('kd-tip-sales').textContent = sales;
+    byId('kd-tip-orders').textContent = point.orders;
+    const tip = byId('kd-tip');
+    tip.hidden = false;
+    tip.classList.toggle('kd-tip--below', y / height * box.clientHeight < tip.offsetHeight + 5);
+    const halfWidth = tip.offsetWidth / 2;
+    box.style.setProperty('--kd-tip-inset', `${halfWidth + 2}px`);
+    if (announce) byId('kd-chart-status').textContent = `${point.label}, sales ${sales}, ${point.orders} orders`;
+  }
 
-  function inr(n) {
-    n = Math.round((Number(n) || 0) * 100) / 100;
-    var neg = n < 0; n = Math.abs(n);
-    var s = n.toFixed(2), ip = s.split('.')[0], fp = s.split('.')[1], res;
-    if (ip.length <= 3) { res = ip; }
-    else {
-      var last3 = ip.slice(-3), rest = ip.slice(0, -3), out = '';
-      while (rest.length > 2) { out = ',' + rest.slice(-2) + out; rest = rest.slice(0, -2); }
-      res = rest + out + ',' + last3;
+  function draw(range, button) {
+    const series = chart[range];
+    points = series.points;
+    const values = points.map(point => Number(point.sales));
+    byId('kd-wrap').querySelectorAll('.kd-ctab').forEach(tab => {
+      tab.classList.toggle('is-active', tab === button);
+      tab.setAttribute('aria-pressed', String(tab === button));
+    });
+    byId('kd-trend-sub').textContent = range === 'today' ? 'Hourly sales and order volume' : 'Daily sales and order volume';
+    byId('kd-axis').replaceChildren(...series.axis.map(label => {
+      const span = document.createElement('span');
+      span.textContent = label;
+      return span;
+    }));
+
+    const highest = Math.max(1, ...values);
+    const lowest = Math.min(0, ...values);
+    const magnitude = 10 ** Math.floor(Math.log10((highest - lowest) / 5));
+    const step = [1, 2, 2.5, 5, 10].find(unit => unit * magnitude * 5 >= highest - lowest) * magnitude;
+    const bottom = Math.floor(lowest / step) * step;
+    const top = Math.max(bottom + step * 5, Math.ceil(highest / step) * step);
+    const y = sales => height * (top - sales) / (top - bottom);
+    const spacing = width / (points.length - (range === 'today' ? 0 : 1));
+    positions = values.map((value, i) => [i * spacing, y(value)]);
+
+    const labels = [];
+    const grid = [];
+    for (let sale = top; sale >= bottom - step / 10; sale -= step) {
+      const label = document.createElement('span');
+      label.textContent = `${sale < 0 ? '−' : ''}₹ ${compact.format(Math.abs(sale))}`;
+      labels.push(label);
+      grid.push(`<path d="M0 ${y(sale)}H${width}"/>`);
     }
-    return (neg ? '-' : '') + '₹' + res + '.' + fp;
-  }
+    byId('kd-axis-y').replaceChildren(...labels);
 
-  function niceMax(m) {
-    if (m <= 0) return 10;
-    var pow = Math.pow(10, Math.floor(Math.log(m) / Math.LN10));
-    var n = m / pow, step;
-    if (n <= 1) step = 1; else if (n <= 2) step = 2; else if (n <= 5) step = 5; else step = 10;
-    return step * pow;
-  }
+    // Keep each curve inside the values of its two adjacent buckets.
+    let line = positions.reduce((path, [x, y], i) => {
+      if (!i) return `M${x} ${y}`;
+      const [lastX, lastY] = positions[i - 1];
+      const midX = (lastX + x) / 2;
+      return `${path} C${midX} ${lastY} ${midX} ${y} ${x} ${y}`;
+    }, '');
+    if (range === 'today') line += ` H${width}`;
+    const zero = y(0);
+    byId('kd-svg').innerHTML = `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+      <defs><linearGradient id="kdgrad" x2="0%" y2="100%"><stop class="kd-area-start"/><stop offset="100%" class="kd-area-end"/></linearGradient></defs>
+      <g class="kd-grid">${grid.join('')}</g>
+      <path d="${line} V${zero} H0 Z" fill="url(#kdgrad)"/>
+      <path d="${line}" class="kd-line"/>
+    </svg>${[...positions.filter((_, i) => i % Math.ceil(points.length / 8) === 0 || i === points.length - 1),
+      ...(range === 'today' ? [[width, positions.at(-1)[1]]] : [])].map(([x, y]) =>
+      `<i class="kd-point" style="left:${x / width * 100}%;top:${y / height * 100}%"></i>`).join('')}`;
 
-  function draw(series) {
-    var vals = (series.values || []).map(Number), n = vals.length;
-    curVals = vals; curPoints = series.points || [];
-    if (!n) { $('kd-svg').innerHTML = '<div class="kd-chart__empty">No sales data for this period.</div>'; ptsFrac = []; return; }
-    var max = niceMax(Math.max.apply(null, vals.concat([1])));
-    var X = function (i) { return padL + (VB_W - padL - padR) * (n <= 1 ? 0.5 : i / (n - 1)); };
-    var Y = function (v) { return padT + (VB_H - padT - padB) * (1 - v / max); };
-    var pts = vals.map(function (v, i) { return [X(i), Y(v)]; });
-    ptsFrac = pts.map(function (p) { return [p[0] / VB_W, p[1] / VB_H]; });
-
-    var line = pts.map(function (p, i) { return (i ? 'L' : 'M') + p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' ');
-    var area = line + ' L' + X(n - 1).toFixed(1) + ',' + (VB_H - padB) + ' L' + X(0).toFixed(1) + ',' + (VB_H - padB) + ' Z';
-    var grid = '';
-    for (var g = 0; g <= 4; g++) { var gy = (padT + (VB_H - padT - padB) * g / 4).toFixed(1); grid += '<line x1="0" y1="' + gy + '" x2="' + VB_W + '" y2="' + gy + '" stroke="#E5E7EB" stroke-width="1" stroke-opacity="0.7" vector-effect="non-scaling-stroke"/>'; }
-
-    var svg = '<svg viewBox="0 0 ' + VB_W + ' ' + VB_H + '" preserveAspectRatio="none">' +
-      '<defs><linearGradient id="kdgrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#2563EB" stop-opacity="0.18"/><stop offset="100%" stop-color="#2563EB" stop-opacity="0"/></linearGradient></defs>' +
-      grid +
-      '<path d="' + area + '" fill="url(#kdgrad)"/>' +
-      '<path d="' + line + '" fill="none" stroke="#2563EB" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>' +
-      '</svg>';
-    $('kd-svg').innerHTML = svg;
-
-    // peak point (highest value) gets the default tooltip, like the mockup
-    peakIdx = 0; for (var i = 1; i < vals.length; i++) { if (vals[i] > vals[peakIdx]) peakIdx = i; }
-    showTip(peakIdx);
-  }
-
-  function ensureDot() {
-    var dot = $('kd-dot');
-    if (!dot) {
-      dot = document.createElement('div'); dot.id = 'kd-dot';
-      dot.style.cssText = 'position:absolute;width:11px;height:11px;border-radius:50%;background:#2563EB;border:2px solid #fff;box-shadow:0 0 0 1px #2563EB;transform:translate(-50%,-50%);pointer-events:none;display:none;z-index:4';
-      var box = $('kd-chartbox'); if (box) box.appendChild(dot);
-    }
-    return dot;
-  }
-
-  function showTip(i) {
-    if (!ptsFrac.length || i == null || i < 0 || i >= ptsFrac.length) return;
-    var box = $('kd-chartbox'); if (!box) return;
-    var w = box.clientWidth, h = box.clientHeight;
-    var px = ptsFrac[i][0] * w, py = ptsFrac[i][1] * h;
-    var dot = ensureDot(); dot.style.left = px + 'px'; dot.style.top = py + 'px'; dot.style.display = 'block';
-    var tip = $('kd-tip');
-    if (tip) {
-      tip.innerHTML = '<span>' + esc(curPoints[i] || '') + '</span><b>' + inr(curVals[i] || 0) + '</b>';
-      tip.style.left = Math.max(40, Math.min(w - 40, px)) + 'px';
-      tip.style.top = py + 'px';
-      tip.style.display = 'block';
+    if (points.some(point => point.orders > 0)) {
+      peak = points.reduce((best, point, index) => point.orders && (best === -1 || point.sales > points[best].sales) ? index : best, -1);
+      selectPoint(peak);
+    } else {
+      peak = 0;
+      selected = 0;
+      for (const id of ['kd-dot', 'kd-guide', 'kd-tip']) byId(id).hidden = true;
     }
   }
 
-  function renderAxis(series) {
-    var ax = $('kd-axis'); if (!ax) return;
-    ax.innerHTML = (series.axis || []).map(function (l) { return '<span>' + esc(l) + '</span>'; }).join('');
-  }
-
-  window.kdRange = function (r, el) {
-    curRange = r;
-    document.querySelectorAll('.kd-ctab').forEach(function (b) { b.classList.toggle('is-active', b === el); });
-    var s = CHART[r] || { values: [], points: [], axis: [] };
-    renderAxis(s); draw(s);
+  window.kdRange = draw;
+  window.kdSetDate = value => {
+    if (!value) return;
+    const target = new URL(location.href);
+    target.searchParams.set('dashDate', value);
+    location.assign(target.href);
   };
-  window.kdSetDate = function (v) { if (v) location.href = base() + '/?dashDate=' + encodeURIComponent(v); };
-  window.kdRefresh = function () { var b = $('kd-refresh'); if (b) b.classList.add('spin'); location.reload(); };
-  window.kdGo = function (path) { location.href = base() + '/' + path; };
-
+  window.kdRefresh = () => {
+    byId('kd-refresh').classList.add('spin');
+    location.reload();
+  };
   window.kdInit = function () {
-    var el = $('kd-data');
-    if (!el || el.dataset.initialized) return;
-    el.dataset.initialized = 'true';
-    try { CHART = JSON.parse(el.getAttribute('data-chart') || '{}'); } catch (e) { CHART = {}; }
-    var s = CHART.today || { values: [], points: [], axis: [] };
-    renderAxis(s); draw(s);
+    const data = byId('kd-data');
+    if (!data || data.dataset.initialized) return;
+    chart = JSON.parse(data.dataset.chart);
+    data.dataset.initialized = 'true';
+    draw('today', byId('kd-wrap').querySelector('[data-r="today"]'));
 
-    var box = $('kd-chartbox');
-    if (box) {
-      box.addEventListener('mousemove', function (e) {
-        if (!ptsFrac.length) return;
-        var rect = box.getBoundingClientRect(), mx = e.clientX - rect.left, w = rect.width;
-        var best = 0, bd = 1e9;
-        for (var i = 0; i < ptsFrac.length; i++) { var d = Math.abs(ptsFrac[i][0] * w - mx); if (d < bd) { bd = d; best = i; } }
-        showTip(best);
-      });
-      box.addEventListener('mouseleave', function () { showTip(peakIdx); });
-    }
+    const box = byId('kd-chartbox');
+    box.addEventListener('pointermove', event => {
+      const rect = box.getBoundingClientRect();
+      const x = (event.clientX - rect.left) / rect.width * width;
+      const spacing = positions[1][0];
+      selectPoint(Math.max(0, Math.min(points.length - 1, Math.round(x / spacing))));
+    });
+    box.addEventListener('pointerleave', event => { if (event.pointerType !== 'touch' && points[peak].orders) selectPoint(peak); });
+    box.addEventListener('focus', () => selectPoint(selected, true));
+    box.addEventListener('keydown', event => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      event.preventDefault();
+      selectPoint(Math.max(0, Math.min(points.length - 1, selected + (event.key === 'ArrowLeft' ? -1 : 1))), true);
+    });
   };
-  window.addEventListener('resize', function () { showTip(peakIdx); });
   window.kdInit();
 })();
