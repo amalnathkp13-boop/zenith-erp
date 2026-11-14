@@ -78,6 +78,14 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   check('KOT Order and Bill Print use independent templates with no amounts on the ticket',
    orderPrint?.store?.headerText===ticketHeader&&orderPrint.store.receiptWidth==='58mm'&&!orderPrint.summary&&
    billPrint?.store?.headerText===billHeader&&Number(billPrint.summary.total)===80&&billPrint.bill.number===paid.billNumber);
+  const dineIn=await (await kot('KotBilling/saveDraft',{...payload,orderType:'Dine In'})).json();
+  check('KOT saves a separate dine-in order',dineIn.success&&!!dineIn.kotId,dineIn);
+  const dineInPaid=await (await kot('KotBilling/checkoutKot',{sessionId,kotId:dineIn.kotId,paymentMethod:'Cash',cashAmount:'80'})).json();
+  check('KOT finalizes the dine-in order',dineInPaid.success&&!!dineInPaid.billNumber,dineInPaid);
+  const dineInPrint=await (await kot('KotBilling/printRecord',{sessionId,kotId:dineIn.kotId,kind:'bill'},a,'qapps')).json();
+  check('finalized KOT print records keep each saved order type',
+   billPrint.bill.orderType==='Take Away'&&dineInPrint.record?.bill?.orderType==='Dine In',
+   {takeAway:billPrint.bill,dineIn:dineInPrint.record?.bill});
   await page.goto(route('apps','KotBilling?sessionId='+sessionId));
   await page.locator('#kb-wrap[data-ready=true]').waitFor();
   await page.evaluate(()=>{
@@ -103,10 +111,25 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await page.evaluate(([orderText,billText])=>window.qaPrintHtml[0].includes(orderText)&&
     !window.qaPrintHtml[0].includes(billText)&&window.qaPrintHtml[1].includes(billText)&&
     !window.qaPrintHtml[1].includes(orderText),[ticketHeader,billHeader]));
+  await page.locator('#kb-history-rows [data-kot-id="'+dineIn.kotId+'"]')
+   .getByRole('button',{name:'Bill Print',exact:true}).click();
+  await page.waitForFunction(()=>window.qaPrintHtml.length===3&&window.qaPrintWindows.every(popup=>popup.closed));
+  check('customer bill reprints show the selected order type',await page.evaluate(()=>{
+   const readType=html=>{
+    const doc=new DOMParser().parseFromString(html,'text/html');
+    const label=Array.from(doc.querySelectorAll('td')).find(cell=>cell.textContent==='Order Type:');
+    return label?.nextElementSibling?.textContent;
+   };
+   return readType(window.qaPrintHtml[1])==='Take Away'&&readType(window.qaPrintHtml[2])==='Dine In';
+  }));
   const pdf=await a.c.request.get(base+'/fop/apps/zenith/kot/ReceiptPdf?transactionId='+bill.transaction_id);
   const pdfBytes=await pdf.body();
   check('KOT customer bill PDF renders',pdf.ok()&&pdfBytes.subarray(0,4).toString()==='%PDF');
   if(out) writeFileSync(join(out,'kot-customized-receipt.pdf'),pdfBytes);
+  const dineInPdf=await a.c.request.get(base+'/fop/apps/zenith/kot/ReceiptPdf?transactionId='+dineInPaid.transactionId);
+  const dineInPdfBytes=await dineInPdf.body();
+  check('Dine-in customer bill PDF renders',dineInPdf.ok()&&dineInPdfBytes.subarray(0,4).toString()==='%PDF');
+  if(out) writeFileSync(join(out,'kot-dine-in-receipt.pdf'),dineInPdfBytes);
 
   const regular=await invoke('cart',{sessionId,reuseOpenCart:'false'});
   await invoke('add',{transactionId:regular.transactionId,productId,quantity:'1',salesModeId,taxOn:'N'});
@@ -115,7 +138,8 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await invoke('pay',{transactionId:regular.transactionId,paymentMethod:'Cash',amount:'95'});
   await invoke('complete',{transactionId:regular.transactionId});
   const normal=(await invoke('receipt',{transactionId:regular.transactionId})).receipt;
-  check('ordinary POS prints its own receipt design',!!normal&&normal.store.headerText!==billHeader&&normal.store.headerText!==ticketHeader);
+  check('ordinary POS prints its own receipt design without a KOT order type',!!normal&&
+   normal.store.headerText!==billHeader&&normal.store.headerText!==ticketHeader&&!normal.bill.orderType);
 
   const nav=await a.c.request.get(route('apps','Tables/goTransactions'),{maxRedirects:0});
   check('KOT Tables opens KOT Transactions without leaving the module',
