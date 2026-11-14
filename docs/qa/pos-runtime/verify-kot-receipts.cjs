@@ -123,8 +123,13 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   check('grid keeps the print button and additional fee visible',
    await page.locator('#kb-today-sales').isVisible()&&await page.locator('#kb-fee').isVisible());
   if(out) await page.screenshot({path:join(out,'kot-grid-today-sales.png')});
-  await page.locator('#kb-clear').click();
-  await page.waitForFunction(()=>!document.querySelector('#kb-cart tr'));
+  const [clearResponse]=await Promise.all([
+   page.waitForResponse(response=>response.url().endsWith('/deleteDraft'),{timeout:10000}),
+   page.locator('#kb-clear').click()
+  ]);
+  const cleared=await clearResponse.json();
+  check('Clear Cart confirms deletion on the server',cleared.success,cleared);
+  await page.locator('#kb-cart tr[data-product]').first().waitFor({state:'hidden'});
   check('Clear Cart retires the resumed held bill',q("SELECT status_id FROM kitchen_order_ticket WHERE kot_id='"+held.kotId+"'")[0]?.status_id==='KotCancelled');
   const dineInPrint=await (await kot('KotBilling/printRecord',{sessionId,kotId:dineIn.kotId,kind:'bill'},a,'qapps')).json();
   check('finalized KOT print records keep each saved order type',

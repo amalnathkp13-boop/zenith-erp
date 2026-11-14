@@ -257,7 +257,7 @@
     def seed=ec.web.parameters.mode=='seed'
     def today=ec.user.nowTimestamp
     def prefix='QA_SALES_'+session.sessionId+'_'
-    (1..140).each { i ->
+    for (int i in 1..140) {
         def id=prefix+i
         def ticketIds=i==1?[id,id+'_DUP']:[id]
         if(seed) {
