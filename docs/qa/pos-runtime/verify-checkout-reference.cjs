@@ -20,15 +20,17 @@ module.exports=async function({a,foreign,base,check,q,invoke,post,out}) {
   await page.setViewportSize({width:1672,height:941});
   await page.goto(`${base}/apps/zenith/pos/Terminal?sessionId=${session.sessionId}&transactionId=${cart.transactionId}&taxOn=N`);
   await page.locator('.pos-checkout-reference').waitFor();
-  const palette=[['pos-discount','rgb(240, 232, 255)','rgb(111, 38, 190)'],['pos-pay-cash','rgb(224, 245, 239)','rgb(8, 105, 94)'],['pos-pay-card','rgb(225, 240, 255)','rgb(14, 101, 190)'],['pos-credit','rgb(255, 240, 229)','rgb(183, 68, 15)'],['pos-pay-upi','rgb(240, 232, 255)','rgb(111, 38, 190)'],['pos-split','rgb(229, 240, 255)','rgb(22, 103, 180)'],['pos-hold','rgb(255, 240, 229)','rgb(183, 68, 15)'],['pos-copilot','rgb(237, 232, 255)','rgb(91, 54, 177)']];
+  const palette=[['pos-pay-cash','rgb(224, 245, 239)','rgb(8, 105, 94)'],['pos-pay-card','rgb(225, 240, 255)','rgb(14, 101, 190)'],['pos-credit','rgb(255, 240, 229)','rgb(183, 68, 15)'],['pos-pay-upi','rgb(240, 232, 255)','rgb(111, 38, 190)'],['pos-split','rgb(229, 240, 255)','rgb(22, 103, 180)'],['pos-hold','rgb(255, 240, 229)','rgb(183, 68, 15)'],['pos-copilot','rgb(237, 232, 255)','rgb(91, 54, 177)']];
   async function checkActions(stage){
    const actual=await page.evaluate(()=>[...document.querySelectorAll('.pos-reference-payments button')].map(e=>{const s=getComputedStyle(e),icon=getComputedStyle(e,'::before');return [e.id,s.backgroundColor,s.color,icon.maskImage||icon.webkitMaskImage];}));
-   check(stage+' has eight pastel actions with consistent SVG symbols and no Void button',actual.length===8&&palette.every(([id,bg,ink])=>actual.some(x=>x[0]===id&&x[1]===bg&&x[2]===ink&&x[3]&&x[3]!=='none'))&&!await page.locator('#pos-void').count(),actual);
+   check(stage+' has seven pastel footer actions with consistent SVG symbols and no Void button',actual.length===7&&palette.every(([id,bg,ink])=>actual.some(x=>x[0]===id&&x[1]===bg&&x[2]===ink&&x[3]&&x[3]!=='none'))&&!await page.locator('#pos-void').count(),actual);
+   const header=await page.evaluate(()=>{const redeem=document.querySelector('.nb-abtn--redeem'),discount=document.getElementById('pos-discount');return {order:redeem?.nextElementSibling===discount,unique:document.querySelectorAll('#pos-discount').length===1,icon:discount?.querySelectorAll('svg').length===1,key:discount?.querySelector('kbd')?.textContent==='F1',height:discount?.getBoundingClientRect().height===redeem?.getBoundingClientRect().height};});
+   check(stage+' keeps Discount beside Redeem with matching header controls',Object.values(header).every(Boolean),header);
   }
   await checkActions('initial billing');
   check('billing header removes technical terminal, cashier badge and duplicate Search control',await page.locator('.nb-cashier,#pos-search-toggle').count()===0&&!(await page.locator('.nb-hrow').innerText()).includes(terminalId));
   await page.locator('.nb-modes summary').click();await page.locator('[data-pos-layout="advanced"]').click();
-  check('reference empty cart keeps all tender buttons disabled',await page.locator('.pos-reference-payments button:disabled').count()===7&&await page.locator('#pos-copilot').isEnabled());
+  check('reference empty cart keeps tender and Discount actions disabled',await page.locator('.pos-reference-payments button:disabled').count()===6&&await page.locator('.nb-actionbar #pos-discount:disabled').count()===1&&await page.locator('#pos-copilot').isEnabled());
   check('counter and Back to POS target registered POS screens',(await page.locator('.nb-counter a').last().getAttribute('href'))==='/apps/zenith/pos/PosTerminals'&&(await page.locator('.nb-back').getAttribute('href'))==='/apps/zenith/pos/Dashboard');
   const stock=await api({action:'cardStock',productIds:'POS_QA_A_STOCK,POS_QA_B_P18'});
   check('card stock is real and excludes foreign products',stock.d.success&&Number(stock.d.stock.POS_QA_A_STOCK.quantity)===Number(q("SELECT sum(quantity_on_hand_total) AS n FROM asset WHERE product_id='POS_QA_A_STOCK' AND owner_party_id='POS_QA_A' AND facility_id='POS_QA_A_FAC'")[0].n)&&!stock.d.stock.POS_QA_B_P18,stock.d);
