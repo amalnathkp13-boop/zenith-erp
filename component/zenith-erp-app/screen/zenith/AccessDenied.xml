@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
+        require-authentication="true" default-menu-title="Your workspace" default-menu-include="false">
+    <actions><script>ec.web.response.setHeader('Cache-Control', 'private, no-store')</script></actions>
+    <widgets><render-mode><text type="html,qvt" template="true"><![CDATA[
+<main class="z-workspace" aria-labelledby="role-workspace-title">
+  <div class="z-workspace-head"><h1 id="role-workspace-title">Your workspace</h1></div>
+  <div class="z-workspace-card">
+    <h2>Access denied for your user ID</h2>
+    <p>Your role does not include the requested page.</p>
+    <#if (roleNavSections![])?has_content>
+    <nav class="z-workspace-actions" aria-label="Your assigned modules">
+      <#list roleNavSections as module>
+      <a href="/apps/zenith${module.screens[0].id?html}">${module.name?html}</a>
+      </#list>
+    </nav>
+    <#else>
+    <p>Contact your administrator to review your assigned modules.</p>
+    </#if>
+  </div>
+</main>
+    ]]></text></render-mode></widgets>
+</screen>

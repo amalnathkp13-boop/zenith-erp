@@ -58,14 +58,10 @@
             </if>
             <script>ec.entity.find('mantle.party.Party').condition('partyId',_createOrg).disableAuthz().forUpdate(true).one()</script>
             <script><![CDATA[
-                if (pseudoId && (
-                        ec.entity.find('mantle.product.Product').condition('ownerPartyId',_createOrg)
-                            .condition('pseudoId',pseudoId).disableAuthz().count() ||
-                        ec.entity.find('mantle.product.Product').condition('ownerPartyId',_createOrg)
-                            .condition('productId',pseudoId).disableAuthz().count() ||
-                        ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('organizationPartyId',_createOrg)
-                            .condition('barcodeValue',pseudoId).disableAuthz().count())) {
-                    ec.message.addError("The code '${pseudoId}' is already used in this organization. Each item needs a unique scan code.")
+                def conflict = ec.service.sync().name('zenith.barcode.BarcodeServices.check#ProductCodeConflict')
+                    .parameters([organizationPartyId:_createOrg,code:pseudoId]).disableAuthz().call().conflict
+                if (conflict) {
+                    ec.message.addError("The code '${pseudoId}' is already used in this organization. Each current item needs a unique scan code.")
                 }
             ]]></script>
             <if condition="ec.message.hasError()"><return/></if>
@@ -80,12 +76,9 @@
                 if (!pseudoId) {
                     pseudoId = 'ZC-'+createOut.productId
                     // Account for imported codes that may already have used our preferred generated value.
-                    while (ec.entity.find('mantle.product.Product').condition('ownerPartyId',_createOrg)
-                            .condition('pseudoId',pseudoId).disableAuthz().count() ||
-                           ec.entity.find('mantle.product.Product').condition('ownerPartyId',_createOrg)
-                            .condition('productId',pseudoId).disableAuthz().count() ||
-                           ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('organizationPartyId',_createOrg)
-                            .condition('barcodeValue',pseudoId).disableAuthz().count()) {
+                    while (ec.service.sync().name('zenith.barcode.BarcodeServices.check#ProductCodeConflict')
+                            .parameters([organizationPartyId:_createOrg,code:pseudoId,productId:createOut.productId])
+                            .disableAuthz().call().conflict) {
                         pseudoId = 'ZC-'+java.util.UUID.randomUUID().toString().replace('-','').take(12).toUpperCase(java.util.Locale.ROOT)
                     }
                 }

@@ -15,6 +15,19 @@
                         sri.sendRedirectAndStopRender(roleRoute.landingPath)
                         return
                     }
+                    def request = ec.web.request
+                    def path = request.requestURI
+                    if (request.method == 'GET' && !sri.screenUrlInfo?.targetTransitionActualName) {
+                        if (path.startsWith('/apps/zenith/') && path.endsWith('.qvt')) {
+                            ec.web.response.setHeader('X-Zenith-Role-Denied', '1')
+                        } else if (path ==~ /\/(apps|qapps)\/zenith(\/[^.]+)?/ &&
+                                request.getHeader('Accept')?.contains('text/html') &&
+                                !request.getHeader('X-Requested-With')) {
+                            ec.web.response.setHeader('Cache-Control', 'private, no-store')
+                            sri.sendRedirectAndStopRender('/apps/zenith/AccessDenied')
+                            return
+                        }
+                    }
                     throw new org.moqui.context.ArtifactAuthorizationException('Your role does not include this module or submodule.')
                 }
             }
@@ -593,6 +606,17 @@
             context.customRoleNavigation = roleNav.restricted ?: false
             context.roleNavSections = navigation.roleSections ?: []
             context.roleNavJson = groovy.json.JsonOutput.toJson(roleNav + [sections:context.roleNavSections])
+            if (context.customRoleNavigation) {
+                def routes = context.roleNavSections.collectEntries { [(it.mount):it.screens*.id] }
+                def exit = { mount, billing, preferred ->
+                    def screens = routes[mount] ?: []
+                    def target = preferred.find { screens.contains(it) } ?: screens.find { it != billing }
+                    '/apps/zenith' + (target ?: '/AccessDenied')
+                }
+                context.posBillingBack = exit('/pos', '/pos/Terminal', ['/pos/Dashboard'])
+                context.kotBillingBack = exit('/kot', '/kot/KotBilling', ['/kot/KotHistory', '/kot/KotDashboard'])
+                context.showPosSessionReview = (routes['/pos'] ?: []).contains('/pos/PosSessions')
+            }
             context.saasVisibleModules = navigation.moduleIds
             context.navRestricted = navigation.moduleIds != null
             context.saasVisibleModulesJson = new groovy.json.JsonBuilder(navigation.moduleIds ?: []).toString()
@@ -703,6 +727,7 @@
              on-every-load nag). Pure client-side; no org/user data touched. -->
         <subscreens-item name="MyNotifications" location="component://zenith-erp-app/screen/zenith/MyNotifications.xml"
                          menu-title="Notifications" menu-index="97"/>
+        <subscreens-item name="AccessDenied" location="component://zenith-erp-app/screen/zenith/AccessDenied.xml" menu-include="false"/>
         <subscreens-item name="MyWorkspace" location="component://zenith-erp-app/screen/zenith/MyWorkspace.xml"
                          menu-include="false"/>
     </subscreens>
@@ -746,7 +771,7 @@
                         def reqUri = ec.web?.getRequest()?.getRequestURI() ?: ''
                         def parts = reqUri.split('/')
                         def currentModule = (parts.length > 3) ? parts[3]?.toLowerCase() : null
-                        def alwaysAllowed = ['dashboard', 'settings', 'saas-admin', 'my-subscription', 'mypassword', 'mysecurity'] as Set
+                        def alwaysAllowed = ['dashboard', 'settings', 'saas-admin', 'my-subscription', 'mypassword', 'mysecurity', 'accessdenied'] as Set
                         if (currentModule && !alwaysAllowed.contains(currentModule) && !saasAllowedModules.contains(currentModule)) {
                             context.saasModuleBlocked = true
                             context.saasBlockedModule = currentModule

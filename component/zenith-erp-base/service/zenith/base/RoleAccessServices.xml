@@ -45,6 +45,8 @@
                     // Read the module's mounted children only. Loading every detail screen compiles
                     // hundreds of unrelated actions and makes first-time role creation unresponsive.
                     ec.screen.getScreenDefinition(mod.location).subscreensItemsSorted.each { child ->
+                        // Terminal management is owner-only on both mounts.
+                        if (id in ['pos','kot'] && child.name == 'PosTerminals') return
                         if (id == 'pos' ? !posTabs.contains(child.name) : !child.menuInclude) return
                         screens.add([id:'/' + mod.name + '/' + child.name,
                             name:child.menuTitle ?: child.name, location:child.location])
@@ -114,7 +116,9 @@
                 if (role && clean.pos) {
                     def previous = new groovy.json.JsonSlurper().parseText(role.selectionsJson)
                     def visible = available.pos.screens*.id as Set
-                    clean.pos = (clean.pos + (previous.pos ?: []).findAll { it != '/pos/Kitchen' && !visible.contains(it) }).unique().sort()
+                    clean.pos = (clean.pos + (previous.pos ?: []).findAll {
+                        !(it in ['/pos/Kitchen','/pos/PosTerminals']) && !visible.contains(it)
+                    }).unique().sort()
                 }
                 def duplicate = ec.entity.find('zenith.erp.base.OrganizationAccessRole').condition('organizationPartyId',scope.organizationPartyId)
                     .condition('nameKey',name.toLowerCase(java.util.Locale.ROOT)).disableAuthz().one()
@@ -272,6 +276,9 @@
             if (!match.matches()) { allowed = false; return }
             def route = (match[0][1] ?: '').replaceFirst(/\.(qvt|vuet|html|pdf)$/, '').replaceFirst(/\/$/, '')
             def mod = route.tokenize('/').find()?.toLowerCase()
+            if (route == '/AccessDenied') return
+            // Both terminal management screens keep their existing owner-only boundary.
+            if (route ==~ /\/(pos|kot)\/PosTerminals(\/.*)?/) { allowed = false; return }
             def personal = ['MyPassword','MySecurity','MyNotifications','MyWorkspace','saasConfig','getSaasContext','getSidebarConfiguration',
                 'saveSidebarConfiguration','getSubnavConfiguration','saveSubnavConfiguration','setActiveShop']
             if (personal.contains(route.tokenize('/').find())) return

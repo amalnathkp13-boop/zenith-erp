@@ -11,6 +11,7 @@
         <script><![CDATA[
             def posOrg = ec.service.sync().name('zenith.barcode.BarcodeServices.get#AuthorizedActiveOrganization').call().activeOrgId ?: '__NO_ORGANIZATION__'
             def pf = ec.entity.find("mantle.product.Product").condition("productTypeEnumId", "PtAsset")
+                .conditionDate('salesIntroductionDate','salesDiscontinuationDate',ec.user.nowTimestamp)
             if (posOrg) pf.condition("ownerPartyId", posOrg)
             // Effective barcode per product = primary ProductBarcode value (fallback pseudoId) — the SAME
             // value renderLabels encodes, so the grid faithfully shows what will be printed/scanned.

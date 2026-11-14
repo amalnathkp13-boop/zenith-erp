@@ -63,7 +63,7 @@ along with this software (see the LICENSE.md file). If not, see
 
         // ZE-TAX-010: generic error handling — wraps moqui.handleAjaxError so raw 500 backend
         // exceptions show a friendly message instead of internal details (loads after WebrootVue)
-        footer_scripts.add('/zenithstatic/js/error-handler.js')
+        footer_scripts.add('/zenithstatic/js/error-handler.js?v=2')
 
         // conditional QZ Tray scripts, only include if enabled
         if (ec.user.getPreference("qz.print.enabled") == "true") {

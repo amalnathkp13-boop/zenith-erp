@@ -1,13 +1,17 @@
+const { randomUUID } = require('node:crypto');
+
 module.exports = async function ({a, foreign, base, check, q, invoke, post}) {
  const terminalId = 'POS_QA_REMOVE_PRODUCT';
  const categoryId = 'POS_QA_A_CAT';
  const productName = 'Disposable product removal check';
  const inventoryUrl = shell => `${base}/${shell}/zenith/Inventory`;
- const create = async (name, openingStock) => {
-  const response = await a.c.request.post(inventoryUrl('apps') + '/FindProduct/createProduct', {
-   form: {moquiSessionToken:a.t, productName:name, uqcEnumId:'NOS', mrpAmount:'10', productCategoryId:categoryId, openingStock},
+ const submitProduct = (name, openingStock, pseudoId='', shell='apps') =>
+  a.c.request.post(inventoryUrl(shell) + '/FindProduct/createProduct', {
+   form: {moquiSessionToken:a.t, productName:name, uqcEnumId:'NOS', mrpAmount:'10', productCategoryId:categoryId, openingStock, pseudoId},
    maxRedirects:0
   });
+ const create = async (name, openingStock, pseudoId='', shell='apps') => {
+  const response = await submitProduct(name, openingStock, pseudoId, shell);
   const id = new URL(response.headers().location || '/', base).searchParams.get('productId');
   check('creates a disposable product through Inventory', response.status() === 302 && /^\d+$/.test(id || ''), {status:response.status()});
   return id;
@@ -34,9 +38,14 @@ module.exports = async function ({a, foreign, base, check, q, invoke, post}) {
  const details = id => q(`SELECT * FROM asset_detail WHERE product_id='${id}'`).map(row => JSON.stringify(row)).sort();
  const onHand = id => Number(q(`SELECT coalesce(sum(quantity_on_hand_total),0) n FROM asset WHERE product_id='${id}'`)[0].n);
  const revision = () => q("SELECT setting_value FROM company_settings WHERE organization_party_id='POS_QA_A' AND setting_key='POS_CATALOG_REVISION'")[0]?.setting_value;
- const id = await create(productName, '1');
+ const code = '00QA-'+randomUUID().slice(0,8);
+ const id = await create(productName, '1', code);
  const unused = await create(productName + ' unused', '0');
- const code = product(id).pseudo_id;
+ const barcodes = productId => q(`SELECT * FROM product_barcode WHERE product_id='${productId}' ORDER BY barcode_id`);
+ const oldBarcodes = barcodes(id);
+ await submitProduct(productName+' duplicate', '0', code);
+ check('the current product reserves its code', oldBarcodes.some(row => row.barcode_value === code) &&
+  q(`SELECT product_id FROM product WHERE owner_party_id='POS_QA_A' AND pseudo_id='${code}'`).length === 1);
  const beforeBlocked = revision();
  await remove(unused, 'apps', foreign);
  await remove(unused, 'apps', a, false);
@@ -107,6 +116,35 @@ module.exports = async function ({a, foreign, base, check, q, invoke, post}) {
   check('retired product cannot be found by name or code at either till',
    !(await lookup(term)).some(p => p.productId === id) && kotMenu.exactId !== id && !kotMenu.products.some(p => p.id === id), {term});
  }
+ const replies = await Promise.all([
+  submitProduct('Replacement item code A', '0', code),
+  submitProduct('Replacement item code B', '0', code, 'qapps')
+ ]);
+ const replacements = replies.map(response => new URL(response.headers().location || '/',base).searchParams.get('productId')).filter(Boolean);
+ check('only one concurrent create can reuse the freed item code', replacements.length === 1, {statuses:replies.map(r => r.status())});
+ const replacement = replacements[0];
+ const kotMenu = await menu(code);
+ const scannedCart = await invoke('cart',{sessionId});
+ const scan = await post('Terminal','ajaxCart',{action:'scanAdd',cartSearch:code,sessionId,transactionId:scannedCart.transactionId,taxOn:'N',salesModeId:'RETAIL'});
+ check('the reused code resolves to the replacement at both tills', scan.ok() &&
+  q(`SELECT product_id FROM pos_transaction_item WHERE transaction_id='${scannedCart.transactionId}'`).map(row => row.product_id).join() === replacement &&
+  (await lookup(code)).filter(p => p.productId === replacement || p.productId === id).map(p => p.productId).join() === replacement &&
+  kotMenu.exactId === replacement && !kotMenu.products.some(p => p.id === id));
+ await invoke('void',{transactionId:scannedCart.transactionId});
+ check('reusing the code preserves the original product, barcode and issued history',
+  product(id).pseudo_id === code && product(replacement).pseudo_id === code && oldBarcodes.length > 0 &&
+  JSON.stringify(barcodes(id)) === JSON.stringify(oldBarcodes) && barcodes(replacement).some(row => row.barcode_value === code) &&
+  JSON.stringify(receiptBefore) === JSON.stringify((await invoke('receipt',{transactionId})).receipt) &&
+  JSON.stringify(history) === JSON.stringify(issuedRows()));
+ await remove(replacement);
+ const editTarget = await create('Existing replacement product', '0');
+ const edited = await a.c.request.post(inventoryUrl('qapps') + '/EditProduct/updateProduct', {
+  form:{moquiSessionToken:a.t,productId:editTarget,pseudoId:code},maxRedirects:0
+ });
+ check('editing an existing product can also reuse the code after the replacement is removed',
+  edited.status() === 302 && product(editTarget).pseudo_id === code && barcodes(editTarget).some(row => row.barcode_value === code));
+ const imported = await invoke('importProduct',{sku:code,productName:'Imported replacement product',listPrice:'10'});
+ check('importing a reused code updates only the current product', imported.productId === editTarget && product(id).product_name === productName);
  const next = await invoke('cart',{sessionId});
  await invoke('add',{transactionId:next.transactionId, productId:unused, quantity:'1', taxOn:'N', salesModeId:'RETAIL'},true);
  check('a stale product ID cannot add a line to a new bill',

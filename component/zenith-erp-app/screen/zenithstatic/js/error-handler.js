@@ -53,6 +53,10 @@
 
     moqui.handleAjaxError = function (jqXHR, textStatus, errorThrown, responseText) {
         try {
+            if (jqXHR && jqXHR.status === 403 && jqXHR.getResponseHeader('X-Zenith-Role-Denied') === '1') {
+                location.replace('/apps/zenith/AccessDenied');
+                return;
+            }
             // Let the original handle blob decoding (it re-invokes this with responseText set).
             var isBlobPending = jqXHR && jqXHR.responseType === 'blob' && !responseText;
             if (jqXHR && jqXHR.status >= 500 && !isBlobPending) {

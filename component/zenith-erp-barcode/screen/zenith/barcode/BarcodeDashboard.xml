@@ -11,7 +11,9 @@
         <if condition="curOrg == '_NA_'"><set field="curOrg" from="null"/></if>
 
         <!-- org-scoped counts (no active organization yields zero rows; was GLOBAL = cross-tenant leak) -->
-        <entity-find-count entity-name="zenith.erp.barcode.ProductBarcode" count-field="totalBarcodes">
+        <entity-find-count entity-name="zenith.erp.barcode.ProductBarcodeDetail" count-field="totalBarcodes">
+            <econdition field-name="ownerPartyId" from="curOrg"/>
+            <date-filter from-field-name="salesIntroductionDate" thru-field-name="salesDiscontinuationDate"/>
             <econdition field-name="isActive" value="Y"/>
             <econdition field-name="organizationPartyId" from="curOrg"/>
         </entity-find-count>
