@@ -19,7 +19,8 @@
 
     <transition name="exportProducts">
         <actions><script><![CDATA[
-            def prods = ec.entity.find("mantle.product.Product").condition("productTypeEnumId", "PtAsset").condition("ownerPartyId", posOrganizationPartyId ?: "__NO_ORGANIZATION__").orderBy("productName").list()
+            def prods = ec.entity.find("mantle.product.Product").condition("productTypeEnumId", "PtAsset").condition("ownerPartyId", posOrganizationPartyId ?: "__NO_ORGANIZATION__")
+                .conditionDate('salesIntroductionDate','salesDiscontinuationDate',ec.user.nowTimestamp).orderBy("productName").list()
             def esc = { v -> if (v == null) return ""; def s = v.toString(); (s.contains(",") || s.contains("\"") || s.contains("\n")) ? ("\"" + s.replace("\"", "\"\"") + "\"") : s }
             def num = { v -> v != null ? v.toString() : "" }
             def sb = new StringBuilder()
@@ -49,14 +50,16 @@
                     cf.makeCondition(it, org.moqui.entity.EntityCondition.LIKE, '%' + rawTerm + '%').ignoreCase()
                 }, org.moqui.entity.EntityCondition.OR)
                 def matched = ec.entity.find("mantle.product.Product").condition("productTypeEnumId", "PtAsset")
-                    .condition("ownerPartyId", _ao).condition(nameOrSku).orderBy("productName").limit(12).list()
+                    .condition("ownerPartyId", _ao).condition(nameOrSku)
+                    .conditionDate('salesIntroductionDate','salesDiscontinuationDate',ec.user.nowTimestamp).orderBy("productName").limit(12).list()
                 // exact barcode match — fetch the product directly so it's found even past the name-search limit
                 def bcQ = ec.entity.find("zenith.erp.barcode.ProductBarcode").condition("barcodeValue", rawTerm).condition("isActive", "Y")
                 bcQ.condition("organizationPartyId", _ao)
                 bcQ.list().collect { it.productId }.unique().each { pid ->
                     if (!matched.any { it.productId == pid }) {
-                        def bp = ec.entity.find("mantle.product.Product").condition("productId", pid).one()
-                        if (bp != null && bp.ownerPartyId == _ao) matched.add(bp)
+                        def bp = ec.entity.find("mantle.product.Product").condition("productId", pid).condition("ownerPartyId", _ao)
+                            .conditionDate('salesIntroductionDate','salesDiscontinuationDate',ec.user.nowTimestamp).one()
+                        if (bp != null) matched.add(bp)
                     }
                 }
                 if (matched.size() > 12) matched = matched.subList(0, 12)

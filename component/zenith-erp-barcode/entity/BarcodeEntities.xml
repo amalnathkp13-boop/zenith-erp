@@ -12,7 +12,12 @@
         <field name="isPrimary" type="text-indicator" default="'N'"/>
         <field name="isActive" type="text-indicator" default="'Y'"/>
         <relationship type="one" related="mantle.product.Product"/>
-        <index name="BC_VALUE" unique="true">
+        <index name="BC_VALUE">
+            <index-field name="organizationPartyId"/>
+            <index-field name="barcodeValue"/>
+        </index>
+        <index name="BC_PRODUCT_VALUE" unique="true">
+            <index-field name="productId"/>
             <index-field name="organizationPartyId"/>
             <index-field name="barcodeValue"/>
         </index>
@@ -93,6 +98,8 @@
         <alias entity-alias="PB" name="organizationPartyId"/>
         <alias entity-alias="PRD" name="ownerPartyId"/>
         <alias entity-alias="PRD" name="productName"/>
+        <alias entity-alias="PRD" name="salesIntroductionDate"/>
+        <alias entity-alias="PRD" name="salesDiscontinuationDate"/>
         <alias entity-alias="PRD" name="pseudoId"/>
         <alias entity-alias="PRD" name="productTypeEnumId"/>
         <alias entity-alias="PRD" name="listPrice" field="mrpAmount"/>

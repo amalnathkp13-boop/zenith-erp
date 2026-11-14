@@ -1136,9 +1136,11 @@
 
             <set field="existing" from="null"/>
             <if condition="sku">
+                <script>ec.entity.find('mantle.party.Party').condition('partyId',_org).forUpdate(true).disableAuthz().one()</script>
                 <entity-find entity-name="mantle.product.Product" list="exList" limit="1">
                     <econdition field-name="pseudoId" from="sku"/>
                     <econdition field-name="ownerPartyId" from="_org"/>
+                    <date-filter from-field-name="salesIntroductionDate" thru-field-name="salesDiscontinuationDate"/>
                 </entity-find>
                 <if condition="exList"><set field="existing" from="exList[0]"/></if>
             </if>
@@ -1156,6 +1158,11 @@
                 <entity-update value-field="existing"/>
                 <set field="created" from="false"/>
             <else>
+                <if condition="sku">
+                    <service-call name="zenith.barcode.BarcodeServices.check#ProductCodeConflict"
+                                  in-map="[organizationPartyId:_org,code:sku]" out-map="codeCheck" disable-authz="true"/>
+                    <if condition="codeCheck.conflict"><return error="true" message="This item code is already used in this organization."/></if>
+                </if>
                 <service-call name="create#mantle.product.Product" out-map="crOut"
                     in-map="[productTypeEnumId:'PtAsset', ownerPartyId:_org, productName:productName, pseudoId:sku,
                              description:description, mrpAmount:priceVal, productTaxCode:productTaxCode,

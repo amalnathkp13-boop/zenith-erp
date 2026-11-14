@@ -116,6 +116,8 @@ ssh "$SERVER" 'docker commit '"$APP"' zetaerp-moqui:latest && docker image prune
 ```
 
 ### B4. Reload — **`restart`, NEVER `up -d`**
+For the Inventory item-code reuse release, apply the [PostgreSQL migration](infra/db-migrations/2026-11-14-reuse-retired-product-codes.sql) during the maintenance window before starting the updated application. It replaces the old uniqueness indexes and keeps every product and barcode row.
+
 `up -d` recreates the container and **discards uncommitted in-container edits** (and once filled
 the disk → whole-site outage). Always:
 ```bash

@@ -325,6 +325,15 @@ jobs:
           docker exec "$CID" sh -lc 'cd /opt/moqui && /opt/java/openjdk/bin/java -cp . MoquiStart load types=seed,seed-initial,demo no-run-es' \
             2>&1 | tee "$RUNNER_TEMP/seed.txt"
 
+      - name: Apply the active product code index migration
+        run: |
+          set -euo pipefail
+          DBID=$(docker compose -f "$COMPOSE" ps -q db)
+          if [ -f "$CONTACTS_QA_SOURCE_DIR/docs/infra/db-migrations/2026-11-14-reuse-retired-product-codes.sql" ]; then
+            docker exec -i "$DBID" psql -U moqui -d moqui -v ON_ERROR_STOP=1 \
+              < "$CONTACTS_QA_SOURCE_DIR/docs/infra/db-migrations/2026-11-14-reuse-retired-product-codes.sql"
+          fi
+
       - name: Assert required seed and tenant records in the fresh database
         run: |
           set -euo pipefail
