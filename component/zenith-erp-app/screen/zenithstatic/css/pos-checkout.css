@@ -73,7 +73,6 @@ html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-cus
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference #pos-header-customer-name { overflow:hidden; text-overflow:ellipsis; }
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-actionbar,
 #kb-wrap .nb-actionbar { grid-area:actions; display:flex; gap:16px; align-items:center; background:white; margin:-10px -24px 0; padding:10px 24px; border-bottom:1px solid var(--pos-line); }
-html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-back { min-width:160px; }
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-modes,
 #kb-wrap :is(.nb-hrow,.nb-actionbar) .nb-modes { position:relative; }
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference summary { list-style:none; cursor:pointer; }
@@ -198,7 +197,6 @@ html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .pos-sp
   html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-brand img { max-width:125px; }
   html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-actionbar { gap:10px; }
   html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-actionbar .nb-pill, html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-abtn, html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-back { font-size:14px; padding:0 12px; }
-  html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-back { min-width:135px; }
   html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .pos-reference-payments button, html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .pos-reference-payments > a { gap:5px; font-size:11px!important; }
 }
 @media (max-height:800px) and (min-width:901px) {
