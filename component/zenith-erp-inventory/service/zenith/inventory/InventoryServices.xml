@@ -198,6 +198,15 @@
             <parameter name="productId"/>
         </out-parameters>
         <actions>
+            <if condition="pseudoId">
+                <set field="pseudoId" from="pseudoId.trim()"/>
+                <service-call name="zenith.barcode.BarcodeServices.get#AuthorizedActiveOrganization" out-map="codeScope"/>
+                <if condition="!codeScope.activeOrgId"><return error="true" message="Select an organization before creating a product."/></if>
+                <script>ec.entity.find('mantle.party.Party').condition('partyId',codeScope.activeOrgId).forUpdate(true).disableAuthz().one()</script>
+                <service-call name="zenith.barcode.BarcodeServices.check#ProductCodeConflict"
+                              in-map="[organizationPartyId:codeScope.activeOrgId,code:pseudoId]" out-map="codeCheck" disable-authz="true"/>
+                <if condition="codeCheck.conflict"><return error="true" message="This item code is already used in this organization."/></if>
+            </if>
             <service-call name="create#mantle.product.Product" in-map="[productName:productName, pseudoId:pseudoId,
                 productTypeEnumId:productTypeEnumId, hsnCode:hsnCode, sacCode:sacCode, mrpAmount:mrpAmount,
                 gstSlabId:gstSlabId, uqcEnumId:uqcEnumId, isGstExempt:isGstExempt,

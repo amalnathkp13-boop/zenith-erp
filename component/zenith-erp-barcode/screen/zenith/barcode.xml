@@ -52,7 +52,9 @@
                 }else if(barcodeId){
                     def checked=access('barcode',barcodeId);if(!checked.allowed){fail(403,'You do not have access to these labels.');return};def bc=checked.record
                     def prd=ec.entity.find('mantle.product.Product').condition('productId',bc.productId).one()
-                    if(bc.isActive!='Y' || !prd || prd.ownerPartyId!=bc.organizationPartyId){fail(400,'This barcode is inactive or has an inconsistent product owner.');return}
+                    if(bc.isActive!='Y' || !prd || prd.ownerPartyId!=bc.organizationPartyId ||
+                        (prd.salesDiscontinuationDate && prd.salesDiscontinuationDate <= ec.user.nowTimestamp)){
+                        fail(400,'This barcode is unavailable for current products.');return}
                     if(bc.organizationPartyId)tpl=ec.entity.find('zenith.erp.barcode.BarcodeLabel').condition('organizationPartyId',bc.organizationPartyId).condition('isDefault','Y').one()
                     append([value:bc.barcodeValue,type:bc.barcodeTypeEnumId,name:prd.productName ?: bc.productId,sku:prd.pseudoId ?: '',price:prd.mrpAmount],1)
                 }else if(productIds){

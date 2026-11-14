@@ -27,27 +27,12 @@
                         ec.web.sendJsonResponse([success:false, error:'You do not have access to this product.']); return }
                     if(!ev.ownerPartyId){ec.web.sendJsonResponse([success:false,error:'Select an organization-owned product.']);return}
                     ec.entity.find('mantle.party.Party').condition('partyId',ev.ownerPartyId).forUpdate(true).disableAuthz().one()
-                    ec.entity.find('mantle.product.Product').condition('productId',p.productId).forUpdate(true).one()
-                    if (code != '') {
-                        def aliases=ec.service.sync().name('zenith.barcode.BarcodeServices.get#ScanAliases').parameters([code:code]).call().aliases
-                        def richClash=ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('organizationPartyId',ev.ownerPartyId).condition('barcodeValue','in',aliases).condition('productId','not-equals',p.productId).disableAuthz().count()
-                        if(richClash){ec.web.sendJsonResponse([success:false,error:'Code already assigned to another product barcode.']);return}
-                        if(ec.entity.find('mantle.product.Product').condition('ownerPartyId',ev.ownerPartyId).condition('productId',code).condition('productId','not-equals',p.productId).disableAuthz().count()){ec.web.sendJsonResponse([success:false,error:'Code matches another product ID.']);return}
-                        // A barcode must be unique WITHIN the org — two products sharing a code break scanning.
-                        // Scope the clash check to the product's own org: pseudoId is unique on (pseudo_id, owner_party_id),
-                        // so a different org legitimately reusing the code is allowed (and must not leak that org's name).
-                        def clashFinder = ec.entity.find("mantle.product.Product").condition("pseudoId", "in", aliases)
-                        if (ev.ownerPartyId) clashFinder.condition("ownerPartyId", ev.ownerPartyId)
-                        def clash = clashFinder.list().find { it.productId != p.productId }
-                        if (clash) { ec.web.sendJsonResponse([success:false, error:'Code already used by ' + (clash.productName ?: clash.productId)]); return }
-                    }
-                    // Update via a fresh mutable value (the found value is read-only).
-                    ec.entity.makeValue("mantle.product.Product").set("productId", p.productId).set("pseudoId", (code != '' ? code : null)).update()
                     if (code != '') {
                         // Keep the rich ProductBarcode table in sync (mirror this code as the product's
                         // primary barcode). A mirror failure rolls back the same transaction.
                         ec.service.sync().name("zenith.barcode.BarcodeServices.sync#BarcodeFromPseudoId").parameters([productId:p.productId, code:code]).call()
-                        if(ec.message.hasError()){ec.web.sendJsonResponse([success:false,error:"Code synchronization failed."]);return}
+                        if(ec.message.hasError()){ec.web.sendJsonResponse([success:false,error:ec.message.errorsString]);return}
+                        ec.entity.makeValue("mantle.product.Product").set("productId", p.productId).set("pseudoId", code).update()
                         ec.web.sendJsonResponse([success:true, code:code]); return
                     }
                     // Clearing removes only the primary and preserves/promotes active secondary barcodes.
@@ -80,6 +65,7 @@
             }
 
             def pf = ec.entity.find("mantle.product.Product").condition("productTypeEnumId", "PtAsset")
+                .conditionDate('salesIntroductionDate','salesDiscontinuationDate',ec.user.nowTimestamp)
             if (posOrg) pf.condition("ownerPartyId", posOrg)
             def candidates = pf.orderBy("productName").limit(5000).list()
 
@@ -87,7 +73,7 @@
             // so treat it as empty everywhere — status, dup detection, search, and the row's code box.
             def effCode = { pr -> def c = (pr.pseudoId ?: '').trim(); (c == '' || c == pr.productId) ? '' : c }
 
-            // Duplicate-code detection across ALL of the tenant's products (codes shared by 2+ products).
+            // Duplicate-code detection across the tenant's current products.
             def codeCounts = [:]
             candidates.each { pr -> def c = effCode(pr); if (c != '') codeCounts[c] = (codeCounts[c] ?: 0) + 1 }
             def dupCodes = codeCounts.findAll { it.value > 1 }.keySet()

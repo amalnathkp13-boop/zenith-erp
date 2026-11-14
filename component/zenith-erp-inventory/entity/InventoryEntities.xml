@@ -19,6 +19,8 @@
         <field name="expiryDate" type="date"><description>Product-level expiry date for perishable goods</description></field>
         <field name="isPerishable" type="text-indicator"><description>Y = perishable (has an expiry date); surfaced in the Wastage module</description></field>
         <field name="inventoryTracked" type="text-indicator"><description>Y = stock tracked/depleted for this item (set when an opening count is entered)</description></field>
+        <!-- Retired products keep their code. The PostgreSQL migration enforces active-only uniqueness. -->
+        <index name="PRODUCT_ID_PSEUDO"><index-field name="pseudoId"/><index-field name="ownerPartyId"/></index>
     </extend-entity>
 
     <!-- Images are separate so catalogue/POS product queries do not load binary data. -->

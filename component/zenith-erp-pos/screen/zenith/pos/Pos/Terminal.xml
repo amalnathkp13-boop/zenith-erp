@@ -798,11 +798,14 @@
 
 
 
-                if (cartSearch) {
+                if (cartSearch && posOrganizationPartyId) {
+                    def currentProducts = { ec.entity.find('mantle.product.Product')
+                        .condition('ownerPartyId',posOrganizationPartyId)
+                        .conditionDate('salesIntroductionDate','salesDiscontinuationDate',ec.user.nowTimestamp) }
 
 
 
-                    foundProduct = ec.entity.find("mantle.product.Product")
+                    foundProduct = currentProducts()
 
 
 
@@ -814,7 +817,7 @@
 
 
 
-                        foundProduct = ec.entity.find("mantle.product.Product")
+                        foundProduct = currentProducts()
 
 
 
@@ -838,7 +841,7 @@
 
 
 
-                        foundProduct = ec.entity.find("mantle.product.Product")
+                        foundProduct = currentProducts()
 
 
 

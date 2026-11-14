@@ -61,6 +61,44 @@ else if(barcodeTypeEnumId in ['BctCode128','BctInternal'] && (!(value==~ /[ -~]+
 if(error){ec.message.addError(error);return};valid=true
 
 ]]></script></actions></service>
+    <!-- Call under the organization lock when assigning a code. Future-dated retirements still reserve it. -->
+    <service verb="check" noun="ProductCodeConflict" authenticate="true" authz-action="view">
+        <in-parameters>
+            <parameter name="organizationPartyId" required="true"/>
+            <parameter name="code" allow-html="any"/>
+            <parameter name="productId"/>
+        </in-parameters>
+        <out-parameters><parameter name="conflict" type="Boolean"/></out-parameters>
+        <actions><script><![CDATA[
+            conflict=false
+            if (!code) return
+            if (!ec.user.isInGroup('ADMIN')) {
+                def scope=ec.service.sync().name('zenith.barcode.BarcodeServices.get#AuthorizedActiveOrganization').call()
+                if (scope.activeOrgId != organizationPartyId) {
+                    ec.message.addError('Product code lookup requires access to this organization.'); return
+                }
+            }
+            def aliases=ec.service.sync().name('zenith.barcode.BarcodeServices.get#ScanAliases').parameter('code',code).call().aliases
+            def cf=ec.entity.conditionFactory; def EC=org.moqui.entity.EntityCondition
+            def notRetired=cf.makeCondition([
+                cf.makeCondition('salesDiscontinuationDate',EC.EQUALS,null),
+                cf.makeCondition('salesDiscontinuationDate',EC.GREATER_THAN,ec.user.nowTimestamp)
+            ],EC.OR)
+            def products=ec.entity.find('mantle.product.Product').condition('ownerPartyId',organizationPartyId)
+                .condition(notRetired).condition(cf.makeCondition([
+                    cf.makeCondition('pseudoId',EC.IN,aliases), cf.makeCondition('productId',EC.IN,aliases)
+                ],EC.OR)).disableAuthz().useCache(false)
+            def barcodes=ec.entity.find('zenith.erp.barcode.ProductBarcodeDetail')
+                .condition([organizationPartyId:organizationPartyId,ownerPartyId:organizationPartyId])
+                .condition('barcodeValue','in',aliases).condition(notRetired).disableAuthz().useCache(false)
+            if (productId) {
+                products.condition('productId','not-equals',productId)
+                barcodes.condition('productId','not-equals',productId)
+            }
+            conflict=products.count() > 0 || barcodes.count() > 0
+        ]]></script></actions>
+    </service>
+
 <service verb="add" noun="ProductBarcode" authenticate="true"><in-parameters><parameter name="productId"/><parameter name="barcodeTypeEnumId"/><parameter name="barcodeValue" allow-html="any"/><parameter name="isPrimary"/></in-parameters><out-parameters><parameter name="barcodeId"/></out-parameters><actions><script><![CDATA[
 def access=ec.service.sync().name('zenith.barcode.BarcodeServices.assert#RecordAccess').parameters([kind:'product',recordId:productId,write:true]).call(); if(!access.allowed) return; def record=access.record
 
@@ -68,16 +106,18 @@ if(!record.ownerPartyId){ec.message.addError('Select an organization-owned produ
 def owner=record.ownerPartyId
 // Serialize organization-wide code/GTIN reservations before the product-primary lock.
 ec.entity.find('mantle.party.Party').condition('partyId',owner).forUpdate(true).disableAuthz().one()
-ec.entity.find('mantle.product.Product').condition('productId',productId).forUpdate(true).one()
+record=ec.entity.find('mantle.product.Product').condition('productId',productId).forUpdate(true).one()
+if(!record || (record.salesDiscontinuationDate && record.salesDiscontinuationDate <= ec.user.nowTimestamp)){ec.message.addError('Select a current product.');return}
 def checked=ec.service.sync().name('zenith.barcode.BarcodeServices.validate#BarcodeValue').parameters([barcodeTypeEnumId:barcodeTypeEnumId,barcodeValue:barcodeValue]).call()
 if(!checked.valid)return
 barcodeValue=checked.value;isPrimary=isPrimary ?: 'N'
 if(!(isPrimary in ['Y','N'])){ec.message.addError('Choose Yes or No for Primary.');return}
 def aliases=ec.service.sync().name('zenith.barcode.BarcodeServices.get#ScanAliases').parameters([code:barcodeValue]).call().aliases
-def collision=ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('organizationPartyId',owner).condition('barcodeValue','in',aliases).disableAuthz().count()
-def pseudoCollision=ec.entity.find('mantle.product.Product').condition('ownerPartyId',owner).condition('pseudoId','in',aliases).condition('productId','not-equals',productId).disableAuthz().count()
-def idCollision=ec.entity.find('mantle.product.Product').condition('ownerPartyId',owner).condition('productId','in',aliases).condition('productId','not-equals',productId).disableAuthz().count()
-if(collision || pseudoCollision || idCollision){ec.message.addError('This barcode is already assigned in this organization.');return}
+def collision=ec.service.sync().name('zenith.barcode.BarcodeServices.check#ProductCodeConflict')
+    .parameters([organizationPartyId:owner,code:barcodeValue,productId:productId]).disableAuthz().call().conflict
+if(ec.message.hasError())return
+if(collision || ec.entity.find('zenith.erp.barcode.ProductBarcode').condition([organizationPartyId:owner,productId:productId])
+    .condition('barcodeValue','in',aliases).disableAuthz().count()){ec.message.addError('This barcode is already assigned in this organization.');return}
 if(!record.pseudoId && !ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('productId',productId).condition('organizationPartyId',owner).condition('isPrimary','Y').count())isPrimary='Y'
 if(isPrimary=='Y')ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('productId',productId).condition('organizationPartyId',owner).condition('isPrimary','Y').list().each{ec.service.sync().name('update#zenith.erp.barcode.ProductBarcode').parameters([barcodeId:it.barcodeId,isPrimary:'N']).call()}
 def result=ec.service.sync().name('create#zenith.erp.barcode.ProductBarcode').parameters([productId:productId,organizationPartyId:owner,barcodeTypeEnumId:barcodeTypeEnumId,barcodeValue:barcodeValue,isPrimary:isPrimary,isActive:'Y']).call()
@@ -94,12 +134,15 @@ def writable=['barcode','pos','inventory'].any {module -> ec.service.sync().name
 if(!writable){ec.message.addError('Product code write access is required.');return}
 
 ec.entity.find('mantle.party.Party').condition('partyId',prd.ownerPartyId).forUpdate(true).disableAuthz().one()
-ec.entity.find('mantle.product.Product').condition('productId',productId).forUpdate(true).disableAuthz().one()
+prd=ec.entity.find('mantle.product.Product').condition('productId',productId).forUpdate(true).disableAuthz().one()
+if(!prd || (prd.salesDiscontinuationDate && prd.salesDiscontinuationDate <= ec.user.nowTimestamp)){ec.message.addError('Select a current product.');return}
 
 def code=barcodeValue?.trim()
 if(!code || prd.pseudoId==code)return
-def aliases=ec.service.sync().name('zenith.barcode.BarcodeServices.get#ScanAliases').parameters([code:code]).call().aliases
-if(ec.entity.find('mantle.product.Product').condition('ownerPartyId',prd.ownerPartyId).condition('pseudoId','in',aliases).condition('productId','not-equals',productId).disableAuthz().count() || ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('organizationPartyId',prd.ownerPartyId).condition('barcodeValue','in',aliases).condition('productId','not-equals',productId).disableAuthz().count()){ec.message.addError('This code belongs to another product.');return}
+def collision=ec.service.sync().name('zenith.barcode.BarcodeServices.check#ProductCodeConflict')
+    .parameters([organizationPartyId:prd.ownerPartyId,code:code,productId:productId]).disableAuthz().call().conflict
+if(ec.message.hasError())return
+if(collision){ec.message.addError('This code belongs to another product.');return}
 ec.service.sync().name('update#mantle.product.Product').parameters([productId:productId,pseudoId:code]).call()
 
 ]]></script></actions></service>
@@ -112,13 +155,15 @@ def writable=['barcode','pos','inventory'].any {module -> ec.service.sync().name
 if(!writable){ec.message.addError('Product code write access is required.');return}
 
 ec.entity.find('mantle.party.Party').condition('partyId',prd.ownerPartyId).forUpdate(true).disableAuthz().one()
-ec.entity.find('mantle.product.Product').condition('productId',productId).forUpdate(true).disableAuthz().one()
+prd=ec.entity.find('mantle.product.Product').condition('productId',productId).forUpdate(true).disableAuthz().one()
+if(!prd || (prd.salesDiscontinuationDate && prd.salesDiscontinuationDate <= ec.user.nowTimestamp)){ec.message.addError('Select a current product.');return}
 
 def value=code?.trim()
 if(!value)return // Clearing pseudoId does not delete independently assigned secondary barcodes.
-if(ec.entity.find('mantle.product.Product').condition('ownerPartyId',prd.ownerPartyId).condition('productId',value).condition('productId','not-equals',productId).disableAuthz().count()){ec.message.addError('This code matches another product ID.');return}
-def aliases=ec.service.sync().name('zenith.barcode.BarcodeServices.get#ScanAliases').parameters([code:value]).call().aliases
-if(ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('organizationPartyId',prd.ownerPartyId).condition('barcodeValue','in',aliases).condition('productId','not-equals',productId).disableAuthz().count() || ec.entity.find('mantle.product.Product').condition('ownerPartyId',prd.ownerPartyId).condition('pseudoId','in',aliases).condition('productId','not-equals',productId).disableAuthz().count()){ec.message.addError('This code belongs to another product barcode.');return}
+def collision=ec.service.sync().name('zenith.barcode.BarcodeServices.check#ProductCodeConflict')
+    .parameters([organizationPartyId:prd.ownerPartyId,code:value,productId:productId]).disableAuthz().call().conflict
+if(ec.message.hasError())return
+if(collision){ec.message.addError("The code '${value}' is already used in this organization. Each current item needs a unique scan code.");return}
 ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('productId',productId).condition('organizationPartyId',prd.ownerPartyId).condition('isPrimary','Y').list().each {if(it.barcodeValue!=value)ec.service.sync().name('update#zenith.erp.barcode.ProductBarcode').parameters([barcodeId:it.barcodeId,isPrimary:'N']).call()}
 def mine=ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('organizationPartyId',prd.ownerPartyId).condition('productId',productId).condition('barcodeValue',value).one()
 if(mine)ec.service.sync().name('update#zenith.erp.barcode.ProductBarcode').parameters([barcodeId:mine.barcodeId,isPrimary:'Y',isActive:'Y']).call()
@@ -132,7 +177,8 @@ else ec.service.sync().name('create#zenith.erp.barcode.ProductBarcode').paramete
     def writable=['barcode','pos','inventory'].any {module -> ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameters([moduleId:module]).disableAuthz().call().canWrite}
     if(!writable){ec.message.addError('Product code write access is required.');return}
     ec.entity.find('mantle.party.Party').condition('partyId',product.ownerPartyId).forUpdate(true).disableAuthz().one()
-    ec.entity.find('mantle.product.Product').condition('productId',productId).forUpdate(true).one()
+    product=ec.entity.find('mantle.product.Product').condition('productId',productId).forUpdate(true).one()
+    if(!product || (product.salesDiscontinuationDate && product.salesDiscontinuationDate <= ec.user.nowTimestamp)){ec.message.addError('Select a current product.');return}
     def primary=ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('productId',productId).condition('organizationPartyId',product.ownerPartyId).condition('isPrimary','Y').list()
     if(primary.any{it.organizationPartyId!=product.ownerPartyId}){ec.message.addError('Barcode ownership is inconsistent.');return}
     primary.each{it.delete()}
@@ -151,10 +197,13 @@ def matches=ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('organ
 def ids=matches.collect{it.productId} as Set
 def disabled=ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('organizationPartyId',org).condition('barcodeValue','in',aliases).condition('isActive','N').list().collect{it.productId} as Set
 ec.entity.find('mantle.product.Product').condition('ownerPartyId',org).condition('pseudoId','in',aliases).list().each{if(!disabled.contains(it.productId))ids.add(it.productId)}
-if(ids.size()!=1)return // Ambiguous legacy data must not choose a product arbitrarily.
-def prd=ec.entity.find('mantle.product.Product').condition('ownerPartyId',org).condition('productId',ids.first()).one()
-if(!prd || prd.ownerPartyId!=org)return
-found=true;productId=prd.productId;productName=prd.productName;listPrice=prd.mrpAmount;barcodeTypeEnumId=matches ? matches[0].barcodeTypeEnumId : 'BctInternal'
+if(!ids)return
+def products=ec.entity.find('mantle.product.Product').condition('ownerPartyId',org).condition('productId','in',ids)
+    .conditionDate('salesIntroductionDate','salesDiscontinuationDate',ec.user.nowTimestamp).limit(2).list()
+if(products.size()!=1)return // Ambiguous current products must not choose a product arbitrarily.
+def prd=products[0]
+found=true;productId=prd.productId;productName=prd.productName;listPrice=prd.mrpAmount
+barcodeTypeEnumId=matches.find{it.productId==productId}?.barcodeTypeEnumId ?: 'BctInternal'
 
 ]]></script></actions></service>
 <service verb="generate" noun="InternalBarcode" authenticate="true"><in-parameters><parameter name="productId"/><parameter name="prefix"/></in-parameters><out-parameters><parameter name="barcodeId"/><parameter name="barcodeValue" allow-html="any"/></out-parameters><actions><script><![CDATA[
@@ -174,8 +223,10 @@ def result=ec.service.sync().name('zenith.barcode.BarcodeServices.add#ProductBar
 <service verb="delete" noun="ProductBarcode" authenticate="true"><in-parameters><parameter name="barcodeId"/></in-parameters><out-parameters></out-parameters><actions><script><![CDATA[
 def access=ec.service.sync().name('zenith.barcode.BarcodeServices.assert#RecordAccess').parameters([kind:'barcode',recordId:barcodeId,write:true]).call(); if(!access.allowed) return; def record=access.record
 
+ec.entity.find('mantle.party.Party').condition('partyId',record.organizationPartyId).forUpdate(true).disableAuthz().one()
 def prd=ec.entity.find('mantle.product.Product').condition('productId',record.productId).forUpdate(true).one()
 if(!prd || prd.ownerPartyId!=record.organizationPartyId){ec.message.addError('Barcode product ownership is inconsistent.');return}
+if(prd.salesDiscontinuationDate && prd.salesDiscontinuationDate <= ec.user.nowTimestamp){ec.message.addError('Select a current product.');return}
 ec.service.sync().name('delete#zenith.erp.barcode.ProductBarcode').parameters([barcodeId:barcodeId]).call()
 if(record.isPrimary=='Y'){
  def next=ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('productId',record.productId).condition('organizationPartyId',record.organizationPartyId).condition('isActive','Y').orderBy('barcodeId').list()
@@ -190,6 +241,7 @@ barcodes=ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('productI
 ]]></script></actions></service>
 <service verb="get" noun="ProductLabel" authenticate="true" authz-action="view"><in-parameters><parameter name="productId"/></in-parameters><out-parameters><parameter name="label" type="Map"/></out-parameters><actions><script><![CDATA[
 def access=ec.service.sync().name('zenith.barcode.BarcodeServices.assert#RecordAccess').parameters([kind:'product',recordId:productId,write:false]).call(); if(!access.allowed) return; def record=access.record
+if(record.salesDiscontinuationDate && record.salesDiscontinuationDate <= ec.user.nowTimestamp){ec.message.addError('Select a current product.');return}
 
 def rows=ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('organizationPartyId',record.ownerPartyId).condition('productId',productId).condition('isActive','Y').orderBy('-isPrimary,barcodeId').list()
 def primary=rows.find{it.isPrimary=='Y'}
@@ -353,12 +405,12 @@ ec.entity.find('zenith.erp.barcode.BarcodeLabel').condition('organizationPartyId
             def ids=aliases.findAll{it.isActive=='Y'}.collect{it.productId} as Set
             ec.entity.find('mantle.product.Product').condition('ownerPartyId',org).condition('pseudoId','in',codes).list().each{if(!disabled.contains(it.productId))ids.add(it.productId)}
             ec.entity.find('mantle.product.Product').condition('ownerPartyId',org).condition('productId',value).list().each{if(!disabled.contains(it.productId))ids.add(it.productId)}
-            if(ids.size()>1){ambiguous=true;return}
-            if(ids.size()!=1)return
-            def product=ec.entity.find('mantle.product.Product').condition('ownerPartyId',org).condition('productId',ids.first()).one()
-            if(!product || product.ownerPartyId!=org ||
-                (product.salesDiscontinuationDate && product.salesDiscontinuationDate <= ec.user.nowTimestamp))return
-            found=true;productId=product.productId
+            if(!ids)return
+            def products=ec.entity.find('mantle.product.Product').condition('ownerPartyId',org).condition('productId','in',ids)
+                .conditionDate('salesIntroductionDate','salesDiscontinuationDate',ec.user.nowTimestamp).limit(2).list()
+            if(products.size()>1){ambiguous=true;return}
+            if(!products)return
+            found=true;productId=products[0].productId
         ]]></script></actions>
     </service>
 

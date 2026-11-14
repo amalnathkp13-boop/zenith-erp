@@ -29,19 +29,26 @@
             <econdition field-name="organizationPartyId" from="curOrg"/>
             <!-- A legacy barcode with an inconsistent product owner must not expose another tenant's name. -->
             <econdition field-name="ownerPartyId" from="curOrg"/>
+            <date-filter from-field-name="salesIntroductionDate" thru-field-name="salesDiscontinuationDate"/>
         </entity-find>
 
         <!-- Stat cards: real, org-scoped counts (no active organization yields zero rows). -->
-        <entity-find-count entity-name="zenith.erp.barcode.ProductBarcode" count-field="statTotal">
+        <entity-find-count entity-name="zenith.erp.barcode.ProductBarcodeDetail" count-field="statTotal">
+            <econdition field-name="ownerPartyId" from="curOrg"/>
+            <date-filter from-field-name="salesIntroductionDate" thru-field-name="salesDiscontinuationDate"/>
             <econdition field-name="isActive" value="Y"/>
             <econdition field-name="organizationPartyId" from="curOrg"/>
         </entity-find-count>
-        <entity-find-count entity-name="zenith.erp.barcode.ProductBarcode" count-field="statInternal">
+        <entity-find-count entity-name="zenith.erp.barcode.ProductBarcodeDetail" count-field="statInternal">
+            <econdition field-name="ownerPartyId" from="curOrg"/>
+            <date-filter from-field-name="salesIntroductionDate" thru-field-name="salesDiscontinuationDate"/>
             <econdition field-name="isActive" value="Y"/>
             <econdition field-name="barcodeTypeEnumId" value="BctInternal"/>
             <econdition field-name="organizationPartyId" from="curOrg"/>
         </entity-find-count>
-        <entity-find-count entity-name="zenith.erp.barcode.ProductBarcode" count-field="statEanUpc">
+        <entity-find-count entity-name="zenith.erp.barcode.ProductBarcodeDetail" count-field="statEanUpc">
+            <econdition field-name="ownerPartyId" from="curOrg"/>
+            <date-filter from-field-name="salesIntroductionDate" thru-field-name="salesDiscontinuationDate"/>
             <econdition field-name="isActive" value="Y"/>
             <econdition field-name="barcodeTypeEnumId" operator="in" from="['BctUpcA','BctUpcE','BctEan13','BctEan8']"/>
             <econdition field-name="organizationPartyId" from="curOrg"/>
@@ -54,6 +61,7 @@
         <!-- Generate Internal Barcode modal: org-scoped product options + surface-aware post target -->
         <entity-find entity-name="mantle.product.Product" list="_prodOpts">
             <econdition field-name="ownerPartyId" from="curOrg"/>
+            <date-filter from-field-name="salesIntroductionDate" thru-field-name="salesDiscontinuationDate"/>
             <order-by field-name="productName"/>
         </entity-find>
         <entity-find entity-name="moqui.basic.Enumeration" list="_typeEnums">

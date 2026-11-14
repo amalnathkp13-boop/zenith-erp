@@ -29,8 +29,11 @@
             <script><![CDATA[
                 // Acquire the Barcode/POS organization -> product lock order before updating pseudoId.
                 if (curProd.ownerPartyId) ec.entity.find('mantle.party.Party').condition('partyId',curProd.ownerPartyId).forUpdate(true).disableAuthz().one()
-                ec.entity.find('mantle.product.Product').condition('productId',productId).forUpdate(true).one()
+                curProd = ec.entity.find('mantle.product.Product').condition('productId',productId).forUpdate(true).one()
             ]]></script>
+            <if condition="!curProd || (curProd.salesDiscontinuationDate &amp;&amp; curProd.salesDiscontinuationDate &lt;= ec.user.nowTimestamp)">
+                <return error="true" message="Select a current product to make changes."/>
+            </if>
             <script><![CDATA[
                 // Only editor fields may be changed; never accept owner, IDs, stock or document state.
                 productChanges = [productId:productId, ownerPartyId:curProd.ownerPartyId]
@@ -101,16 +104,9 @@
             <if condition="ec.message.hasError()"><return/></if>
             <if condition="pseudoId">
                 <set field="pseudoId" from="pseudoId.toString().trim()"/>
-                <!-- Uniqueness: a scan code must be unique within the organization, else the till can't tell
-                     two products apart and may bill the wrong one (same guard as the Barcodes grid). -->
-                <entity-find entity-name="mantle.product.Product" list="clashList">
-                    <econdition field-name="pseudoId"/>
-                    <econdition field-name="ownerPartyId" from="curProd.ownerPartyId" ignore-if-empty="true"/>
-                    <econdition field-name="productId" operator="not-equals" from="productId"/>
-                </entity-find>
-                <if condition="clashList">
-                    <return error="true" message="The code '${pseudoId}' is already used by another product (${clashList[0].productName ?: clashList[0].productId}). Each item needs a unique scan code."/>
-                </if>
+                <service-call name="zenith.barcode.BarcodeServices.sync#BarcodeFromPseudoId"
+                              in-map="[productId:productId, code:pseudoId]"/>
+                <if condition="ec.message.hasError()"><return/></if>
                 <!-- Advisory EAN/UPC check-digit validation (numeric 8/12/13 only). Warns, never blocks —
                      free-form internal codes (e.g. MARUTHI-01) are untouched. -->
                 <script><![CDATA[
@@ -151,14 +147,8 @@
                     else ec.entity.makeValue('zenith.erp.inventory.ProductEditorImage').setAll([productId:productId,organizationPartyId:curProd.ownerPartyId,imageData:preparedImage]).create()
                 } else if (ec.web.parameters.removeImage=='Y' && imageRow) imageRow.delete()
             ]]></script>
-            <!-- Keep the rich ProductBarcode table in sync (mirror the code as the primary barcode).
-                 Mirror conflicts roll back the product update, preventing ambiguous scan codes. -->
-            <if condition="pseudoId">
-                <service-call name="zenith.barcode.BarcodeServices.sync#BarcodeFromPseudoId"
-                              in-map="[productId:productId, code:pseudoId]"/>
-                <else-if condition="ec.web.parameters.containsKey('pseudoId')">
-                    <service-call name="zenith.barcode.BarcodeServices.clear#ProductCode" in-map="[productId:productId]"/>
-                </else-if>
+            <if condition="!pseudoId &amp;&amp; ec.web.parameters.containsKey('pseudoId')">
+                <service-call name="zenith.barcode.BarcodeServices.clear#ProductCode" in-map="[productId:productId]"/>
             </if>
             <if condition="modePricesJson">
                 <service-call name="zenith.pos.ProductModePricingServices.save#ProductModePrices"
