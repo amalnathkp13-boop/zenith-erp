@@ -11,11 +11,13 @@
         <if condition="!_printAccess.allowed"><script>throw new org.moqui.context.ArtifactAuthorizationException('POS print access denied.')</script></if>
 
         <if condition="kitchenModuleId == 'kot'">
-            <entity-find-count entity-name="zenith.erp.pos.KitchenOrderTicket" count-field="_kotTicketCount">
+            <entity-find entity-name="zenith.erp.pos.KitchenOrderTicket" list="_kotTickets" limit="1">
                 <econdition field-name="transactionId" from="transactionId"/>
                 <econdition field-name="organizationPartyId" from="_printAccess.organizationPartyId ?: '__NO_ORGANIZATION__'"/>
-            </entity-find-count>
-            <if condition="!_kotTicketCount"><script>throw new org.moqui.context.ArtifactAuthorizationException('KOT transaction not found.')</script></if>
+                <order-by field-name="kotId"/>
+            </entity-find>
+            <if condition="!_kotTickets"><script>throw new org.moqui.context.ArtifactAuthorizationException('KOT transaction not found.')</script></if>
+            <set field="receiptOrderType" from="ec.resource.script('component://zenith-erp-pos/script/KotOrderType.groovy', null, [ticket:_kotTickets[0]])"/>
         </if>
         <!-- ZE-INR: this screen is standalone="true" (renders OUTSIDE ZenithApp), so it does NOT inherit the
              shared `zinr` regrouper set in ZenithApp pre-actions. Set it locally so the zinr.inr(...) calls
@@ -164,7 +166,7 @@
             <fo:block font-size="8pt" font-weight="bold" text-align="center" color="#000" space-after="1mm">EDITED / REVISED BILL</fo:block>
             </#if>
 
-<#if receiptOptions.showBillNumber || receiptOptions.showDate || (receiptOptions.showCashier && operatorName?has_content) || (showCustomer && (receiptOptions.showCustomerName || (receiptOptions.showCustomerPhone && customerPhone?has_content))) || (showCustomer && customerGstin?has_content)>
+<#if receiptOrderType?has_content || receiptOptions.showBillNumber || receiptOptions.showDate || (receiptOptions.showCashier && operatorName?has_content) || (showCustomer && (receiptOptions.showCustomerName || (receiptOptions.showCustomerPhone && customerPhone?has_content))) || (showCustomer && customerGstin?has_content)>
             <fo:table table-layout="fixed" width="100%">
                 <fo:table-column column-width="25mm"/><fo:table-column column-width="proportional-column-width(1)"/>
                 <fo:table-body>
@@ -185,6 +187,11 @@
                     <#if showCustomer && customerGstin?has_content>
                     <fo:table-row><fo:table-cell><fo:block font-size="7pt" color="${receiptTones.information}">Buyer GSTIN:</fo:block></fo:table-cell>
                         <fo:table-cell><fo:block font-size="7pt">${customerGstin?xml}</fo:block></fo:table-cell></fo:table-row>
+                    </#if>
+                    <#if receiptOrderType?has_content>
+                    <fo:table-row><fo:table-cell><fo:block font-size="7pt" color="${receiptTones.information}">Order Type:</fo:block></fo:table-cell>
+                        <fo:table-cell><fo:block font-size="7pt">${receiptOrderType?xml}</fo:block></fo:table-cell>
+                    </fo:table-row>
                     </#if>
                 </fo:table-body>
             </fo:table>
