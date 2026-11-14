@@ -94,9 +94,13 @@ module.exports = async function verifyKot({a,foreign,base,post,rows,count,check}
   await menu.locator('[data-kb-sales-mode="RETAIL"]').click();
   await menu.locator('#kb-search').fill('POS_QA_A_P18');await menu.locator('#kb-search').press('Enter');
   await menu.locator('#kb-instr').fill('No onion');
-  await Promise.all([menu.waitForNavigation({waitUntil:'networkidle'}),menu.locator('#kb-draft').click()]);
-  const draft=kotRows().find(row=>!before.has(row.kot_id)&&row.status_id==='KotDraft');
-  check('Save as Draft browser action persists one draft',!!draft&&count('kot_item',`kot_id='${draft.kot_id}'`)===1,{draft});
+   const heldResponse=menu.waitForResponse(response=>response.request().method()==='POST'&&response.url().endsWith('/saveDraft'));
+   await menu.locator('#kb-draft').click();
+   const held=await (await heldResponse).json();
+   await menu.locator('.kb-held-toast').getByText('Bill held',{exact:true}).waitFor();
+   await menu.locator('#kb-cart tr[data-product]').waitFor({state:'hidden'});
+   const draft=kotRows().find(row=>row.kot_id===held.kotId&&!before.has(row.kot_id)&&row.status_id==='KotDraft');
+   check('Hold persists one draft and clears the cart in place',held.success&&!!draft&&count('kot_item',`kot_id='${draft.kot_id}'`)===1,{held,draft});
   const foreignDraft=await foreign.c.newPage();
   const deniedDraft=await foreignDraft.goto(base+`/apps/zenith/pos/Kitchen/KotBilling?sessionId=${kotSessionId}&loadDraft=${draft.kot_id}`,{waitUntil:'networkidle'});
   check('another shop cannot load the draft cart',deniedDraft.status()===403&&await foreignDraft.locator('#kb-data').count()===0);

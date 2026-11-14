@@ -581,24 +581,42 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   const newerHold=await (await holdResponse).json();
   check('A second bill can be held in Grid View',newerHold.success,newerHold);
   await page.locator('#kb-cart tr[data-product]').waitFor({state:'hidden'});
+  const holdTag=page.getByRole('status').filter({hasText:/^Bill held$/});
+  await holdTag.waitFor();
+  check('Holding a bill shows the orange POS confirmation',await holdTag.evaluate(el=>getComputedStyle(el).backgroundColor)==='rgb(180, 83, 9)');
+  await page.locator('#kb-held-count').getByText('2',{exact:true}).waitFor();
   await modes.locator('summary').click();
   await listMode.click();
+  await search.fill('POS_QA_A_P18');
+  await card.click();
+  await page.locator('#kb-grand').getByText('₹100.00',{exact:true}).waitFor();
+  await page.locator('#kb-instr').fill('Autosaved while switching held bills');
   await fullscreen.click();
   await page.waitForFunction(()=>document.fullscreenElement?.id==='kb-wrap');
   await page.keyboard.press('F9');
-  const heldBills=page.getByRole('dialog',{name:'Hold Bills'});
-  const rows=heldBills.locator('.kb-history-row:visible');
+  const heldBills=page.getByRole('region',{name:'Hold Bills'});
+  const rows=heldBills.locator('.nb-held__item');
   await rows.first().waitFor();
   const heldIds=await rows.evaluateAll(visible=>visible.map(row=>row.dataset.kotId));
   check('Hold Bills shows only drafts and puts the latest first',
    JSON.stringify(heldIds)===JSON.stringify([newerHold.kotId,held.data.kotId]),heldIds);
-  await rows.first().getByRole('button',{name:'Resume'}).click();
+  const autoHoldResponse=page.waitForResponse(response=>response.url().endsWith('/saveDraft'));
+  await rows.first().click();
+  const autoHold=await (await autoHoldResponse).json();
   await page.waitForURL(url=>url.searchParams.get('loadDraft')===newerHold.kotId);
   await page.locator('#kb-wrap.kg-grid[data-ready=true]').waitFor();
   check('Resuming the Grid hold from List restores Grid View in fullscreen',
    await page.locator('[data-kb-view=grid]').getAttribute('aria-pressed')==='true'&&
    await page.evaluate(()=>document.fullscreenElement?.id==='kb-wrap'));
+  await page.keyboard.press('F9');
+  await heldBills.locator('[data-kot-id="'+autoHold.kotId+'"]').waitFor();
+  check('Switching auto-holds the current cart and puts it first without listing the active bill',
+   autoHold.success&&await rows.first().getAttribute('data-kot-id')===autoHold.kotId&&
+   await heldBills.locator('[data-kot-id="'+newerHold.kotId+'"]').count()===0&&
+   q("SELECT notes FROM kitchen_order_ticket WHERE kot_id='"+autoHold.kotId+"'")[0]?.notes.includes('Autosaved while switching held bills'));
+  await page.keyboard.press('Escape');
   await post(screen,'deleteDraft',{sessionId:session.sessionId,kotId:newerHold.kotId});
+  await post(screen,'deleteDraft',{sessionId:session.sessionId,kotId:autoHold.kotId});
   let clearPrompt=false;
   const onClearPrompt=dialog=>{clearPrompt=true;return dialog.dismiss();};
   page.on('dialog',onClearPrompt);
@@ -608,7 +626,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    !clearPrompt&&await page.locator('#kb-cart tr[data-product]').count()===0&&
    await page.evaluate(()=>document.fullscreenElement?.id==='kb-wrap'));
   await page.keyboard.press('F9');
-  await heldBills.locator('[data-kot-id="'+held.data.kotId+'"]').getByRole('button',{name:'Resume'}).click();
+  await heldBills.locator('[data-kot-id="'+held.data.kotId+'"]').click();
   await page.waitForURL(url=>url.searchParams.get('loadDraft')===held.data.kotId);
   await page.locator('#kb-wrap:not(.kg-grid)[data-ready=true]').waitFor();
   check('Resuming the List hold from Grid restores List View in fullscreen',

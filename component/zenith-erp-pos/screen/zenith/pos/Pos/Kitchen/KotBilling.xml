@@ -633,13 +633,14 @@
                 if (st == 'KotPreparing' || st == 'KotReady') return 'green'
                 return 'grey'
             }
-            def loadKots = { statuses, lim ->
+            def findKots = { statuses ->
                 def f = ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('statusId', IN, statuses)
                 f.condition('organizationPartyId', org ?: '__NO_ORGANIZATION__')
                 if(billingTerminal) f.condition(cf.makeCondition([cf.makeCondition('terminalId',EntityCondition.ComparisonOperator.EQUALS,billingTerminal.terminalId),
                     cf.makeCondition('terminalId',EntityCondition.ComparisonOperator.EQUALS,null)],EntityCondition.JoinOperator.OR))
-                if(lim) f.limit(lim)
-                def ks = f.orderBy('-kotDate').list()
+                f
+            }
+            def visibleKots = { ks ->
                 // Pre-terminal drafts remain recoverable by an owner. Never expose an
                 // unattributed legacy order to a restricted cashier or another shop's table.
                 if(billingTerminal) ks=ks.findAll { k ->
@@ -652,6 +653,12 @@
                     }
                     return !k.tableId || ec.entity.find('zenith.erp.pos.RestaurantTable').condition('tableId',k.tableId).one()?.facilityId==billingTerminal.facilityId
                 }
+                ks
+            }
+            def loadKots = { statuses, lim ->
+                def f = findKots(statuses)
+                if(lim) f.limit(lim)
+                def ks = visibleKots(f.orderBy('-kotDate').list())
                 if (!ks) return []
                 def kids = ks.collect { it.kotId }
                 def its = ec.entity.find('zenith.erp.pos.KotItem').condition('kotId', IN, kids).orderBy('kotId,kotItemSeqId').list()
@@ -679,7 +686,7 @@
                       payment:(methods[k.transactionId] ?: [])*.paymentMethod.findAll { it }.unique().join(', '),
                       searchText:([k.kotNumber,k.kotId,k.waiterName,issuedBill ? issuedBill.payableAmount : snapshot?.summary?.total] +
                           (byKot[k.kotId] ?: [])*.name).findAll { it != null }.join(' '),
-                      sortedAt:date?.time ?: 0L,
+                      sortedAt:date?.time ?: 0L, heldTime:(date ? ec.l10n.format(date, 'hh:mm a') : ''),
                       mode:modes.find { it.salesModeId==snapshot?.bill?.salesModeId }?.modeName ?: snapshot?.bill?.salesModeId ?: '',
                       id:k.kotId, num:(k.kotNumber ?: k.kotId), table:(k.tableNumber ?: '-'),
                     isoDate:(date ? ec.l10n.format(date, 'yyyy-MM-dd') : ''), time:(date ? ec.l10n.format(date, 'dd/MM/yyyy hh:mm a') : ''), waiter:k.waiterName ?: '', serviceType:(k.notes ?: '').startsWith('[Take Away]') ? 'Take Away' : 'Dine In',
@@ -688,6 +695,9 @@
                       items:(byKot[k.kotId] ?: []) ] }
             }
 
+            heldBillCount = billingTerminal && modCanWrite ? visibleKots(findKots(['KotDraft'])
+                .selectFields(['kotId','terminalId','tableId','transactionId']).list())
+                .count { it.kotId != ec.context.loadDraft } : 0
             includeBillingHistory = ec.web.parameters.loadHistory == 'Y'
             if(includeBillingHistory) {
                 def activeKots = loadKots(['KotNew', 'KotPreparing', 'KotReady'], 60)
@@ -835,7 +845,7 @@
     <select id="kb-mode" hidden aria-label="Selected sales mode"><#if draftModeUnavailable><option value="${draftLoadMode?html}" disabled selected>Previous mode unavailable</option></#if><#if !modes?has_content><option value="">Standard</option></#if><#list modes as m><option value="${m.salesModeId?html}">${m.modeName?html}</option></#list></select>
     <#assign initialTaxOn = (loadedDraftId?has_content?then(draftLoadTax,billingTaxPreference) == 'Y')>
     <button type="button" class="kb-control nb-tax" id="kb-tax-toggle" role="switch" aria-label="Tax" aria-checked="${initialTaxOn?c}" data-preference="${billingTaxPreference}"><span id="kb-tax-label">Tax: ${initialTaxOn?then('On','Off')}</span><span class="nb-toggle<#if initialTaxOn> on</#if>" aria-hidden="true"></span></button>
-    <#if modCanWrite><button type="button" class="kb-control nb-abtn nb-abtn--hold" id="kb-held-open" aria-keyshortcuts="F9" aria-haspopup="dialog" aria-controls="kb-history"><@ic 'hold' 18/> Hold Bills <kbd>F9</kbd></button></#if>
+    <#if modCanWrite><button type="button" class="kb-control nb-abtn nb-abtn--hold" id="kb-held-open" popovertarget="kb-held-menu" aria-keyshortcuts="F9" aria-expanded="false" aria-controls="kb-held-menu"><@ic 'hold' 18/> Hold Bills <span id="kb-held-count"<#if heldBillCount==0> hidden</#if>>${heldBillCount?c}</span> <kbd>F9</kbd></button></#if>
     <button type="button" class="kb-control nb-abtn nb-abtn--history" id="kb-history-open" aria-keyshortcuts="F10"><@ic 'history'/> History <kbd>F10</kbd></button>
     <div class="kb-otype" role="group" aria-label="Service type">
       <button type="button" class="kb-otbtn nb-abtn is-active" data-ot="Dine In"><@ic 'bag'/> Dine In</button>
@@ -924,6 +934,13 @@
       <div id="kb-suggestions" class="kb-suggestions" aria-label="Matching products" hidden></div>
     </div>
   </div>
+  <#if modCanWrite>
+  <div id="kb-held-menu" class="nb-held__menu" popover="auto" role="region" aria-label="Hold Bills">
+    <div class="nb-held__hint">Tap a bill to switch to it. Your current cart is held automatically.</div>
+    <p id="kb-held-status" role="status"></p>
+    <div id="kb-held-rows"></div>
+  </div>
+  </#if>
   <dialog id="kb-history" class="kb-history-dialog" aria-labelledby="kb-history-title">
     <header class="kb-history-heading"><h2 id="kb-history-title"><@ic 'receipt' 20/> <span id="kb-history-label">Bill History</span></h2><button id="kb-history-close" type="button" aria-label="Close history">×</button></header>
     <div class="kb-history-toolbar">
@@ -942,13 +959,12 @@
       <button type="button" id="kb-history-retry" class="kb-history-button" hidden>Retry</button>
       <div id="kb-history-rows"<#if includeBillingHistory> data-kb-history-loaded</#if>>
         <#list (historyKots![]) as k>
-        <article class="kb-history-row" data-kot-id="${k.id?html}" data-kot-group="${k.group}" data-order-date="${k.isoDate}" data-order-at="${k.sortedAt?c}" data-billed="${k.billNumber?has_content?c}" data-has-bill="${k.hasBill?c}" data-kot-number="${k.num?html}" data-search="${(k.searchText!'')?html}">
+        <article class="kb-history-row" data-kot-id="${k.id?html}" data-kot-group="${k.group}" data-order-date="${k.isoDate}" data-order-at="${k.sortedAt?c}"<#if k.group == 'draft'> data-held-time="${k.heldTime?html}" data-held-items="${k.items?size?c}"</#if> data-billed="${k.billNumber?has_content?c}" data-has-bill="${k.hasBill?c}" data-kot-number="${k.num?html}" data-search="${(k.searchText!'')?html}">
           <button type="button" class="kb-history-number" data-kb-history-detail>#<#if k.billNumber?has_content>${k.billNumber?html}<#else>KOT ${k.num?html}</#if></button>
           <strong class="kb-history-amount"><#if k.total??>&#8377;${ec.l10n.format(k.total,'#,##0.00')?html}<#else>—</#if></strong>
           <span class="kb-history-meta">${k.time?html}</span>
           <span class="kb-history-meta kb-history-info">${k.customer?html} · ${k.items?size} <#if k.items?size == 1>item<#else>items</#if> · ${(k.payment?has_content?then(k.payment,k.label))?html}</span>
           <#if modCanWrite>
-          <#if k.group == 'draft'><div class="kb-history-row-actions kb-held-resume"><button type="button" class="kb-history-button kb-history-primary" data-kb-resume-held>Resume</button></div></#if>
           <div class="kb-history-row-actions" role="group" aria-label="Print options">
             <button type="button" class="kb-history-button" data-kb-history-print="bill" <#if !k.hasBill>disabled title="No saved bill or order pricing is available."</#if>><@ic 'printer' 14/> Bill Print</button>
             <button type="button" class="kb-history-button" data-kb-history-print="kot"><@ic 'printer' 14/> KOT Print</button>

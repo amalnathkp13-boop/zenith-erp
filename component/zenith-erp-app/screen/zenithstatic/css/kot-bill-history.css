@@ -1,5 +1,3 @@
-#kb-wrap #kb-history:not([data-held-only]) .kb-held-resume,
-#kb-wrap #kb-history[data-held-only] :is(.kb-history-toolbar,.kb-history-filters,.kb-history-row-actions:not(.kb-held-resume)) { display: none; }
 
 #kb-wrap .kb-history-dialog {
   width: min(800px, calc(100vw - 32px));
