@@ -259,15 +259,15 @@
     def prefix='QA_SALES_'+session.sessionId+'_'
     for (int i in 1..140) {
         def id=prefix+i
-        def ticketIds=i==1?[id,id+'_DUP']:[id]
+        def ticketIds = i == 1 ? [id, id + '_DUP'] : [id]
         if(seed) {
-            def rate=i%2==0?25G:30G
+            def rate = i % 2 == 0 ? 25G : 30G
             if(i==140) ec.entity.makeValue('mantle.account.invoice.Invoice').setAll([
                 invoiceId:id,fromPartyId:session.organizationPartyId,toPartyId:'POS_QA_A_CUST_SAME',facilityId:'POS_QA_A_FAC',
                 invoiceTypeEnumId:'InvoiceSales',statusId:'InvoiceCancelled',invoiceDate:today,invoiceTotal:rate,currencyUomId:'INR']).create()
             ec.entity.makeValue('zenith.erp.pos.PosTransaction').setAll([transactionId:id,transactionNumber:id,
-                sessionId:session.sessionId,organizationPartyId:session.organizationPartyId,statusId:i==139?'PtVoided':'PtCompleted',
-                transactionType:'Sale',entryDate:today,completedDate:today,grandTotal:rate,payableAmount:rate,linkedInvoiceId:i==140?id:null]).create()
+                sessionId:session.sessionId,organizationPartyId:session.organizationPartyId,statusId:(i == 139 ? 'PtVoided' : 'PtCompleted'),
+                transactionType:'Sale',entryDate:today,completedDate:today,grandTotal:rate,payableAmount:rate,linkedInvoiceId:(i == 140 ? id : null)]).create()
             ec.entity.makeValue('zenith.erp.pos.PosTransactionItem').setAll([transactionId:id,itemSeqId:'01',
                 productId:'POS_QA_A_P18',productName:'Synthetic daily sales item',quantity:1,
                 unitPrice:rate,taxableAmount:rate,lineTotal:rate]).create()
