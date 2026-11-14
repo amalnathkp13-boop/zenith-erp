@@ -188,8 +188,8 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     await page.locator('.kg-modes summary').click();
     await page.locator('[data-kb-view=grid]').click();
     await page.locator('#kb-held-open').click();
-    const heldBills = page.getByRole('dialog',{name:'Hold Bills'});
-    await heldBills.locator('[data-kb-resume-local]').getByRole('button',{name:'Resume'}).click();
+    const heldBills = page.getByRole('region',{name:'Hold Bills'});
+    await heldBills.locator('button[data-kb-resume-local]').click();
     await waitTotal('₹177.00');
     check('Hold Bills restores the offline order in its original List View',
       await page.locator('#kb-wrap:not(.kg-grid)').isVisible());
