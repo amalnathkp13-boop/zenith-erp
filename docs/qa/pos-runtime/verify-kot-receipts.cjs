@@ -130,7 +130,15 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   const cleared=await clearResponse.json();
   check('Clear Cart confirms deletion on the server',cleared.success,cleared);
   await page.locator('#kb-cart tr[data-product]').first().waitFor({state:'hidden'});
-  check('Clear Cart retires the resumed held bill',q("SELECT status_id FROM kitchen_order_ticket WHERE kot_id='"+held.kotId+"'")[0]?.status_id==='KotCancelled');
+  const heldStatus=()=>q("SELECT status_id FROM kitchen_order_ticket WHERE kot_id='"+held.kotId+"'")[0]?.status_id;
+  let status=heldStatus();
+  // The transition streams JSON before the outer transaction commits.
+  for(let attempt=0;status==='KotDraft'&&attempt<8;attempt++){
+   await new Promise(resolve=>setTimeout(resolve,125));
+   status=heldStatus();
+  }
+  check('Clear Cart retires the resumed held bill',status==='KotCancelled',
+   {status,kotId:held.kotId,submittedId:new URLSearchParams(clearResponse.request().postData()).get('kotId')});
   const dineInPrint=await (await kot('KotBilling/printRecord',{sessionId,kotId:dineIn.kotId,kind:'bill'},a,'qapps')).json();
   check('finalized KOT print records keep each saved order type',
    billPrint.bill.orderType==='Take Away'&&dineInPrint.record?.bill?.orderType==='Dine In',
