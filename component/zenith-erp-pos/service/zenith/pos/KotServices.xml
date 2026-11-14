@@ -98,6 +98,151 @@
         ]]></script></actions>
     </service>
 
+    <service verb="discard" noun="HeldOrders" authenticate="true">
+        <in-parameters><parameter name="sessionId" required="true"/><parameter name="kotId"/><parameter name="draftRevision"/></in-parameters>
+        <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[sessionId:sessionId]" out-map="scope"/>
+            <if condition="!scope.allowed"><return/></if>
+            <script><![CDATA[
+                def session=ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',sessionId).forUpdate(true).one()
+                def byId=!!kotId
+                if(!session || session.organizationPartyId!=scope.organizationPartyId ||
+                    (byId && session.operatorPartyId!=ec.user.userAccount?.partyId) || session.statusId!=(byId?'PsOpen':'PsClosed')) {
+                    ec.message.addError('Choose your KOT counter session.'); return
+                }
+                def drafts=ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition([
+                    organizationPartyId:session.organizationPartyId,statusId:'KotDraft',transactionId:null])
+                if(byId) drafts.condition('kotId',kotId)
+                else {
+                    drafts.condition('terminalId',session.terminalId)
+                    // A legacy draft has no session ID. Retire it only when its creation falls inside this shift.
+                    def cf=ec.entity.conditionFactory
+                    drafts.condition(cf.makeCondition([
+                        cf.makeCondition([draftSessionId:sessionId]),
+                        cf.makeCondition([cf.makeCondition([draftSessionId:null]),
+                            cf.makeCondition('kotDate',org.moqui.entity.EntityCondition.GREATER_THAN_EQUAL_TO,session.openDate),
+                            cf.makeCondition('kotDate',org.moqui.entity.EntityCondition.LESS_THAN_EQUAL_TO,session.closeDate)],
+                            org.moqui.entity.EntityCondition.JoinOperator.AND)],org.moqui.entity.EntityCondition.JoinOperator.OR))
+                }
+                def saved=drafts.orderBy('kotId').forUpdate(true).list()
+                if(byId && saved && saved[0].terminalId!=session.terminalId) {
+                    def billing=ec.service.sync().name('zenith.pos.KotServices.get#BillingSession')
+                        .parameter('sessionId',sessionId).call()
+                    def legacy=saved[0]
+                    def table=legacy.tableId ? ec.entity.find('zenith.erp.pos.RestaurantTable')
+                        .condition('tableId',legacy.tableId).one() : null
+                    if(legacy.terminalId || scope.terminalRestricted || !billing.terminal ||
+                        (legacy.tableId && table?.facilityId!=billing.terminal.facilityId)) {
+                        ec.message.addError('Choose the terminal that holds this order.'); return
+                    }
+                }
+                if(byId && draftRevision && saved && saved[0].lastUpdatedStamp?.time?.toString()!=draftRevision.toString()) {
+                    ec.message.addError('This held bill changed. Reopen it before clearing the cart.'); return
+                }
+                def tables=saved*.tableId.findAll { it }.unique().sort()
+                // Retain cancelled rows and items for history without making them resumable.
+                saved.each { it.set('statusId','KotCancelled').update() }
+                tables.each { id ->
+                    def table=ec.entity.find('zenith.erp.pos.RestaurantTable').condition('tableId',id).forUpdate(true).one()
+                    def remaining=ec.entity.find('zenith.erp.pos.KitchenOrderTicket')
+                        .condition([organizationPartyId:session.organizationPartyId,tableId:id])
+                        .condition('statusId','in',['KotDraft','KotNew','KotPreparing','KotReady']).count()
+                    if(table?.statusId=='TblOccupied' && !table.currentTransactionId && !remaining)
+                        table.set('statusId','TblAvailable').update()
+                }
+            ]]></script>
+        </actions>
+    </service>
+
+    <service verb="get" noun="TodaySales" authenticate="true">
+        <in-parameters><parameter name="sessionId" required="true"/></in-parameters>
+        <out-parameters><parameter name="report" type="Map"/></out-parameters>
+        <actions>
+            <service-call name="zenith.pos.KotServices.get#BillingSession" in-map="[sessionId:sessionId]" out-map="billing"/>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[sessionId:sessionId]" out-map="scope"/>
+            <if condition="!scope.allowed || !billing.terminal || ec.message.hasError()"><return/></if>
+            <script><![CDATA[
+                def terminal=billing.terminal
+                def orgId=terminal.organizationPartyId
+                def zone=java.time.ZoneId.of('Asia/Kolkata')
+                def day=ec.user.nowTimestamp.toInstant().atZone(zone).toLocalDate()
+                def from=java.sql.Timestamp.from(day.atStartOfDay(zone).toInstant())
+                def thru=java.sql.Timestamp.from(day.plusDays(1).atStartOfDay(zone).toInstant())
+                def kotBills={
+                    def bills=ec.entity.find('zenith.erp.pos.KotTransactionDetailView').condition([
+                        organizationPartyId:orgId,kotOrganizationPartyId:orgId,ztfSessionOrg:orgId,ztfTerminalOrg:orgId,
+                        terminalId:terminal.terminalId,facilityId:terminal.facilityId,statusId:'PtCompleted'])
+                    if(scope.terminalRestricted) bills.condition('operatorPartyId',billing.session.operatorPartyId)
+                    return bills
+                }
+                def excludeCancelledInvoices={ bills ->
+                    def cancelled=[] as Set
+                    bills*.linkedInvoiceId.findAll { it }.unique().collate(250).each { ids ->
+                        cancelled.addAll(ec.entity.find('mantle.account.invoice.Invoice').condition('invoiceId','in',ids)
+                            .condition([fromPartyId:orgId,statusId:'InvoiceCancelled']).selectField('invoiceId').list()*.invoiceId)
+                    }
+                    bills.findAll { !cancelled.contains(it.linkedInvoiceId) }
+                }
+                def sales=excludeCancelledInvoices(kotBills().condition('completedDate',org.moqui.entity.EntityCondition.GREATER_THAN_EQUAL_TO,from)
+                    .condition('completedDate',org.moqui.entity.EntityCondition.LESS_THAN,thru)
+                    .selectFields(['transactionId','linkedInvoiceId','payableAmount','grandTotal','roundOff','totalTaxAmount','discountTotal','additionalFee'])
+                    .distinct(true).list())
+                def sessions=ec.entity.find('zenith.erp.pos.PosSession')
+                    .condition([organizationPartyId:orgId,terminalId:terminal.terminalId])
+                if(scope.terminalRestricted) sessions.condition('operatorPartyId',billing.session.operatorPartyId)
+                // Include returns made today even when their original KOT bill was issued before today.
+                def returns=[]
+                sessions.selectField('sessionId').list()*.sessionId.collate(250).each { ids ->
+                    returns.addAll(ec.entity.find('zenith.erp.pos.PosReturn').condition('sessionId','in',ids)
+                        .condition('statusId','PrCompleted').condition('returnDate',org.moqui.entity.EntityCondition.GREATER_THAN_EQUAL_TO,from)
+                        .condition('returnDate',org.moqui.entity.EntityCondition.LESS_THAN,thru).list())
+                }
+                def originals=[] as Set
+                returns*.originalTransactionId.findAll { it }.unique().collate(250).each { ids ->
+                    def bills=kotBills().condition('transactionId','in',ids)
+                        .selectFields(['transactionId','linkedInvoiceId']).distinct(true).list()
+                    originals.addAll(excludeCancelledInvoices(bills)*.transactionId)
+                }
+                returns=returns.findAll { originals.contains(it.originalTransactionId) }
+                def products=[:]
+                def add={ line, amount, sign ->
+                    // A missing product ID cannot establish that two historical lines are the same variant.
+                    def key=line.productId ?: [line.transactionId ?: line.returnId,line.itemSeqId]
+                    def row=products.computeIfAbsent(key) { [name:line.productName ?: line.productId ?: 'Item',qty:0G,net:0G] }
+                    row.qty+=sign*(line.quantity ?: 0G)
+                    row.net+=sign*amount
+                }
+                sales*.transactionId.collate(250).each { ids ->
+                    ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId','in',ids).list().each { line ->
+                        add(line,line.taxableAmount == null ? (line.lineTotal ?: 0G)-(line.totalTaxAmount ?: 0G) : line.taxableAmount,1)
+                    }
+                }
+                returns*.returnId.collate(250).each { ids ->
+                    ec.entity.find('zenith.erp.pos.PosReturnItem').condition('returnId','in',ids).list().each { line ->
+                        add(line,(line.lineTotal ?: 0G)-(line.taxAmount ?: 0G),-1)
+                    }
+                }
+                def sum={ rows, key -> rows.sum(0G) { it[key] ?: 0G } }
+                def rows=products.values().sort { it.name.toLowerCase(java.util.Locale.ROOT) }
+                def subtotal=sum(rows,'net'), fees=sum(sales,'additionalFee'), rounding=sum(sales,'roundOff')
+                def tax=sum(sales,'totalTaxAmount')-sum(returns,'totalTaxAmount')
+                def total=sales.sum(0G) { it.payableAmount == null ? (it.grandTotal ?: 0G)+(it.roundOff ?: 0G) : it.payableAmount }-sum(returns,'refundAmount')
+                def template=ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#KotPrintTemplate')
+                    .parameters([printUse:'kotSales',terminalId:terminal.terminalId]).call().template
+                def options=ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#ReceiptOptions')
+                    .parameters([storedJson:template?.receiptOptionsJson,receiptDesign:'normal']).call().options
+                def facility=ec.entity.find('mantle.facility.Facility').condition('facilityId',terminal.facilityId).one()
+                report=[date:day.format(java.time.format.DateTimeFormatter.ofPattern('dd-MM-yyyy')),
+                    terminal:terminal.terminalName ?: terminal.terminalId, operatorOnly:scope.terminalRestricted==true,
+                    billCount:sales.size(),returnCount:returns.size(),products:rows,
+                    qty:sum(rows,'qty'),subtotal:subtotal,discount:sum(sales,'discountTotal'),tax:tax,
+                    additionalFee:fees,roundOff:rounding,adjustment:total-subtotal-fees-rounding-tax,total:total,options:options,
+                    store:[name:template?.companyName ?: facility?.facilityName,headerText:template?.headerText,footerText:template?.footerText,
+                        showLogo:template?.showLogo,logoUrl:template?.logoUrl,receiptWidth:template?.receiptWidth ?: '80mm']]
+            ]]></script>
+        </actions>
+    </service>
+
     <service verb="complete" noun="KotBill">
         <in-parameters>
             <parameter name="sessionId" required="true"/><parameter name="kotId" required="true"/>
@@ -159,6 +304,13 @@
                             .parameters([transactionId:tx,productId:item.productId,quantity:item.qty,
                                 salesModeId:quote.bill.salesModeId,taxOn:quote.bill.taxOn,
                                 unitPrice:item.manualPrice=='Y' ? item.rate : null,manualUnitPrice:item.manualPrice=='Y']).call()
+                        if(ec.message.hasError()) return
+                    }
+                    def fee=(quote.summary.additionalFee ?: 0) as BigDecimal
+                    if(fee>0) {
+                        ec.service.sync().name('update#zenith.erp.pos.PosTransaction')
+                            .parameters([transactionId:tx,additionalFee:fee]).call()
+                        ec.service.sync().name('zenith.pos.PosServices.recalculate#TransactionTotals').parameter('transactionId',tx).call()
                         if(ec.message.hasError()) return
                     }
                     def current=ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',tx).one()

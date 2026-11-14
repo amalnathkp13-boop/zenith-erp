@@ -185,11 +185,11 @@
                     quote=ec.service.sync().name('zenith.pos.KitchenPrintServices.get#CartReceipt')
                         .parameters([sessionId:sessionId,itemsJson:groovy.json.JsonOutput.toJson(orderItems),tableId:tableId,
                             orderType:sale.orderType,taxOn:sale.taxOn,salesModeId:sale.mode,waiterId:sale.waiterId,
-                            customerPartyId:customerId,notes:notes]).call().receipt
+                            customerPartyId:customerId,notes:notes,additionalFee:sale.additionalFee]).call().receipt
                 }
                 if (ec.message.hasError()) return
                 if (!quote?.items || quote.items.size()!=orderItems.size() || amount(quote.summary?.total)!=expectedTotal ||
-                    amount(quote.summary?.tax)!=expectedTax || orderItems.indices.any { index ->
+                    amount(quote.summary?.tax)!=expectedTax || amount(quote.summary?.additionalFee ?: 0)!=amount(sale.additionalFee ?: 0) || orderItems.indices.any { index ->
                         def submitted=orderItems[index], priced=quote.items[index]
                         def discount=(submitted.quantity*submitted.unitPrice*submitted.discount/100).setScale(2,java.math.RoundingMode.HALF_UP)
                         submitted.productId!=priced.productId || submitted.quantity!=amount(priced.qty) ||
@@ -201,7 +201,7 @@
                     def number=ticket?.kotNumber ?: ec.service.sync().name('zenith.pos.KotServices.next#KotNumber').call().kotNumber
                     if (!number || ec.message.hasError()) return
                     quote.bill.number='KOT #'+number
-                    def saved=[organizationPartyId:orgId,terminalId:terminal.terminalId,kotNumber:number.toString(),
+                    def saved=[organizationPartyId:orgId,terminalId:terminal.terminalId,draftSessionId:sessionId,kotNumber:number.toString(),
                         tableId:tableId,tableNumber:table?.tableNumber,waiterName:quote.bill.waiter,
                         orderReceiptJson:groovy.json.JsonOutput.toJson(quote),statusId:'KotDraft',
                         kotDate:new java.sql.Timestamp(issuedAt),notes:'['+sale.orderType+'] '+notes]

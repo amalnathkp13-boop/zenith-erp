@@ -100,6 +100,9 @@
                     }
                 }
 
+                if (txn.additionalFee > 0) ec.service.sync().name("mantle.account.InvoiceServices.create#InvoiceItem").parameters([
+                    invoiceId:iid, itemTypeEnumId:"ItemService", description:"Additional fee", quantity:1, amount:txn.additionalFee]).call()
+
                 // GST invoice number is per-organization. Default (legacy) = the POS bill number itself, which is a
                 // per-financial-year CONSECUTIVE series. When a shop opts in to daily POS bill numbers the POS number
                 // is no longer FY-consecutive, so the GST invoice gets its OWN per-(org, FY) consecutive series

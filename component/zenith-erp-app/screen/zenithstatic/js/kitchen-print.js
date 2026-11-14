@@ -28,6 +28,37 @@
       (record.items||[]).map(it=>'<tr><td>'+esc(it.name)+'</td><td class="q">'+esc(it.qty)+'</td></tr>').join('')+
       '</tbody></table>'+block(store.footerText,'footer','font-weight:'+(options.footerBold===false?400:700))+'</body></html>';
   }
+  function salesHtml(report){
+    const store=report.store||{}, options=report.options||{};
+    const width=store.receiptWidth==='58mm'?58:80;
+    const money=new Intl.NumberFormat('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const qty=new Intl.NumberFormat('en-IN',{maximumFractionDigits:6});
+    const tone=key=>({darkGrey:'#333',lightGrey:'#707070'}[options[key+'Tone']]||'#000');
+    const block=(value,key)=>value?'<div class="block" style="color:'+tone(key)+';text-align:'+
+      (['left','right','center'].includes(options[key+'Align'])?options[key+'Align']:'center')+
+      ';font-weight:'+(options[key+'Bold']===false?400:700)+'">'+esc(value)+'</div>':'';
+    const row=(label,quantity,value)=>'<tr><td>'+esc(label)+'</td><td class="num">'+(quantity==null?'':qty.format(quantity))+
+      '</td><td class="num">'+money.format(value)+'</td></tr>';
+    const logo=store.showLogo==='Y'&&/^(https:\/\/|\/(?!\/))/.test(store.logoUrl||'')
+      ? '<img src="'+esc(store.logoUrl)+'" alt="Company logo">' : '';
+    let adjustments=row('Products subtotal',report.qty,report.subtotal)+row('Additional fees',null,report.additionalFee||0)+
+      row('Discounts (included)',null,report.discount||0)+row('Tax',null,report.tax||0)+row('Round off',null,report.roundOff||0);
+    if(Number(report.adjustment))adjustments+=row('Other bill adjustments',null,report.adjustment);
+    return '<!doctype html><html data-paper-width="'+width+'"><head><meta charset="utf-8"><title>Daily sales summary</title>'+
+      '<style>@page{size:'+width+'mm auto;margin:0}*{box-sizing:border-box}body{margin:0;padding:2mm;width:'+width+
+      'mm;color:#000;background:#fff;font:'+({dark:700,standard:600,light:400}[options.density]||600)+' 11px Arial,sans-serif}'+
+      '.block{white-space:pre-line;overflow-wrap:anywhere;text-align:center}h1{font-size:13px;text-align:center;margin:5px 0}'+
+      'img{display:block;margin:auto;max-width:90%;max-height:45px}table{width:100%;border-collapse:collapse}th,td{padding:3px 1px;vertical-align:top}'+
+      'td:first-child,th:first-child{text-align:left;overflow-wrap:anywhere}.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}'+
+      'thead,.total{border-block:1px solid #000}.adjustments{border-top:1px dashed #000}tr{break-inside:avoid}'+
+      '</style></head><body>'+block(options.openingPreset!=='none'?options.openingMessage:'','greeting')+logo+block(store.name,'company')+block(store.headerText,'header')+'<h1>DAILY SALES SUMMARY</h1>'+
+      block(report.date+' · '+report.terminal,'information')+'<div class="block">'+ (report.operatorOnly?'Cashier sales at this counter · ':'')+
+      'Completed bills: '+esc(report.billCount)+(report.returnCount?' · Returns: '+esc(report.returnCount):'')+'</div>'+
+      '<table><thead><tr><th>Product</th><th class="num">Qty</th><th class="num">Sales (₹)</th></tr></thead>'+
+      '<tbody style="color:'+tone('products')+'">'+(report.products||[]).map(item=>row(item.name,item.qty,item.net)).join('')+'</tbody>'+
+      '<tbody class="adjustments" style="color:'+tone('amounts')+'">'+adjustments+'</tbody><tfoot class="total">'+
+      row('GRAND TOTAL',null,report.total)+'</tfoot></table>'+block(store.footerText,'footer')+'</body></html>';
+  }
   function open(){const w=window.open('','_blank','width=430,height=650');if(!w)throw Error('Allow pop-ups for this site, then retry printing.');return w;}
   function printBeforeNextDocument(w,label){
     // Keep the first document intact for browsers that return before the print dialog closes.
@@ -70,7 +101,7 @@
     return PosReceiptLayout.render(data,Number(data.summary?.tax)>0,!!data.edited)+'</body></html>';
   }
   async function customer(w,data,options){await browserPrint(w,customerHtml(data),options);}
-  window.KitchenPrint={open,kotHtml,browserPrint,customer,customerHtml};
+  window.KitchenPrint={open,kotHtml,browserPrint,customer,customerHtml,salesHtml};
   var busy=false;
   function screen(){return location.pathname.replace(/\/$/,'').replace(/\.(qvt|html)$/,'');}
   function token(){return window.moqui?.webrootVue?.moquiSessionToken||document.querySelector('#kb-token,[name="moquiSessionToken"]')?.value||'';}

@@ -121,7 +121,7 @@
       hasMore: matches.length > offset + 40,
     };
   }
-  function quote(index, cart, modeId, taxOn, store) {
+  function quote(index, cart, modeId, taxOn, store, additionalFee=0) {
     const mode = index.modes.get(modeId);
     if (!mode) throw Error('Choose a sales mode available on this counter.');
     let subtotal = 0, tax = 0, totalQty = 0;
@@ -146,8 +146,8 @@
         qty: item.qty, rate, total: taxable, tax: lineTax, discount, percent: Number(priceInfo.disc || 0),
         manualPrice: item.manualRate != null ? 'Y' : 'N', pricePending, uom: product.uom};
     });
-    const grand = subtotal + tax, total = Math.round(grand + Number.EPSILON * Math.max(1, grand));
-    return {success: true, store, items, summary: {subtotal: roundMoney(subtotal), tax: roundMoney(tax),
+    const grand = subtotal + tax + additionalFee, total = Math.round(grand + Number.EPSILON * Math.max(1, grand));
+    return {success: true, store, items, summary: {subtotal: roundMoney(subtotal), additionalFee, tax: roundMoney(tax),
       roundOff: roundMoney(total - grand), total, totalQty, itemCount: items.length}};
   }
   function describeQueue(row) {

@@ -66,7 +66,7 @@
         <in-parameters><parameter name="printUse" required="true"/><parameter name="terminalId"/><parameter name="facilityId"/></in-parameters>
         <out-parameters><parameter name="template" type="Map"/></out-parameters>
         <actions>
-            <if condition="!(printUse in ['kotBill','kotTicket'])"><return error="true" message="Choose a KOT print output."/></if>
+            <if condition="!(printUse in ['kotBill','kotTicket','kotSales'])"><return error="true" message="Choose a KOT print output."/></if>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[terminalId:terminalId,facilityId:facilityId]" out-map="scope"/>
             <if condition="!scope.allowed"><return/></if>
             <script><![CDATA[

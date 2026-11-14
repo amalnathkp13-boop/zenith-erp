@@ -6,7 +6,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
  const id=randomUUID().slice(0,8);
  const terminalId='QA_KOT_RECEIPTS_'+id;
  const modeCode='D'+id.toUpperCase();
- const billHeader='QA KOT customer '+id, ticketHeader='QA kitchen ticket '+id;
+ const billHeader='QA KOT customer '+id, ticketHeader='QA kitchen ticket '+id, salesHeader='QA daily sales '+id;
  const receiptPath='/zenith/kot/ReceiptConfig';
  const route=(shell,path)=>base+'/'+shell+'/zenith/kot/'+path;
  const kot=(path,form={},actor=a,shell='apps')=>actor.c.request.post(route(shell,path),{
@@ -18,7 +18,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
  try {
   const templates={};
   for(const [shell,printUse,header,width] of [
-   ['apps','kotTicket',ticketHeader,'58mm'],['qapps','kotBill',billHeader,'80mm']
+   ['apps','kotTicket',ticketHeader,'58mm'],['qapps','kotBill',billHeader,'80mm'],['apps','kotSales',salesHeader,'58mm']
   ]) {
    const templateName='QA '+printUse+' '+id;
    await page.goto(base+'/'+shell+receiptPath+'/Templates');
@@ -58,6 +58,12 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   const mode=q(`SELECT sales_mode_id FROM pos_sales_mode WHERE organization_party_id='POS_QA_A' AND mode_code='${modeCode}'`)[0];
   const salesModeId=mode?.sales_mode_id;
   check('QA discount mode exists',!!salesModeId);
+  const today=async(actor=a)=> (await (await kot('KotBilling/todaySales',{sessionId},actor)).json());
+  const empty=await today();
+  check('daily sales report is empty at a fresh counter',empty.success&&empty.report.billCount===0,empty);
+  const otherCounter=await kot('KotBilling/todaySales',{sessionId},foreign);
+  check('a foreign user cannot read this counter daily sales',
+   [401,403].includes(otherCounter.status())||(await otherCounter.json().catch(()=>null))?.success===false);
   await kot('DiscountSettings/saveKotDiscount',{salesModeId,discountPercent:'20'});
   const productId='POS_QA_A_P18';
   const payload={sessionId,itemsJson:JSON.stringify([{productId,quantity:1}]),salesModeId,taxOn:'N',orderType:'Take Away',wantJson:'Y'};
@@ -78,10 +84,48 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   check('KOT Order and Bill Print use independent templates with no amounts on the ticket',
    orderPrint?.store?.headerText===ticketHeader&&orderPrint.store.receiptWidth==='58mm'&&!orderPrint.summary&&
    billPrint?.store?.headerText===billHeader&&Number(billPrint.summary.total)===80&&billPrint.bill.number===paid.billNumber);
-  const dineIn=await (await kot('KotBilling/saveDraft',{...payload,orderType:'Dine In'})).json();
+  const dineIn=await (await kot('KotBilling/saveDraft',{...payload,orderType:'Dine In',additionalFee:'5.25'})).json();
   check('KOT saves a separate dine-in order',dineIn.success&&!!dineIn.kotId,dineIn);
-  const dineInPaid=await (await kot('KotBilling/checkoutKot',{sessionId,kotId:dineIn.kotId,paymentMethod:'Cash',cashAmount:'80'})).json();
+  const dineInPaid=await (await kot('KotBilling/checkoutKot',{sessionId,kotId:dineIn.kotId,paymentMethod:'Cash',cashAmount:'85'})).json();
   check('KOT finalizes the dine-in order',dineInPaid.success&&!!dineInPaid.billNumber,dineInPaid);
+  const held=await (await kot('KotBilling/saveDraft',payload)).json();
+  check('an unpaid held order exists for the counter',held.success&&!!held.kotId,held);
+  const report=await today();
+  check('daily sales reconciles discounted lines, a held exclusion and the additional fee once',
+   report.success&&report.report.billCount===2&&report.report.products.length===1&&
+   Number(report.report.products[0].qty)===2&&Number(report.report.products[0].net)===160&&
+   Number(report.report.discount)===40&&Number(report.report.additionalFee)===5.25&&
+   Number(report.report.roundOff)===-0.25&&Number(report.report.total)===165&&report.report.store.headerText===salesHeader,report);
+  await page.goto(route('apps','KotBilling?sessionId='+sessionId+'&loadDraft='+held.kotId));
+  await page.locator('#kb-wrap[data-ready=true]').waitFor();
+  check('today sales sits beside the waiter, close is in the header and last bill is hidden there',
+   await page.locator('#kb-today-sales').evaluate(button=>button.previousElementSibling.querySelector('#kb-waiter')!==null)&&
+   await page.locator('.kg-header #kb-close-session').isVisible()&&await page.locator('#kb-header-last-bill').isHidden());
+  await page.waitForFunction(()=>document.querySelector('#kb-cart tr[data-product]')?.textContent.includes('80.00'));
+  const readCart=()=>page.locator('#kb-cart tr[data-product]').evaluateAll(rows=>rows.map(row=>({
+   product:row.dataset.product,
+   values:Array.from(row.querySelectorAll('input'),input=>input.value)
+  })));
+  const cartBefore=await readCart();
+  await page.evaluate(()=>{window.salesPrintJobs=[];window.PosQzPrint={
+   connect:async()=>({printers:{getDefault:async()=>'Synthetic thermal'}}),
+   printHtml:async(printer,html)=>window.salesPrintJobs.push({printer,html})
+  };});
+  await page.locator('#kb-today-sales').click();
+  await page.waitForFunction(()=>window.salesPrintJobs.length===1);
+  const printed=await page.evaluate(()=>window.salesPrintJobs[0]);
+  check('QZ prints the customized 58mm summary without changing the held cart',
+   printed.printer==='Synthetic thermal'&&printed.html.includes('data-paper-width="58"')&&printed.html.includes(salesHeader)&&
+   printed.html.includes('165.00')&&JSON.stringify(await readCart())===JSON.stringify(cartBefore),printed);
+  if(out) await page.screenshot({path:join(out,'kot-list-today-sales.png')});
+  await page.locator('.kg-modes summary').click();
+  await page.getByRole('button',{name:'Grid View',exact:true}).click();
+  check('grid keeps the print button and additional fee visible',
+   await page.locator('#kb-today-sales').isVisible()&&await page.locator('#kb-fee').isVisible());
+  if(out) await page.screenshot({path:join(out,'kot-grid-today-sales.png')});
+  await page.locator('#kb-clear').click();
+  await page.waitForFunction(()=>!document.querySelector('#kb-cart tr'));
+  check('Clear Cart retires the resumed held bill',q("SELECT status_id FROM kitchen_order_ticket WHERE kot_id='"+held.kotId+"'")[0]?.status_id==='KotCancelled');
   const dineInPrint=await (await kot('KotBilling/printRecord',{sessionId,kotId:dineIn.kotId,kind:'bill'},a,'qapps')).json();
   check('finalized KOT print records keep each saved order type',
    billPrint.bill.orderType==='Take Away'&&dineInPrint.record?.bill?.orderType==='Dine In',
@@ -141,6 +185,38 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   check('ordinary POS prints its own receipt design without a KOT order type',!!normal&&
    normal.store.headerText!==billHeader&&normal.store.headerText!==ticketHeader&&!normal.bill.orderType);
 
+  const returned=await invoke('returnCreate',{sessionId,originalTransactionId:bill.transaction_id,refundMethod:'Cash',
+   items:JSON.stringify([{productId,quantity:1,unitPrice:12.5}])});
+  await invoke('returnComplete',{returnId:returned.returnId});
+  const net=await today();
+  check('daily sales excludes ordinary POS and reconciles completed refunds',
+   net.success&&net.report.billCount===2&&net.report.returnCount===1&&Number(net.report.total)===152.5&&
+   Number(net.report.products[0].qty)===1&&Number(net.report.products[0].net)===147.5,net);
+
+  const sample=mode=>post('PosQaAcceptance','kotTodaySalesFixture',{sessionId,mode});
+  try {
+   check('the synthetic high-volume fixture was saved',(await (await sample('seed')).json()).success);
+   const large=await today();
+   const {text:printedText,columns}=await page.evaluate(report=>{
+    const doc=new DOMParser().parseFromString(KitchenPrint.salesHtml(report),'text/html');
+    return {text:doc.body.textContent,columns:doc.querySelectorAll('thead th').length};
+   },large.report);
+   check('the printout consolidates 140 finalized bills, varying rates, voided and cancelled receipts, and a duplicate ticket',
+    large.success&&large.report.billCount===140&&large.report.products.length===1&&columns===3&&
+    Number(large.report.products[0].qty)===139&&Number(large.report.products[0].net)===3942.5&&
+    Number(large.report.total)===3947.5&&printedText.includes('Completed bills: 140')&&
+    printedText.includes('3,947.50'),large);
+  } finally {
+   check('the synthetic high-volume fixture was removed',(await (await sample('clean')).json()).success);
+  }
+
+  const toClose=await (await kot('KotBilling/saveDraft',payload)).json();
+  check('a new held order belongs to the current session',toClose.success&&
+   q("SELECT draft_session_id FROM kitchen_order_ticket WHERE kot_id='"+toClose.kotId+"'")[0]?.draft_session_id===sessionId);
+  const drawer=await (await kot('KotBilling/sessionDrawer',{sessionId,drawerAction:'close',closingCash:'247.50'})).json();
+  check('closing the counter cancels only the unpaid held order',drawer.success&&
+   q("SELECT status_id FROM kitchen_order_ticket WHERE kot_id='"+toClose.kotId+"'")[0]?.status_id==='KotCancelled'&&
+   q("SELECT status_id FROM pos_transaction WHERE transaction_id='"+bill.transaction_id+"'")[0]?.status_id==='PtCompleted',drawer);
   const nav=await a.c.request.get(route('apps','Tables/goTransactions'),{maxRedirects:0});
   check('KOT Tables opens KOT Transactions without leaving the module',
    nav.status()===302&&new URL(nav.headers().location,base).pathname.endsWith('/zenith/kot/PosTransactions'));

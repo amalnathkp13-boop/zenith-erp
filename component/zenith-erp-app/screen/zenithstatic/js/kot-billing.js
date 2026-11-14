@@ -137,7 +137,9 @@
     }
     root.append(form);form.submit();
   }
-  const orderData=()=>({orderType,taxOn,salesModeId,tableId:orderType==='Dine In'?$('table').value:'',waiterId:$('waiter').value,notes:$('instr').value,customerPartyId:customer.id||'',
+  const feeInput=$('fee');
+  const feeValue=()=>feeInput?.valueAsNumber||0;
+  const orderData=()=>({orderType,taxOn,salesModeId,additionalFee:feeValue(),tableId:orderType==='Dine In'?$('table').value:'',waiterId:$('waiter').value,notes:$('instr').value,customerPartyId:customer.id||'',
     itemsJson:JSON.stringify(Array.from(cart.values(),it=>({productId:it.id,quantity:it.qty,
       ...(it.manualRate==null?{}:{manualPrice:'Y',unitPrice:it.manualRate})})))});
   function setType(value) {
@@ -206,9 +208,25 @@
       localOrderId='';
     }
     $('badge').textContent='New KOT';$('instr').value='';
+    if(feeInput)feeInput.value='0';
     taxOn=pendingTax||savedTax;paintTax();
     renderCustomer();
     quote();
+  }
+  async function clearCart() {
+    if(busy||sessionLost)return;
+    if(!draftId){resetOrder();search.focus();return;}
+    if(cfg.kotModule!=='kot'){resetOrder();return;}
+    const status=$('order-status');
+    if(disconnected()){status.textContent='Reconnect to clear this saved held bill.';return;}
+    busy=true;controls();
+    try {
+      await request('deleteDraft',{kotId:draftId,draftRevision,wantJson:'Y'});
+      resetOrder();
+      refreshOpenHistory(true);
+      status.textContent='';
+    } catch(error) { status.textContent=error.message; }
+    finally {busy=false;controls();search.focus();}
   }
   function updatePendingSales() {
     if(!device)return;
@@ -291,6 +309,7 @@
     salesModeId=$('mode').value=order.salesModeId;
     paintSalesMode();
     draftId=order.draftId||'';
+    if(feeInput)feeInput.value=order.additionalFee||0;
     draftRevision=order.draftRevision||'';
     localOrderId=order.localOrderId||crypto.randomUUID();
     savedFingerprint='';
@@ -530,6 +549,7 @@
     listTotals(cart.size?null:{});
     $('quote-error').textContent='';
     $('tax-rows').replaceChildren();
+    if(feeInput&&!feeInput.validity.valid){$('quote-error').textContent='Enter a valid additional fee.';return;}
     $('grand').textContent=cart.size?(sessionLost?'Sign in to price':'Calculating…'):money.format(0);
     if(!cart.size){
       $('subtotal').textContent=money.format(0);
@@ -550,7 +570,7 @@
       try {
         rememberOrder();
         if(!catalogue)throw Error(workspaceError?'Offline catalogue unavailable. Reconnect to refresh it.':'Reconnect briefly to load this counter’s offline catalogue.');
-        offlineQuote=KotOffline.quote(catalogue,cart.values(),salesModeId,taxOn==='Y',workspace.store);
+        offlineQuote=KotOffline.quote(catalogue,cart.values(),salesModeId,taxOn==='Y',workspace.store,feeValue());
         applyQuote(offlineQuote);
       }catch(error){showFailure(error);}
       return;
@@ -614,7 +634,7 @@
       return;
     }
     const toQty=field==='rate' && (e.key==='ArrowRight'||e.key==='Enter');
-    const toRate=field==='qty' && e.key==='ArrowLeft';
+    const toRate=field==='qty' && e.key==='ArrowLeft' && input.selectionStart===0 && input.selectionEnd===0;
     const toSearch=field==='qty' && (e.key==='ArrowDown'||e.key==='Enter');
     if(!toQty&&!toRate&&!toSearch)return;
     e.preventDefault();
@@ -752,6 +772,8 @@
     grid=next;
     const panel=$('product-grid');
     root.classList.toggle('kg-grid',grid);
+    const feeRow=$('fee-row');
+    if(feeRow)(grid?$('grid-summary'):root.querySelector('.kl-summary')).append(feeRow);
     panel.hidden=!grid;
     for(const option of modeOptions)option.setAttribute('aria-pressed',String((option.dataset.kbView==='grid')===grid));
     (grid?panel:search.parentElement).append(suggestions);
@@ -807,15 +829,15 @@
   }
   root.addEventListener('fullscreenchange',syncFullscreen);
   root.addEventListener('webkitfullscreenchange',syncFullscreen);
-  function choose(index, byKeyboard=false) {
+  function choose(index) {
     const item=results[index];if(!item||busy||search.disabled)return;
     if(item.price==null){renderMatches(item.reason||'No price for this sales mode.');return;}
     if(cart.has(item.id)){const row=cart.get(item.id);row.qty++;row.amount=null;}
     else cart.set(item.id,{...item,qty:1});
     clearSearch();quote();
-    if(byKeyboard||item.pricePending)focusEditor(editorFor(item.id,'rate'));
-    else search.focus({preventScroll:grid});
+    focusEditor(editorFor(item.id,'qty'));
   }
+  feeInput?.addEventListener('input',()=>quote(false));
   search.addEventListener('input',e=>{
     cancelLookup();
     resetMatches();
@@ -837,6 +859,11 @@
       if(!e.repeat)cash.focus();
       return;
     }
+    if(e.key==='ArrowUp'&&!search.value.trim()&&cart.size){
+      e.preventDefault();
+      focusEditor(cartRows.querySelector('[data-kb-edit="qty"]'));
+      return;
+    }
     if(moveMatch(e.key,false)){e.preventDefault();return;}
     if(e.repeat)return;
     if(e.key==='Escape'){clearSearch();return;}
@@ -848,7 +875,7 @@
     if(search.value!==submitted)return;
     if(ambiguous&&!pickedMatch){renderMatches('Choose a match with the mouse or arrow keys before adding.');return;}
     if(!pickedMatch&&!exactId&&/^\d{8,}$/.test(search.value.trim())){renderMatches('Barcode not found. Check the code or choose a matching product.');return;}
-    if(results.length)choose(selected,true);
+    if(results.length)choose(selected);
   });
   suggestions.addEventListener('keydown',e=>{
     const match=e.target.closest('[data-result]');
@@ -1016,9 +1043,19 @@
     try {
       const {summary}=await request('sessionDrawer',{});
       PosTillDialogs.openClose({sessionId:cfg.session,summary,
-        warning:cart.size && (!draftId||savedFingerprint!==JSON.stringify(orderData())) ? 'Unsent items will be discarded when this session closes. Cancel to hold the order first.' : '',
+        warning:cfg.kotModule==='kot'?'Unpaid held bills and unsent items for this counter session will be discarded.':
+          cart.size && (!draftId||savedFingerprint!==JSON.stringify(orderData()))?'Unsent items will be discarded when this session closes. Cancel to hold the order first.':'',
         close:closingCash=>request('sessionDrawer',{drawerAction:'close',closingCash}),
-        onClosed:()=>location.assign(base)});
+        onClosed:()=>{
+          if(deviceDrafts) {
+            try {
+              for(const draft of deviceDrafts.list())
+                if(!draft.order.sessionId||draft.order.sessionId===cfg.session)deviceDrafts.remove(draft.id);
+              if(localOrderId)clearStoredOrder();
+            } catch(error) { console.warn('Could not clear device drafts for the closed counter.',error); }
+          }
+          location.assign(base);
+        }});
     } catch(error){ $('order-status').textContent=error.message; }
     finally{busy=false;controls();}
   }
@@ -1048,6 +1085,49 @@
     } catch(errorDetail) { error.textContent=errorDetail.message||String(errorDetail); }
     finally { busy=false;updatePrintOptions(); }
     if(!$('printer-field').hidden)list.focus();
+  }
+  async function printTodaySales(button) {
+    button.disabled=true;
+    let popup;
+    try {
+      if(disconnected())throw Error('Reconnect to print today’s completed sales.');
+      const {report}=await request('todaySales',{});
+      if(!report.billCount&&!report.returnCount) {
+        showBillingNotice('No completed sales for today.',false,true);
+        return;
+      }
+      const html=KitchenPrint.salesHtml(report);
+      let client;
+      if(window.PosQzPrint) {
+        try { client=await window.PosQzPrint.connect(); }
+        catch { /* Browser fallback is safe before any job was submitted. */ }
+      }
+      if(client) {
+        const printer=savedPrinter()||await client.printers.getDefault();
+        if(!printer)throw Error('Set a default thermal printer in QZ Tray and try again.');
+        await window.PosQzPrint.printHtml(printer,html);
+        showBillingNotice('Today sales summary sent to printer ✔',true);
+        return;
+      }
+      // An async fetch can consume the original gesture. Offer a fresh click for Safari and strict popup settings.
+      const dialog=$('sales-browser');
+      const print=$('sales-browser-print');
+      print.onclick=async()=>{
+        try {
+          popup=KitchenPrint.open();
+          await KitchenPrint.browserPrint(popup,html,{closeAfterPrint:true});
+          dialog.close();
+          showBillingNotice('Browser print requested.',false,true);
+        } catch(error) {
+          if(popup&&!popup.closed)popup.close();
+          $('sales-browser-error').textContent=error.message;
+        }
+      };
+      $('sales-browser-error').textContent='';
+      dialog.showModal();
+    } catch(error) {
+      showBillingNotice(error.message||'Today sales printing failed.',false,true);
+    } finally { button.disabled=false; }
   }
   async function printChoice(kind,row=historyPrintRow,{printWindow,statusPrefix='',browserOnly=false}={}) {
     const queued=row?.dataset.kbLocalSale?device?.queue().find(entry=>entry.sale.offlineId===row.dataset.kbLocalSale):row?null:localReceipt;
@@ -1248,7 +1328,7 @@
     const sale={version:2,operation,offlineId:source?crypto.randomUUID():localOrderId,sessionId:session,terminalId:terminal,
       organizationPartyId:org,userId:user,ts,facilityId:source?.facilityId??workspace.facilityId,
       orderType:data.orderType,tableId:data.tableId,waiterId:data.waiterId,notes:data.notes,
-      taxOn:data.taxOn,total:quote.summary.total,taxAmount:quote.summary.tax,paymentMethod,payments,change,referenceNumber,
+      taxOn:data.taxOn,additionalFee:quote.summary.additionalFee||0,total:quote.summary.total,taxAmount:quote.summary.tax,paymentMethod,payments,change,referenceNumber,
       ...(paymentMethod==='Split'?{cardRef:payment.cardRef,upiRef:payment.upiRef}:{}),
       ...(paymentMethod==='Credit'?{creditCustomerPartyId:payment.creditCustomerPartyId,
         creditDays:payment.creditDays||null,termsReason:payment.termsReason}:{}),
@@ -1900,8 +1980,9 @@
     }
     else if(button.dataset.kbPayment)openPayment(button.dataset.kbPayment);
     else if(button.id==='kb-fullscreen')toggleFullscreen();
+    else if(button.id==='kb-today-sales')printTodaySales(button);
     else if(button.id==='kb-close-session')openSessionClose();
-    else if(button.id==='kb-clear')resetOrder();
+    else if(button.id==='kb-clear')clearCart();
     else if(button.id==='kb-history-open')showHistory();
     else if(button.id==='kb-history-retry')showHistory();
     else if(button.hasAttribute('data-kb-bill-local')) {
@@ -2033,6 +2114,7 @@
     $('table').value=draft.drafttable||cfg.selectedTable||'';
     $('waiter').value=draft.draftwaiter;
     $('instr').value=draft.draftinstr;
+    if(feeInput)feeInput.value=draft.draftfee||0;
     const mode=$('mode');
     if(draft.draftmode&&Array.from(mode.options).some(option=>option.value===draft.draftmode))mode.value=draft.draftmode;
     salesModeId=mode.value;paintSalesMode();

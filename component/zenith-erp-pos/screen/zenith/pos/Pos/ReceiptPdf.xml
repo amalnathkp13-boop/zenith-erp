@@ -262,6 +262,12 @@
                     <fo:table-row color="${receiptTones.tax}"><fo:table-cell><fo:block font-size="7pt">Tax</fo:block></fo:table-cell><fo:table-cell><fo:block font-size="7pt" text-align="right">${cs}${zinr.inr(ec.l10n.format(txn.totalTaxAmount!0, '#,##0.00'))}</fo:block></fo:table-cell></fo:table-row>
                     </#if>
                     </#if>
+                    <#if (txn.additionalFee!0) gt 0>
+                    <fo:table-row>
+                        <fo:table-cell><fo:block font-size="7pt">Additional fee</fo:block></fo:table-cell>
+                        <fo:table-cell><fo:block font-size="7pt" text-align="right">${cs}${zinr.inr(ec.l10n.format(txn.additionalFee, '#,##0.00'))}</fo:block></fo:table-cell>
+                    </fo:table-row>
+                    </#if>
                     <#if ((txn.roundOff!0)) != 0>
                     <fo:table-row>
                         <fo:table-cell><fo:block font-size="6pt" color="#000">Round Off</fo:block></fo:table-cell>

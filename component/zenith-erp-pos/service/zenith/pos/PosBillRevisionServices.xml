@@ -298,6 +298,8 @@
                                 }
                             }
                             def _inv2 = ec.entity.find("mantle.account.invoice.Invoice").condition("invoiceId", _iid).one()
+                            if (txnFinal.additionalFee > 0) ec.service.sync().name("mantle.account.InvoiceServices.create#InvoiceItem").parameters([
+                                invoiceId:_iid, itemTypeEnumId:"ItemService", description:"Additional fee", quantity:1, amount:txnFinal.additionalFee]).call()
                             _inv2.invoiceTotal = txnFinal.grandTotal
                             _inv2.unpaidTotal = ((txnFinal.grandTotal ?: 0) as BigDecimal) - ((_inv2.appliedPaymentsTotal ?: 0) as BigDecimal)
                             _inv2.totalTaxableAmount = txnFinal.subtotal

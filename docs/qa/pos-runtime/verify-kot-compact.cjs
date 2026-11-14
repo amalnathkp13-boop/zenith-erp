@@ -444,8 +444,10 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await page.keyboard.press('Enter');
    const rate=page.locator('[data-kb-edit="rate"]'), quantity=page.locator('[data-kb-edit="qty"]');
    const allSelected=el=>el===document.activeElement&&el.selectionStart===0&&el.selectionEnd===el.value.length;
-   check(view+' Enter selects the entire centered rate',await rate.evaluate(el=>
-    el===document.activeElement&&el.selectionStart===0&&el.selectionEnd===el.value.length&&getComputedStyle(el).textAlign==='center'));
+   check(view+' Enter selects the entire quantity',await quantity.evaluate(allSelected));
+   await quantity.evaluate(el=>el.setSelectionRange(0,0));
+   await page.keyboard.press('ArrowLeft');
+   check(view+' Left at the start of quantity moves to rate',await rate.evaluate(allSelected));
    await page.keyboard.type('150');
    await page.keyboard.press('Enter');
    check(view+' Enter commits the rate and selects the entire quantity',await rate.inputValue()==='150'&&await quantity.evaluate(allSelected));
@@ -453,6 +455,9 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await page.keyboard.press('Enter');
    check(view+' Enter commits quantity and returns to search',await quantity.inputValue()==='3'&&
     await search.evaluate(el=>el===document.activeElement));
+   await page.keyboard.press('ArrowUp');
+   check(view+' Up from empty search moves to the first quantity',await quantity.evaluate(allSelected));
+   await page.keyboard.press('Enter');
    await page.keyboard.press('ArrowDown');
    check(view+' Down from empty search moves to Cash',await page.locator('[data-kb-payment=Cash]').evaluate(el=>el===document.activeElement));
    if(view==='List'){
@@ -615,17 +620,21 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await heldBills.locator('[data-kot-id="'+newerHold.kotId+'"]').count()===0&&
    q("SELECT notes FROM kitchen_order_ticket WHERE kot_id='"+autoHold.kotId+"'")[0]?.notes.includes('Autosaved while switching held bills'));
   await page.keyboard.press('Escape');
-  await post(screen,'deleteDraft',{sessionId:session.sessionId,kotId:newerHold.kotId});
   await post(screen,'deleteDraft',{sessionId:session.sessionId,kotId:autoHold.kotId});
   let clearPrompt=false;
   const onClearPrompt=dialog=>{clearPrompt=true;return dialog.dismiss();};
   page.on('dialog',onClearPrompt);
   await page.locator('#kb-clear').click();
+  await page.locator('#kb-cart tr[data-product]').first().waitFor({state:'hidden'});
   page.off('dialog',onClearPrompt);
   check('Clear Cart empties the order without a browser prompt or leaving fullscreen',
    !clearPrompt&&await page.locator('#kb-cart tr[data-product]').count()===0&&
    await page.evaluate(()=>document.fullscreenElement?.id==='kb-wrap'));
   await page.keyboard.press('F9');
+  await heldBills.locator('[data-kot-id="'+held.data.kotId+'"]').waitFor();
+  check('Clear Cart removes the resumed order from Hold Bills',
+   await heldBills.locator('[data-kot-id="'+newerHold.kotId+'"]').count()===0&&
+   q("SELECT status_id FROM kitchen_order_ticket WHERE kot_id='"+newerHold.kotId+"'")[0]?.status_id==='KotCancelled');
   await heldBills.locator('[data-kot-id="'+held.data.kotId+'"]').click();
   await page.waitForURL(url=>url.searchParams.get('loadDraft')===held.data.kotId);
   await page.locator('#kb-wrap:not(.kg-grid)[data-ready=true]').waitFor();

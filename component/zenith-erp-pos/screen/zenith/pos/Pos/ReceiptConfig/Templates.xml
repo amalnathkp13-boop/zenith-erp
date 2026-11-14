@@ -13,7 +13,7 @@
             <if condition="!templateName?.trim() || !companyName?.trim()"><return error="true" message="Template name and company name are required."/></if>
             <if condition="facilityId &amp;&amp; !ec.entity.find('mantle.facility.Facility').condition('facilityId',facilityId).condition('ownerPartyId',organizationPartyId).one()"><return error="true" message="Choose a shop in your organization."/></if>
             <set field="printUse" from="kitchenModuleId == 'kot' ? ec.web.parameters.printUse : null"/>
-            <if condition="kitchenModuleId == 'kot' &amp;&amp; !(printUse in ['kotBill','kotTicket'])"><return error="true" message="Choose a KOT print output."/></if>
+            <if condition="kitchenModuleId == 'kot' &amp;&amp; !(printUse in ['kotBill','kotTicket','kotSales'])"><return error="true" message="Choose a KOT print output."/></if>
             <entity-find-one entity-name="mantle.party.Party" value-field="_receiptOrgLock" for-update="true"><field-map field-name="partyId" from="organizationPartyId"/></entity-find-one>
             <set field="defaultKotTemplate" from="printUse &amp;&amp; !ec.entity.find('zenith.erp.pos.PosReceiptTemplate')
                 .condition('organizationPartyId',organizationPartyId).condition('facilityId',facilityId ?: null)
@@ -32,7 +32,7 @@
         <script><![CDATA[
             def templates = ec.entity.find('zenith.erp.pos.PosReceiptTemplate')
                 .condition('organizationPartyId',posOrganizationPartyId ?: '__NO_ORGANIZATION__')
-            if (kitchenModuleId == 'kot') templates.condition('printUse','in',['kotBill','kotTicket'])
+            if (kitchenModuleId == 'kot') templates.condition('printUse','in',['kotBill','kotTicket','kotSales'])
             else templates.condition('printUse',null)
             templateList = templates.orderBy('templateName').list()
             totalTemplates = templateList.size()
@@ -122,7 +122,7 @@
 <form id="CreateTemplate" class="receipt-create-form" method="post" action="${createUrl?html}">
 <input type="hidden" name="moquiSessionToken" value="${(ec.web.sessionToken!'')?html}"/>
 <#if (kitchenModuleId!'pos') == 'kot'>
-<div class="form-group q-ma-sm"><label for="receipt-create-output">Print output</label><select class="form-control" id="receipt-create-output" name="printUse" required><option value="">Choose a print output</option><option value="kotTicket">Kitchen order ticket</option><option value="kotBill">Customer bill</option></select></div>
+<div class="form-group q-ma-sm"><label for="receipt-create-output">Print output</label><select class="form-control" id="receipt-create-output" name="printUse" required><option value="">Choose a print output</option><option value="kotTicket">Kitchen order ticket</option><option value="kotBill">Customer bill</option><option value="kotSales">Total Sales</option></select></div>
 </#if>
 <div class="form-group q-ma-sm"><label for="receipt-create-name">Template Name</label><input class="form-control" id="receipt-create-name" name="templateName" maxlength="255" placeholder="Enter template name" required/></div>
 <div class="form-group q-ma-sm"><label for="receipt-create-company">Company Name</label><input class="form-control" id="receipt-create-company" name="companyName" maxlength="255" placeholder="Enter company name" required/></div>
@@ -158,7 +158,7 @@
                         <default-field><label text="${rowNum}" type="span" style="z-rownum"/></default-field></field>
                     <field name="templateName"><header-field title="Template"/>
                         <conditional-field condition="kitchenModuleId == 'kot'">
-                            <link url="editTemplate" text="${tpl.templateName} · ${tpl.printUse == 'kotTicket' ? 'Kitchen order ticket' : 'Customer bill'}" parameter-map="[templateId:tpl.templateId]" link-type="anchor" style="z-vlink"/>
+                            <link url="editTemplate" text="${tpl.templateName} · ${tpl.printUse == 'kotTicket' ? 'Kitchen order ticket' : (tpl.printUse == 'kotSales' ? 'Total Sales' : 'Customer bill')}" parameter-map="[templateId:tpl.templateId]" link-type="anchor" style="z-vlink"/>
                         </conditional-field>
                         <default-field>
                             <link url="editTemplate" text="${tpl.templateName}" parameter-map="[templateId:tpl.templateId]" link-type="anchor" style="z-vlink"/>
@@ -174,17 +174,17 @@
                         <default-field><label text="${actTxt}" type="span" style="${actCls}"/></default-field></field>
                     <field name="editBtn">
                         <conditional-field name="tpl_edit_write" condition="modCanWrite" title="Action">
-                        <link url="editTemplate" text="${tpl.printUse == 'kotTicket' ? 'Edit ticket' : 'Edit Normal'}" icon="fa fa-pencil"
+                        <link url="editTemplate" text="${tpl.printUse == 'kotTicket' ? 'Edit ticket' : (tpl.printUse == 'kotSales' ? 'Edit Total Sales' : 'Edit Normal')}" icon="fa fa-pencil"
                               parameter-map="[templateId:tpl.templateId,receiptDesign:'normal']" link-type="anchor" style="z-obtn"/>
                         </conditional-field>
                         <default-field title="Action"><label text="" type="span"/></default-field></field>
                     <field name="editCreditBtn">
-                        <conditional-field name="tpl_credit_write" condition="modCanWrite &amp;&amp; tpl.printUse != 'kotTicket'" title="Credit / Pay Later">
+                        <conditional-field name="tpl_credit_write" condition="modCanWrite &amp;&amp; !(tpl.printUse in ['kotTicket','kotSales'])" title="Credit / Pay Later">
                         <link url="editTemplate" text="Edit Credit" icon="fa fa-pencil" parameter-map="[templateId:tpl.templateId,receiptDesign:'credit']" link-type="anchor" style="z-obtn"/>
                         </conditional-field>
                         <default-field title="Credit / Pay Later"><label text="" type="span"/></default-field></field>
                     <field name="editRevisedBtn">
-                        <conditional-field name="tpl_revised_write" condition="modCanWrite &amp;&amp; tpl.printUse != 'kotTicket'" title="Revised Bill">
+                        <conditional-field name="tpl_revised_write" condition="modCanWrite &amp;&amp; !(tpl.printUse in ['kotTicket','kotSales'])" title="Revised Bill">
                         <link url="editTemplate" text="Edit Revised" icon="fa fa-pencil" parameter-map="[templateId:tpl.templateId,receiptDesign:'revised']" link-type="anchor" style="z-obtn"/>
                         </conditional-field>
                         <default-field title="Revised Bill"><label text="" type="span"/></default-field></field>

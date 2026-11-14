@@ -14,11 +14,16 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
   await page.locator('.pos-product-grid form:has(input[name=productId][value=POS_QA_A_P18]) button').click();
   transactionId=(await (await response).json()).transactionId;
   await page.waitForTimeout(250);
-  observe('product selection focuses its editable rate',await page.locator('.aj-p').evaluate(el=>el===document.activeElement));
+  observe('product selection focuses quantity',await page.locator('.aj-qi').evaluate(el=>el===document.activeElement));
+  await page.locator('.aj-qi').evaluate(el=>el.setSelectionRange(0,0));
+  await page.keyboard.press('ArrowLeft');
+  observe('Left from the start of quantity focuses rate',await page.locator('.aj-p').evaluate(el=>el===document.activeElement));
   await page.locator('.aj-p').fill('80');await page.locator('.aj-p').press('Enter');await page.waitForTimeout(200);
   observe('Enter from rate selects quantity',await page.locator('.aj-qi').evaluate(el=>el===document.activeElement));
   await page.locator('.aj-qi').fill('2');await page.locator('.aj-qi').press('Enter');await page.waitForTimeout(300);
   observe('Enter from quantity returns to search',await page.locator('#cartInlineSearch').evaluate(el=>el===document.activeElement));
+  await page.keyboard.press('ArrowUp');
+  observe('Up from empty search focuses the first quantity',await page.locator('.aj-qi').first().evaluate(el=>el===document.activeElement));
   await page.locator('.aj-p').fill('75');await page.locator('#cartInlineSearch').click();await page.waitForTimeout(800);
   const item=()=>q(`SELECT unit_price,quantity,line_total FROM pos_transaction_item WHERE transaction_id='${transactionId}'`)[0];
   observe('a typed rate saves without pressing Enter',Number(item().unit_price)===75&&Number(item().line_total)===150,item());

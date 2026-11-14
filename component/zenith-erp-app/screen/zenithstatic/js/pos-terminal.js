@@ -4532,8 +4532,7 @@ window.posToggleFullscreen = function() {
             if (pendingProductFocus) {
                 var selected = d.items.findIndex(function(item) { return item.pid === pendingProductFocus; });
                 if (selected >= 0) {
-                    var row = tb.children[selected], rate = row.querySelector('.aj-p');
-                    var field = rate && !rate.readOnly ? rate : row.querySelector('.aj-qi');
+                    var field = tb.children[selected].querySelector('.aj-qi');
                     if (field) { field.focus(); field.select(); }
                     pendingProductFocus = null;
                 }
@@ -4791,7 +4790,7 @@ window.posToggleFullscreen = function() {
             }
 
             function doAdd(pid, price, name, uom) {
-                // A deliberate product selection focuses its rate; background additions preserve an active line draft.
+                // A deliberate product selection focuses its quantity; background additions preserve an active line draft.
                 if (!document.activeElement || !document.activeElement.matches('.aj-p,.aj-qi')) pendingProductFocus = pid;
                 var L = lc();
                 // First item of a fresh bill: no cart/transaction yet. Start a local cart
@@ -5907,7 +5906,13 @@ window.posToggleFullscreen = function() {
             }, 100);
         });
         si.addEventListener('keydown', function(e) {
+            if (e.isComposing || e.ctrlKey || e.altKey || e.metaKey) return;
             var items = dd.querySelectorAll('.cart-dd-item');
+            if (e.key === 'ArrowUp' && !si.value.trim()) {
+                var firstQty = document.querySelector('.pos-cart .aj-qi:not([readonly]):not([disabled])');
+                if (firstQty) { e.preventDefault(); firstQty.focus(); firstQty.select(); }
+                return;
+            }
             if (e.key === 'ArrowDown') { e.preventDefault(); aidx = Math.min(aidx + 1, items.length - 1); }
             else if (e.key === 'ArrowUp') { e.preventDefault(); aidx = Math.max(aidx - 1, 0); }
             else if (e.key === 'Enter') {

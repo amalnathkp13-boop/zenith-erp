@@ -30,6 +30,10 @@
             frame.srcdoc=window.KitchenPrint.kotHtml({
                 store:data.store,options:options,number:'SAMPLE-0001',date:data.bill.date,items:data.items
             });
+        }else if(root.dataset.output==='kotSales'){
+            frame.srcdoc=window.KitchenPrint.salesHtml({store:data.store,options,date:'14-11-2026',terminal:'Sample counter',
+                billCount:3,products:[{name:'Sample tea',qty:4,net:60},{name:'Sample dosa',qty:3,net:150}],
+                qty:7,subtotal:210,additionalFee:10,discount:5,tax:10.5,roundOff:0.5,total:231});
         }else{
             frame.srcdoc=window.PosReceiptLayout.render(data,true,data.edited)+'</body></html>';
         }

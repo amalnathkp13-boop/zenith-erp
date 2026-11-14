@@ -52,6 +52,7 @@
             if(m.taxBreakdown&&m.taxBreakdown.length)m.taxBreakdown.forEach(function(tax){h+=row(tax.name,number(tax.amount),'tax');});
             else h+=row('Tax',number(m.tax),'tax');
         }
+        if(Number(m.additionalFee))h+=row('Additional fee',number(m.additionalFee),'amounts');
         if(Number(m.roundOff))h+=row('Round Off',number(m.roundOff),'amounts');
         h+='</table><div class="sep2"></div><table class="tot">'+row(isTax?'GRAND TOTAL':'TOTAL',number(m.total),'amounts',true)+'</table>';
         if(s.showPaymentDetails==='Y'){

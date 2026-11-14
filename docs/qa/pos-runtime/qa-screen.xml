@@ -249,6 +249,42 @@
     }
     ec.web.sendJsonResponse([success:true])
 ]]></script></actions><default-response type="none"/></transition>
+<transition name="kotTodaySalesFixture" method="post" begin-transaction="true"><actions><script><![CDATA[
+    if(System.getProperty('pos.qa.disposable')!='true' || ec.user.username!='pos.qa') {ec.web.response.setStatus(403);return}
+    def session=ec.entity.find('zenith.erp.pos.PosSession').condition([
+        sessionId:ec.web.parameters.sessionId,organizationPartyId:'POS_QA_A',operatorPartyId:ec.user.userAccount?.partyId]).one()
+    if(!session?.terminalId?.startsWith('QA_KOT_RECEIPTS_') || session.statusId!='PsOpen') {ec.web.response.setStatus(400);return}
+    def seed=ec.web.parameters.mode=='seed'
+    def today=ec.user.nowTimestamp
+    def prefix='QA_SALES_'+session.sessionId+'_'
+    (1..140).each { i ->
+        def id=prefix+i
+        def ticketIds=i==1?[id,id+'_DUP']:[id]
+        if(seed) {
+            def rate=i%2==0?25G:30G
+            if(i==140) ec.entity.makeValue('mantle.account.invoice.Invoice').setAll([
+                invoiceId:id,fromPartyId:session.organizationPartyId,toPartyId:'POS_QA_A_CUST_SAME',facilityId:'POS_QA_A_FAC',
+                invoiceTypeEnumId:'InvoiceSales',statusId:'InvoiceCancelled',invoiceDate:today,invoiceTotal:rate,currencyUomId:'INR']).create()
+            ec.entity.makeValue('zenith.erp.pos.PosTransaction').setAll([transactionId:id,transactionNumber:id,
+                sessionId:session.sessionId,organizationPartyId:session.organizationPartyId,statusId:i==139?'PtVoided':'PtCompleted',
+                transactionType:'Sale',entryDate:today,completedDate:today,grandTotal:rate,payableAmount:rate,linkedInvoiceId:i==140?id:null]).create()
+            ec.entity.makeValue('zenith.erp.pos.PosTransactionItem').setAll([transactionId:id,itemSeqId:'01',
+                productId:'POS_QA_A_P18',productName:'Synthetic daily sales item',quantity:1,
+                unitPrice:rate,taxableAmount:rate,lineTotal:rate]).create()
+            ticketIds.each { kotId ->
+                ec.entity.makeValue('zenith.erp.pos.KitchenOrderTicket').setAll([kotId:kotId,kotNumber:kotId,
+                    transactionId:id,organizationPartyId:session.organizationPartyId,terminalId:session.terminalId,
+                    kotDate:today,statusId:'KotServed',orderReceiptJson:'{}']).create()
+            }
+        } else {
+            ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('kotId','in',ticketIds).deleteAll()
+            ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId',id).deleteAll()
+            ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',id).deleteAll()
+            if(i==140) ec.entity.find('mantle.account.invoice.Invoice').condition('invoiceId',id).deleteAll()
+        }
+    }
+    ec.web.sendJsonResponse([success:true])
+]]></script></actions><default-response type="none"/></transition>
 <transition name="legacyKot" method="post"><actions><script><![CDATA[
     if(System.getProperty('pos.qa.disposable')!='true' || ec.user.username!='pos.qa') {ec.web.response.setStatus(403);return}
     def kot=ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('kotId',ec.context.kotId)

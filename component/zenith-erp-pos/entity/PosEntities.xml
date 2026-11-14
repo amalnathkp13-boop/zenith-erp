@@ -31,7 +31,7 @@
         <field name="templateId" type="id" is-pk="true"/>
         <field name="organizationPartyId" type="id"/>
         <field name="facilityId" type="id"><description>Optional shop scope; blank retains the existing organization-wide fallback.</description></field>
-        <field name="printUse" type="text-short"><description>kotBill or kotTicket; blank is a standard POS receipt.</description></field>
+        <field name="printUse" type="text-short"><description>kotBill, kotTicket or kotSales; blank is a standard POS receipt.</description></field>
         <field name="templateName" type="text-medium"/>
         <field name="companyName" type="text-medium"/>
         <field name="addressLine1" type="text-medium"/>
@@ -178,6 +178,7 @@
         <field name="grandTotal" type="currency-amount"/>
         <field name="roundOff" type="currency-amount"/>
         <field name="payableAmount" type="currency-amount"/>
+        <field name="additionalFee" type="currency-amount"/>
         <field name="paidAmount" type="currency-amount"/>
         <field name="changeAmount" type="currency-amount"/>
         <field name="statusId" type="id"/>
@@ -545,6 +546,7 @@
         <field name="organizationPartyId" type="id"/>
         <field name="transactionId" type="id"/>
         <field name="terminalId" type="id"/>
+        <field name="draftSessionId" type="id"/>
         <field name="kotNumber" type="text-short"/>
         <field name="tableNumber" type="text-short"/>
         <field name="tableId" type="id"><description>Stable selected restaurant table; tableNumber remains the historical printed label.</description></field>

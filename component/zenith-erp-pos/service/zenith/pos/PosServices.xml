@@ -147,6 +147,8 @@
                          closingCash:closingCash, expectedCash:expectedCash,
                          cashDifference:cashDiff, statusId:'PsClosed']"/>
 
+            <service-call name="zenith.pos.KotServices.discard#HeldOrders" in-map="[sessionId:sessionId]"/>
+
             <!-- Discard any unpaid in-progress cart left on this session so a later open/resume starts clean.
                  Only PtCreated (never-paid, no bill number) carts are removed; completed/issued bills are untouched. -->
             <script><![CDATA[
@@ -691,7 +693,7 @@
                     tax += (it.totalTaxAmount ?: 0) as BigDecimal
                     disc += (it.discountAmount ?: 0) as BigDecimal
                 }
-                def grand = sub + tax
+                def grand = sub + tax + ((totalsTransaction.additionalFee ?: 0) as BigDecimal)
                 def rounded = grand.setScale(0, java.math.RoundingMode.HALF_UP)
                 def roundOff = rounded - grand
             ]]></script>
@@ -1879,7 +1881,7 @@
                     items:items.collect{[name:it.productName ?: it.productId ?: '', qty:it.quantity ?: 0,
                         rate:it.unitPrice ?: 0, total:it.lineTotal ?: 0, tax:it.totalTaxAmount ?: 0, discount:it.discountAmount ?: 0, mode:(it.salesModeId ? (ec.entity.find("zenith.erp.pos.PosSalesMode").condition("salesModeId", it.salesModeId).one()?.modeName ?: "") : ""), uom:(it.uomId ? (["OTH_ea":'Nos',"WT_g":'g',"WT_kg":'kg',"VLIQ_ml":'ml',"VLIQ_L":'L',"LEN_m":'m',"LEN_cm":'cm'].get(it.uomId) ?: '') : '')]},
                     summary:[subtotal:txn.subtotal ?: 0, discount:txn.discountTotal ?: 0,
-                        tax:txn.totalTaxAmount ?: 0,taxBreakdown:(_receiptTax.taxSummary ?: []).collect { [name:it.taxName,amount:it.totalTax] }, roundOff:txn.roundOff ?: 0,
+                        additionalFee:txn.additionalFee ?: 0,tax:txn.totalTaxAmount ?: 0,taxBreakdown:(_receiptTax.taxSummary ?: []).collect { [name:it.taxName,amount:it.totalTax] }, roundOff:txn.roundOff ?: 0,
                         total:txn.payableAmount ?: 0, totalQty:totalQty, itemCount:items.size()],
                     payments:payments.collect{[method:it.paymentMethod ?: '', amount:it.amount ?: 0]},
                     change:txn.changeAmount ?: 0, saving:totalSaving, edited:isRevised, isCredit:(txn.isCredit == "Y"), outstanding:(((txn.payableAmount ?: 0) as BigDecimal) - ((txn.paidAmount ?: 0) as BigDecimal))]
