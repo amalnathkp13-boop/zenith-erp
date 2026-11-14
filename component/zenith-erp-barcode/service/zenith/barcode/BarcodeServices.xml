@@ -164,7 +164,17 @@ def collision=ec.service.sync().name('zenith.barcode.BarcodeServices.check#Produ
     .parameters([organizationPartyId:prd.ownerPartyId,code:value,productId:productId]).disableAuthz().call().conflict
 if(ec.message.hasError())return
 if(collision){ec.message.addError("The code '${value}' is already used in this organization. Each current item needs a unique scan code.");return}
-ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('productId',productId).condition('organizationPartyId',prd.ownerPartyId).condition('isPrimary','Y').list().each {if(it.barcodeValue!=value)ec.service.sync().name('update#zenith.erp.barcode.ProductBarcode').parameters([barcodeId:it.barcodeId,isPrimary:'N']).call()}
+ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('productId',productId)
+    .condition('organizationPartyId',prd.ownerPartyId).condition('isPrimary','Y').list().each { barcode ->
+    if (barcode.barcodeValue == value) return
+    // Release only the primary internal barcode that mirrors the item code being replaced.
+    if (barcode.barcodeTypeEnumId == 'BctInternal' && barcode.barcodeValue == prd.pseudoId) {
+        barcode.delete()
+    } else {
+        ec.service.sync().name('update#zenith.erp.barcode.ProductBarcode')
+            .parameters([barcodeId:barcode.barcodeId,isPrimary:'N']).call()
+    }
+}
 def mine=ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('organizationPartyId',prd.ownerPartyId).condition('productId',productId).condition('barcodeValue',value).one()
 if(mine)ec.service.sync().name('update#zenith.erp.barcode.ProductBarcode').parameters([barcodeId:mine.barcodeId,isPrimary:'Y',isActive:'Y']).call()
 else ec.service.sync().name('create#zenith.erp.barcode.ProductBarcode').parameters([productId:productId,organizationPartyId:prd.ownerPartyId,barcodeValue:value,barcodeTypeEnumId:'BctInternal',isPrimary:'Y',isActive:'Y']).call()
