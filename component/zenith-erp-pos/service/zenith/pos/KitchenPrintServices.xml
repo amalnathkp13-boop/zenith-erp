@@ -206,6 +206,7 @@
                         }
                     }
                     else { ec.message.addError('No finalized customer bill is linked to this KOT. Older orders without a saved pricing snapshot cannot print an unpaid bill.'); return }
+                    if (record?.bill) record.bill.orderType=ec.resource.script('component://zenith-erp-pos/script/KotOrderType.groovy', null, [ticket:k])
                 } else {
                     record=[number:k.kotNumber ?: k.kotId,date:ec.l10n.format(k.kotDate,'dd/MM/yyyy hh:mm a'),table:k.tableNumber ?: '-',
                         notes:k.notes ?: '',waiter:k.waiterName ?: '',items:ec.entity.find('zenith.erp.pos.KotItem').condition('kotId',k.kotId)

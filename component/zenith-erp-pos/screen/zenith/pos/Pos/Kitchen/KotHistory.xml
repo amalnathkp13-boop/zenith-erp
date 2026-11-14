@@ -60,14 +60,7 @@
                 historyItemCount[k.kotId]=items.size()
                 historyItemSummary[k.kotId]=items.take(2).collect { it.productName ?: it.productId }.join(', ') +
                     (items.size()>2 ? ' +'+(items.size()-2)+' more' : '')
-                def savedType=null
-                if(k.orderReceiptJson) {
-                    try { savedType=new groovy.json.JsonSlurper().parseText(k.orderReceiptJson)?.bill?.orderType }
-                    catch(Exception ignored) { }
-                }
-                historyOrderType[k.kotId]=k.notes?.startsWith('[Take Away]') ? 'Take Away' :
-                    (k.notes?.startsWith('[Dine In]') ? 'Dine In' :
-                    (savedType in ['Dine In','Take Away'] ? savedType : (k.tableNumber ? 'Dine In' : 'Unspecified')))
+                historyOrderType[k.kotId]=ec.resource.script('component://zenith-erp-pos/script/KotOrderType.groovy', null, [ticket:k]) ?: 'Unspecified'
             }
             def query=filterQuery?.toString()?.trim()?.toLowerCase()
             if(filterOrderType) kotList=kotList.findAll { historyOrderType[it.kotId]==filterOrderType }
