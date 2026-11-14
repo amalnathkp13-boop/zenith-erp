@@ -817,7 +817,7 @@
     </#if>
   </header>
   <div class="kb-toolbar nb-actionbar">
-    <a class="kb-control kg-back nb-back" href="KotHistory" aria-label="Back to KOT History"><@ic 'back'/> Back</a>
+    <a class="kb-control kg-back nb-back" href="${(kotBillingBack!'KotHistory')?html}" aria-label="${(customRoleNavigation!false)?then('Leave KOT billing','Back to KOT History')}"><@ic 'back'/> Back</a>
     <details class="kg-modes">
       <summary class="kb-control nb-pill">Modes</summary>
       <div class="kg-menu" aria-label="Sales modes and billing views">

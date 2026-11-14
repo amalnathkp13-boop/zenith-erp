@@ -3719,7 +3719,7 @@
 
                         <!-- The no-session screen hides app chrome; return directly to the POS dashboard. -->
                         <render-mode><text type="html" template="true"><![CDATA[<style>body.Terminal .navbar{display:none!important}body.Terminal #pos-tabs-menu{display:none!important}body.Terminal #pos-module-nav{display:none!important}</style>
-<div style="margin-bottom:14px"><a href="/apps/zenith/pos/Dashboard" style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;background:#37474f;color:#fff;text-decoration:none;font-size:13px;font-weight:700">&#8592; Back to POS</a></div>]]></text></render-mode>
+<div style="margin-bottom:14px"><a href="${(posBillingBack!'/apps/zenith/pos/Dashboard')?html}" style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;background:#37474f;color:#fff;text-decoration:none;font-size:13px;font-weight:700">&#8592; Back to POS</a></div>]]></text></render-mode>
 
                         <container style="text-center q-mb-lg">
 
@@ -3793,7 +3793,7 @@
                         </form-single>
                         </widgets></section>
                         <render-mode><text type="html,qvt,vuet" template="true"><![CDATA[
-                          <#if busySessionLinks?has_content>
+                          <#if (showPosSessionReview!true) && busySessionLinks?has_content>
                           <div class="pos-busy-session-note" style="margin-top:18px;padding:14px;border:1px solid #f3d99c;border-radius:8px;background:#fffbeb;color:#664d03;font-size:13px;line-height:1.5">
                             <strong>Terminal already in use?</strong> A shift with recorded sales must be reviewed and closed after the drawer is counted.
                             <#list busySessionLinks as busy>
@@ -4528,7 +4528,7 @@ window.sendWhatsAppWithPdf=function() {
 
 <div class="pos-header nb-header">
   <div class="nb-hrow">
-    <#if (posOnlyUser!false)><a class="pos-logo-link nb-brand" href="/apps/zenith/Dashboard" title="Go to the Dashboard"><img src="/zenithstatic/img/zetaerp-logo.svg?v=2" alt="ZetaERP"/></a><#else><a class="pos-logo-link nb-brand" href="/qapps/zenith" title="Back to the app (dashboard)"><img src="/zenithstatic/img/zetaerp-logo.svg?v=2" alt="ZetaERP"/></a></#if>
+    <#if (customRoleNavigation!false)><a class="pos-logo-link nb-brand" href="${posBillingBack?html}" title="Leave billing"><img src="/zenithstatic/img/zetaerp-logo.svg?v=2" alt="ZetaERP"/></a><#elseif (posOnlyUser!false)><a class="pos-logo-link nb-brand" href="/apps/zenith/Dashboard" title="Go to the Dashboard"><img src="/zenithstatic/img/zetaerp-logo.svg?v=2" alt="ZetaERP"/></a><#else><a class="pos-logo-link nb-brand" href="/qapps/zenith" title="Back to the app (dashboard)"><img src="/zenithstatic/img/zetaerp-logo.svg?v=2" alt="ZetaERP"/></a></#if>
     <#if (posTerminalRestricted!false)><span class="nb-pill" title="Terminal assigned by your administrator">${((terminal.terminalName)!'Assigned terminal')?html}</span><#else>
     <details class="nb-counter"><summary class="nb-pill" title="Switch between your open counters"><span>${((terminal.terminalName)!'Terminal')?html}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
       <div class="nb-counter-menu"><span>Your open counters</span><#list (checkoutCounters![]) as counter><a href="/apps/zenith/pos/Terminal?sessionId=${counter.sessionId?url('UTF-8')}" <#if counter.sessionId==sessionId>aria-current="true"</#if>>${counter.name?html}</a></#list><a href="/apps/zenith/pos/PosTerminals">Manage counters</a></div>
@@ -4546,7 +4546,7 @@ window.sendWhatsAppWithPdf=function() {
 
   </div>
 <div class="nb-actionbar">
-  <a href="/apps/zenith/pos/Dashboard" class="nb-back" title="Back to POS"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m12 19-7-7 7-7M19 12H5"/></svg><span>Back to POS</span></a>
+  <a href="${(posBillingBack!'/apps/zenith/pos/Dashboard')?html}" class="nb-back" title="Back to POS"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m12 19-7-7 7-7M19 12H5"/></svg><span>Back to POS</span></a>
     <details class="nb-modes">
       <summary class="nb-pill nb-modes__btn"><span>Modes</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
       <div class="nb-modes__menu">
