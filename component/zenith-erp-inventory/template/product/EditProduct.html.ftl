@@ -5,7 +5,7 @@
 <label>${title}<select name="${key}"><#if product[key]?has_content && !values?seq_contains(product[key])><option value="${product[key]?html}" selected>Current: ${product[key]?html}</option></#if><#list values as v><option value="${v}" <#if (product[key]!'N')==v>selected</#if>>${labels[v_index]}</option></#list></select></label>
 </#macro>
 <div id="productEditor">
-<img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" hidden onload="if(!document.getElementById('productEditorCss')){var l=document.createElement('link');l.id='productEditorCss';l.rel='stylesheet';l.href='/zenithstatic/css/product-editor.css?v=2';document.head.appendChild(l)}if(!window.initProductEditor){var j=document.createElement('script');j.src='/zenithstatic/js/product-editor.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/product-editor.js').getLastModified()?c}';document.head.appendChild(j)}else{window.initProductEditor()}"/>
+<img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" hidden onload="if(!document.getElementById('productEditorCss')){var l=document.createElement('link');l.id='productEditorCss';l.rel='stylesheet';l.href='/zenithstatic/css/product-editor.css?v=3';document.head.appendChild(l)}if(!window.initProductEditor){var j=document.createElement('script');j.src='/zenithstatic/js/product-editor.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/product-editor.js').getLastModified()?c}';document.head.appendChild(j)}else{window.initProductEditor()}"/>
 <div class="pe-header"><div><p>Inventory / Products / Edit Product</p><h1>Edit Product</h1><p>Update product details, pricing, tax and inventory settings.</p></div><div class="pe-actions"><a class="pe-button" data-pe-leave href="${sri.buildUrl('../FindProduct').url?html}">← Back to Products</a><#if invCanWrite><button type="button" class="pe-danger" data-pe-delete>Delete Product</button><button class="pe-primary" form="productEditorForm" type="submit">▣ Save Changes</button></#if></div></div>
 <form id="productEditorForm" method="post" action="${sri.buildUrl('updateProduct').url?html}" data-pe-save="edit">
 <input type="hidden" name="moquiSessionToken" value="${(ec.web.sessionToken!'')?html}"/><input type="hidden" name="productId" value="${productId?html}"/>
@@ -16,8 +16,10 @@
 <section class="pe-card" id="pe-identity"><header><i class="material-icons">layers</i><div><h2>Product Identity</h2><p>Basic details about this product.</p></div></header><div class="pe-fields">
 <@field key="productName" title="Product Name" required=true/>
 <label>Print Name (on bills)<input name="printName" value="${(product.printName!product.productName!'')?html}" maxlength="255" data-custom="${product.printName?has_content?then('true','false')}"/><small>Defaults to Product Name. Used on printed POS bills and reprints.</small><button type="button" class="pe-text" data-pe-reset-name>Use Product Name</button></label>
-<div id="pe-barcode"><@field key="pseudoId" title="Item Code"/></div>
-<label>Barcode<input value="${(productModePricing.generatedBarcode!'Not set')?html}" readonly/></label>
+<div id="pe-barcode"><@field key="pseudoId" title="Item Code"/><#if invCanWrite>
+<button type="button" class="pe-text" data-pe-barcode-review="${sri.buildUrl('reviewBarcodeConflict').url?html}" disabled>Review Barcode Conflict</button>
+</#if></div>
+<label>Barcode<input value="${(productModePricing.generatedBarcode!'Not set')?html}" data-pe-current-barcode readonly/></label>
 <@choice key="productTypeEnumId" title="Product Type" values=['PtAsset','PtService','PtDigitalAsset'] labels=['Physical product (stock & count)','Service (no stock)','Digital product']/>
 <label class="pe-wide">Description<textarea name="description" maxlength="500" rows="3" placeholder="Enter product description (optional)...">${(product.description!'')?html}</textarea><small class="pe-count" data-pe-count></small></label>
 </div></section>
@@ -45,5 +47,15 @@
 </aside></div>
 <div class="pe-savebar"><span role="status" data-pe-status><#if !invCanWrite>View-only access — changes are disabled.</#if></span><a class="pe-button" data-pe-leave href="${sri.buildUrl('../FindProduct').url?html}">Cancel</a><#if invCanWrite><button type="submit" class="pe-primary">Save Changes</button></#if></div>
 </form>
+<#if invCanWrite>
+<dialog class="pe-card pe-barcode-dialog" data-pe-barcode-dialog aria-labelledby="pe-barcode-title">
+  <h2 id="pe-barcode-title">Review Barcode Conflict</h2>
+  <p role="status" data-pe-barcode-message></p>
+  <div class="pe-actions">
+    <button type="button" class="pe-button" data-pe-barcode-cancel autofocus>Cancel</button>
+    <button type="button" class="pe-primary" data-pe-barcode-confirm="${sri.buildUrl('transferBarcodeConflict').url?html}" hidden>Release barcode and save item code</button>
+  </div>
+</dialog>
+</#if>
 <#if invCanWrite><form id="productDeleteForm" method="post" action="${sri.buildUrl('deleteProduct').url?html}" data-pe-save="delete"><input type="hidden" name="moquiSessionToken" value="${(ec.web.sessionToken!'')?html}"/><input type="hidden" name="productId" value="${productId?html}"/></form></#if>
 </div>

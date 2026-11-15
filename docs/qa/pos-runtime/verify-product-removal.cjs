@@ -166,6 +166,88 @@ module.exports = async function ({a, foreign, base, check, q, invoke, post}) {
   (await menu(code)).exactId === reassigned && (await menu(alternateCode)).exactId === editTarget &&
   (await lookup(code)).some(p => p.productId === reassigned) && JSON.stringify(oldBarcodes) === JSON.stringify(barcodes(id)));
 
+ const manualCode = code+'-MANUAL';
+ await a.c.request.post(base+'/apps/zenith/barcode/FindBarcode/addBarcode', {
+  form:{moquiSessionToken:a.t,productId:reassigned,barcodeValue:manualCode,barcodeTypeEnumId:'BctInternal',isPrimary:'Y'},maxRedirects:0
+ });
+ check('assigning a manual primary barcode releases the old generated mirror',
+  product(reassigned).pseudo_id === manualCode && !barcodes(reassigned).some(row => row.barcode_value === code));
+ await a.c.request.post(inventoryUrl('apps')+'/EditProduct/updateProduct', {
+  form:{moquiSessionToken:a.t,productId:reassigned,pseudoId:code},maxRedirects:0
+ });
+ const manualPreview = await a.c.request.get(inventoryUrl('apps')+'/EditProduct/reviewBarcodeConflict?'+
+  new URLSearchParams({productId:editTarget,pseudoId:manualCode}));
+ const manualResult = await manualPreview.json();
+ check('a separately assigned internal barcode survives recoding and cannot be transferred',
+  product(reassigned).pseudo_id === code && manualResult.conflict === true && !manualResult.review &&
+  barcodes(reassigned).some(row => row.barcode_value === manualCode && row.is_primary === 'N' && row.item_code_mirror === 'N'));
+
+ for (const shell of ['apps','qapps']) {
+  const legacyCode = 'QA-LEGACY-'+randomUUID().slice(0,8);
+  const source = await create('Disposable barcode conflict source', '0', legacyCode+'-CURRENT');
+  const target = await create('Disposable barcode conflict target', '0', legacyCode+'-TARGET');
+  const seed = await post('PosQaAcceptance','legacySecondaryBarcode',{productId:source,code:legacyCode});
+  const {barcodeId} = await seed.json();
+  check(shell+' prepares an old secondary internal barcode', !!barcodeId && (await menu(legacyCode)).exactId === source);
+  const originalSource = product(source);
+  const targetBefore = product(target);
+  const editor = inventoryUrl(shell)+'/EditProduct';
+  const requested = new URLSearchParams({productId:target,pseudoId:legacyCode});
+  const preview = await a.c.request.get(editor+'/reviewBarcodeConflict?'+requested);
+  const {review} = await preview.json();
+  check(shell+' preview identifies the owner and the current item code',
+   preview.ok() && review?.sourceName === originalSource.product_name && review.sourceItemCode === originalSource.pseudo_id);
+  const occupied = await a.c.request.get(editor+'/reviewBarcodeConflict?'+new URLSearchParams({
+   productId:target,pseudoId:originalSource.pseudo_id
+  }));
+  const occupiedResult = await occupied.json();
+  check(shell+' another product’s current item code cannot be transferred', occupiedResult.conflict === true && !occupiedResult.review);
+  const external = await foreign.c.request.get(editor+'/reviewBarcodeConflict?'+requested,{maxRedirects:0});
+  check(shell+' foreign organization cannot review the barcode conflict',
+   external.status() >= 400 || !((await external.text()).includes(review.token)));
+  const sendTransfer = (token,actor=a) => actor.c.request.post(editor+'/transferBarcodeConflict',{
+   form:{moquiSessionToken:actor.t,productId:target,pseudoId:legacyCode,barcodeReviewToken:token},maxRedirects:0
+  });
+  await a.c.request.post(editor+'/updateProduct',{
+   form:{moquiSessionToken:a.t,productId:source,pseudoId:legacyCode+'-UPDATED'},maxRedirects:0
+  });
+  const ownedBefore = product(source);
+  const sourcePrimary = barcodes(source).find(row => row.is_primary === 'Y');
+  check(shell+' changes the source item code after the first review', ownedBefore.pseudo_id === legacyCode+'-UPDATED');
+  await sendTransfer(review.token);
+  await sendTransfer(review.token,foreign);
+  check(shell+' rejects stale or unauthorized confirmation without releasing the barcode',
+   barcodes(source).some(row => row.barcode_id === barcodeId) && product(target).pseudo_id === targetBefore.pseudo_id);
+
+  await a.p.goto(editor+'?productId='+target);
+  await a.p.locator('#productEditor[data-bound=true]').waitFor();
+  await a.p.getByLabel('Item Code',{exact:true}).fill(legacyCode);
+  const reviewButton = a.p.getByRole('button',{name:'Review Barcode Conflict',exact:true});
+  const dialog = a.p.getByRole('dialog',{name:'Review Barcode Conflict'});
+  await reviewButton.click();
+  await dialog.getByText(/Disposable barcode conflict source/).waitFor();
+  await dialog.getByRole('button',{name:'Cancel',exact:true}).click();
+  check(shell+' cancel leaves the existing barcode and product code untouched',
+   barcodes(source).some(row => row.barcode_id === barcodeId) && product(target).pseudo_id === targetBefore.pseudo_id);
+  await a.p.locator('#productEditorForm input[name=productName]').fill('Unsaved draft product name');
+  await reviewButton.click();
+  await dialog.getByRole('button',{name:'Release barcode and save item code'}).click();
+  await a.p.getByText('Item code '+legacyCode+' saved.',{exact:true}).waitFor();
+  const after = product(target);
+  const audit = () => q(`SELECT * FROM item_code_transfer WHERE target_product_id='${target}' AND item_code='${legacyCode}'`);
+  const entry = audit()[0];
+  check(shell+' confirmation changes only the intended item code, releases the old barcode, and audits it',
+   after.pseudo_id === legacyCode && after.product_name === targetBefore.product_name &&
+   after.mrp_amount === targetBefore.mrp_amount && JSON.stringify(product(source)) === JSON.stringify(ownedBefore) &&
+   JSON.stringify(barcodes(source)) === JSON.stringify([sourcePrimary]) && entry?.released_barcode_id === barcodeId &&
+   entry?.source_product_id === source && entry?.organization_party_id === ownedBefore.owner_party_id &&
+   await a.p.locator('#productEditorForm input[name=productName]').inputValue() === 'Unsaved draft product name');
+  await sendTransfer(review.token);
+  check(shell+' an already applied review cannot transfer again and scanning selects the intended product',
+   audit().length === 1 && (await menu(legacyCode)).exactId === target &&
+   (await lookup(legacyCode)).some(row => row.productId === target));
+ }
+
  const next = await invoke('cart',{sessionId});
  await invoke('add',{transactionId:next.transactionId, productId:unused, quantity:'1', taxOn:'N', salesModeId:'RETAIL'},true);
  check('a stale product ID cannot add a line to a new bill',

@@ -6,6 +6,79 @@
     <parameter name="productId" required="true"/>
 
     <transition name="findProduct"><default-response url="../FindProduct"/></transition>
+    <transition name="reviewBarcodeConflict" method="get" read-only="true">
+        <actions><script><![CDATA[
+            def request = ec.web.parameters
+            def code = (request.pseudoId ?: '').toString().trim()
+            def write = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId','inventory').call()
+            def org = ec.service.sync().name('zenith.barcode.BarcodeServices.get#AuthorizedActiveOrganization').call().activeOrgId
+            def target = org ? ec.entity.find('mantle.product.Product')
+                .condition([productId:request.productId,ownerPartyId:org]).useCache(false).one() : null
+            if (!write.canWrite || !target || (target.salesDiscontinuationDate && target.salesDiscontinuationDate <= ec.user.nowTimestamp)) {
+                ec.web.response.setStatus(403)
+                ec.web.sendJsonResponse([error:'Inventory write access in the owning organization is required.']); return
+            }
+            if (!code || code.length() > 100 || code.any { Character.isISOControl((char)it) }) {
+                ec.web.response.setStatus(400)
+                ec.web.sendJsonResponse([error:'Enter a valid item code to review.']); return
+            }
+            def result = ec.service.sync().name('zenith.barcode.BarcodeServices.check#ProductCodeConflict').disableAuthz()
+                .parameters([organizationPartyId:org,productId:target.productId,code:code,reviewTransfer:true]).call()
+            if (ec.message.hasError()) { ec.web.sendJsonResponse([error:ec.message.errorsString]); return }
+            def review = result.transferReview
+            ec.web.sendJsonResponse([conflict:result.conflict, review:review ? [
+                token:review.token, code:review.code, sourceName:review.sourceName, sourceItemCode:review.sourceItemCode,
+                targetName:target.productName ?: target.productId] : null])
+        ]]></script></actions>
+        <default-response type="none"/>
+    </transition>
+
+    <transition name="transferBarcodeConflict" method="post" begin-transaction="true">
+        <actions><script><![CDATA[
+            def request = ec.web.parameters
+            def code = (request.pseudoId ?: '').toString().trim()
+            def token = (request.barcodeReviewToken ?: '').toString()
+            def write = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId','inventory').call()
+            def org = ec.service.sync().name('zenith.barcode.BarcodeServices.get#AuthorizedActiveOrganization').call().activeOrgId
+            if (!write.canWrite || !org) { ec.message.addError('Inventory write access in the owning organization is required.'); return }
+            if (!code || code.length() > 100 || code.any { Character.isISOControl((char)it) } || !(token ==~ /[0-9a-f]{64}/)) {
+                ec.message.addError('Review the item code before transferring it.'); return
+            }
+            ec.entity.find('mantle.party.Party').condition('partyId',org).forUpdate(true).disableAuthz().one()
+            def target = ec.entity.find('mantle.product.Product')
+                .condition([productId:request.productId,ownerPartyId:org]).forUpdate(true).one()
+            if (!target || (target.salesDiscontinuationDate && target.salesDiscontinuationDate <= ec.user.nowTimestamp)) {
+                ec.message.addError('Select a current product in the active organization.'); return
+            }
+            def review = ec.service.sync().name('zenith.barcode.BarcodeServices.check#ProductCodeConflict').disableAuthz()
+                .parameters([organizationPartyId:org,productId:target.productId,code:code,reviewTransfer:true]).call().transferReview
+            if (ec.message.hasError()) return
+            if (!review || review.token != token) {
+                ec.message.addError('This barcode conflict changed. Review the item code again.'); return
+            }
+            def obsolete = ec.entity.find('zenith.erp.barcode.ProductBarcode').condition([barcodeId:review.barcodeId,
+                organizationPartyId:org,productId:review.sourceProductId,barcodeValue:code,isPrimary:'N',barcodeTypeEnumId:'BctInternal'])
+                .forUpdate(true).disableAuthz().one()
+            if (!obsolete || obsolete.itemCodeMirror == 'N') {
+                ec.message.addError('This barcode conflict changed. Review the item code again.'); return
+            }
+            obsolete.delete()
+            ec.service.sync().name('zenith.barcode.BarcodeServices.sync#BarcodeFromPseudoId')
+                .parameters([productId:target.productId,code:code]).call()
+            if (ec.message.hasError()) return
+            ec.service.sync().name('update#mantle.product.Product').parameters([productId:target.productId,pseudoId:code]).call()
+            if (ec.message.hasError()) return
+            ec.service.sync().name('create#zenith.erp.barcode.ItemCodeTransfer').disableAuthz().parameters([
+                organizationPartyId:org,sourceProductId:review.sourceProductId,targetProductId:target.productId,
+                releasedBarcodeId:review.barcodeId,itemCode:code,previousTargetCode:target.pseudoId,
+                transferredByUserId:ec.user.userId,transferredAt:ec.user.nowTimestamp]).call()
+            if (ec.message.hasError()) return
+            ec.service.sync().name('zenith.pos.ProductModePricingServices.mark#CatalogChanged').parameter('organizationPartyId',org).call()
+        ]]></script></actions>
+        <conditional-response url="."><condition><expression>ec.message.hasError()</expression></condition></conditional-response>
+        <default-response url="." parameter-map="[productSaved:'Y']"/>
+    </transition>
+
     <transition name="deleteProduct" method="post">
         <actions><service-call name="zenith.inventory.InventoryServices.delete#Product" in-map="[productId:productId]"/></actions>
         <conditional-response url=".">
