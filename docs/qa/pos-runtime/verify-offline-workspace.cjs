@@ -30,7 +30,8 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
   check('offline price and quantity edits immediately update tax-inclusive payable',await page.locator('#posSumTotal').textContent()==='₹189.00');
   check('offline side summary matches the editable bill',await page.locator('#pos-side-subtotal').textContent()==='₹160.00'&&await page.locator('#pos-side-tax').textContent()==='₹28.80');
   const controls=await page.locator('.pos-offline-payments button').evaluateAll(buttons=>buttons.map(b=>({text:b.textContent,rect:{top:b.getBoundingClientRect().top,bottom:b.getBoundingClientRect().bottom,left:b.getBoundingClientRect().left,right:b.getBoundingClientRect().right},width:innerWidth,height:innerHeight})));
-  check('all offline payment and utility controls fit the desktop viewport',controls.length===10&&controls.every(b=>b.rect.top>=0&&b.rect.bottom<=b.height+2&&b.rect.left>=0&&b.rect.right<=b.width+2),controls);
+  check('all offline payment and utility controls fit the desktop viewport',controls.length===9&&controls.every(b=>b.rect.top>=0&&b.rect.bottom<=b.height+2&&b.rect.left>=0&&b.rect.right<=b.width+2),controls);
+  check('offline Discount stays in the header as a single enabled action',await page.locator('.nb-actionbar #pos-discount:enabled').count()===1&&await page.locator('#pos-discount').count()===1);
   await page.screenshot({path:path.join(out,'offline-editable-bill.png'),fullPage:true});
   await page.locator('.ofl-price').press('Enter');
   check('Enter in rate focuses quantity offline',await page.locator('.ofl-qi').evaluate(el=>el===document.activeElement));

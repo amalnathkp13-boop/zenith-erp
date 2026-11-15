@@ -980,7 +980,9 @@ window._posOffline = (function () {
                         );
                     })
                     .join('') +
-                '<button type="button" id="pos-discount" class="pos-discount-btn">Discount F1</button><button type="button" id="pos-hold">Hold F7</button><button type="button" id="pos-offline-holds">Held bills</button><button type="button" id="pos-offline-customer">Customer</button><button type="button" id="pos-offline-print">Pending receipts</button></div>';
+                '<button type="button" id="pos-hold">Hold F7</button><button type="button" id="pos-offline-holds">Held bills</button><button type="button" id="pos-offline-customer">Customer</button><button type="button" id="pos-offline-print">Pending receipts</button></div>';
+        var discountButton = document.querySelector('.nb-actionbar #pos-discount');
+        if (discountButton) discountButton.disabled = !cart.length;
         var countLabel = document.getElementById('pos-side-item-count');
         if (countLabel) countLabel.textContent = 'Subtotal (' + cart.length + ' items)';
         [['pos-side-subtotal',t.sub],['pos-side-discount',t.disc],['pos-side-tax',t.tax],['pos-side-round',t.round]].forEach(function (pair) {
@@ -4316,7 +4318,6 @@ window.posToggleFullscreen = function() {
             var disabled = !d.items.length;
             var badge = function(key) { return '<kbd>'+key+'</kbd>'; };
             var html = '<div class="pos-paywrap pos-reference-payments">'
-                + '<button type="button" id="pos-discount" class="pos-discount-btn">Discount / Roundoff'+badge('F1')+'</button>'
                 + '<button type="button" id="pos-pay-cash" class="pos-cash-btn">Cash'+badge('F2')+'</button>'
                 + payBtn('Card','Card'+badge('F3'),'#009dff')
                 + '<button id="pos-credit" type="button" onclick="posCreditSale()">Credit'+badge('F4')+'</button>'
@@ -4478,6 +4479,8 @@ window.posToggleFullscreen = function() {
             if (!d || !d.success) { if (d && d.error) showToast(d.error, '#c62828'); return; }
             TX = d.transactionId || '';
             document.querySelectorAll('input[name="transactionId"]').forEach(function(el) { if (el.value !== TX) el.value = TX; });
+            var discountButton = document.querySelector('.pos-checkout-reference #pos-discount');
+            if (discountButton) discountButton.disabled = !d.items.length;
             syncModeLinks();
             var tb = document.querySelector('.pos-cart tbody');
             if (!tb) return;

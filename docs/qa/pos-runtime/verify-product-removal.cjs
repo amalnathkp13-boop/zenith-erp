@@ -145,6 +145,27 @@ module.exports = async function ({a, foreign, base, check, q, invoke, post}) {
   edited.status() === 302 && product(editTarget).pseudo_id === code && barcodes(editTarget).some(row => row.barcode_value === code));
  const imported = await invoke('importProduct',{sku:code,productName:'Imported replacement product',listPrice:'10'});
  check('importing a reused code updates only the current product', imported.productId === editTarget && product(id).product_name === productName);
+
+ const alternateCode = code+'-ALT';
+ await a.c.request.post(base+'/apps/zenith/barcode/FindBarcode/addBarcode', {
+  form:{moquiSessionToken:a.t,productId:editTarget,barcodeValue:alternateCode,barcodeTypeEnumId:'BctCode128',isPrimary:'N'},maxRedirects:0
+ });
+ const alternate = barcodes(editTarget).find(row => row.barcode_value === alternateCode);
+ check('creates an independent secondary barcode for the product being recoded', alternate?.is_primary === 'N' && alternate?.is_active === 'Y');
+ const nextCode = code+'-NEW';
+ await a.c.request.post(inventoryUrl('apps') + '/EditProduct/updateProduct', {
+  form:{moquiSessionToken:a.t,productId:editTarget,pseudoId:nextCode},maxRedirects:0
+ });
+ const afterRecode = barcodes(editTarget);
+ check('changing an active product code releases its old internal mirror and preserves its secondary barcode',
+  product(editTarget).pseudo_id === nextCode && afterRecode.some(row => row.barcode_value === nextCode && row.is_primary === 'Y') &&
+  !afterRecode.some(row => row.barcode_value === code) &&
+  JSON.stringify(afterRecode.find(row => row.barcode_value === alternateCode)) === JSON.stringify(alternate));
+ const reassigned = await create('Replacement after an item code change', '0', code);
+ check('the released code and independent barcode resolve to the correct products',
+  (await menu(code)).exactId === reassigned && (await menu(alternateCode)).exactId === editTarget &&
+  (await lookup(code)).some(p => p.productId === reassigned) && JSON.stringify(oldBarcodes) === JSON.stringify(barcodes(id)));
+
  const next = await invoke('cart',{sessionId});
  await invoke('add',{transactionId:next.transactionId, productId:unused, quantity:'1', taxOn:'N', salesModeId:'RETAIL'},true);
  check('a stale product ID cannot add a line to a new bill',
