@@ -35,6 +35,9 @@
   function salesHtml(report){
     const store=report.store||{}, options=report.options||{};
     const width=store.receiptWidth==='58mm'?58:80;
+    // Same thermal margins as the receipt (#249): flush left + larger right pad so the Sales
+    // column stays inside the ~72mm printable window on the right-offset printer. See #182/#189.
+    const padR=width===58?8:9;
     const money=new Intl.NumberFormat('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
     const qty=new Intl.NumberFormat('en-IN',{maximumFractionDigits:6});
     const tone=key=>({darkGrey:'#333',lightGrey:'#707070'}[options[key+'Tone']]||'#000');
@@ -49,7 +52,7 @@
       row('Discounts (included)',null,report.discount||0)+row('Tax',null,report.tax||0)+row('Round off',null,report.roundOff||0);
     if(Number(report.adjustment))adjustments+=row('Other bill adjustments',null,report.adjustment);
     return '<!doctype html><html data-paper-width="'+width+'"><head><meta charset="utf-8"><title>Daily sales summary</title>'+
-      '<style>@page{size:'+width+'mm auto;margin:0}*{box-sizing:border-box}body{margin:0;padding:2mm;width:'+width+
+      '<style>@page{size:'+width+'mm auto;margin:0}*{box-sizing:border-box}body{margin:0;padding:1mm '+padR+'mm 5mm 0;width:'+width+
       'mm;color:#000;background:#fff;font:'+({dark:700,standard:600,light:400}[options.density]||600)+' 11px Arial,sans-serif}'+
       '.block{white-space:pre-line;overflow-wrap:anywhere;text-align:center}h1{font-size:13px;text-align:center;margin:5px 0}'+
       'img{display:block;margin:auto;max-width:90%;max-height:45px}table{width:100%;border-collapse:collapse}th,td{padding:3px 1px;vertical-align:top}'+

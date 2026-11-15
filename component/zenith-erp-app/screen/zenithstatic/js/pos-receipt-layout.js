@@ -33,7 +33,11 @@
         if(d.preview)h+='<div class="notice">UNPAID ORDER - NOT A TAX INVOICE</div>';
         if(edited||d.edited)h+='<div class="notice">EDITED / REVISED BILL</div>';
         var metadata='';
-        if(enabled('showBillNumber')&&b.number)metadata+=row(o.billNumberLabel||'Bill No:',b.number,'information',true);
+        if(b.numbers){
+            if(enabled('showInvoiceNumber'))metadata+=row(o.invoiceNumberLabel||'Invoice No:',b.numbers.invoice||'Pending sync','information',true);
+            if(o.showDailyBillNumber===true&&(b.numbers.daily||b.numbers.offline))metadata+=row(o.dailyBillNumberLabel||'Bill No:',b.numbers.daily||'Pending sync','information',true);
+            if(b.numbers.offline&&b.number)metadata+=row('Offline ref:',b.number,'information');
+        }else if(enabled('showBillNumber')&&b.number)metadata+=row(o.billNumberLabel||'Bill No:',b.number,'information',true);
         if(enabled('showDate')&&b.date)metadata+=row('Date:',b.date,'information');
         if(shown('showCustomerInfo')&&enabled('showCustomerRow')){
             if(enabled('showCustomerName')&&b.customer)metadata+=row(o.customerLabel||'Customer:',b.customer,'information');

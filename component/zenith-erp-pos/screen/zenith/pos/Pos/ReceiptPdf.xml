@@ -97,6 +97,13 @@
             // FOP's bundled base fonts do not contain the rupee glyph. Use a readable currency prefix.
             cs = 'Rs. '
             billNo = txn.transactionNumber ?: txn.transactionId
+            receiptNumberRows=[]
+            if (kitchenModuleId=='kot' && rTpl?.printUse=='kotBill') {
+                def numbers=ec.resource.script('component://zenith-erp-pos/script/KotReceiptNumbers.groovy',null,
+                    [txn:txn,terminal:terminal,ticket:_kotTickets[0],receiptOptions:receiptOptions])
+                if (receiptOptions.showInvoiceNumber) receiptNumberRows.add([label:receiptOptions.invoiceNumberLabel,value:numbers.invoice ?: 'Pending sync'])
+                if (receiptOptions.showDailyBillNumber && numbers.daily) receiptNumberRows.add([label:receiptOptions.dailyBillNumberLabel,value:numbers.daily.toString()])
+            } else if (receiptOptions.showBillNumber) receiptNumberRows.add([label:receiptOptions.billNumberLabel,value:billNo])
             billDate = ec.l10n.format(txn.completedDate ?: txn.entryDate, 'dd/MM/yyyy hh:mm a')
             customerName = txn.customerName ?: 'Walk-In Customer'
             customerPhone = txn.customerPhone ?: ''
@@ -104,7 +111,7 @@
 
             pdfUnsupported = [receiptOptions.openingPreset!='none' ? receiptOptions.openingMessage : '',storeName,storeAddr,headerText,footerText,termsText,
                 showCustomer && receiptOptions.showCustomerName ? customerName : '',receiptOptions.showCashier ? operatorName : '',
-                receiptOptions.showBillNumber ? receiptOptions.billNumberLabel : '',showCustomer ? receiptOptions.customerLabel : '',receiptOptions.showCashier ? receiptOptions.cashierLabel : '',
+                receiptNumberRows*.label,showCustomer ? receiptOptions.customerLabel : '',receiptOptions.showCashier ? receiptOptions.cashierLabel : '',
                 items.collect { it.productName }].flatten().find { it && it.toString().codePoints().anyMatch { point -> point > 255 } } != null
             unitLabels = ['OTH_ea':'Nos','WT_g':'g','WT_kg':'kg','VLIQ_ml':'ml','VLIQ_L':'L','LEN_m':'m','LEN_cm':'cm']
             totalSaving = (txn.discountTotal ?: 0) as BigDecimal
@@ -166,12 +173,12 @@
             <fo:block font-size="8pt" font-weight="bold" text-align="center" color="#000" space-after="1mm">EDITED / REVISED BILL</fo:block>
             </#if>
 
-<#if receiptOrderType?has_content || receiptOptions.showBillNumber || receiptOptions.showDate || (receiptOptions.showCashier && operatorName?has_content) || (showCustomer && (receiptOptions.showCustomerName || (receiptOptions.showCustomerPhone && customerPhone?has_content))) || (showCustomer && customerGstin?has_content)>
+<#if receiptOrderType?has_content || receiptNumberRows?has_content || receiptOptions.showDate || (receiptOptions.showCashier && operatorName?has_content) || (showCustomer && (receiptOptions.showCustomerName || (receiptOptions.showCustomerPhone && customerPhone?has_content))) || (showCustomer && customerGstin?has_content)>
             <fo:table table-layout="fixed" width="100%">
                 <fo:table-column column-width="25mm"/><fo:table-column column-width="proportional-column-width(1)"/>
                 <fo:table-body>
-                    <#if receiptOptions.showBillNumber><fo:table-row><fo:table-cell><fo:block font-size="7pt" color="${receiptTones.information}">${receiptOptions.billNumberLabel?xml}</fo:block></fo:table-cell>
-                        <fo:table-cell><fo:block font-size="7pt" font-weight="bold">${billNo?xml}</fo:block></fo:table-cell></fo:table-row></#if>
+                    <#list receiptNumberRows as numberRow><fo:table-row><fo:table-cell><fo:block font-size="7pt" color="${receiptTones.information}">${numberRow.label?xml}</fo:block></fo:table-cell>
+                        <fo:table-cell><fo:block font-size="7pt" font-weight="bold">${numberRow.value?xml}</fo:block></fo:table-cell></fo:table-row></#list>
                     <#if receiptOptions.showDate><fo:table-row><fo:table-cell><fo:block font-size="7pt" color="${receiptTones.information}">Date:</fo:block></fo:table-cell>
                         <fo:table-cell><fo:block font-size="7pt">${billDate?xml}</fo:block></fo:table-cell></fo:table-row></#if>
                     <#if receiptOptions.showCashier && operatorName?has_content>

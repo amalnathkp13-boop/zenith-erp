@@ -285,6 +285,26 @@
     }
     ec.web.sendJsonResponse([success:true])
 ]]></script></actions><default-response type="none"/></transition>
+<transition name="checkoutKotTomorrow" method="post"><actions><script><![CDATA[
+    if (System.getProperty('pos.qa.disposable')!='true' || ec.user.username!='pos.qa') {
+        ec.web.response.setStatus(403); return
+    }
+    def session=ec.entity.find('zenith.erp.pos.PosSession').condition([
+        sessionId:ec.web.parameters.sessionId,organizationPartyId:'POS_QA_A',operatorPartyId:ec.user.userAccount?.partyId]).one()
+    if (!session?.terminalId?.startsWith('QA_KOT_RECEIPTS_') || session.statusId!='PsOpen') {
+        ec.web.response.setStatus(400); return
+    }
+    def zone=java.time.ZoneId.of('Asia/Kolkata')
+    def tomorrow=ec.user.nowTimestamp.toInstant().atZone(zone).toLocalDate().plusDays(1).atStartOfDay(zone)
+    try {
+        ec.user.setEffectiveTime(java.sql.Timestamp.from(tomorrow.plusSeconds(5).toInstant()))
+        def result=ec.service.sync().name('zenith.pos.KotServices.complete#KotBill')
+            .parameters([sessionId:session.sessionId,kotId:ec.web.parameters.kotId,paymentMethod:'Cash',cashAmount:'80']).call()
+        ec.web.sendJsonResponse(result.checkout ?: [success:false,error:ec.message.errorsString])
+    } finally {
+        ec.user.setEffectiveTime(null)
+    }
+]]></script></actions><default-response type="none"/></transition>
 <transition name="legacyKot" method="post"><actions><script><![CDATA[
     if(System.getProperty('pos.qa.disposable')!='true' || ec.user.username!='pos.qa') {ec.web.response.setStatus(403);return}
     def kot=ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('kotId',ec.context.kotId)

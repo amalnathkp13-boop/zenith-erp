@@ -33,6 +33,17 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    const editor=page.locator('#receiptEditorForm');
    await editor.locator('[name=headerText]').fill(header);
    await editor.locator('[name=isDefault]').selectOption('Y');
+   if(printUse==='kotBill'){
+    await editor.getByLabel('Show invoice number',{exact:true}).check({timeout:5000});
+    await editor.getByLabel('Show daily bill number',{exact:true}).check();
+    await editor.getByLabel('Daily bill number label',{exact:true}).fill('Daily receipt:');
+    const preview=page.frameLocator('iframe[title="Live receipt preview"]');
+    await preview.getByText('Daily receipt:',{exact:true}).waitFor();
+    await preview.getByText('Invoice No:',{exact:true}).waitFor();
+    await editor.getByLabel('Show invoice number',{exact:true}).uncheck();
+    await preview.getByText('Invoice No:',{exact:true}).waitFor({state:'hidden'});
+    await editor.getByLabel('Show invoice number',{exact:true}).check();
+   }
    await page.frameLocator('iframe[title="Live receipt preview"]').getByText(header,{exact:true}).waitFor();
    const [saved]=await Promise.all([
     page.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('/updateTemplate')),
@@ -70,6 +81,9 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   const quote=await (await kot('KotBilling/cartReceipt',payload)).json();
   check('KOT quote uses its own discount and customer bill design',
    quote.success&&Number(quote.receipt.summary.total)===80&&quote.receipt.store.headerText===billHeader,quote);
+  const workspace=(await (await kot('KotBilling/exportOfflineWorkspace',{sessionId})).json()).workspace;
+  check('offline KOT caches the selected receipt numbering options',workspace?.receiptOptions?.normal.dailyBillNumberLabel==='Daily receipt:'&&
+   workspace.receiptOptions.credit.showDailyBillNumber);
   const draft=await (await kot('KotBilling/saveDraft',payload)).json();
   check('KOT saves the discounted quote in a held order',draft.success&&!!draft.kotId,draft);
   await kot('DiscountSettings/saveKotDiscount',{salesModeId,discountPercent:'40'});
@@ -79,15 +93,27 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   check('checkout settles the KOT discount once at its quoted total',paid.success&&!!paid.billNumber,paid);
   const bill=q(`SELECT p.transaction_id,p.payable_amount FROM kitchen_order_ticket k JOIN pos_transaction p USING (transaction_id) WHERE k.kot_id='${draft.kotId}'`)[0];
   check('the saved KOT bill has the discounted amount',Number(bill?.payable_amount)===80);
+  const {invoiceId}=await invoke('sync',{transactionId:bill.transaction_id});
+  const fiscal=q(`SELECT gst_invoice_number FROM invoice WHERE invoice_id='${invoiceId}'`)[0]?.gst_invoice_number;
   const receipt=async(kind)=> (await (await kot('KotBilling/printRecord',{sessionId,kotId:draft.kotId,kind})).json()).record;
   const orderPrint=await receipt('kot'),billPrint=await receipt('bill');
   check('KOT Order and Bill Print use independent templates with no amounts on the ticket',
    orderPrint?.store?.headerText===ticketHeader&&orderPrint.store.receiptWidth==='58mm'&&!orderPrint.summary&&
    billPrint?.store?.headerText===billHeader&&Number(billPrint.summary.total)===80&&billPrint.bill.number===paid.billNumber);
+  const firstDaily=Number(billPrint?.bill?.numbers?.daily);
+  check('KOT carries the fiscal invoice and the saved daily bill number separately',
+   firstDaily>0&&!!fiscal&&billPrint.bill.numbers.invoice===fiscal&&billPrint.options.showDailyBillNumber&&
+   billPrint.options.dailyBillNumberLabel==='Daily receipt:'&&
+   Number(q(`SELECT daily_bill_number FROM kitchen_order_ticket WHERE kot_id='${draft.kotId}'`)[0]?.daily_bill_number)===firstDaily,
+   billPrint.bill);
   const dineIn=await (await kot('KotBilling/saveDraft',{...payload,orderType:'Dine In',additionalFee:'5.25'})).json();
   check('KOT saves a separate dine-in order',dineIn.success&&!!dineIn.kotId,dineIn);
   const dineInPaid=await (await kot('KotBilling/checkoutKot',{sessionId,kotId:dineIn.kotId,paymentMethod:'Cash',cashAmount:'85'})).json();
   check('KOT finalizes the dine-in order',dineInPaid.success&&!!dineInPaid.billNumber,dineInPaid);
+  const secondTicket=q(`SELECT daily_bill_number FROM kitchen_order_ticket WHERE kot_id='${dineIn.kotId}'`)[0];
+  const retried=await (await kot('KotBilling/checkoutKot',{sessionId,kotId:dineIn.kotId,paymentMethod:'Cash',cashAmount:'85'})).json();
+  check('successive KOT bills increment once and checkout retries keep the same transaction',
+   Number(secondTicket?.daily_bill_number)===firstDaily+1&&retried.transactionId===dineInPaid.transactionId);
   const held=await (await kot('KotBilling/saveDraft',payload)).json();
   check('an unpaid held order exists for the counter',held.success&&!!held.kotId,held);
   const report=await today();
@@ -168,6 +194,11 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await page.evaluate(([orderText,billText])=>window.qaPrintHtml[0].includes(orderText)&&
     !window.qaPrintHtml[0].includes(billText)&&window.qaPrintHtml[1].includes(billText)&&
     !window.qaPrintHtml[1].includes(orderText),[ticketHeader,billHeader]));
+  check('KOT customer reprint shows both configured numbers with their saved values',await page.evaluate(({invoice,daily})=>{
+   const doc=new DOMParser().parseFromString(window.qaPrintHtml[1],'text/html');
+   const value=label=>Array.from(doc.querySelectorAll('.meta td')).find(cell=>cell.textContent===label)?.nextElementSibling?.textContent;
+   return value('Invoice No:')===invoice&&value('Daily receipt:')===String(daily);
+  },{invoice:fiscal,daily:firstDaily}));
   await page.locator('#kb-history-rows [data-kot-id="'+dineIn.kotId+'"]')
    .getByRole('button',{name:'Bill Print',exact:true}).click();
   await page.waitForFunction(()=>window.qaPrintHtml.length===3&&window.qaPrintWindows.every(popup=>popup.closed));
@@ -196,7 +227,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await invoke('complete',{transactionId:regular.transactionId});
   const normal=(await invoke('receipt',{transactionId:regular.transactionId})).receipt;
   check('ordinary POS prints its own receipt design without a KOT order type',!!normal&&
-   normal.store.headerText!==billHeader&&normal.store.headerText!==ticketHeader&&!normal.bill.orderType);
+   normal.store.headerText!==billHeader&&normal.store.headerText!==ticketHeader&&!normal.bill.orderType&&!normal.bill.numbers);
 
   const returned=await invoke('returnCreate',{sessionId,originalTransactionId:bill.transaction_id,refundMethod:'Cash',
    items:JSON.stringify([{productId,quantity:1,unitPrice:12.5}])});
@@ -209,6 +240,11 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   const sample=mode=>post('PosQaAcceptance','kotTodaySalesFixture',{sessionId,mode});
   try {
    check('the synthetic high-volume fixture was saved',(await (await sample('seed')).json()).success);
+   const legacyId='QA_SALES_'+sessionId+'_1';
+   const legacy=await (await kot('KotBilling/printRecord',{sessionId,kotId:legacyId,kind:'bill'})).json();
+   check('existing KOT bills can show an invoice number and daily number without rewriting the ticket',
+    legacy.record?.bill.numbers?.invoice===legacyId&&Number(legacy.record?.bill.numbers?.daily)>0&&
+    q(`SELECT daily_bill_number FROM kitchen_order_ticket WHERE kot_id='${legacyId}'`)[0]?.daily_bill_number==null,legacy.record?.bill);
    const large=await today();
    const {text:printedText,columns}=await page.evaluate(report=>{
     const doc=new DOMParser().parseFromString(KitchenPrint.salesHtml(report),'text/html');
@@ -230,6 +266,28 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   check('closing the counter cancels only the unpaid held order',drawer.success&&
    q("SELECT status_id FROM kitchen_order_ticket WHERE kot_id='"+toClose.kotId+"'")[0]?.status_id==='KotCancelled'&&
    q("SELECT status_id FROM pos_transaction WHERE transaction_id='"+bill.transaction_id+"'")[0]?.status_id==='PtCompleted',drawer);
+  const otherTerminal=terminalId+'_2';
+  const shopName='QA KOT second shop '+id;
+  await post('../Inventory/FindFacility','createFacility',{facilityName:shopName,facilityTypeEnumId:'FcTpRetailStore'});
+  const facilityId=q(`SELECT facility_id FROM facility WHERE facility_name='${shopName}' AND owner_party_id='POS_QA_A'`)[0]?.facility_id;
+  check('a fresh KOT shop exists for the independent series',!!facilityId);
+  await post('PosTerminals','createTerminal',{terminalId:otherTerminal,terminalName:shopName,facilityId,stateCode:'33',isActive:'Y'});
+  const otherShop=(await invoke('open',{terminalId:otherTerminal,openingCash:'0'})).sessionId;
+  try {
+   const secondPayload={...payload,sessionId:otherShop};
+   const otherDraft=await (await kot('KotBilling/saveDraft',secondPayload)).json();
+   const otherPaid=await (await kot('KotBilling/checkoutKot',{sessionId:otherShop,kotId:otherDraft.kotId,paymentMethod:'Cash',cashAmount:'80'})).json();
+   const otherNumber=q(`SELECT daily_bill_number FROM kitchen_order_ticket WHERE kot_id='${otherDraft.kotId}'`)[0]?.daily_bill_number;
+   check('a shop with no other KOT bills begins its own sequence at 1',otherPaid.success&&Number(otherNumber)===1,{otherPaid,otherNumber});
+   const overnight=await (await kot('KotBilling/saveDraft',{...secondPayload,salesModeId:'RETAIL',
+    itemsJson:JSON.stringify([{productId,quantity:1,unitPrice:80,manualPrice:'Y'}])})).json();
+   const tomorrow=await (await post('PosQaAcceptance','checkoutKotTomorrow',{sessionId:otherShop,kotId:overnight.kotId})).json();
+   const nextDayNumber=q(`SELECT daily_bill_number FROM kitchen_order_ticket WHERE kot_id='${overnight.kotId}'`)[0]?.daily_bill_number;
+   check('a bill issued after midnight in the issuing shop starts at 1 again',tomorrow.success&&Number(nextDayNumber)===1,
+    {tomorrow,nextDayNumber});
+  } finally {
+   if(otherShop) await invoke('close',{sessionId:otherShop,closingCash:'160'});
+  }
   const nav=await a.c.request.get(route('apps','Tables/goTransactions'),{maxRedirects:0});
   check('KOT Tables opens KOT Transactions without leaving the module',
    nav.status()===302&&new URL(nav.headers().location,base).pathname.endsWith('/zenith/kot/PosTransactions'));

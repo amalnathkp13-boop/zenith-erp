@@ -1885,6 +1885,12 @@
                         total:txn.payableAmount ?: 0, totalQty:totalQty, itemCount:items.size()],
                     payments:payments.collect{[method:it.paymentMethod ?: '', amount:it.amount ?: 0]},
                     change:txn.changeAmount ?: 0, saving:totalSaving, edited:isRevised, isCredit:(txn.isCredit == "Y"), outstanding:(((txn.payableAmount ?: 0) as BigDecimal) - ((txn.paidAmount ?: 0) as BigDecimal))]
+                if (useTerminalPrintTemplate && rTpl?.printUse=='kotBill') {
+                    def ticket = ec.entity.find('zenith.erp.pos.KitchenOrderTicket')
+                        .condition([transactionId:rTxId,organizationPartyId:txn.organizationPartyId]).orderBy('kotId').limit(1).list()[0]
+                    if (ticket) receipt.bill.numbers=ec.resource.script('component://zenith-erp-pos/script/KotReceiptNumbers.groovy',null,
+                        [txn:txn,terminal:terminal,ticket:ticket,receiptOptions:receiptOptions])
+                }
             ]]></script>
         </actions>
     </service>
