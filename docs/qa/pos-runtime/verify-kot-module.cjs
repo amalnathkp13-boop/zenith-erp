@@ -276,7 +276,8 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
    check('disposable KOT reporting records are seeded',seeded.ok()&&(await seeded.json()).success);
    for (const shell of ['apps','qapps']) {
     const historical=await homeTotal(shell,historicalDate);
-    const recent=await page.locator('.zdh-tx .zdh-no').allTextContents();
+    const recentCard=page.locator('.zdh-card').filter({has:page.getByText('Recent Transactions',{exact:true})});
+    const recent=await recentCard.locator('.zdh-no').allTextContents();
     const paidRows=['UNSYNCED','SYNCED','DRAFT','POS'].map(kind=>'POS_QA_KOT_REPORT_'+kind);
     const product=page.locator('.zdh-trow').filter({hasText:'Disposable POS A P18'});
     check(shell+' Home Dashboard counts completed KOT bills at payable value across sync states',
@@ -284,7 +285,7 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
      recent.length===4&&paidRows.every(id=>recent.includes(id)),{historical,recent});
     check(shell+' Home Dashboard includes KOT items once and links to the KOT transaction',
      await product.locator('.zdh-tu').innerText()==='4 units'&&
-     (await page.getByText('POS_QA_KOT_REPORT_UNSYNCED',{exact:true}).locator('xpath=ancestor::a').getAttribute('href'))
+     (await recentCard.getByText('POS_QA_KOT_REPORT_UNSYNCED',{exact:true}).locator('xpath=ancestor::a').getAttribute('href'))
       .includes('/kot/EditTransaction?transactionId=POS_QA_KOT_REPORT_UNSYNCED'));
     const nextDay=await homeTotal(shell,'2040-02-02');
     check(shell+' Home Dashboard ignores an accounting mirror on the following day',
