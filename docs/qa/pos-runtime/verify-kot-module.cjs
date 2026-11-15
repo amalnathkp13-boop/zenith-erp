@@ -296,10 +296,22 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
     check(shell+' KOT Dashboard fits its viewport and charts the distinct late-night orders',
      dashboard.columns===(width===390?1:4)&&dashboard.scroll===dashboard.width&&dashboard.points===24&&dashboard.lastHour.orders===4,
      dashboard);
-    await page.getByRole('button',{name:'Week',exact:true}).click();
+    const chartBox=page.locator('#kd-chartbox');
+    const tooltip=page.locator('#kd-tip');
+    check(shell+' KOT chart tooltip starts hidden',await tooltip.isHidden());
+    const week=page.getByRole('button',{name:'Week',exact:true});
+    await week.click();
     check(shell+' KOT Sales Trend switches to daily sales and order counts',
-     await page.locator('#kd-axis span').count()===7&&await page.locator('#kd-tip-orders').textContent()==='4'&&
-     await page.getByRole('button',{name:'Week',exact:true}).getAttribute('aria-pressed')==='true');
+     await page.locator('#kd-axis span').count()===7&&await tooltip.isHidden()&&await week.getAttribute('aria-pressed')==='true');
+    const plot=await chartBox.boundingBox();
+    await chartBox.hover({position:{x:plot.width-2,y:plot.height/2}});
+    check(shell+' hovering the KOT chart shows the final bucket',await tooltip.isVisible()&&
+     await page.locator('#kd-tip-orders').textContent()==='4');
+    await week.hover();
+    check(shell+' leaving the KOT chart hides the tooltip',await tooltip.isHidden());
+    await chartBox.press('ArrowLeft');
+    check(shell+' keyboard chart navigation announces the point',await tooltip.isHidden()&&
+     (await page.locator('#kd-chart-status').textContent()).endsWith('0 orders'));
    }
    await page.setViewportSize({width:1366,height:768});
    await page.goto(base+'/apps/zenith/kot/KotDashboard?dashDate=2040-02-02');

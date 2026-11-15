@@ -91,7 +91,6 @@
             }
             def countUnbilled = { start, end -> findActiveKots().condition('transactionId', null)
                 .condition('kotDate', 'greater-equals', start).condition('kotDate', 'less', end).count() }
-            ordersInProgress = findActiveKots().count()
             totalOrdersAll = todayOrders.size() + (kotOnly ? countUnbilled(dayStart, nextDayStart) : 0)
             def ophAmt = ((kotOnly ? totalOrdersAll : completedOrders) as BigDecimal).divide(hoursElapsed as BigDecimal, 1, RoundingMode.HALF_UP)
 
@@ -221,16 +220,16 @@
   <div id="kd-data" hidden data-chart="${chartJson?html}"></div>
 
   <header class="kd-head">
-    <div class="kd-head__icon"><@ic 'receipt' 24/></div>
+    <div class="kd-head__icon"><@ic 'receipt' 20/></div>
     <div class="kd-head__text">
       <h1 class="kd-title">KOT Dashboard</h1>
       <p class="kd-sub">Real-time overview of your caf&eacute; operations</p>
     </div>
     <div class="kd-head__actions">
-      <label class="kd-datepill"><@ic 'calendar' 20/> <span>${dateLabel?html}</span><@ic 'chevd' 16/>
+      <label class="kd-datepill"><@ic 'calendar' 16/> <span>${dateLabel?html}</span><@ic 'chevd' 14/>
         <input type="date" aria-label="Dashboard date" value="${dashDate?html}" onchange="kdSetDate(this.value)"/>
       </label>
-      <button type="button" class="kd-refresh" id="kd-refresh" onclick="kdRefresh()" title="Refresh dashboard" aria-label="Refresh dashboard"><@ic 'refresh' 20/></button>
+      <button type="button" class="kd-refresh" id="kd-refresh" onclick="kdRefresh()" title="Refresh dashboard" aria-label="Refresh dashboard"><@ic 'refresh' 16/></button>
     </div>
   </header>
 
@@ -238,17 +237,10 @@
     <div class="kd-stat">
       <@kpiLabel 'Total Sales' 'Total billed for completed orders on the selected date.'/>
       <div class="kd-stat__body">
-        <div><div class="kd-stat__value">${totalSales}</div><@chg dSales 'kd-change'/></div>
+        <div class="kd-stat__value">${totalSales}</div>
         <span class="kd-stat__icon green"><@ic 'moneybag' 35/></span>
       </div>
-      <div class="kd-break">
-        <div class="kd-break__t">Payment Breakdown</div>
-        <#if paymentBars?has_content>
-          <#list paymentBars as p>
-          <div class="kd-break__row"><span class="kd-break__dot" style="background:${p.color}"></span><span>${p.method?html}</span><span class="kd-break__pct">${p.pct}%</span><span class="kd-break__amt">${p.amount}</span></div>
-          </#list>
-        <#else><div class="kd-break__empty">No payments recorded for this day.</div></#if>
-      </div>
+      <@chg dSales 'kd-change'/>
     </div>
 
     <div class="kd-stat">
@@ -270,18 +262,21 @@
     </div>
 
     <div class="kd-stat">
-      <@kpiLabel 'Orders in Progress' 'KOTs currently new, preparing, or ready.'/>
-      <div class="kd-stat__body">
-        <div><div class="kd-stat__value">${ordersInProgress}</div><div class="kd-stat__sub">Active KOTs</div></div>
-        <span class="kd-stat__icon pri"><@ic 'filetext' 35/></span>
-      </div>
+      <div class="kd-stat__h"><h2 class="kd-stat__label">Payment Breakdown</h2></div>
+      <#if paymentBars?has_content>
+        <div class="kd-break" role="region" aria-label="Payment methods" tabindex="0">
+          <#list paymentBars as p>
+          <div class="kd-break__row"><span class="kd-break__dot" style="background:${p.color}"></span><span>${p.method?html}</span><span class="kd-break__pct">${p.pct}%</span><span class="kd-break__amt">${p.amount}</span></div>
+          </#list>
+        </div>
+      <#else><div class="kd-break__empty">No payments recorded for this day.</div></#if>
     </div>
   </section>
 
   <section class="kd-panels">
     <div class="kd-card">
       <div class="kd-card__h">
-        <div class="kd-card__heading"><span class="kd-card__icon pri"><@ic 'chart' 23/></span><div>
+        <div class="kd-card__heading"><span class="kd-card__icon pri"><@ic 'chart' 17/></span><div>
           <h2 class="kd-card__title" id="kd-trend-title">Sales Trend</h2>
           <p class="kd-card__sub" id="kd-trend-sub">Hourly sales and order volume</p>
         </div></div>
@@ -315,8 +310,8 @@
 
     <div class="kd-card kd-dishes">
       <div class="kd-card__h">
-        <div class="kd-card__heading"><span class="kd-card__icon pri"><@ic 'trophy' 23/></span><h2 class="kd-card__title">Top 5 Selling Dishes</h2></div>
-        <span class="kd-star pri"><@ic 'star' 21/></span>
+        <div class="kd-card__heading"><span class="kd-card__icon pri"><@ic 'trophy' 17/></span><h2 class="kd-card__title">Top 5 Selling Dishes</h2></div>
+        <span class="kd-star pri"><@ic 'star' 15/></span>
       </div>
       <#if dishes?has_content>
         <ol class="kd-dishlist" role="list">
@@ -339,7 +334,7 @@
   <footer class="kd-footer"><span>&copy; ${copyrightYear?c} ZetaClan Technologies. All rights reserved.</span><span>ZetaERP Version 1.0.0</span></footer>
 
   <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" style="display:none"
-       onload="(function(){if(window.kdInit){window.kdInit();return;}if(window.__kdJs)return;window.__kdJs=1;var s=document.createElement('script');s.src='/zenithstatic/js/kot-dashboard.js?v=3';document.head.appendChild(s);})()"/>
+       onload="(function(){if(window.kdInit){window.kdInit();return;}if(window.__kdJs)return;window.__kdJs=1;var s=document.createElement('script');s.src='/zenithstatic/js/kot-dashboard.js?v=4';document.head.appendChild(s);})()"/>
 </div>
         ]]></text></render-mode>
     </widgets>
