@@ -1060,7 +1060,7 @@
               if(localOrderId)clearStoredOrder();
             } catch(error) { console.warn('Could not clear device drafts for the closed counter.',error); }
           }
-          location.assign(base);
+          location.assign(base+'?chooseTerminal=Y');
         }});
     } catch(error){ $('order-status').textContent=error.message; }
     finally{busy=false;controls();}

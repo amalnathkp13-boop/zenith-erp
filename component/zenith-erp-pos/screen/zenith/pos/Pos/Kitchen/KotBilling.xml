@@ -596,7 +596,7 @@
                     .condition([organizationPartyId:org,isActive:'Y'])
                 if(shop) terminals.condition('facilityId',shop)
                 entryTerminals=terminals.list().findAll { it.facilityId && (!scope.terminalRestricted || it.terminalId in (scope.allowedTerminalIds ?: [])) }
-                if(entryTerminals && !ec.context.tableId && !ec.context.loadDraft) {
+                if(entryTerminals && ec.web.requestParameters.chooseTerminal != 'Y' && !ec.context.tableId && !ec.context.loadDraft) {
                     def ownSessions = { -> ec.entity.find('zenith.erp.pos.PosSession')
                         .condition([organizationPartyId:org,operatorPartyId:ec.user.userAccount?.partyId,statusId:'PsOpen'])
                         .condition('terminalId','in',entryTerminals*.terminalId).useCache(false).selectField('sessionId') }

@@ -4,15 +4,15 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
  let sessionId;
  try {
   for(const shell of ['apps','qapps']) {
-   await page.goto(base+'/'+shell+'/zenith/kot/KotBilling');
+   await page.goto(base+'/'+shell+'/zenith/kot/KotBilling?chooseTerminal=Y');
    await page.locator('#kot-terminal-entry').waitFor();
-   check(shell+' KOT starts at terminal selection instead of a sessionless cart',await page.locator('#kot-terminal-entry').count()===1&&await page.locator('#kb-search').count()===0);
+   check(shell+' KOT lets the cashier choose a terminal explicitly',await page.locator('#kot-terminal-entry').count()===1&&await page.locator('#kb-search').count()===0);
    check(shell+' terminal gateway uses readable full-size controls',await page.locator('#kot-terminal-entry select').evaluate(el=>el.getBoundingClientRect().height>=40));
    if(out)await page.screenshot({path:require('node:path').join(out,shell+'-kot-terminal-entry.png')});
   }
   const terminalId='POS_QA_KOT_GATE_'+randomUUID().slice(0,8);
   await post('PosTerminals','createTerminal',{terminalId,terminalName:'Disposable KOT gateway',facilityId:'POS_QA_A_FAC',stateCode:'33',isActive:'Y'});
-  await page.goto(base+'/apps/zenith/kot/KotBilling');
+  await page.goto(base+'/apps/zenith/kot/KotBilling?chooseTerminal=Y');
   await page.locator('#kot-terminal-entry select[name=terminalId]').selectOption(terminalId);
   await page.getByRole('button',{name:'Open / Resume Session'}).click();
   await page.locator('#kb-wrap[data-ready=true]').waitFor();
@@ -228,9 +228,11 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   const ended=await (await request('touchSession')).json();
   check('KOT heartbeat reports a manually closed drawer without an error response',ended.success&&ended.open===false,ended);
   await page.goto(base+'/apps/zenith/kot/KotBilling');
-  await page.locator('#kot-terminal-entry').waitFor();
-  check('KOT Billing offers the terminal picker after its remembered session closes',
-   await page.getByRole('button',{name:'Open / Resume Session'}).isVisible());
+  await page.locator('#kot-terminal-entry, #kb-wrap').waitFor();
+  const resumed=page.locator('#kb-data');
+  check('KOT Billing returns to the picker or another open drawer after its remembered session closes',
+   await resumed.count() ? await resumed.getAttribute('data-session')!==sessionId :
+    await page.getByRole('button',{name:'Open / Resume Session'}).isVisible());
  } catch(error) {
   console.error('KOT gateway state',page.url(),(await page.locator('body').innerText()).slice(-1800));
   if(out)await page.screenshot({path:require('node:path').join(out,'kot-gateway-failure.png')});

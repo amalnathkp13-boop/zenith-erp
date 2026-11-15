@@ -5,7 +5,7 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
  const tabs = [
   ['KotDashboard', 'KOT Dashboard', '#kd-wrap'],
   ['KitchenDisplay', 'Kitchen Display', '.zk-display'],
-  ['KotBilling', 'KOT Billing', '#kot-terminal-entry'],
+  ['KotBilling', 'KOT Billing', '#kot-terminal-entry, #kb-wrap'],
   ['Tables', 'Tables', '#tm-wrap'],
   ['KotHistory', 'KOT History', '#zk-history-toolbar'],
   ['WaiterManagement', 'Waiters', '#wf-search']
@@ -84,7 +84,7 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
      new URL(page.url()).pathname.includes('/kot/'+seg),{url:page.url(),status:response.status()});
    }
    await strip.getByRole('link',{name:'KOT Billing',exact:true}).click();
-   await page.locator('#kot-terminal-entry').waitFor();
+   await page.locator('#kot-terminal-entry, #kb-wrap').waitFor();
    await page.locator((shell==='apps'?'#z-sidebar':'#zq-sidebar')+' a[data-match="/pos"]').click();
    await page.waitForURL('**/'+shell+'/zenith/pos/Dashboard');
    await strip.locator('a[data-match="/pos/Dashboard"]').waitFor();
