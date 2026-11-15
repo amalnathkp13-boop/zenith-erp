@@ -3626,7 +3626,7 @@ window.posToggleFullscreen = function() {
         var SM = (af.querySelector('[name=salesModeId]') || {}).value || '';
         var CATID = (af.querySelector('[name=catId]') || {}).value || '';
         var CS = '₹';
-        var busy = false;
+        var cartRequest = null;
         var modeSwitching = false;
         var taxModePending = false, unconfirmedTaxTx = null;
         var cartClearing = false;
@@ -3710,7 +3710,7 @@ window.posToggleFullscreen = function() {
         function maybeAutoReload() {
             if (!__updateReady || __reloading || !af.isConnected) return;
             if (lastCartData && lastCartData.items && lastCartData.items.length) return;
-            if (cartClearing || modeSwitching || busy || OPT._drainPending() ||
+            if (cartClearing || modeSwitching || cartRequest || OPT._drainPending() ||
                 (window._posOffline && window._posOffline.active()) ||
                 document.querySelector('#posCreditOverlay,#posPayConfirmOverlay,#posCashTenderOverlay,.pos-cash-panel,.pos-split-panel')) return;
             if (Date.now() - lastGestureAt < 30000) return;
@@ -3971,7 +3971,7 @@ window.posToggleFullscreen = function() {
             // product immediately before Credit. Never collect against a stale UI total.
             function loadCreditBalance(attempt) {
                 if (!document.body.contains(ov)) return;
-                if (busy || OPT._drainPending() > 0) {
+                if (cartRequest || OPT._drainPending() > 0) {
                     if (attempt < 80) setTimeout(function() { loadCreditBalance(attempt + 1); }, 100);
                     else duePreview.textContent = 'Bill is still updating. Close and reopen Credit.';
                     return;
@@ -4290,13 +4290,17 @@ window.posToggleFullscreen = function() {
 
         /* --- Cart AJAX --- */
         function post(params, signal) {
-            if (busy) return Promise.resolve(null);
-            busy = true;
+            if (cartRequest) {
+                if (params.action !== 'clearCart') return Promise.resolve(null);
+                // A refresh can already be in flight when the cashier clears the draft.
+                return cartRequest.catch(function() {}).then(function() { return post(params, signal); });
+            }
             params.sessionId = SI; params.taxOn = params.taxOn || TO; params.salesModeId = SM; params.moquiSessionToken = TK;
-            return fetch('Terminal/ajaxCart', {
+            cartRequest = fetch('Terminal/ajaxCart', {
                 method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                body: new URLSearchParams(params), credentials: 'same-origin', signal: signal
-            }).then(function(r) { return r.json(); }).finally(function() { busy = false; });
+                body: new URLSearchParams(params), credentials: 'same-origin', signal: signal || AbortSignal.timeout(25000)
+            }).then(function(r) { return r.json(); }).finally(function() { cartRequest = null; });
+            return cartRequest;
         }
 
         function payBtn(method, label, bg) {
@@ -5266,7 +5270,7 @@ window.posToggleFullscreen = function() {
                     if (previous && window._posOffline) window._posOffline.cacheCatalog();
                 }
                 if (checkedTx && (data.cartChanged || (previous && data.changed))) catalogDirtyTx = checkedTx;
-                if (!TX || catalogDirtyTx !== TX || taxModePending || busy || OPT._drainPending() ||
+                if (!TX || catalogDirtyTx !== TX || taxModePending || cartRequest || OPT._drainPending() ||
                     document.querySelector('.pos-cart [aria-invalid="true"]')) return data;
                 var cartBefore = lastCartData;
                 return post({action:'refresh', transactionId:TX}).then(function(current) {
@@ -5291,7 +5295,7 @@ window.posToggleFullscreen = function() {
             return catalogCheck;
         }
         function pollCatalog() {
-            if (!af.isConnected || document.hidden || !navigator.onLine || cartClearing || modeSwitching || busy ||
+            if (!af.isConnected || document.hidden || !navigator.onLine || cartClearing || modeSwitching || cartRequest ||
                 OPT._drainPending() || (window._posOffline && window._posOffline.active()) ||
                 document.querySelector('#posCreditOverlay,#posPayConfirmOverlay,#posCashTenderOverlay,.pos-cash-panel,.pos-split-panel')) return;
             refreshCatalog(false).then(function(data) {
