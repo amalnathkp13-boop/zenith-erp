@@ -67,8 +67,9 @@ if(error){ec.message.addError(error);return};valid=true
             <parameter name="organizationPartyId" required="true"/>
             <parameter name="code" allow-html="any"/>
             <parameter name="productId"/>
+            <parameter name="reviewTransfer" type="Boolean"/>
         </in-parameters>
-        <out-parameters><parameter name="conflict" type="Boolean"/></out-parameters>
+        <out-parameters><parameter name="conflict" type="Boolean"/><parameter name="transferReview" type="Map"/></out-parameters>
         <actions><script><![CDATA[
             conflict=false
             if (!code) return
@@ -95,7 +96,27 @@ if(error){ec.message.addError(error);return};valid=true
                 products.condition('productId','not-equals',productId)
                 barcodes.condition('productId','not-equals',productId)
             }
-            conflict=products.count() > 0 || barcodes.count() > 0
+            if (!reviewTransfer) {
+                conflict=products.count() > 0 || barcodes.count() > 0
+                return
+            }
+            def directConflict = products.count() > 0
+            def matches = barcodes.limit(2).selectFields(['barcodeId','productId','productName','pseudoId','barcodeValue',
+                'barcodeTypeEnumId','isPrimary','isActive','itemCodeMirror','barcodeUpdatedAt','salesIntroductionDate']).list()
+            conflict = directConflict || !matches.isEmpty()
+            if (directConflict || matches.size() != 1) return
+            def match = matches[0]
+            if (match.barcodeValue != code || match.barcodeTypeEnumId != 'BctInternal' || match.isPrimary != 'N' ||
+                match.itemCodeMirror == 'N' || !match.pseudoId || aliases.contains(match.pseudoId) ||
+                (match.salesIntroductionDate && match.salesIntroductionDate > ec.user.nowTimestamp)) return
+            def target = ec.entity.find('mantle.product.Product').condition([productId:productId,ownerPartyId:organizationPartyId])
+                .disableAuthz().useCache(false).one()
+            if (!target || (target.salesDiscontinuationDate && target.salesDiscontinuationDate <= ec.user.nowTimestamp)) return
+            def state = groovy.json.JsonOutput.toJson([organizationPartyId, target.productId, target.productName, target.pseudoId, match.barcodeId,
+                match.productId, match.productName, match.pseudoId, code, match.isActive, match.barcodeUpdatedAt?.time])
+            def token = java.security.MessageDigest.getInstance('SHA-256').digest(state.getBytes('UTF-8')).encodeHex().toString()
+            transferReview = [token:token, barcodeId:match.barcodeId, sourceProductId:match.productId,
+                sourceName:match.productName ?: match.productId, sourceItemCode:match.pseudoId, code:code]
         ]]></script></actions>
     </service>
 
@@ -119,8 +140,15 @@ if(ec.message.hasError())return
 if(collision || ec.entity.find('zenith.erp.barcode.ProductBarcode').condition([organizationPartyId:owner,productId:productId])
     .condition('barcodeValue','in',aliases).disableAuthz().count()){ec.message.addError('This barcode is already assigned in this organization.');return}
 if(!record.pseudoId && !ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('productId',productId).condition('organizationPartyId',owner).condition('isPrimary','Y').count())isPrimary='Y'
-if(isPrimary=='Y')ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('productId',productId).condition('organizationPartyId',owner).condition('isPrimary','Y').list().each{ec.service.sync().name('update#zenith.erp.barcode.ProductBarcode').parameters([barcodeId:it.barcodeId,isPrimary:'N']).call()}
-def result=ec.service.sync().name('create#zenith.erp.barcode.ProductBarcode').parameters([productId:productId,organizationPartyId:owner,barcodeTypeEnumId:barcodeTypeEnumId,barcodeValue:barcodeValue,isPrimary:isPrimary,isActive:'Y']).call()
+if(isPrimary=='Y')ec.entity.find('zenith.erp.barcode.ProductBarcode')
+    .condition([productId:productId,organizationPartyId:owner,isPrimary:'Y']).list().each { barcode ->
+    if (barcode.itemCodeMirror == 'Y' && barcode.barcodeValue == record.pseudoId) {
+        barcode.delete()
+    } else {
+        ec.service.sync().name('update#zenith.erp.barcode.ProductBarcode').parameters([barcodeId:barcode.barcodeId,isPrimary:'N']).call()
+    }
+}
+def result=ec.service.sync().name('create#zenith.erp.barcode.ProductBarcode').parameters([productId:productId,organizationPartyId:owner,barcodeTypeEnumId:barcodeTypeEnumId,barcodeValue:barcodeValue,isPrimary:isPrimary,isActive:'Y',itemCodeMirror:'N']).call()
 barcodeId=result?.barcodeId
 if(isPrimary=='Y' && !ec.message.hasError())ec.service.sync().name('update#mantle.product.Product').parameters([productId:productId,pseudoId:barcodeValue]).call()
 
@@ -168,7 +196,7 @@ ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('productId',produc
     .condition('organizationPartyId',prd.ownerPartyId).condition('isPrimary','Y').list().each { barcode ->
     if (barcode.barcodeValue == value) return
     // Release only the primary internal barcode that mirrors the item code being replaced.
-    if (barcode.barcodeTypeEnumId == 'BctInternal' && barcode.barcodeValue == prd.pseudoId) {
+    if (barcode.barcodeTypeEnumId == 'BctInternal' && barcode.barcodeValue == prd.pseudoId && barcode.itemCodeMirror != 'N') {
         barcode.delete()
     } else {
         ec.service.sync().name('update#zenith.erp.barcode.ProductBarcode')
@@ -177,7 +205,7 @@ ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('productId',produc
 }
 def mine=ec.entity.find('zenith.erp.barcode.ProductBarcode').condition('organizationPartyId',prd.ownerPartyId).condition('productId',productId).condition('barcodeValue',value).one()
 if(mine)ec.service.sync().name('update#zenith.erp.barcode.ProductBarcode').parameters([barcodeId:mine.barcodeId,isPrimary:'Y',isActive:'Y']).call()
-else ec.service.sync().name('create#zenith.erp.barcode.ProductBarcode').parameters([productId:productId,organizationPartyId:prd.ownerPartyId,barcodeValue:value,barcodeTypeEnumId:'BctInternal',isPrimary:'Y',isActive:'Y']).call()
+else ec.service.sync().name('create#zenith.erp.barcode.ProductBarcode').parameters([productId:productId,organizationPartyId:prd.ownerPartyId,barcodeValue:value,barcodeTypeEnumId:'BctInternal',isPrimary:'Y',isActive:'Y',itemCodeMirror:'Y']).call()
 
 ]]></script></actions></service>
 <service verb="clear" noun="ProductCode" authenticate="true"><in-parameters><parameter name="productId"/></in-parameters><out-parameters><parameter name="code"/></out-parameters><actions><script><![CDATA[

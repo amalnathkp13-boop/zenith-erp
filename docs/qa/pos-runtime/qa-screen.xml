@@ -312,6 +312,25 @@
     if(!kot || !(kot.notes ?: '').contains('Synthetic legacy KOT QA')) {ec.web.response.setStatus(400);return}
     kot.set('terminalId',null).update(); ec.web.sendJsonResponse([prepared:true])
 ]]></script></actions><default-response type="none"/></transition>
+<transition name="legacySecondaryBarcode" method="post">
+    <actions><script><![CDATA[
+        def p = ec.web.parameters
+        def org = 'POS_QA_A'
+        if (System.getProperty('pos.qa.disposable') != 'true' || ec.user.username != 'pos.qa' ||
+            ec.user.getPreference('ACTIVE_ORGANIZATION') != org || !(p.code ==~ /QA-LEGACY-[a-f0-9-]+/)) {
+            ec.web.response.setStatus(403); return
+        }
+        def source = ec.entity.find('mantle.product.Product').condition([productId:p.productId,ownerPartyId:org]).one()
+        if (!source || !(source.productName ?: '').startsWith('Disposable barcode conflict')) {
+            ec.web.response.setStatus(400); return
+        }
+        def barcode = ec.service.sync().name('create#zenith.erp.barcode.ProductBarcode').disableAuthz().parameters([
+            organizationPartyId:org,productId:source.productId,barcodeValue:p.code,barcodeTypeEnumId:'BctInternal',
+            isPrimary:'N',isActive:'Y']).call()
+        ec.web.sendJsonResponse([barcodeId:barcode.barcodeId])
+    ]]></script></actions>
+    <default-response type="none"/>
+</transition>
 <transition name="invoke"><actions><script><![CDATA[
     if (System.getProperty('pos.qa.disposable')!='true' || !['pos.qa','pos.b.qa','pos.cashier.qa'].contains(ec.user.username)) {
         ec.web.response.setStatus(403);ec.web.sendJsonResponse([denied:true]);return
