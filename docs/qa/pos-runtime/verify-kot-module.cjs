@@ -41,7 +41,8 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   await page.goto(base+'/'+shell+'/zenith/Dashboard'+(date?'?dashDate='+date:''));
   const card = page.locator('.zsc').filter({has:page.getByText('Total Sales',{exact:true})});
   const config = JSON.parse(await page.locator('#homeDashboard').getAttribute('data-config'));
-  return {amount:money(await card.locator('.zsc-num').innerText()), chart:config.weekly.total, hourly:config.hourly.total};
+  return {amount:money(await card.locator('.zsc-num').innerText()),
+   invoices:Number(await card.locator('.zsc-footer strong').innerText()), chart:config.weekly.total, hourly:config.hourly.total};
  };
  try {
   for (const shell of ['apps','qapps']) {
@@ -215,8 +216,9 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
    await page.getByRole('row').filter({has:page.getByText(settled.billNumber,{exact:true})}).count()===1);
   for (const shell of ['apps','qapps']) {
    const homeAfter=await homeTotal(shell);
-   check(shell+' Home Dashboard adds the KOT bill exactly once to sales and charts',
-    homeAfter.amount===homeBefore.amount+100&&homeAfter.chart===homeAfter.amount&&homeAfter.hourly===homeAfter.amount,
+   check(shell+' Home Dashboard adds the KOT bill exactly once to sales, invoices and charts',
+    homeAfter.amount===homeBefore.amount+100&&homeAfter.invoices===homeBefore.invoices+1&&
+    homeAfter.chart===homeAfter.amount&&homeAfter.hourly===homeAfter.amount,
     {homeBefore,homeAfter});
   }
   const revisionReason='Disposable KOT history revision';
@@ -272,11 +274,22 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   try {
    const seeded=await fixture('seed');
    check('disposable KOT reporting records are seeded',seeded.ok()&&(await seeded.json()).success);
-   const historical=await homeTotal('apps',historicalDate);
-   const nextDay=await homeTotal('qapps','2040-02-02');
-   check('Home sales counts KOT before sync and finalization, deduplicates the finalized mirror, and excludes the cancelled mirror',
-    historical.amount===133&&historical.chart===133&&nextDay.amount===0&&nextDay.chart===0,
-    {historical,nextDay});
+   for (const shell of ['apps','qapps']) {
+    const historical=await homeTotal(shell,historicalDate);
+    const recent=await page.locator('.zdh-tx .zdh-no').allTextContents();
+    const paidRows=['UNSYNCED','SYNCED','DRAFT','POS'].map(kind=>'POS_QA_KOT_REPORT_'+kind);
+    const product=page.locator('.zdh-trow').filter({hasText:'Disposable POS A P18'});
+    check(shell+' Home Dashboard counts completed KOT bills at payable value across sync states',
+     historical.amount===132&&historical.chart===132&&historical.invoices===4&&
+     recent.length===4&&paidRows.every(id=>recent.includes(id)),{historical,recent});
+    check(shell+' Home Dashboard includes KOT items once and links to the KOT transaction',
+     await product.locator('.zdh-tu').innerText()==='4 units'&&
+     (await page.getByText('POS_QA_KOT_REPORT_UNSYNCED',{exact:true}).locator('xpath=ancestor::a').getAttribute('href'))
+      .includes('/kot/EditTransaction?transactionId=POS_QA_KOT_REPORT_UNSYNCED'));
+    const nextDay=await homeTotal(shell,'2040-02-02');
+    check(shell+' Home Dashboard ignores an accounting mirror on the following day',
+     nextDay.amount===0&&nextDay.chart===0&&nextDay.invoices===0,nextDay);
+   }
    await page.goto(base+'/apps/zenith/kot/KotDashboard?dashDate='+historicalDate);
    const completedCount = Number(await completedOrders.innerText());
    const renderedDate = await page.locator('.kd-datepill input').inputValue();

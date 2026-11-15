@@ -222,22 +222,32 @@
     def stamp = ec.l10n.parseTimestamp('2040-02-01 23:59:59','yyyy-MM-dd HH:mm:ss')
     // Cover database timestamps with greater than millisecond precision.
     stamp.setNanos(999500000)
-    [[key:'UNSYNCED', amount:110.25G], [key:'SYNCED', amount:15.75G, status:'InvoiceFinalized'],
+    [[key:'UNSYNCED', amount:110.25G], [key:'SYNCED', amount:15.30G, status:'InvoiceFinalized'],
         [key:'DRAFT', amount:4.00G, status:'InvoiceInProcess'], [key:'CANCELLED', amount:7.00G, status:'InvoiceCancelled'],
         [key:'POS', amount:3.00G]].each { fixture ->
         def id = 'POS_QA_KOT_REPORT_' + fixture.key
         if (mode == 'clean') {
             ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('kotId','in',[id,id+'_COPY']).condition('organizationPartyId',org).deleteAll()
+            ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId',id).deleteAll()
+            ec.entity.find('mantle.account.invoice.InvoiceItem').condition('invoiceId',id).deleteAll()
             ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',id).condition('organizationPartyId',org).deleteAll()
             ec.entity.find('mantle.account.invoice.Invoice').condition('invoiceId',id).condition('fromPartyId',org).deleteAll()
         } else {
-            if (fixture.status) ec.entity.makeValue('mantle.account.invoice.Invoice').setAll([
-                invoiceId:id, fromPartyId:org, toPartyId:'POS_QA_A_CUST_SAME', facilityId:terminal.facilityId,
-                invoiceTypeEnumId:'InvoiceSales', statusId:fixture.status, invoiceDate:stamp, invoiceTotal:fixture.amount, currencyUomId:'INR']).create()
+            if (fixture.status) {
+                // A late accounting mirror must not move a completed sale to another reporting day.
+                def invoiceDate = fixture.key=='SYNCED' ? java.sql.Timestamp.from(stamp.toInstant().plusSeconds(60)) : stamp
+                ec.entity.makeValue('mantle.account.invoice.Invoice').setAll([
+                    invoiceId:id, fromPartyId:org, toPartyId:'POS_QA_A_CUST_SAME', facilityId:terminal.facilityId,
+                    invoiceTypeEnumId:'InvoiceSales', statusId:fixture.status, invoiceDate:invoiceDate, invoiceTotal:fixture.amount, currencyUomId:'INR']).create()
+                ec.entity.makeValue('mantle.account.invoice.InvoiceItem').setAll([invoiceId:id,invoiceItemSeqId:'01',
+                    productId:'POS_QA_A_P18',quantity:1,amount:fixture.amount]).create()
+            }
             ec.entity.makeValue('zenith.erp.pos.PosTransaction').setAll([transactionId:id, transactionNumber:id,
                 sessionId:session.sessionId, organizationPartyId:org, statusId:'PtCompleted', transactionType:'Sale',
                 entryDate:stamp, completedDate:stamp, grandTotal:fixture.amount, payableAmount:fixture.amount.setScale(0,java.math.RoundingMode.HALF_UP),
                 linkedInvoiceId:fixture.status ? id : null, stockPosted:'Y']).create()
+            ec.entity.makeValue('zenith.erp.pos.PosTransactionItem').setAll([transactionId:id,itemSeqId:'01',
+                productId:'POS_QA_A_P18',quantity:1,unitPrice:fixture.amount,lineTotal:fixture.amount]).create()
             if (fixture.key != 'POS') {
                 (fixture.key == 'UNSYNCED' ? [id,id+'_COPY'] : [id]).each { kotId ->
                     ec.entity.makeValue('zenith.erp.pos.KitchenOrderTicket').setAll([kotId:kotId, kotNumber:kotId,
