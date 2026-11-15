@@ -2481,9 +2481,6 @@
 
 
             <entity-find-one entity-name="zenith.erp.pos.PosSession" value-field="session"/>
-            <if condition="session?.statusId == 'PsOpen' &amp;&amp; session.operatorPartyId != ec.user.userAccount?.partyId">
-                <set field="session" from="null"/><set field="sessionId" from="null"/><set field="transactionId" from="null"/>
-            </if>
             <!-- If the session was closed, treat as no session so the Open-Session screen shows -->
             <if condition="session &amp;&amp; session.statusId != 'PsOpen'">
                 <set field="session" from="null"/>
