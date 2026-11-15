@@ -4,12 +4,13 @@ module.exports=async function({a,foreign,base,post,rows,count,check,out}){
  const rawPost=post; post=(screen,action,args={},actor)=>rawPost(screen,action,screen==='Kitchen/KotBilling'?{sessionId:kotSessionId,...args}:args,actor);
 
  const path=require('node:path');
- const moneyState=()=>JSON.stringify(['pos_transaction','pos_payment','kitchen_order_ticket','kot_item','tax_line_detail'].map(t=>[t,count(t,'1=1')]));
+ const readState=()=>Object.fromEntries(['pos_transaction','pos_payment','kitchen_order_ticket','kot_item','tax_line_detail'].map(table=>[table,count(table,'1=1')]));
+ const sameState=(actual,expected)=>Object.keys(expected).every(table=>actual[table]===expected[table]);
  const items=[{productId:'POS_QA_A_P18',quantity:1},{productId:'POS_QA_A_P5',quantity:1}];
- const before=moneyState();
+ const before=readState();
  let r=await post('Kitchen/KotBilling','cartReceipt',{itemsJson:JSON.stringify(items),notes:'Synthetic print note'}),data=await r.json();
  check('KOT quote uses real mixed-rate GST rather than a fixed five percent',data.success&&Number(data.receipt.summary.subtotal)===300&&Number(data.receipt.summary.tax)===28&&Number(data.receipt.summary.total)===328,data);
- check('customer quote creates no sale, payment, KOT, items or tax rows',moneyState()===before);
+ check('customer quote creates no sale, payment, KOT, items or tax rows',sameState(readState(),before));
  r=await post('Kitchen/KotBilling','cartReceipt',{itemsJson:JSON.stringify([{productId:'POS_QA_A_P18',quantity:1,unitPrice:1,productName:'Forged name'}])});data=await r.json();
  check('quote ignores forged prices and labels',data.success&&Number(data.receipt.items[0].rate)===100&&data.receipt.items[0].name==='Disposable POS A P18');
  r=await post('Kitchen/KotBilling','cartReceipt',{itemsJson:JSON.stringify([{productId:'POS_QA_A_P18',quantity:2,unitPrice:80,manualPrice:'Y'}]),taxOn:'N'});data=await r.json();
@@ -54,7 +55,12 @@ module.exports=async function({a,foreign,base,post,rows,count,check,out}){
   restoredRate===100&&restoredTax==='false'&&restoredType==='true'&&!tableVisible,
   {restoredRate,restoredTax,restoredType,tableVisible});
  await post('Kitchen/KotBilling','deleteDraft',{kotId:draft.kot_id});
- check('draft round trip leaves no sale or payment',moneyState()===before);
+ const discarded=rows('kitchen_order_ticket',`kot_id='${draft.kot_id}'`)[0];
+ const afterDiscard=readState();
+ check('discarded draft keeps only its cancelled ticket and items for audit',
+  discarded?.status_id==='KotCancelled'&&!discarded.transaction_id&&
+  sameState(afterDiscard,{...before,kitchen_order_ticket:before.kitchen_order_ticket+1,kot_item:before.kot_item+1}),
+  {status:discarded?.status_id,before,afterDiscard});
  const editedDraft=await (await post('Kitchen/KotBilling','saveDraft',{
   itemsJson:JSON.stringify([{productId:'POS_QA_A_P18',quantity:2,manualPrice:'Y',unitPrice:100}]),
   salesModeId:'WHOLESALE',taxOn:'N',wantJson:'Y'
@@ -68,7 +74,7 @@ module.exports=async function({a,foreign,base,post,rows,count,check,out}){
  const existing=rows('kitchen_order_ticket',"organization_party_id='POS_QA_A' AND status_id='KotNew'");
  await post('Kitchen/KotBilling','createKot',{itemsJson:JSON.stringify(items),notes:'Saved kitchen note'});
  const kot=rows('kitchen_order_ticket',"organization_party_id='POS_QA_A' AND status_id='KotNew'").find(k=>!existing.some(x=>x.kot_id===k.kot_id));
- check('sent order stores a receipt snapshot without creating a sale',!!kot?.order_receipt_json&&count('pos_transaction','1=1')===JSON.parse(before)[0][1]);
+ check('sent order stores a receipt snapshot without creating a sale',!!kot?.order_receipt_json&&count('pos_transaction','1=1')===before.pos_transaction);
  for(const kind of ['kot','orderBill','view']){r=await post('Kitchen/KotBilling','printRecord',{kotId:kot.kot_id,kind},foreign);check('foreign shop cannot read '+kind+' print data',r.status()===403||!(await r.json()).success);}
  r=await post('Kitchen/KotHistory','printRecord',{kotId:kot.kot_id,kind:'bill'});
  check('History Bill Print does not invent an invoice for an unpaid KOT',!(await r.json()).success);
@@ -86,8 +92,8 @@ module.exports=async function({a,foreign,base,post,rows,count,check,out}){
  await stubPrint();await card.getByRole('button',{name:'KOT Print',exact:true}).click();await page.locator('#kb-history-print-status').filter({hasText:'Print request opened.'}).waitFor();
  check('accepted KOT print increments only its own count once',printCount()===pc+1);
  check('KOT template contains only product names and quantities',await page.evaluate(()=>{const html=window.__printHtml.join('');const body=html.split('<body>')[1];return body.includes('<td>Disposable POS A P18</td><td class="q">1</td>')&&body.includes('<td>Disposable POS A P5</td><td class="q">1</td>')&&!body.includes('Saved kitchen note')&&!body.includes('Table:')&&!body.includes('GRAND TOTAL')}));
- await stubPrint();const state=moneyState();await card.getByRole('button',{name:'Bill Print',exact:true}).click();await page.waitForFunction(()=>window.__printCalls===1);
- check('order-card Bill Print reuses saved pricing without writing a sale',moneyState()===state&&printCount()===pc+1&&await page.evaluate(()=>window.__printHtml.join('').includes('328.00')));
+ await stubPrint();const state=readState();await card.getByRole('button',{name:'Bill Print',exact:true}).click();await page.waitForFunction(()=>window.__printCalls===1);
+ check('order-card Bill Print reuses saved pricing without writing a sale',sameState(readState(),state)&&printCount()===pc+1&&await page.evaluate(()=>window.__printHtml.join('').includes('328.00')));
  await post('Kitchen/KitchenDisplay','updateStatus',{kotId:kot.kot_id,statusId:'KotCancelled'});
  await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling?sessionId='+kotSessionId);
  await page.locator('#kb-history-open').click();
