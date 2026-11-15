@@ -3639,19 +3639,27 @@ window.posToggleFullscreen = function() {
         var lastDayCheckAt = 0;
         var dayRefreshPending = false;
         var dayBadge = document.getElementById('pos-today-bills');
+        var handedOff = false;
         var dayFormatter;
         try { if (dayBadge) dayFormatter = new Intl.DateTimeFormat('en-US', {timeZone:dayBadge.dataset.timeZone,
             year:'numeric',month:'2-digit',day:'2-digit'}); } catch (_) {}
         function sendSessionTouch() {
-            if (!SI || Date.now() - lastTouchSentAt < 30000) return;
+            if (!SI || handedOff || Date.now() - lastTouchSentAt < 10000) return;
             lastTouchSentAt = Date.now();
-            fetch('Terminal/touchSession', {method:'POST', credentials:'same-origin',
+            fetch(location.pathname.replace(/\/+$/, '') + '/touchSession', {method:'POST', credentials:'same-origin',
                 headers:{'Content-Type':'application/x-www-form-urlencoded'},
-                body:new URLSearchParams({sessionId:SI, moquiSessionToken:TK})}).catch(function(){});
+                body:new URLSearchParams({sessionId:SI, moquiSessionToken:TK})})
+                .then(function(response){ return response.json(); })
+                .then(function(result){
+                    if (!af.isConnected || !result.handoffUserId) return;
+                    handedOff = true;
+                    window.__posIdleCleanup();
+                    PosTillDialogs.showHandoff(result.handoffUserId, function(){ location.assign('/apps/zenith/pos/Dashboard'); });
+                }).catch(function(){});
         }
         function maintainBillingScreen() {
             if (!af.isConnected) return;
-            if (Date.now() - lastTouchSentAt >= 60000) sendSessionTouch();
+            sendSessionTouch();
             checkAssetVersion();
             maybeAutoReload();
             if (dayFormatter && Date.now() - lastDayCheckAt >= 60000) {

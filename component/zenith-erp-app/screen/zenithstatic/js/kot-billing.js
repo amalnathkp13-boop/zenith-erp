@@ -30,6 +30,8 @@
   const shell=location.pathname.startsWith('/qapps/')?'/qapps':'/apps';
   const billingPath='/zenith'+(cfg.kotModule==='kot'?'/kot':'/pos/Kitchen')+'/KotBilling';
   const base=shell+billingPath;
+  const backLink=root.querySelector('.kg-back');
+  const backCartKey='zenith-kot-back:'+JSON.stringify([cfg.org,cfg.user,cfg.session]);
   const money=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR'});
   const cardMoney=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',minimumFractionDigits:0});
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -298,7 +300,7 @@
       });
     }).catch(error=>{$('order-status').textContent=error.message;}).finally(()=>{claimingOrder=false;});
   }
-  function restoreOrder(order) {
+  function restoreOrder(order, backCart) {
     if(!Array.from($('mode').options).some(option=>option.value===order.salesModeId))
       throw Error('The saved sales mode is no longer offered on this counter.');
     setType(order.orderType);
@@ -311,18 +313,22 @@
     draftId=order.draftId||'';
     if(feeInput)feeInput.value=order.additionalFee||0;
     draftRevision=order.draftRevision||'';
-    localOrderId=order.localOrderId||crypto.randomUUID();
-    savedFingerprint='';
+    localOrderId=order.localOrderId||(backCart?'':crypto.randomUUID());
+    savedFingerprint=backCart?.savedFingerprint||'';
     const cachedCustomer=workspace?.customers.find(person=>person.partyId===order.customerPartyId);
     customer=order.customer||(cachedCustomer?{id:cachedCustomer.partyId,name:cachedCustomer.name,phone:cachedCustomer.phone}
       :order.customerPartyId?{id:order.customerPartyId}:{});
     cart.clear();setEditError('');
-    for(const line of JSON.parse(order.itemsJson)) {
-      const product=catalogue?.products.get(line.productId), manualRate=line.manualPrice==='Y'?Number(line.unitPrice):undefined;
-      cart.set(line.productId,{id:line.productId,name:product?.productName||line.productId,code:product?.barcode||line.productId,
-        qty:Number(line.quantity),price:manualRate??Number(product?.prices?.[salesModeId]?.price||0),manualRate});
+    if(backCart) {
+      for(const line of backCart.items)cart.set(line.id,line);
+    } else {
+      for(const line of JSON.parse(order.itemsJson)) {
+        const product=catalogue?.products.get(line.productId), manualRate=line.manualPrice==='Y'?Number(line.unitPrice):undefined;
+        cart.set(line.productId,{id:line.productId,name:product?.productName||line.productId,code:product?.barcode||line.productId,
+          qty:Number(line.quantity),price:manualRate??Number(product?.prices?.[salesModeId]?.price||0),manualRate});
+      }
     }
-    $('badge').textContent='Editing Held Order';
+    $('badge').textContent=backCart&&!draftId?'New KOT':'Editing Held Order';
     if(order.billingView)setGridView(order.billingView==='grid');
     renderCustomer();browsePage=null;quote();lookup();
   }
@@ -2401,9 +2407,35 @@
     if(e.key===' '&&!e.shiftKey&&canPay()){e.preventDefault();openPayment();}
   }
   document.addEventListener('keydown',shortcut);document.addEventListener('keyup',shortcut);
+  backLink.addEventListener('click',event=>{
+    if(!cart.size)return;
+    if(busy||unconfirmedOrder) {
+      event.preventDefault();
+      $('order-status').textContent=unconfirmedOrder?unconfirmedMessage:'Wait for the current billing action to finish before leaving.';
+      return;
+    }
+    try {
+      sessionStorage.setItem(backCartKey,JSON.stringify({
+        order:{...orderData(),draftId,draftRevision,localOrderId,customer,billingView:grid?'grid':'list'},
+        items:[...cart.values()],savedFingerprint
+      }));
+    } catch {
+      event.preventDefault();
+      $('order-status').textContent='The browser could not save this cart. Hold the bill before leaving.';
+    }
+  });
+  function restoreBackCart() {
+    try {
+      const saved=JSON.parse(sessionStorage.getItem(backCartKey)||'null');
+      if(!saved)return false;
+      restoreOrder(saved.order,saved);
+      sessionStorage.removeItem(backCartKey);
+      return true;
+    } catch { return false; }
+  }
   updatePendingSales();updateHeader();
   if(cfg.draftid)restoreServerDraft(cfg);
-  else {
+  else if(cfg.selectedTable||!restoreBackCart()) {
     $('table').value=cfg.selectedTable||'';
     setType(orderType);paintTax();paintSalesMode();renderCustomer();quote();
   }
@@ -2480,13 +2512,25 @@
       if(device)claimOfflineOrder();
       if(sessionLost||disconnected())return;
       syncDeviceOrders();
-      request('touchSession',{}).then(({displayEnabled})=>{
+      request('touchSession',{}).then(({displayEnabled,handoffUserId,open})=>{
+        if(handoffUserId&&root.isConnected) {
+          sessionLost=true;
+          controls();
+          PosTillDialogs.showHandoff(handoffUserId,()=>location.assign(backLink.href));
+          return;
+        }
+        if(open===false&&root.isConnected) {
+          sessionLost=true;
+          controls();
+          $('order-status').textContent='This billing session has closed. Open KOT Billing again to continue.';
+          return;
+        }
         if(typeof displayEnabled!=='boolean'||String(displayEnabled)===cfg.displayEnabled)return;
         cfg.displayEnabled=String(displayEnabled);
         controls();
       }).catch(()=>{});
     };
-    const heartbeat=setInterval(keepSessionOpen,60000);
+    const heartbeat=setInterval(keepSessionOpen,10000);
     window.addEventListener('focus',keepSessionOpen);
     keepSessionOpen();
   }
