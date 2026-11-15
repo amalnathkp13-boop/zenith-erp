@@ -548,6 +548,7 @@
         <field name="terminalId" type="id"/>
         <field name="draftSessionId" type="id"/>
         <field name="kotNumber" type="text-short"/>
+        <field name="dailyBillNumber" type="number-integer"><description>Finalized customer bill ordinal for the issuing shop and local day.</description></field>
         <field name="tableNumber" type="text-short"/>
         <field name="tableId" type="id"><description>Stable selected restaurant table; tableNumber remains the historical printed label.</description></field>
         <field name="orderReceiptJson" type="text-very-long"><description>Read-only unpaid order receipt snapshot. Never substitutes for a finalized sale.</description></field>
@@ -762,6 +763,7 @@
         <alias entity-alias="PS" name="ztfSessionOrg" field="organizationPartyId"/>
         <alias entity-alias="PT" name="ztfTerminalOrg" field="organizationPartyId"/>
         <alias entity-alias="KOT" name="kotOrganizationPartyId" field="organizationPartyId"/>
+        <alias entity-alias="KOT" name="dailyBillNumber"/>
         <entity-condition><econdition entity-alias="KOT" field-name="orderReceiptJson" operator="is-not-null"/></entity-condition>
     </view-entity>
 

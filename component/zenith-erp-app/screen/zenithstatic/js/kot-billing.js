@@ -1371,6 +1371,10 @@
       payments,change,isCredit:paymentMethod==='Credit',
       outstanding:paymentMethod==='Credit'?KotOffline.roundMoney(billTotal-(payments[0]?.amount||0)):0,
       notes:data.notes};
+    if(operation==='checkout'&&workspace.receiptOptions){
+      receipt.options=workspace.receiptOptions[receipt.isCredit?'credit':'normal'];
+      receipt.bill.numbers={offline:true};
+    }
     const existing=device.queue().some(({sale:entry})=>entry.offlineId===sale.offlineId||
       (entry.operation==='checkout'&&((sale.sourceOfflineId&&entry.sourceOfflineId===sale.sourceOfflineId)||
         (sale.kotId&&entry.kotId===sale.kotId))));
