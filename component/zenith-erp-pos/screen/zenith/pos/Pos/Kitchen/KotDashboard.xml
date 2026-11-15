@@ -36,10 +36,12 @@
             def now = ec.user.nowTimestamp
             def sdf = new java.text.SimpleDateFormat('yyyy-MM-dd'); sdf.setTimeZone(ec.user.timeZone)
             def todayStr = sdf.format(now)
-            dashDate = ec.context.dashDate ?: todayStr
+            def selectedDay
+            try { selectedDay = java.time.LocalDate.parse((ec.context.dashDate ?: todayStr).toString()) }
+            catch (java.time.format.DateTimeParseException ignored) { selectedDay = java.time.LocalDate.parse(todayStr) }
+            dashDate = selectedDay.toString()
             def midnight = { date -> ec.l10n.parseTimestamp(date.toString() + ' 00:00:00', 'yyyy-MM-dd HH:mm:ss') }
             def dayStart = midnight(dashDate)
-            def selectedDay = java.time.LocalDate.parse(sdf.format(dayStart))
             def nextDayStart = midnight(selectedDay.plusDays(1))
             def yStart = midnight(selectedDay.minusDays(1))
 
@@ -56,7 +58,7 @@
             }
             def salesEntity = !kotOnly ? 'zenith.erp.pos.PosTransaction' :
                 (terminals != null ? 'zenith.erp.pos.KotTransactionDetailView' : 'zenith.erp.pos.KotTransactionView')
-            def amt = { t -> (t.payableAmount ?: t.grandTotal ?: 0) as BigDecimal }
+            def amt = { t -> (t.payableAmount == null ? (t.grandTotal ?: 0) : t.payableAmount) as BigDecimal }
             def findOrders = { startInclusive, endExclusive, completedOnly ->
                 def f = ec.entity.find(salesEntity)
                     .condition('entryDate', 'greater-equals', startInclusive).condition('entryDate', 'less', endExclusive)
@@ -76,31 +78,32 @@
             completedTxns = todayOrders.findAll { it.statusId == 'PtCompleted' }
             def totalSalesAmt = completedTxns.sum { amt(it) } ?: BigDecimal.ZERO
             completedOrders = completedTxns.size()
-            totalOrdersAll = todayOrders.size()
-            def cset = new HashSet(); def walk = 0
-            completedTxns.each { t -> if (t.customerPartyId) cset.add(t.customerPartyId) else walk++ }
-            customers = cset.size() + walk
+            def isWalkIn = { t -> !t.customerPartyId || t.customerPartyId == 'WALKIN_' + org }
+            customers = completedTxns.count(isWalkIn)
             def avgOrderAmt = completedOrders > 0 ? (totalSalesAmt / completedOrders).setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO
             def hoursElapsed = 24
             if (dashDate == todayStr) { def hc = Calendar.getInstance(ec.user.timeZone); hc.setTime(now); hoursElapsed = hc.get(Calendar.HOUR_OF_DAY) + 1 }
-            def ophAmt = (completedOrders as BigDecimal).divide((Math.max(1, hoursElapsed)) as BigDecimal, 1, RoundingMode.HALF_UP)
-
-            def akf = ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('statusId', 'in', ['KotNew', 'KotPreparing', 'KotReady'])
-            akf.condition('organizationPartyId', org ?: '__NO_ORGANIZATION__')
-            if (terminals != null) akf.condition('terminalId','in',terminals ?: ['__NONE__'])
-            ordersInProgress = akf.count() as int
+            def findActiveKots = {
+                def f = ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('statusId', 'in', ['KotNew', 'KotPreparing', 'KotReady'])
+                    .condition('organizationPartyId', org ?: '__NO_ORGANIZATION__')
+                if (terminals != null) f.condition('terminalId','in',terminals ?: ['__NONE__'])
+                f
+            }
+            def countUnbilled = { start, end -> findActiveKots().condition('transactionId', null)
+                .condition('kotDate', 'greater-equals', start).condition('kotDate', 'less', end).count() }
+            ordersInProgress = findActiveKots().count()
+            totalOrdersAll = todayOrders.size() + (kotOnly ? countUnbilled(dayStart, nextDayStart) : 0)
+            def ophAmt = ((kotOnly ? totalOrdersAll : completedOrders) as BigDecimal).divide(hoursElapsed as BigDecimal, 1, RoundingMode.HALF_UP)
 
             // yesterday
             def yOrders = findOrders(yStart, dayStart, false)
             def yTxns = yOrders.findAll { it.statusId == 'PtCompleted' }
             def ySales = yTxns.sum { amt(it) } ?: BigDecimal.ZERO
             def yCompleted = yTxns.size()
-            def yAll = yOrders.size()
-            def ycset = new HashSet(); def ywalk = 0
-            yTxns.each { t -> if (t.customerPartyId) ycset.add(t.customerPartyId) else ywalk++ }
-            def yCustomers = ycset.size() + ywalk
+            def yAll = yOrders.size() + (kotOnly ? countUnbilled(yStart, dayStart) : 0)
+            def yCustomers = yTxns.count(isWalkIn)
             def yAov = yCompleted > 0 ? (ySales / yCompleted) : BigDecimal.ZERO
-            def yOph = (yCompleted as BigDecimal).divide(24 as BigDecimal, 1, RoundingMode.HALF_UP)
+            def yOph = ((kotOnly ? yAll : yCompleted) as BigDecimal).divide(24 as BigDecimal, 1, RoundingMode.HALF_UP)
 
             def delta = { cur, prev ->
                 cur = (cur ?: 0) as BigDecimal; prev = (prev ?: 0) as BigDecimal
@@ -122,195 +125,221 @@
             // payment breakdown
             def txnIds = completedTxns.collect { it.transactionId }
             def payments = txnIds ? ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId', 'in', txnIds).list() : []
-            def pmColor = ['UPI':'#7C3AED', 'Cash':'#10B981', 'Card':'#F59E0B', 'Wallet':'#2563EB', 'BankTransfer':'#60A5FA', 'Cheque':'#9CA3AF', 'Credit':'#DC2626', 'Other':'#9CA3AF']
+            def pmColor = ['UPI':'var(--kd-pri)', 'Cash':'var(--kd-grnt)', 'Card':'var(--kd-orange)', 'Wallet':'var(--kd-blue)', 'BankTransfer':'#60A5FA', 'Cheque':'#9CA3AF', 'Credit':'var(--kd-redt)', 'Other':'#9CA3AF']
             def pmTotals = new LinkedHashMap()
             payments.each { p -> def m = p.paymentMethod ?: 'Other'; pmTotals[m] = (pmTotals[m] ?: BigDecimal.ZERO) + ((p.amount ?: 0) as BigDecimal) }
             def totalPay = pmTotals.values().sum() ?: BigDecimal.ZERO
-            paymentBars = pmTotals.entrySet().sort { -(it.value as BigDecimal) }.collect { e ->
-                def pct = totalPay > 0 ? ((e.value as BigDecimal) * 100.0 / totalPay) : 0.0
-                [method: (e.key + ' Payments'), amount: inr(e.value, 2),
+            paymentBars = (pmColor.keySet() + pmTotals.keySet()).unique().findAll { pmTotals.containsKey(it) }.collect { method ->
+                def amount = pmTotals[method]
+                def pct = totalPay > 0 ? (amount * 100.0 / totalPay) : 0.0
+                [method: (method + ' Payments'), amount: inr(amount, 2),
                  pct: (new BigDecimal(pct)).setScale(1, RoundingMode.HALF_UP).toPlainString(),
-                 color: (pmColor[e.key] ?: '#9CA3AF')]
+                 color: (pmColor[method] ?: '#9CA3AF')]
             }
 
             // chart series
             def hourLabel = { h ->
                 def f1 = h % 12; if (f1 == 0) f1 = 12; def a1 = h < 12 ? 'AM' : 'PM'
                 def h2 = (h + 1) % 24; def f2 = h2 % 12; if (f2 == 0) f2 = 12; def a2 = h2 < 12 ? 'AM' : 'PM'
-                return f1 + ' ' + a1 + ' - ' + f2 + ' ' + a2
+                return f1 + ' ' + a1 + ' – ' + f2 + ' ' + a2
             }
-            def hourly = new BigDecimal[24]; (0..23).each { hourly[it] = BigDecimal.ZERO }
-            completedTxns.each { t -> if (t.entryDate) { def c = Calendar.getInstance(ec.user.timeZone); c.setTime(t.entryDate); hourly[c.get(Calendar.HOUR_OF_DAY)] += amt(t) } }
-            def todayVals = (0..23).collect { hourly[it].setScale(0, RoundingMode.HALF_UP).toBigInteger() }
-            def todayPoints = (0..23).collect { hourLabel(it) }
-            def todayAxis = ['12 AM', '4 AM', '8 AM', '12 PM', '4 PM', '8 PM', '12 AM']
-
-            def monthStart = midnight(selectedDay.minusDays(29))
-            def monthTxns = findOrders(monthStart, nextDayStart, true)
-            def dayBucket = [:]
-            monthTxns.each { t -> if (t.entryDate) { def ds = sdf.format(t.entryDate); dayBucket[ds] = (dayBucket[ds] ?: BigDecimal.ZERO) + amt(t) } }
-            def dlabel = new java.text.SimpleDateFormat('d MMM'); dlabel.setTimeZone(ec.user.timeZone)
-            def monthVals = []; def monthPoints = []
-            (0..29).each { i ->
-                def c = Calendar.getInstance(ec.user.timeZone); c.setTime(dayStart); c.add(Calendar.DAY_OF_MONTH, -(29 - i))
-                def ds = sdf.format(c.getTime())
-                monthVals.add((dayBucket[ds] ?: BigDecimal.ZERO).setScale(0, RoundingMode.HALF_UP).toBigInteger())
-                monthPoints.add(dlabel.format(c.getTime()))
+            def point = { label, txns -> [label:label, sales:txns.sum { amt(it) } ?: 0, orders:txns.size()] }
+            def hourly = completedTxns.groupBy { t ->
+                def c = Calendar.getInstance(ec.user.timeZone); c.setTime(t.entryDate); c.get(Calendar.HOUR_OF_DAY)
             }
-            def monthAxis = []; (0..29).each { i -> if (i % 5 == 0 || i == 29) monthAxis.add(monthPoints[i]) }
-            def weekVals = monthVals[23..29]; def weekPoints = monthPoints[23..29]; def weekAxis = weekPoints
-
+            def daily = findOrders(midnight(selectedDay.minusDays(29)), nextDayStart, true).groupBy { sdf.format(it.entryDate) }
+            def dlabel = java.time.format.DateTimeFormatter.ofPattern('d MMM', ec.user.locale)
+            def monthPoints = (29..0).collect { offset ->
+                def day = selectedDay.minusDays(offset)
+                point(day.format(dlabel), daily[day.toString()] ?: [])
+            }
             chartJson = JsonOutput.toJson([
-                today: [values: todayVals, points: todayPoints, axis: todayAxis],
-                week:  [values: weekVals, points: weekPoints, axis: weekAxis],
-                month: [values: monthVals, points: monthPoints, axis: monthAxis]
+                today: [points:(0..23).collect { point(hourLabel(it), hourly[it] ?: []) },
+                        axis:['12 AM', '4 AM', '8 AM', '12 PM', '4 PM', '8 PM', '12 AM']],
+                week: [points:monthPoints[23..29], axis:monthPoints[23..29]*.label],
+                month: [points:monthPoints, axis:[0, 5, 10, 15, 20, 25, 29].collect { monthPoints[it].label }]
             ])
 
             // top 5 dishes
             def items = txnIds ? ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId', 'in', txnIds).list() : []
             def pmap = [:]
             items.each { i ->
-                def k = i.productName ?: i.productId
-                if (!pmap[k]) pmap[k] = [name: k, qty: BigDecimal.ZERO, total: BigDecimal.ZERO]
+                def k = i.productId ?: i.productName
+                if (!pmap[k]) pmap[k] = [name: i.productName ?: i.productId ?: 'Unnamed item', qty: BigDecimal.ZERO, total: BigDecimal.ZERO]
                 pmap[k].qty += ((i.quantity ?: 0) as BigDecimal); pmap[k].total += ((i.lineTotal ?: 0) as BigDecimal)
             }
-            topDishes = pmap.values().sort { -(it.total as BigDecimal) }.take(5).collect { d ->
-                [name: d.name, plates: ((d.qty as BigDecimal).stripTrailingZeros().toPlainString()), revenue: inr(d.total, 2),
-                 initial: (d.name?.trim() ? d.name.trim().substring(0, 1).toUpperCase() : '?')]
+            dishes = pmap.values().sort { a, b -> (b.total <=> a.total) ?: (b.qty <=> a.qty) ?: (a.name <=> b.name) }.collect { d ->
+                [name: d.name, plates: d.qty.stripTrailingZeros().toPlainString(), revenue: inr(d.total, 2)]
             }
 
             def lblFmt = new java.text.SimpleDateFormat('d MMM yyyy'); lblFmt.setTimeZone(ec.user.timeZone)
             dateLabel = (dashDate == todayStr ? 'Today, ' : '') + lblFmt.format(dayStart)
+            isToday = dashDate == todayStr
+            copyrightYear = java.time.LocalDate.parse(todayStr).year
         ]]></script>
     </actions>
 
     <widgets>
         <render-mode><text type="html,qvt" template="true"><![CDATA[
 <#macro ic name sz=15>
-<svg width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><#rt>
-<#if name=='bag'><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/>
+<svg width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><#rt>
+<#if name=='receipt'><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 2h6v6l-3-2-3 2V2Zm0 10h6m-6 4h6"/>
 <#elseif name=='calendar'><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>
 <#elseif name=='refresh'><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
 <#elseif name=='help'><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>
-<#elseif name=='banknote'><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01"/><path d="M18 12h.01"/>
+<#elseif name=='moneybag'><path d="M9 7C5 5 6 2 8 2c2 0 4 2 4 5 0-3 2-5 4-5 2 0 3 3-1 5M9 7h6c4 3 6 6 6 10 0 3-2 5-5 5H8c-3 0-5-2-5-5 0-4 2-7 6-10Z"/><path d="M10 12h5m-5 3h5m-3-3c3 2 1 4-2 4l3 3"/>
 <#elseif name=='clipcheck'><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/>
 <#elseif name=='users'><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
 <#elseif name=='filetext'><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>
 <#elseif name=='cart'><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>
 <#elseif name=='trendup'><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>
+<#elseif name=='chart'><path d="M4 20v-5m5 5V9m5 11V4m5 16V7"/>
+<#elseif name=='trophy'><path d="M8 21h8m-4-4v4M7 4H3v3a4 4 0 0 0 4 4m10-7h4v3a4 4 0 0 1-4 4"/><path d="M7 3h10v7a5 5 0 0 1-10 0V3Z"/>
 <#elseif name=='star'><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>
 <#elseif name=='chevr'><path d="m9 18 6-6-6-6"/>
+<#elseif name=='chevd'><path d="m6 9 6 6 6-6"/>
 </#if>
 </svg></#macro>
 
 <#macro chg d cls>
-<#if d.has><div class="${cls} ${d.up?string('up','down')}">${d.up?string('&#8593;','&#8595;')} ${d.txt}% vs yesterday</div></#if>
+<#if d.has><div class="${cls} ${d.up?string('up','down')}"><strong><@ic 'chevd' 14/> ${d.txt}%</strong> ${isToday?string('vs yesterday','vs previous day')}</div></#if>
+</#macro>
+
+<#macro kpiLabel label help>
+  <div class="kd-stat__h"><h2 class="kd-stat__label">${label}</h2><span class="kd-stat__help" title="${help}"><@ic 'help' 16/></span></div>
+</#macro>
+
+<#macro dishRow d rank>
+  <li class="kd-dishrow">
+    <span class="kd-rank">${rank}</span>
+    <div class="kd-dishinfo"><div class="kd-dishname">${d.name?html}</div><div class="kd-dishplates">${d.plates} <#if d.plates == '1'>Plate<#else>Plates</#if></div></div>
+    <span class="kd-dishprice">${d.revenue}</span>
+  </li>
 </#macro>
 
 <div class="kd-wrap" id="kd-wrap">
-  <div id="kd-data" style="display:none" data-chart="${chartJson?html}"></div>
+  <div id="kd-data" hidden data-chart="${chartJson?html}"></div>
 
-  <div class="kd-head">
-    <div class="kd-head__icon"><@ic 'bag' 22/></div>
+  <header class="kd-head">
+    <div class="kd-head__icon"><@ic 'receipt' 24/></div>
     <div class="kd-head__text">
       <h1 class="kd-title">KOT Dashboard</h1>
       <p class="kd-sub">Real-time overview of your caf&eacute; operations</p>
     </div>
     <div class="kd-head__actions">
-      <span class="kd-datepill"><@ic 'calendar'/> ${dateLabel}
-        <input type="date" value="${dashDate}" onchange="kdSetDate(this.value)"/>
-      </span>
-      <button type="button" class="kd-refresh" id="kd-refresh" onclick="kdRefresh()" title="Refresh"><@ic 'refresh'/></button>
+      <label class="kd-datepill"><@ic 'calendar' 20/> <span>${dateLabel?html}</span><@ic 'chevd' 16/>
+        <input type="date" aria-label="Dashboard date" value="${dashDate?html}" onchange="kdSetDate(this.value)"/>
+      </label>
+      <button type="button" class="kd-refresh" id="kd-refresh" onclick="kdRefresh()" title="Refresh dashboard" aria-label="Refresh dashboard"><@ic 'refresh' 20/></button>
     </div>
-  </div>
+  </header>
 
   <section class="kd-stats">
     <div class="kd-stat">
-      <div class="kd-stat__h"><span class="kd-stat__label">Total Sales</span><span class="kd-stat__help"><@ic 'help' 13/></span><span class="kd-stat__icon green"><@ic 'banknote'/></span></div>
-      <div class="kd-stat__value">${totalSales}</div>
-      <@chg dSales 'kd-change'/>
+      <@kpiLabel 'Total Sales' 'Total billed for completed orders on the selected date.'/>
+      <div class="kd-stat__body">
+        <div><div class="kd-stat__value">${totalSales}</div><@chg dSales 'kd-change'/></div>
+        <span class="kd-stat__icon green"><@ic 'moneybag' 35/></span>
+      </div>
       <div class="kd-break">
         <div class="kd-break__t">Payment Breakdown</div>
         <#if paymentBars?has_content>
           <#list paymentBars as p>
-          <div class="kd-break__row"><span class="kd-break__dot" style="background:${p.color}"></span><span class="kd-break__m">${p.method}</span><span class="kd-break__pct">${p.pct}%</span><span class="kd-break__amt">${p.amount}</span></div>
+          <div class="kd-break__row"><span class="kd-break__dot" style="background:${p.color}"></span><span>${p.method?html}</span><span class="kd-break__pct">${p.pct}%</span><span class="kd-break__amt">${p.amount}</span></div>
           </#list>
         <#else><div class="kd-break__empty">No payments recorded for this day.</div></#if>
       </div>
     </div>
 
     <div class="kd-stat">
-      <div class="kd-stat__h"><span class="kd-stat__label">Completed Orders</span><span class="kd-stat__help"><@ic 'help' 13/></span><span class="kd-stat__icon blue"><@ic 'clipcheck'/></span></div>
-      <div class="kd-stat__value">${completedOrders}</div>
-      <div class="kd-stat__sub">Today's Completed Orders</div>
+      <@kpiLabel 'Completed Orders' 'Completed bills for the selected date.'/>
+      <div class="kd-stat__body">
+        <div><div class="kd-stat__value">${completedOrders}</div><div class="kd-stat__sub">${isToday?string("Today's Completed Orders", 'Completed on selected date')}</div></div>
+        <span class="kd-stat__icon blue"><@ic 'clipcheck' 35/></span>
+      </div>
       <@chg dCompleted 'kd-change'/>
     </div>
 
     <div class="kd-stat">
-      <div class="kd-stat__h"><span class="kd-stat__label">Customers (Walk-in Today)</span><span class="kd-stat__help"><@ic 'help' 13/></span><span class="kd-stat__icon yellow"><@ic 'users'/></span></div>
-      <div class="kd-stat__value">${customers}</div>
-      <div class="kd-stat__sub">Total Walk-in Customers</div>
+      <@kpiLabel (isToday?string('Customers (Walk-in Today)', 'Customers (Walk-in)')) 'Completed bills recorded as walk-in on the selected date.'/>
+      <div class="kd-stat__body">
+        <div><div class="kd-stat__value">${customers}</div><div class="kd-stat__sub">Total Walk-in Customers</div></div>
+        <span class="kd-stat__icon orange"><@ic 'users' 35/></span>
+      </div>
       <@chg dCustomers 'kd-change'/>
     </div>
 
     <div class="kd-stat">
-      <div class="kd-stat__h"><span class="kd-stat__label">Orders in Progress</span><span class="kd-stat__help"><@ic 'help' 13/></span><span class="kd-stat__icon pri"><@ic 'filetext'/></span></div>
-      <div class="kd-stat__value">${ordersInProgress}</div>
-      <div class="kd-stat__sub">Active KOTs</div>
+      <@kpiLabel 'Orders in Progress' 'KOTs currently new, preparing, or ready.'/>
+      <div class="kd-stat__body">
+        <div><div class="kd-stat__value">${ordersInProgress}</div><div class="kd-stat__sub">Active KOTs</div></div>
+        <span class="kd-stat__icon pri"><@ic 'filetext' 35/></span>
+      </div>
     </div>
   </section>
 
   <section class="kd-panels">
     <div class="kd-card">
       <div class="kd-card__h">
-        <h2 class="kd-card__title">Sales Overview</h2>
-        <div class="kd-ctabs">
-          <button type="button" class="kd-ctab is-active" data-r="today" onclick="kdRange('today',this)">Today</button>
-          <button type="button" class="kd-ctab" data-r="week" onclick="kdRange('week',this)">Week</button>
-          <button type="button" class="kd-ctab" data-r="month" onclick="kdRange('month',this)">Month</button>
+        <div class="kd-card__heading"><span class="kd-card__icon pri"><@ic 'chart' 23/></span><div>
+          <h2 class="kd-card__title" id="kd-trend-title">Sales Trend</h2>
+          <p class="kd-card__sub" id="kd-trend-sub">Hourly sales and order volume</p>
+        </div></div>
+        <div class="kd-ctabs" role="group" aria-label="Sales trend period">
+          <button type="button" class="kd-ctab is-active" data-r="today" aria-pressed="true" onclick="kdRange('today',this)">${isToday?string('Today','Day')}</button>
+          <button type="button" class="kd-ctab" data-r="week" aria-pressed="false" onclick="kdRange('week',this)">Week</button>
+          <button type="button" class="kd-ctab" data-r="month" aria-pressed="false" onclick="kdRange('month',this)">Month</button>
         </div>
       </div>
-      <div class="kd-chartbox" id="kd-chartbox">
-        <div id="kd-svg"></div>
-        <div class="kd-tip" id="kd-tip"></div>
+      <div class="kd-plot">
+        <div class="kd-axisy" id="kd-axis-y" aria-hidden="true"></div>
+        <div class="kd-chartbox" id="kd-chartbox" role="group" tabindex="0" aria-labelledby="kd-trend-title" aria-describedby="kd-trend-sub kd-chart-help">
+          <span id="kd-chart-help" class="kd-sr">Use the left and right arrow keys to explore sales and orders.</span>
+          <div id="kd-svg" aria-hidden="true"></div>
+          <div class="kd-guide" id="kd-guide" hidden></div><div class="kd-dot" id="kd-dot" hidden></div>
+          <div class="kd-tip" id="kd-tip" hidden>
+            <strong id="kd-tip-label"></strong>
+            <span><i></i> Sales <b id="kd-tip-sales"></b></span>
+            <span><i></i> Orders <b id="kd-tip-orders"></b></span>
+          </div>
+          <span id="kd-chart-status" class="kd-sr" aria-live="polite"></span>
+        </div>
+        <div class="kd-axisx" id="kd-axis" aria-hidden="true"></div>
       </div>
-      <div class="kd-axisx" id="kd-axis"></div>
       <div class="kd-mini">
-        <div class="kd-mini__c"><span class="kd-mini__icon blue"><@ic 'cart'/></span><div><div class="kd-mini__v">${totalOrdersAll}</div><div class="kd-mini__l">Total Orders</div><@chg dTotalOrders 'kd-mini__chg'/></div></div>
-        <div class="kd-mini__c"><span class="kd-mini__icon pri"><@ic 'bag'/></span><div><div class="kd-mini__v">${avgOrderStr}</div><div class="kd-mini__l">Average Order Value</div><@chg dAov 'kd-mini__chg'/></div></div>
-        <div class="kd-mini__c"><span class="kd-mini__icon yellow"><@ic 'trendup'/></span><div><div class="kd-mini__v">${ordersPerHourStr}</div><div class="kd-mini__l">Orders / Hour</div><@chg dOph 'kd-mini__chg'/></div></div>
+        <div class="kd-mini__c"><span class="kd-mini__icon blue"><@ic 'filetext' 28/></span><div><div class="kd-mini__l">Total Orders</div><div class="kd-mini__v">${totalOrdersAll}</div><@chg dTotalOrders 'kd-mini__chg'/></div></div>
+        <div class="kd-mini__c"><span class="kd-mini__icon pri"><@ic 'cart' 28/></span><div><div class="kd-mini__l">Average Order Value</div><div class="kd-mini__v">${avgOrderStr}</div><@chg dAov 'kd-mini__chg'/></div></div>
+        <div class="kd-mini__c"><span class="kd-mini__icon orange"><@ic 'trendup' 28/></span><div><div class="kd-mini__l">Orders / Hour</div><div class="kd-mini__v">${ordersPerHourStr}</div><@chg dOph 'kd-mini__chg'/></div></div>
       </div>
     </div>
 
-    <div class="kd-card">
+    <div class="kd-card kd-dishes">
       <div class="kd-card__h">
-        <h2 class="kd-card__title">Top 5 Selling Dishes</h2>
-        <button type="button" class="kd-star" id="kd-star" onclick="this.classList.toggle('on')"><@ic 'star' 16/></button>
+        <div class="kd-card__heading"><span class="kd-card__icon pri"><@ic 'trophy' 23/></span><h2 class="kd-card__title">Top 5 Selling Dishes</h2></div>
+        <span class="kd-star pri"><@ic 'star' 21/></span>
       </div>
-      <#if topDishes?has_content>
-      <ol style="list-style:none;margin:0;padding:0">
-        <#list topDishes as d>
-        <li class="kd-dishrow">
-          <span class="kd-rank">${d?index + 1}</span>
-          <span class="kd-dishthumb">${d.initial}</span>
-          <div class="kd-dishinfo"><div class="kd-dishname">${d.name}</div><div class="kd-dishplates">${d.plates} Plates</div></div>
-          <span class="kd-dishprice">${d.revenue}</span>
-        </li>
-        </#list>
-      </ol>
-      <#if kitchenModuleId=='kot'>
-      <a class="kd-viewall" href="<#if (ec.web.request.requestURI!'')?starts_with('/qapps/')>/qapps<#else>/apps</#if>/zenith/kot/KotHistory">View KOT History <@ic 'chevr' 14/></a>
-      <#else>
-      <a class="kd-viewall" onclick="kdGo('goReports')">View All Dishes <@ic 'chevr' 14/></a>
-      </#if>
+      <#if dishes?has_content>
+        <ol class="kd-dishlist" role="list">
+          <#list dishes[0..*5] as d><@dishRow d=d rank=d?counter/></#list>
+        </ol>
+        <details class="kd-all-dishes">
+          <summary class="kd-viewall"><span>View All Dishes</span><span>Show Top 5</span><@ic 'chevr' 18/></summary>
+          <#if dishes?size gt 5>
+          <ol class="kd-dishlist" role="list" start="6">
+            <#list dishes[5..] as d><@dishRow d=d rank=(d?counter + 5)/></#list>
+          </ol>
+          <#else><p class="kd-dishes__empty">All dishes sold on this date are shown above.</p></#if>
+        </details>
       <#else>
       <div class="kd-dishes__empty">No dishes sold for this day yet.</div>
       </#if>
     </div>
   </section>
 
+  <footer class="kd-footer"><span>&copy; ${copyrightYear?c} ZetaClan Technologies. All rights reserved.</span><span>ZetaERP Version 1.0.0</span></footer>
+
   <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" style="display:none"
-       onload="(function(){if(window.kdInit){window.kdInit();return;}if(window.__kdJs)return;window.__kdJs=1;var s=document.createElement('script');s.src='/zenithstatic/js/kot-dashboard.js?v=2';document.head.appendChild(s);})()"/>
+       onload="(function(){if(window.kdInit){window.kdInit();return;}if(window.__kdJs)return;window.__kdJs=1;var s=document.createElement('script');s.src='/zenithstatic/js/kot-dashboard.js?v=3';document.head.appendChild(s);})()"/>
 </div>
         ]]></text></render-mode>
     </widgets>

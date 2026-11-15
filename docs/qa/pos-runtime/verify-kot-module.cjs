@@ -284,6 +284,24 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
    check('KOT Dashboard includes late bills, excludes ordinary POS and counts a sale with two kitchen tickets once',
     completedCount===4&&renderedDate===historicalDate&&!activeShop,
     {completedCount,renderedDate,activeShop});
+   for (const [shell,width] of [['apps',1671],['qapps',390]]) {
+    await page.setViewportSize({width,height:941});
+    await page.goto(base+'/'+shell+'/zenith/kot/KotDashboard?dashDate='+historicalDate);
+    await page.locator('#kd-svg svg').waitFor();
+    const dashboard=await page.locator('#kd-wrap').evaluate(root=>{
+     const chart=JSON.parse(root.querySelector('#kd-data').dataset.chart);
+     return {columns:getComputedStyle(root.querySelector('.kd-stats')).gridTemplateColumns.split(' ').length,
+      scroll:root.scrollWidth,width:root.clientWidth,points:chart.today.points.length,lastHour:chart.today.points.at(-1)};
+    });
+    check(shell+' KOT Dashboard fits its viewport and charts the distinct late-night orders',
+     dashboard.columns===(width===390?1:4)&&dashboard.scroll===dashboard.width&&dashboard.points===24&&dashboard.lastHour.orders===4,
+     dashboard);
+    await page.getByRole('button',{name:'Week',exact:true}).click();
+    check(shell+' KOT Sales Trend switches to daily sales and order counts',
+     await page.locator('#kd-axis span').count()===7&&await page.locator('#kd-tip-orders').textContent()==='4'&&
+     await page.getByRole('button',{name:'Week',exact:true}).getAttribute('aria-pressed')==='true');
+   }
+   await page.setViewportSize({width:1366,height:768});
    await page.goto(base+'/apps/zenith/kot/KotDashboard?dashDate=2040-02-02');
    const nextDayCount = Number(await completedOrders.innerText());
    check('KOT Dashboard excludes prior-day bills after midnight',nextDayCount===0,{nextDayCount});
