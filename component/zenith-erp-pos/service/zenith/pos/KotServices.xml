@@ -296,6 +296,10 @@
                             reject('The saved order total changed. Reopen it in History and review it before taking payment.'); return
                         }
                     }
+                    // Serialize issuance across this shop before checkout takes inventory row locks.
+                    def issuingShop=ec.entity.find('mantle.facility.Facility')
+                        .condition([facilityId:terminal.facilityId,ownerPartyId:scope.organizationPartyId]).forUpdate(true).one()
+                    if(!issuingShop) { reject('Choose a terminal assigned to a shop.'); return }
                     def tx=ec.service.sync().name('zenith.pos.PosServices.create#PosTransaction')
                         .parameters([sessionId:sid,reuseOpenCart:false]).call()?.transactionId
                     if(!tx) { reject(ec.message.errorsString ?: 'Could not create the bill.'); return }
@@ -353,7 +357,22 @@
                         ec.service.sync().name('zenith.pos.PosServices.complete#PosTransaction').parameter('transactionId',tx).call()
                     }
                     if(ec.message.hasError()) return
-                    kot.setAll([transactionId:tx,terminalId:terminal.terminalId])
+                    def completed=ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',tx).one()
+                    def day=completed.completedDate.toInstant().atZone(java.time.ZoneId.of('Asia/Kolkata')).toLocalDate()
+                    def key="KOT_BILL:${issuingShop.facilityId}:${day}".toString()
+                    def seq=ec.entity.find('zenith.erp.pos.PosBillSequence').condition('seqKey',key).forUpdate(true).one()
+                    int dailyNumber
+                    if(seq) {
+                        dailyNumber=(seq.lastNumber as int)+1
+                        seq.set('lastNumber',dailyNumber).update()
+                    } else {
+                        // Start after any bills issued earlier today, including bills from before this feature.
+                        def issued=ec.resource.script('component://zenith-erp-pos/script/KotIssuedBills.groovy',null,
+                            [orgId:scope.organizationPartyId,shopId:issuingShop.facilityId,billDay:day])
+                        dailyNumber=(issued.selectField('transactionId').distinct(true).count() as int)+1
+                        ec.entity.makeValue('zenith.erp.pos.PosBillSequence').setAll([seqKey:key,lastNumber:dailyNumber]).create()
+                    }
+                    kot.setAll([transactionId:tx,terminalId:terminal.terminalId,dailyBillNumber:dailyNumber])
                     if(fromDraft) {
                         def display=ec.service.sync().name('zenith.pos.KotServices.get#KitchenDisplayPolicy').parameter('facilityId',terminal.facilityId).call()
                         kot.setAll([statusId:display.enabled ? 'KotNew' : 'KotServed',kotDate:ec.user.nowTimestamp])
