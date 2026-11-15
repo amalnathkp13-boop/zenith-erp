@@ -11,6 +11,7 @@
         <field name="barcodeValue" type="text-medium"/>
         <field name="isPrimary" type="text-indicator" default="'N'"/>
         <field name="isActive" type="text-indicator" default="'Y'"/>
+        <field name="itemCodeMirror" type="text-indicator"><description>Y for an automatically generated item-code barcode, N for an independently assigned barcode, empty for legacy records.</description></field>
         <relationship type="one" related="mantle.product.Product"/>
         <index name="BC_VALUE">
             <index-field name="organizationPartyId"/>
@@ -84,6 +85,18 @@
         <relationship type="one" related="mantle.product.Product"/>
     </entity>
 
+    <entity entity-name="ItemCodeTransfer" package="zenith.erp.barcode">
+        <field name="itemCodeTransferId" type="id" is-pk="true"/>
+        <field name="organizationPartyId" type="id"/>
+        <field name="sourceProductId" type="id"/>
+        <field name="targetProductId" type="id"/>
+        <field name="releasedBarcodeId" type="id"/>
+        <field name="itemCode" type="text-medium"/>
+        <field name="previousTargetCode" type="text-medium"/>
+        <field name="transferredByUserId" type="id"/>
+        <field name="transferredAt" type="date-time"/>
+    </entity>
+
     <!-- ========== Product Barcode View ========== -->
     <view-entity entity-name="ProductBarcodeDetail" package="zenith.erp.barcode">
         <member-entity entity-alias="PB" entity-name="zenith.erp.barcode.ProductBarcode"/>
@@ -95,6 +108,8 @@
         <alias entity-alias="PB" name="barcodeValue"/>
         <alias entity-alias="PB" name="isPrimary"/>
         <alias entity-alias="PB" name="isActive"/>
+        <alias entity-alias="PB" name="itemCodeMirror"/>
+        <alias entity-alias="PB" name="barcodeUpdatedAt" field="lastUpdatedStamp"/>
         <alias entity-alias="PB" name="organizationPartyId"/>
         <alias entity-alias="PRD" name="ownerPartyId"/>
         <alias entity-alias="PRD" name="productName"/>

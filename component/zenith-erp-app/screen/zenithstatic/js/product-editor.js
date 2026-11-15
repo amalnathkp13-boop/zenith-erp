@@ -18,7 +18,7 @@
   refresh();
   return refresh;
  }
- async function submitProduct(form,status,prepare){
+ async function submitProduct(form,status,prepare,{action=form.action,onSaved}={}){
   const busyTarget=form.closest('#productEditor')||form;
   if(busyTarget.getAttribute('aria-busy')==='true')return;
   const operation=form.dataset.peSave;
@@ -29,7 +29,7 @@
   try {
    const body=new URLSearchParams(new FormData(form));
    if(prepare)prepare(body);
-   const response=await fetch(form.action,{method:'POST',body,credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json','X-Requested-With':'XMLHttpRequest'}});
+   const response=await fetch(action,{method:'POST',body,credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json','X-Requested-With':'XMLHttpRequest'}});
    let target=new URL(response.url,location.href),errors=[];
    const json=(response.headers.get('Content-Type')||'').includes('application/json');
    if(json){
@@ -41,7 +41,11 @@
    const confirmed=removing?target.pathname.endsWith('/FindProduct'):
     target.pathname.endsWith('/EditProduct')&&
     (operation==='create'?target.searchParams.has('productId'):target.searchParams.get('productSaved')==='Y');
-   if(response.ok&&!errors.length&&target.origin===location.origin&&confirmed){location.assign(target.href);return;}
+   if(response.ok&&!errors.length&&target.origin===location.origin&&confirmed){
+    if(onSaved){onSaved();busyTarget.removeAttribute('aria-busy');}
+    else location.assign(target.href);
+    return;
+   }
    if(!json){
     const html=new DOMParser().parseFromString(await response.text(),'text/html');
     errors=[...html.querySelectorAll('.alert-danger,.q-notification.bg-negative,.text-negative[role="alert"]')]
@@ -55,6 +59,63 @@
    status.textContent=error instanceof TypeError?'Connection lost. Check the product list before retrying.':error.message;
    busyTarget.removeAttribute('aria-busy');
   }
+ }
+ function bindBarcodeConflict(root,form,status){
+  const button=root.querySelector('[data-pe-barcode-review]');
+  if(!button)return;
+  const code=form.elements.namedItem('pseudoId');
+  const dialog=root.querySelector('[data-pe-barcode-dialog]');
+  const message=dialog.querySelector('[data-pe-barcode-message]');
+  const confirm=dialog.querySelector('[data-pe-barcode-confirm]');
+  let review, activeRequest;
+  function refreshButton(){button.disabled=!code.value.trim()||code.value.trim()===code.defaultValue.trim();}
+  code.addEventListener('input',refreshButton);
+  refreshButton();
+  button.addEventListener('click',async()=>{
+   if(button.disabled||root.getAttribute('aria-busy')==='true')return;
+   const requested=code.value.trim();
+   const request={};
+   activeRequest=request;
+   dialog.showModal();
+   review=null;
+   confirm.hidden=true;
+   message.textContent='Checking item code…';
+   try {
+    const url=new URL(button.dataset.peBarcodeReview,location.href);
+    url.searchParams.set('productId',form.elements.namedItem('productId').value);
+    url.searchParams.set('pseudoId',requested);
+    const response=await fetch(url,{credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json'}});
+    const result=await response.json();
+    if(!dialog.open||activeRequest!==request||code.value.trim()!==requested)return;
+    if(!response.ok||result.error)throw Error(result.error||'The item code could not be checked.');
+    if(!result.review){
+     message.textContent=result.conflict?'This code is still assigned to another product or barcode and cannot be transferred here.':'This code is available. Use Save Changes to assign it.';
+     return;
+    }
+    review=result.review;
+    message.textContent=`Barcode ${review.code} is still assigned to ${review.sourceName}, whose current item code is ${review.sourceItemCode}. Transfer it to ${review.targetName}? Existing labels for ${review.code} will scan as ${review.targetName}.`;
+    confirm.hidden=false;
+   } catch(error){
+    if(dialog.open&&activeRequest===request)message.textContent=error instanceof SyntaxError?'The item code could not be checked. Sign in again if your session expired.':error.message;
+   }
+  });
+  dialog.querySelector('[data-pe-barcode-cancel]').addEventListener('click',()=>dialog.close());
+  confirm.addEventListener('click',()=>{
+   if(!review||review.code!==code.value.trim())return;
+   const approved=review;
+   dialog.close();
+   submitProduct(form,status,body=>{
+    for(const key of new Set(body.keys()))if(!['moquiSessionToken','productId'].includes(key))body.delete(key);
+    body.set('pseudoId',approved.code);
+    body.set('barcodeReviewToken',approved.token);
+   },{action:confirm.dataset.peBarcodeConfirm,onSaved:()=>{
+    code.defaultValue=approved.code;
+    root.querySelector('[data-pe-current-barcode]').value=approved.code;
+    root.querySelector('[data-pe-summary="pseudoId"]').textContent=code.value;
+    refreshButton();
+    status.textContent=`Item code ${approved.code} saved.`;
+   }});
+  });
  }
  window.initProductCreation=function(){
   const form=document.getElementById('CreateProductForm');
@@ -74,15 +135,17 @@
  window.initProductEditor=function(){
   const root=document.getElementById('productEditor');if(!root||root.dataset.bound)return;root.dataset.bound='true';
   const form=root.querySelector('#productEditorForm'),field=n=>form.elements.namedItem(n),name=field('productName'),print=field('printName');let pendingImage=false;let custom=print.dataset.custom==='true',dirty=false;
+  const itemCode=field('pseudoId');
   const refreshModePrices=bindModePrices(form);
   const status=root.querySelector('[data-pe-status]');
+  bindBarcodeConflict(root,form,status);
   function refresh(){
    if(!custom)print.value=name.value;
    root.querySelector('[data-pe-count]').textContent=field('description').value.length+'/500';
    root.querySelectorAll('[data-pe-summary]').forEach(el=>{const f=field(el.dataset.peSummary);el.textContent=f?.tagName==='SELECT'?f.selectedOptions[0]?.textContent||'—':f?.value||'—';});
   }
-  form.addEventListener('input',e=>{if(e.target===print)custom=print.value.trim()!==''&&print.value!==name.value;dirty=true;refresh();status.textContent='Unsaved changes';});
-  form.addEventListener('change',()=>{dirty=true;refresh();});
+  form.addEventListener('input',e=>{if(e.target===print)custom=print.value.trim()!==''&&print.value!==name.value;if(e.target!==itemCode)dirty=true;refresh();status.textContent='Unsaved changes';});
+  form.addEventListener('change',e=>{if(e.target!==itemCode)dirty=true;refresh();});
   root.querySelector('[data-pe-reset-name]').addEventListener('click',()=>{custom=false;dirty=true;refresh();print.focus();});
   form.addEventListener('submit',e=>{
    e.preventDefault();
@@ -90,7 +153,7 @@
    refreshModePrices();
    submitProduct(form,status,body=>{if(!custom)body.set('printName','');});
   });
-  root.querySelectorAll('[data-pe-leave]').forEach(a=>a.addEventListener('click',e=>{if(dirty&&!window.confirm('Discard unsaved product changes?'))e.preventDefault();else dirty=false;}));
+  root.querySelectorAll('[data-pe-leave]').forEach(a=>a.addEventListener('click',e=>{if((dirty||itemCode.value.trim()!==itemCode.defaultValue.trim())&&!window.confirm('Discard unsaved product changes?'))e.preventDefault();else dirty=false;}));
   root.querySelector('[data-pe-delete]')?.addEventListener('click',()=>{
     if(root.getAttribute('aria-busy')==='true')return;
     if(window.confirm('Remove this product from active inventory and billing? Current stock must be zero. Past bills and stock history are kept.')){
