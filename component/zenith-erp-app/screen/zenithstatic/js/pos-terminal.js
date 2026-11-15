@@ -575,7 +575,10 @@ window._posOffline = (function () {
     function cacheCatalog() {
         if (localEditing) return Promise.resolve(0);
         if (catalogRefresh) return catalogRefresh;
+        var request = new AbortController();
+        var deadline = setTimeout(function () { request.abort(); }, 12000);
         catalogRefresh = fetch('Terminal/exportPosCatalog', {
+            signal:request.signal,
             method:'POST', headers:{ 'Content-Type':'application/json' },
             body:JSON.stringify({ terminalId:tCtx().terminalId }), credentials:'same-origin',
         }).then(function (response) {
@@ -598,7 +601,7 @@ window._posOffline = (function () {
                 var data = new URLSearchParams(new FormData(form));
                 data.set('action', 'refresh');
                 return fetch('Terminal/ajaxCart', {
-                    method:'POST', body:data, credentials:'same-origin',
+                    method:'POST', body:data, credentials:'same-origin', signal:request.signal,
                 }).then(function (response) {
                     if (!response.ok) return null;
                     return response.json();
@@ -608,7 +611,10 @@ window._posOffline = (function () {
                         result && result.success && result.transactionId === id) remember(result);
                 }).catch(function () {}).then(function () { return config.products.length; });
             });
-        }).catch(function () { return 0; }).finally(function () { catalogRefresh = null; });
+        }).catch(function () { return 0; }).finally(function () {
+            clearTimeout(deadline);
+            catalogRefresh = null;
+        });
         return catalogRefresh;
     }
     function ensureDb() {
@@ -1039,11 +1045,10 @@ window._posOffline = (function () {
             rateInput.select();
         }
     }
-    function search(term) {
-        var terms = String(term || '')
-            .toLowerCase()
-            .trim()
-            .split(/\s+/);
+    function search(term, respectWordBoundary) {
+        var raw = String(term || '').toLowerCase();
+        var terms = raw.trim().split(/\s+/);
+        if (respectWordBoundary && terms.length === 1 && /\s$/.test(raw)) terms[0] += ' ';
         if (!terms[0]) return [];
         var found = [];
         for (var i = 0; i < catalogIndex.length && found.length < 50; i++) {
@@ -1797,9 +1802,10 @@ window._posOffline = (function () {
         render: render,
         remember: remember,
         cacheCatalog: cacheCatalog,
-        searchSuggestions: function (term) {
-            var mode = draft && draft.mode;
-            return search(term).map(function (product) {
+        searchSuggestions: function (term, mode) {
+            var onlinePreview = !!mode;
+            mode = mode || (draft && draft.mode);
+            return search(term, onlinePreview).map(function (product) {
                 var rate = (product.prices || {})[mode];
                 var price = rate ? rate.price : product.price;
                 return { productId: product.productId, productName: product.name, mrpAmount: price || 0,
@@ -4924,9 +4930,10 @@ window.posToggleFullscreen = function() {
         }
         window._posRefreshBrowserToken = function() { return refreshBrowserToken(TX); };
 
-        function fetchCatalog(params, signal) {
+        function fetchCatalog(params, request = new AbortController()) {
             var data = Object.assign({sessionId:SI, salesModeId:SM, moquiSessionToken:TK}, params);
-            return fetch('Terminal/productGrid', {method:'POST', credentials:'same-origin', signal:signal,
+            var deadline = setTimeout(function() { request.abort(); }, 5000);
+            return fetch('Terminal/productGrid', {method:'POST', credentials:'same-origin', signal:request.signal,
                 headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams(data)})
                 .then(function(r) { if (!r.ok) throw new Error('Product refresh failed'); return r.json(); })
                 .then(function(data) {
@@ -4951,7 +4958,7 @@ window.posToggleFullscreen = function() {
                     if(data.hasMore){var more=doc.createElement('button');more.type='button';more.className='pos-load-more';more.dataset.nextOffset=data.nextOffset;more.textContent='Load more products';more.style.cssText='grid-column:1/-1;padding:12px;border:1px solid #A78BFA;border-radius:8px;background:#fff;color:#6D28D9;font-weight:700;cursor:pointer';grid.appendChild(more);}
                     if(!data.products.length){var empty=doc.createElement('div');empty.style.cssText='grid-column:1/-1;text-align:center;padding:60px 20px;color:#999';empty.textContent='No products found';grid.appendChild(empty);}
                     doc.body.appendChild(grid); return doc;
-                });
+                }).finally(function() { clearTimeout(deadline); });
         }
 
         function swapGrid(doc) {
@@ -5111,7 +5118,11 @@ window.posToggleFullscreen = function() {
                     more.remove();
                     while (next.firstChild) grid.appendChild(next.firstChild);
                 })
-                .catch(function() { if (more.isConnected) more.disabled = false; })
+                .catch(function() {
+                    if (!more.isConnected) return;
+                    more.disabled = false;
+                    showToast('Could not load more products. Try again.', '#c62828');
+                })
                 .finally(function() { loadingMore = false; });
         };
         document.addEventListener('click', window.__posLoadMoreHandler, true);
@@ -5143,11 +5154,9 @@ window.posToggleFullscreen = function() {
             var grid = document.querySelector('.pos-product-grid');
             if (grid) {
                 if (cachedGrid) grid.innerHTML = cachedGrid;
-                grid.style.opacity = cachedGrid ? '1' : '0.4';
-                grid.style.pointerEvents = cachedGrid ? '' : 'none';
                 grid.setAttribute('aria-busy', 'true');
             }
-            return fetchCatalog(params, catalogAbort.signal).then(function(doc) {
+            return fetchCatalog(params, catalogAbort).then(function(doc) {
                 if (version !== catalogVersion) return;
                 var next = doc.querySelector('.pos-product-grid');
                 if (!next) throw new Error('Product grid unavailable');
@@ -5155,7 +5164,7 @@ window.posToggleFullscreen = function() {
                 swapGrid(doc);
                 lastCatalogCategory = CATID;
             }).catch(function(error) {
-                if (version !== catalogVersion || error.name === 'AbortError') return;
+                if (version !== catalogVersion) return;
                 CATID = lastCatalogCategory;
                 var root = document.getElementById('pos-terminal-root');
                 if (root) root.dataset.checkoutCategory = CATID || '';
@@ -5884,6 +5893,10 @@ window.posToggleFullscreen = function() {
                 renderResults(offline.searchSuggestions(text), text, version);
                 return;
             }
+            var form = document.getElementById('cartInlineAddForm');
+            if (!form) return;
+            var local = offline ? offline.searchSuggestions(text, form.elements.salesModeId.value) : [];
+            if (local.length) renderResults(local, text, version);
             var grid = document.querySelector('.pos-product-grid');
             if (event.detail?.catalogRefresh) gridSearchActive = true;
             else if (window._gridSearch && grid && grid.getClientRects().length) {
@@ -5892,20 +5905,25 @@ window.posToggleFullscreen = function() {
                 }, 450);
             }
             dt = setTimeout(function() {
-                var form = document.getElementById('cartInlineAddForm');
                 var lookup = new URLSearchParams({term:text,
                     salesModeId:form.elements.salesModeId.value, moquiSessionToken:form.elements.moquiSessionToken.value});
-                searchAbort = new AbortController();
+                var request = searchAbort = new AbortController();
+                var deadline = setTimeout(function() { request.abort(); }, 5000);
                 fetch('Terminal/lookupProducts', {
-                    signal:searchAbort.signal, method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+                    signal:request.signal, method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
                     body:lookup, credentials:'same-origin'
                 }).then(function(r) {
                     if (!r.ok) throw new Error('Product search unavailable');
                     return r.json();
                 }).then(function(rows) {
-                    if (!Array.isArray(rows) || version !== searchVersion) return;
+                    if (!Array.isArray(rows) || version !== searchVersion || aidx >= 0) return;
                     renderResults(rows, text, version);
-                }).catch(function() {});
+                }).catch(function() {
+                    if (!local.length && version === searchVersion && si.value === text) {
+                        dd.textContent = 'Could not load product results. Try searching again.';
+                        dd.style.display = 'block';
+                    }
+                }).finally(function() { clearTimeout(deadline); });
             }, 100);
         });
         si.addEventListener('keydown', function(e) {

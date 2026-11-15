@@ -282,3 +282,14 @@ body.zq-nav #AuditFilter.q-form > .row:first-of-type { grid-template-columns: mi
     #credit-from,
     #credit-to { flex: 1 1 100%; min-width: 0; width: auto; }
 }
+
+/* Keep the printer form independent of the app shell's shared form grid. */
+#pm-overlay { width:min(100% - 24px, 640px); max-height:calc(100% - 24px); padding:0; border:0; border-radius:12px; background:#fff; color:#111827; box-shadow:0 20px 40px rgba(17,24,39,.25); overflow:auto; }
+#pm-overlay::backdrop { background:rgba(17,24,39,.45); }
+#pm-overlay form { display:block!important; margin:0!important; padding:0!important; }
+#pm-overlay .pm-network[hidden] { display:none!important; }
+@media (max-width:560px) {
+    #pm-overlay .pm-fields > div { flex-wrap:wrap; gap:6px!important; }
+    #pm-overlay .pm-fields > div > label { width:auto!important; }
+    #pm-overlay .pm-fields > div > :is(input,select) { flex:0 0 100%!important; }
+}

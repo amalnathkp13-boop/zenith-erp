@@ -57,6 +57,7 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  if(process.env.POS_QA_FOCUS==='checkout-recovery'){await require('./verify-checkout-recovery.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='kot-compact'){await require('./verify-kot-compact.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='checkout-reference'){await require('./verify-checkout-reference.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
+ if(process.env.POS_QA_FOCUS==='printer-billing-resilience'){await require('./verify-printer-billing-resilience.cjs')({a,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='offline-workspace'){await require('./verify-offline-workspace.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='receipt-designs'){await require('./verify-receipt-designs.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='hold-print'){await require('./verify-hold-print.cjs')({a,base,check,q,invoke,post});await browser.close();browser=null;return;}
@@ -412,6 +413,7 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  const cashier=await account('pos.cashier.qa');let cr=await cashier.c.request.get(base+'/apps/zenith/pos/Terminal');check('cashier reaches terminal',cr.status()===200);cr=await cashier.c.request.get(base+'/apps/zenith/Inventory/FindProduct');check('cashier reaches authorized inventory',cr.status()===200);cr=await cashier.c.request.get(base+'/apps/zenith/Accounting/AcctgDashboard');check('cashier cannot access accounting',cr.status()===403||cr.url().includes('/pos/Terminal'),{status:cr.status(),url:cr.url()});await cashier.c.close();
  // Opening another session retires this operator's abandoned unpaid carts by design.
  // Finish the online cart/hold/close assertions before the offline scenario opens its own session.
+ await require('./verify-printer-billing-resilience.cjs')({a,base,check,q,invoke,post,out});
  await require('./verify-offline-workspace.cjs')({a,foreign,base,check,q,invoke,post,out});
  }
  if(process.env.POS_QA_UI_ONLY!=='true'){
