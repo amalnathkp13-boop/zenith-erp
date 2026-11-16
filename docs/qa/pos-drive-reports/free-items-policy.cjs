@@ -137,12 +137,12 @@ module.exports=async function({manager,cashier,foreign,session,id,free,credit,ca
  const warmedData=await (await warmed).json();check('Offline free-item fixture caches its own empty draft',warmedData.success&&warmedData.transactionId===offlineCart&&warmedData.items.length===0);
  await offlinePage.waitForFunction(()=>window._posOffline?.lookup('POS_QA_A_FREE'));
  await manager.c.setOffline(true);
- await offlinePage.locator('.pos-offline-payments').waitFor();
+ await offlinePage.locator('#pos-offline-banner').waitFor();
  const queued=await offlinePage.evaluate(async()=>{window._posOffline.add('POS_QA_A_FREE');return(await window._posOffline.getQueue()).length;});
- await offlinePage.locator('.ofl-price').fill('0');
- check('Offline zero-price fixture uses the visible rate field',await offlinePage.locator('.ofl-price').inputValue()==='0');
+ await offlinePage.locator('.aj-p').fill('0');
+ check('Offline zero-price fixture uses the visible rate field',await offlinePage.locator('.aj-p').inputValue()==='0');
  await offlinePage.keyboard.press('F2');
- const offlineBlocked={items:await offlinePage.locator('.ofl-qi').count(),queued:(await offlinePage.evaluate(()=>window._posOffline.getQueue())).length,frames:await offlinePage.locator('#pos-offline-frame').count()};
+ const offlineBlocked={items:await offlinePage.locator('.aj-qi').count(),queued:(await offlinePage.evaluate(()=>window._posOffline.getQueue())).length,frames:await offlinePage.locator('#pos-offline-frame').count()};
  check('Offline zero-price item stays in cart without a queued bill',offlineBlocked.items===1&&offlineBlocked.queued===queued&&offlineBlocked.frames===0,offlineBlocked);
  await manager.c.setOffline(false);
  await offlinePage.close();
