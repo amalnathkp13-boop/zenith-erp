@@ -3720,10 +3720,7 @@ window.posToggleFullscreen = function() {
             lastTouchSentAt = Date.now();
             fetch('Terminal/touchSession', {method:'POST', credentials:'same-origin',
                 headers:{'Content-Type':'application/x-www-form-urlencoded'},
-                signal:AbortSignal.timeout(4000),
-                body:new URLSearchParams({sessionId:SI, moquiSessionToken:TK})}).catch(function(error) {
-                    if (window._posOffline) window._posOffline.transportFailure(error);
-                });
+                body:new URLSearchParams({sessionId:SI, moquiSessionToken:TK})}).catch(function(){});
         }
         function maintainBillingScreen() {
             if (!af.isConnected) return;
