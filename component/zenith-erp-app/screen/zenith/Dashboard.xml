@@ -96,33 +96,38 @@
             def bySession = { query -> homeShopId ? query.condition('sessionId','in',homeShopSessions ?: ['__NONE__']) : query }
             homeInvoiceScope = { query -> homeShopId ? query.condition('facilityId',homeShopId) : query }
             def finalized = ['InvoiceFinalized','InvoicePmtRecvd']
-            homeSales = _read('Sales', { homeInvoiceScope(ec.entity.find('mantle.account.invoice.Invoice').condition('fromPartyId',activeOrgId)
-                .condition('invoiceTypeEnumId','InvoiceSales').condition('statusId','in',finalized)).disableAuthz().list() })
+            homeExcludedInvoiceStatuses = ['InvoiceCancelled','InvoiceWriteOff']
+            homeFinalizedInvoiceStatuses = finalized
             homePurchases = _read('Vendor bills', { ec.entity.find('mantle.account.invoice.Invoice').condition('toPartyId',activeOrgId)
                 .condition('invoiceTypeEnumId','InvoicePurchase').condition('statusId',EC.NOT_IN,['InvoiceInProcess','InvoiceCancelled','InvoicePmtSent','InvoicePmtRecvd','InvoiceWriteOff']).disableAuthz().list() })
             homePos = _read('POS balances', { bySession(ec.entity.find('zenith.erp.pos.PosTransaction').condition('organizationPartyId',activeOrgId)
                 .condition('statusId','PtCompleted')).disableAuthz().list() })
             homeInRange = { date -> date != null && (dayStart == null || (!date.before(dayStart) && date.before(dayEndExcl))) }
-            // POS and KOT sales count from completion while their Sales Invoice is syncing.
-            def finalizedInvoiceIds = homeSales*.invoiceId as Set
-            def pendingSales = homePos.findAll { it.transactionType != 'Return' && !finalizedInvoiceIds.contains(it.linkedInvoiceId) }
-            def missingLinks = pendingSales*.linkedInvoiceId.findAll { it }.unique()
+            // A till bill and its accounting mirror are one sale. Till bills use the completed
+            // date, counter's shop and final payable amount throughout the dashboard.
+            homeTillInvoiceIds = _read('POS balances', {
+                ec.entity.find('zenith.erp.pos.PosTransaction').condition('organizationPartyId',activeOrgId)
+                    .condition('linkedInvoiceId',EC.IS_NOT_NULL,null).selectField('linkedInvoiceId').distinct(true).disableAuthz().list()*.linkedInvoiceId
+            }) as Set
+            homeSales = _read('Sales', { homeInvoiceScope(ec.entity.find('mantle.account.invoice.Invoice').condition('fromPartyId',activeOrgId)
+                .condition('invoiceTypeEnumId','InvoiceSales').condition('statusId','in',finalized)).disableAuthz().list() })
+                .findAll { !homeTillInvoiceIds.contains(it.invoiceId) }
+            def tillSales = homePos.findAll { it.transactionType != 'Return' }
             def excludedLinks = _read('Sales', {
-                missingLinks.collate(500).collectMany { ids ->
+                tillSales*.linkedInvoiceId.findAll { it }.unique().collate(500).collectMany { ids ->
                     ec.entity.find('mantle.account.invoice.Invoice').condition('fromPartyId',activeOrgId)
                         .condition('invoiceTypeEnumId','InvoiceSales').condition('invoiceId','in',ids)
-                        .selectFields(['invoiceId','statusId','facilityId']).disableAuthz().list().findAll {
-                            it.statusId in ['InvoiceCancelled','InvoiceWriteOff'] ||
-                                (homeShopId && it.facilityId && it.facilityId != homeShopId && it.statusId in finalized)
-                        }*.invoiceId
+                        .condition('statusId','in',homeExcludedInvoiceStatuses).selectField('invoiceId').disableAuthz().list()*.invoiceId
                 }
             }) as Set
-            homeSaleEntries = homeSales.collect { [date:it.invoiceDate, amount:homeInvoiceTotal(it)] }
-            pendingSales.findAll { !excludedLinks.contains(it.linkedInvoiceId) }.each {
-                homeSaleEntries.add([date:it.completedDate ?: it.entryDate, amount:homeBd(it.grandTotal != null ? it.grandTotal : it.payableAmount)])
+            homeSaleEntries = homeSales.collect { [date:it.invoiceDate, amount:homeInvoiceTotal(it), invoice:it] }
+            tillSales.findAll { !excludedLinks.contains(it.linkedInvoiceId) }.each {
+                def total = it.payableAmount == null ? homeBd(it.grandTotal)+homeBd(it.roundOff) : homeBd(it.payableAmount)
+                homeSaleEntries.add([date:it.completedDate ?: it.entryDate, amount:total, till:it])
             }
             homeSalesBetween = { a, b -> homeSaleEntries.findAll { it.date != null && !it.date.before(a) && it.date.before(b) }.sum(BigDecimal.ZERO) { it.amount } }
-            def _finSales = homeSaleEntries.findAll { homeInRange(it.date) }.sum(BigDecimal.ZERO) { it.amount }
+            homePeriodSales = homeSaleEntries.findAll { homeInRange(it.date) }
+            def _finSales = homePeriodSales.sum(BigDecimal.ZERO) { it.amount }
             def _trendEnd = dayEndExcl ?: _n
             def _trendStart = dayStart ?: _w1
             def _trendPrior = new java.sql.Timestamp(_trendStart.time - (_trendEnd.time-_trendStart.time))
@@ -130,8 +135,7 @@
             def _salesTrend = _sPrev > 0 ? [dir:(_sCur>=_sPrev?'up':'down'), pct:(int)Math.round(Math.abs((_sCur-_sPrev).doubleValue()*100/_sPrev.doubleValue()))] : null
             homePendingInvoices = homePurchases.findAll { homeUnpaid(it)>0 }
             def _finPay = homePendingInvoices.sum { homeUnpaid(it) } ?: BigDecimal.ZERO
-            def _linked = homePos.collect { it.linkedInvoiceId }.findAll { it } as Set
-            homeCreditInvoices = homeSales.findAll { !_linked.contains(it.invoiceId) && homeUnpaid(it)>0 }
+            homeCreditInvoices = homeSales.findAll { homeUnpaid(it)>0 }
             def _finRecv = (homePos.findAll { it.isCredit=='Y' }.sum { (homeBd(it.payableAmount)-homeBd(it.paidAmount)).max(BigDecimal.ZERO) } ?: BigDecimal.ZERO)
             _finRecv += homeCreditInvoices.sum { homeUnpaid(it) } ?: BigDecimal.ZERO
             def _cashPos = homePos.findAll { homeInRange(it.completedDate ?: it.entryDate) }
@@ -172,9 +176,7 @@
 
                 // POS invoices are mirrors of the POS ledger. Sales payments qualify through an
                 // invoice allocation or explicit invoice reference and their own posted date.
-                def linked = ec.entity.find('zenith.erp.pos.PosTransaction').condition('organizationPartyId',activeOrgId)
-                    .condition('linkedInvoiceId',EC.IS_NOT_NULL,null).selectField('linkedInvoiceId').disableAuthz().list()*.linkedInvoiceId as Set
-                def invoiceIds = homeSales.findAll { !linked.contains(it.invoiceId) && (!it.currencyUomId || it.currencyUomId == 'INR') }*.invoiceId as Set
+                def invoiceIds = homeSales.findAll { !it.currencyUomId || it.currencyUomId == 'INR' }*.invoiceId as Set
                 if (!invoiceIds) return total
                 def instruments = ['PiAch','PiCreditCard','PiDebitCard','PiWireTransfer','PiAmazonPay','PiPayPalAccount']
                 def posted = ['PmntDelivered','PmntConfirmed']
@@ -212,9 +214,9 @@
                 }
                 return total
             })
-            def invoiceCount = homeSales.findAll { homeInRange(it.invoiceDate) }*.invoiceId.unique().size()
+            def invoiceCount = homePeriodSales.size()
             kpiCards = [
-                [lab:'Total Sales', disp:homeMoney(_finSales), icon:'trending_up', tintBg:'#FEF3C7', tintFg:'#D97706', url:'/apps/zenith/sales/FindInvoice', trend:_salesTrend, extra:'', footer:[label:'Total invoices', icon:'receipt_long', value:(activeOrgId && !homeDataErrors.contains('Sales') ? invoiceCount.toString() : 'Unavailable')], source:['Sales','POS balances']],
+                [lab:'Total Sales', disp:homeMoney(_finSales), icon:'trending_up', tintBg:'#FEF3C7', tintFg:'#D97706', url:'/apps/zenith/sales/FindInvoice', trend:_salesTrend, extra:'', footer:[label:'Total invoices', icon:'receipt_long', value:(activeOrgId && !homeDataErrors.contains('Sales') && !homeDataErrors.contains('POS balances') ? invoiceCount.toString() : 'Unavailable'), hint:'Finalized sales invoices and completed POS and KOT bills, counted once per sale.'], source:['Sales','POS balances']],
                 [lab:'Total Payables', disp:homeMoney(_finPay), icon:'receipt_long', tintBg:'#FEE2E2', tintFg:'#DC2626', url:'/apps/zenith/Purchase/PurchaseInvoices', trend:null, extra:(homeShopId ? 'Organization-wide vendor balances' : 'Outstanding vendor balances'), source:['Vendor bills']],
                 [lab:'Total Receivables', disp:homeMoney(_finRecv), icon:'account_balance_wallet', tintBg:'#DBEAFE', tintFg:'#3B82F6', url:'/apps/zenith/pos/CreditBills', trend:null, extra:'POS credits and sales invoices', source:['Sales','POS balances']],
                 [lab:'Cash in Hand', disp:homeMoney(_finCash), icon:'payments', tintBg:'#D1FAE5', tintFg:'#059669', url:'/apps/zenith/pos/CashEntry', trend:null, extra:'Net cash sales and cash entries', footer:[label:'Online payment', icon:'credit_card', value:(_online instanceof BigDecimal && !homeDataErrors.contains('Sales') ? '₹'+homeMoney(_online) : 'Unavailable'), hint:'Net recorded digital receipts for the selected period. Separate from physical cash.'], source:['POS balances','Cash receipts','Cash entries']]
@@ -465,7 +467,6 @@
             def _org2 = activeOrgId
             def _now2 = ec.user.nowTimestamp
             def _fmt = { v -> '₹' + homeMoney(v) }
-            def _finSale = ['InvoiceFinalized','InvoicePmtRecvd']
 
             // date windows: the selected range if set, else last 30 days; prior = equal-length preceding window
             def _wStart; def _wEnd
@@ -527,25 +528,43 @@
             aiInsights = aiInsights.sort { (_sr[it.sev] != null) ? _sr[it.sev] : 9 }
             aiInsightsHas = !aiInsights.isEmpty()
 
-            // ===== B. Recent Transactions (latest sales invoices) =====
+            // ===== B. Recent Transactions =====
             recentTx = []
             try { if (_org2) {
                 def _sdfR = new java.text.SimpleDateFormat("dd MMM, HH:mm")
-                homeInvoiceScope(ec.entity.find("mantle.account.invoice.Invoice").condition("fromPartyId",_org2).condition("invoiceTypeEnumId","InvoiceSales"))
-                    .condition("statusId",_EC.NOT_EQUAL,"InvoiceCancelled").condition("invoiceDate",_EC.GREATER_THAN_EQUAL_TO,dayStart ?: new java.sql.Timestamp(0L)).condition("invoiceDate",_EC.LESS_THAN,dayEndExcl ?: java.sql.Timestamp.valueOf('9999-12-31 00:00:00')).orderBy("-invoiceDate").orderBy("-lastUpdatedStamp").limit(4).list().each { inv ->
-                    def _pos = homePos.find { it.linkedInvoiceId == inv.invoiceId }
-                    def _u = _pos ? (homeBd(_pos.payableAmount)-homeBd(_pos.paidAmount)).max(BigDecimal.ZERO) : homeUnpaid(inv)
-                    def _ap = _pos ? homeBd(_pos.paidAmount) : homeBd(inv.appliedPaymentsTotal); def _dd = inv.dueDate
+                _sdfR.setTimeZone(ec.user.timeZone)
+                // Keep standalone invoice drafts in Recent Transactions as before.
+                def otherInvoices = homeInvoiceScope(ec.entity.find('mantle.account.invoice.Invoice')
+                    .condition([fromPartyId:_org2,invoiceTypeEnumId:'InvoiceSales']))
+                    .condition('statusId',_EC.NOT_IN,homeFinalizedInvoiceStatuses + homeExcludedInvoiceStatuses)
+                    .condition('invoiceDate','greater-equals',dayStart ?: new java.sql.Timestamp(0L))
+                    .condition('invoiceDate','less',dayEndExcl ?: java.sql.Timestamp.valueOf('9999-12-31 00:00:00'))
+                    .list().findAll { !homeTillInvoiceIds.contains(it.invoiceId) }
+                def entries = homePeriodSales + otherInvoices.collect { [date:it.invoiceDate, amount:homeInvoiceTotal(it), invoice:it] }
+                def recent = entries.sort { a,b -> (b.date <=> a.date) ?:
+                    ((b.till ?: b.invoice).lastUpdatedStamp <=> (a.till ?: a.invoice).lastUpdatedStamp) }.take(4)
+                def tillIds = recent.findAll { it.till }*.till*.transactionId
+                def kotIds = tillIds ? ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('organizationPartyId',_org2)
+                    .condition('transactionId','in',tillIds).condition('orderReceiptJson',_EC.IS_NOT_NULL,null)
+                    .selectField('transactionId').distinct(true).list()*.transactionId as Set : [] as Set
+                def today = _now2.toInstant().atZone(ec.user.timeZone.toZoneId()).toLocalDate()
+                recent.each { entry ->
+                    def till = entry.till; def inv = entry.invoice
+                    def _ap = homeBd(till ? till.paidAmount : inv.appliedPaymentsTotal)
+                    def _u = till ? (entry.amount-_ap).max(BigDecimal.ZERO) : homeUnpaid(inv)
+                    def due = till?.creditDueDate?.toLocalDate() ?: inv?.dueDate?.toLocalDateTime()?.toLocalDate()
                     def _st; def _cl
-                    if (inv.statusId == 'InvoiceInProcess') { _st='Draft'; _cl='dr' }
-                    else if (_dd != null && _dd.toLocalDateTime().toLocalDate().isBefore(_now2.toLocalDateTime().toLocalDate()) && _u > 0) { _st='Overdue'; _cl='od' }
+                    if (inv?.statusId == 'InvoiceInProcess') { _st='Draft'; _cl='dr' }
+                    else if (due && due.isBefore(today) && _u > 0) { _st='Overdue'; _cl='od' }
                     else if (_u > 0 && _ap > 0) { _st='Partial'; _cl='pt' }
                     else if (_u > 0) { _st='Pending'; _cl='pd' }
-                    else if (inv.statusId == 'InvoicePmtRecvd' || (_ap > 0 && _u == 0)) { _st='Paid'; _cl='ok' }
+                    else if (inv?.statusId == 'InvoicePmtRecvd' || (_ap > 0 && _u == 0)) { _st='Paid'; _cl='ok' }
                     else { _st='Completed'; _cl='ok' }
-                    recentTx.add([no:(inv.customInvoiceNumber ?: (inv.gstInvoiceNumber ?: inv.invoiceId)),
-                        amt:_fmt(homeInvoiceTotal(inv)), st:_st, cl:_cl,
-                        date:(inv.invoiceDate != null ? _sdfR.format(inv.invoiceDate) : ''), url:('/apps/zenith/sales/EditInvoice?invoiceId='+java.net.URLEncoder.encode(inv.invoiceId,'UTF-8'))])
+                    def no = till ? (till.transactionNumber ?: till.transactionId) : (inv.customInvoiceNumber ?: inv.gstInvoiceNumber ?: inv.invoiceId)
+                    def link = till ? '/apps/zenith/' + (kotIds.contains(till.transactionId) ? 'kot' : 'pos') +
+                        '/EditTransaction?transactionId=' + java.net.URLEncoder.encode(till.transactionId,'UTF-8') :
+                        '/apps/zenith/sales/EditInvoice?invoiceId=' + java.net.URLEncoder.encode(inv.invoiceId,'UTF-8')
+                    recentTx.add([no:no, amt:_fmt(entry.amount), st:_st, cl:_cl, date:_sdfR.format(entry.date), url:link])
                 }
             } } catch (Exception e) { recentTx = []; homeDataErrors.add('Recent transactions'); ec.logger.warn('Home dashboard: recent transactions unavailable',e) }
             recentTxHas = !recentTx.isEmpty()
@@ -564,7 +583,7 @@
                 try { if (_org2) { def _eq = ec.entity.find("zenith.erp.pos.PosExpense").condition("organizationPartyId",_org2).condition("expenseDate",_EC.GREATER_THAN_EQUAL_TO,_wStart).condition("expenseDate",_EC.LESS_THAN,_wEnd); if (homeShopId) _eq.condition("sessionId","in",homeShopSessions ?: ["__NONE__"]); def _el = _eq.list(); if (!_el.isEmpty()) { _hasExp = true; _el.each { _out += _bd(it.amount) } } } } catch (Exception e) {}
                 if (_hasExp && _salesCur > 0) { double _r=(_out.doubleValue()*100.0/_salesCur.doubleValue()); def _s=_r<5?95:(_r<15?80:(_r<30?60:35)); def _stt=_r<5?'Strong':(_r<15?'Healthy':(_r<30?'Watch':'Tight')); _addm('Cash Flow', true, _s, _stt, _clr(_s)) }
                 def _c90 = java.util.Calendar.getInstance(); _c90.setTime(_now2); _c90.add(java.util.Calendar.DAY_OF_MONTH,-90); def _ts90 = new java.sql.Timestamp(_c90.getTimeInMillis())
-                def _ref90 = _salesIn(_ts90, _wEnd)
+                def _ref90 = homeSalesBetween(_ts90, _wEnd)
                 if (_recv <= 0 && _ref90 <= 0) _addm('Receivables', false, 0, 'No activity yet', 'na')
                 else if (_recv <= 0) _addm('Receivables', true, 100, 'Nothing outstanding', 'good')
                 else { double _r=_ref90>0?(_recv.doubleValue()/_ref90.doubleValue()):1.0; def _s=_r<0.02?95:(_r<0.10?80:(_r<0.25?55:30)); def _stt=_r<0.02?'Healthy':(_r<0.10?'OK':(_r<0.25?'Needs Attention':'High')); _addm('Receivables', true, _s, _stt, _clr(_s)) }
@@ -580,20 +599,36 @@
                 bhBg = bhScore>=85?'#DCFCE7':(bhScore>=70?'#ECFCCB':(bhScore>=55?'#FEF3C7':'#FEE2E2'))
             } catch (Exception e) { bhMetrics=[]; bhScore=0; bhLabel='No data'; bhColor='#9e9e9e'; bhHasData=false }
 
-            // ===== D. Top Selling Products (from the aggregated view-entity) =====
+            // ===== D. Top Selling Products =====
             topSell = []
             try { if (_org2) {
                 def _pm = [:]
-                homeInvoiceScope(ec.entity.find("zenith.erp.sales.InvoiceSalesProductByDateAgg").condition("fromPartyId",_org2)).condition("invoiceTypeEnumId","InvoiceSales").condition("statusId","in",_finSale).condition("invoiceDate",_EC.GREATER_THAN_EQUAL_TO,dayStart ?: new java.sql.Timestamp(0L)).condition("invoiceDate",_EC.LESS_THAN,dayEndExcl ?: java.sql.Timestamp.valueOf('9999-12-31 00:00:00')).disableAuthz().list().each {
-                    def k = it.productId; if (k == null) return
-                    if (!_pm.containsKey(k)) _pm[k] = [qty:BigDecimal.ZERO, val:BigDecimal.ZERO]
-                    _pm[k].qty += _bd(it.totalQuantity); _pm[k].val += _bd(it.totalValue) }
+                def addLine = { id, quantity, value, name ->
+                    if (!id) return
+                    def product = _pm.computeIfAbsent(id) { [qty:0G, val:0G, name:name] }
+                    product.qty += quantity
+                    product.val += value
+                    if (!product.name) product.name = name
+                }
+                homePeriodSales.findAll { it.invoice }*.invoice*.invoiceId.collate(500).each { ids ->
+                    ec.entity.find('mantle.account.invoice.InvoiceItem').condition('invoiceId','in',ids)
+                        .selectFields(['productId','quantity','amount']).disableAuthz().list().each { line ->
+                            addLine(line.productId,homeBd(line.quantity),homeBd(line.quantity)*homeBd(line.amount),null)
+                        }
+                }
+                homePeriodSales.findAll { it.till }*.till*.transactionId.collate(500).each { ids ->
+                    ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId','in',ids)
+                        .selectFields(['productId','productName','quantity','lineTotal','unitPrice']).disableAuthz().list().each { line ->
+                            def quantity = homeBd(line.quantity)
+                            addLine(line.productId,quantity,line.lineTotal == null ? quantity*homeBd(line.unitPrice) : line.lineTotal,line.productName)
+                        }
+                }
                 def _sorted = _pm.entrySet().sort { -(it.value.val.doubleValue()) }.take(5)
                 def _max = _sorted ? _sorted[0].value.val : BigDecimal.ZERO
                 _sorted.eachWithIndex { e, i ->
                     def _p = ec.entity.find("mantle.product.Product").condition("productId", e.key).selectField("productName").disableAuthz().one()
                     def _pct = (_max > 0) ? (int)Math.round(e.value.val.doubleValue()*100.0/_max.doubleValue()) : 0
-                    topSell.add([rank:(i+1), name:(_p?.productName ?: e.key.toString()), val:_fmt(e.value.val), units:zinr.inr(ec.l10n.format(e.value.qty,'#,##0')), pct:_pct]) }
+                    topSell.add([rank:(i+1), name:(_p?.productName ?: e.value.name ?: e.key.toString()), val:_fmt(e.value.val), units:zinr.inr(ec.l10n.format(e.value.qty,'#,##0')), pct:_pct]) }
             } } catch (Exception e) { topSell = []; homeDataErrors.add('Top products'); ec.logger.warn('Home dashboard: top products unavailable',e) }
             topSellHas = !topSell.isEmpty()
 

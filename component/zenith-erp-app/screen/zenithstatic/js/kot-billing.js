@@ -59,22 +59,32 @@
     for(const option of modesMenu.querySelectorAll('[data-kb-sales-mode]'))option.setAttribute('aria-pressed',String(option.dataset.kbSalesMode===salesModeId));
   }
 
-  function postRequest(action,data,signal) {
-    return fetch(base+'/'+action,{method:'POST',credentials:'same-origin',signal,
-      body:new URLSearchParams({...data,sessionId:cfg.session,moquiSessionToken:token()})});
+  async function postRequest(action,data,controller=new AbortController(),timeout=15000) {
+    const deadline=setTimeout(()=>controller.abort(new DOMException('The network request timed out. Try again.', 'TimeoutError')),timeout);
+    try {
+      const response=await fetch(base+'/'+action,{method:'POST',credentials:'same-origin',signal:controller.signal,
+        body:new URLSearchParams({...data,sessionId:cfg.session,moquiSessionToken:token()})});
+      const result=await response.json().catch(error=>{
+        if(controller.signal.aborted)throw controller.signal.reason||error;
+        return null;
+      });
+      return {response,result};
+    } finally {
+      clearTimeout(deadline);
+    }
   }
   const transportError=error=>error.name==='TypeError'||error.name==='TimeoutError';
   function probeConnection() {
-    if(!transportProbe)transportProbe=postRequest('touchSession',{},AbortSignal.timeout?.(2500))
+    if(!transportProbe)transportProbe=postRequest('touchSession',{},undefined,2500)
       .then(()=>true,()=>false).finally(()=>{transportProbe=null;});
     return transportProbe;
   }
-  async function request(action,data,signal) {
+  async function request(action,data,timeout,controller) {
     if(sessionLost)throw Error(signInMessage);
     const changesOrder=deviceDrafts&&(action==='checkoutKot'||action==='createKot'||(action==='saveDraft'&&!data.offlineDraftId));
-    let response;
+    let response, result;
     try {
-      response=await postRequest(action,data,signal??AbortSignal.timeout?.(15000));
+      ({response,result}=await postRequest(action,data,controller,timeout));
     } catch (error) {
       if(changesOrder)unconfirmedOrder=true;
       if(catalogue&&transportError(error)&&!transportDown) {
@@ -96,7 +106,6 @@
       }
       throw Error(signInMessage);
     }
-    const result=await response.json().catch(()=>null);
     // Moqui sends explicit validation rejections as HTTP 500 JSON.
     if(changesOrder&&result?.success!==false&&(response.status>=500||!result)) {
       unconfirmedOrder=true;
@@ -242,9 +251,11 @@
     catalogue=KotOffline.indexWorkspace(value);
     root.dataset.offlineReady='true';
   }
-  function warmWorkspace() {
-    if(!device||search.disabled||warming||disconnected()||sessionLost)return;
-    warming=request('exportOfflineWorkspace',{},AbortSignal.timeout?.(15000)).then(async ({workspace:value})=>{
+  let workspaceRefreshAt=0;
+  function warmWorkspace(force=false) {
+    if(!device||search.disabled||warming||disconnected()||sessionLost||(!force&&Date.now()<workspaceRefreshAt))return;
+    workspaceRefreshAt=Date.now()+60000;
+    warming=request('exportOfflineWorkspace',{},15000).then(async ({workspace:value})=>{
       if(!root.isConnected)return;
       await device.saveCatalog(value);
       applyWorkspace(value);
@@ -353,7 +364,7 @@
     if(!refreshBillSummary||disconnected()||sessionLost||!root.isConnected)return;
     const version=billVersion;
     try {
-      const {summary}=await request('billSummary',{},AbortSignal.timeout?.(8000));
+      const {summary}=await request('billSummary',{},8000);
       if(!root.isConnected||version!==billVersion)return;
       $('header-last-bill').textContent=summary.latestIssuedBillNo;
       $('header-today-bills').textContent=summary.todayBillCount;
@@ -376,7 +387,7 @@
           if(disconnected()||sessionLost||!root.isConnected)break;
           const {sale}=row;
           try {
-            const result=await request('syncOfflineSale',{saleJson:JSON.stringify(sale)},AbortSignal.timeout?.(20000));
+            const result=await request('syncOfflineSale',{saleJson:JSON.stringify(sale)},20000);
             const checkout=sale.operation!=='send';
             if(result.offlineId!==sale.offlineId||!result.kotId||(checkout&&!result.billNumber))
               throw Error('The server did not confirm this KOT order.');
@@ -407,8 +418,8 @@
             const id=draft.id, identity={offlineDraftId:id,offlineOrganizationId:cfg.org,offlineTerminalId:cfg.terminal,offlineUserId:cfg.user};
             syncingHeld.add(id);
             try {
-              const saved=await request('saveDraft',{...draft.order,...identity,wantJson:'Y'},AbortSignal.timeout?.(12000));
-              const receipt=await request('confirmOfflineDraft',identity,AbortSignal.timeout?.(12000));
+              const saved=await request('saveDraft',{...draft.order,...identity,wantJson:'Y'},12000);
+              const receipt=await request('confirmOfflineDraft',identity,12000);
               if(saved.offlineDraftId!==id||receipt.offlineDraftId!==id||!receipt.kotId||receipt.kotId!==saved.kotId)
                 throw Error('The server did not confirm the held order.');
               deviceDrafts.remove(id);
@@ -459,7 +470,7 @@
     custAbort?.abort();custAbort=new AbortController();
     $('customer-error').textContent='';
     try{
-      const data=disconnected()?{customers:offlineCustomers(term)}:await request('searchKotCustomers',{term},custAbort.signal);
+      const data=disconnected()?{customers:offlineCustomers(term)}:await request('searchKotCustomers',{term},5000,custAbort);
       if(version!==custVersion||!root.isConnected)return;
       renderCustomerResults(data.customers||[]);
     }catch(e){if(e.name!=='AbortError'&&version===custVersion)$('customer-error').textContent=e.message;}
@@ -547,8 +558,11 @@
     if(pendingTender&&pendingTender===document.activeElement)openPayment(pendingTender.dataset.kbPayment);
     pendingTender=null;
   }
+  let quoteAbort;
   function quote(refreshRows=true) {
-    clearTimeout(quoteTimer); const version=++quoteVersion;
+    clearTimeout(quoteTimer);
+    quoteAbort?.abort();
+    const version=++quoteVersion;
     pendingTender=null;offlineQuote=null;
     for(const item of cart.values())item.tax=null;
     total=null;controls();if(refreshRows)rows();
@@ -583,7 +597,8 @@
     }
     quoteTimer=setTimeout(async()=>{
       try {
-        const {receipt}=await request('cartReceipt',orderData());
+        quoteAbort=new AbortController();
+        const {receipt}=await request('cartReceipt',orderData(),5000,quoteAbort);
         if(version===quoteVersion&&root.isConnected)applyQuote(receipt);
       }catch(error){
         if(version===quoteVersion&&root.isConnected)showFailure(error);
@@ -712,7 +727,9 @@
     searchAbort?.abort();
     pendingLookup=null;
   }
+  let searchFromCache=false;
   function resetMatches() {
+    searchFromCache=false;
     results=[];selected=0;pickedMatch=false;offset=0;hasMore=false;exactId=null;ambiguous=false;
   }
   async function lookup(append=false) {
@@ -738,8 +755,14 @@
       if(!catalogue)throw Error('Reconnect briefly to load this counter’s offline catalogue.');
       return KotOffline.lookup(catalogue,value,salesModeId,category,pageOffset);
     };
-    const fetchMatches=offline?Promise.resolve().then(cachedMatches)
-      :request('searchMenu',{term:value,salesModeId,offset:pageOffset,categoryId:category,stockSessionId:cfg.stockSession||''},searchAbort.signal)
+    if(searching)warmWorkspace();
+    const preview=catalogue&&searching?cachedMatches():null;
+    // Resolve exact codes online to preserve the server's barcode rules. Cached
+    // name matches can render immediately and the checkout still obtains a live quote.
+    const usePreview=append ? searchFromCache : preview?.products.length && !preview.exactId && !preview.ambiguous;
+    const fetchMatches=offline ? Promise.resolve().then(cachedMatches)
+      : usePreview ? Promise.resolve(preview)
+      : request('searchMenu',{term:value,salesModeId,offset:pageOffset,categoryId:category,stockSessionId:cfg.stockSession||''},5000,searchAbort)
         .catch(error=>{if(catalogue&&transportError(error))return cachedMatches();throw error;});
     const promise=fetchMatches
       .then(data=>{
@@ -748,6 +771,7 @@
           const previousIds=new Set(results.map(product=>product.id));
           results=results.concat(data.products.filter(product=>!previousIds.has(product.id)));
         }else{
+          searchFromCache=data===preview;
           results=data.products;
           exactId=data.exactId;ambiguous=data.ambiguous;
           if(exactId)selected=Math.max(0,results.findIndex(product=>product.id===exactId));
@@ -1000,7 +1024,7 @@
       searchAbort=controller;
       try{
         const {customers}=disconnected()?{customers:offlineCustomers(term)}:
-          await request('searchKotCustomers',{term},controller.signal);
+          await request('searchKotCustomers',{term},5000,controller);
         if(controller.signal.aborted||!name.isConnected||!$('payment').open)return;
         for(const match of customers){
           const button=document.createElement('button');
@@ -1188,7 +1212,7 @@
         printLabel=queued?'KOT':'KOT '+record.number;
         if(kind==='kot')printWindow=null;
         if(!queued) {
-          acknowledgement=request('ackKotPrint',{kotId},AbortSignal.timeout?.(8000))
+          acknowledgement=request('ackKotPrint',{kotId},8000)
             .then(()=>'',()=>' The kitchen print count could not be updated.');
         }
       }
@@ -1903,7 +1927,8 @@
   async function lookupBillProducts(term,version){
     const host=$('history-products'), state=editingBill;
     try{
-      const data=await request('searchMenu',{term,salesModeId:state.salesModeId});
+      const cached=catalogue&&KotOffline.lookup(catalogue,term,state.salesModeId,'',0);
+      const data=cached?.products.length ? cached : await request('searchMenu',{term,salesModeId:state.salesModeId},5000);
       if(version!==editSearchVersion||editingBill!==state||!historyDetail.open)return;
       host.replaceChildren();
       const matches=data.products||[];
@@ -2447,13 +2472,13 @@
     if($('print-choice')?.open)updatePrintOptions();
     if(history.open)showHistory();
     if(heldOpen()){renderLocalHistory();renderHeldBills();loadHistory();}
-    if(!disconnected()){warmWorkspace();syncDeviceOrders();saveTaxPreference();}
+    if(!disconnected()){warmWorkspace(true);syncDeviceOrders();saveTaxPreference();}
     else if(transportDown&&navigator.onLine&&!sessionLost) {
       clearTimeout(reconnectTimer);
       reconnectTimer=setTimeout(async()=>{
         if(!root.isConnected||!navigator.onLine||sessionLost)return;
         try {
-          await request('touchSession',{},AbortSignal.timeout?.(7000));
+          await request('touchSession',{},7000);
           transportDown=false;
         }catch{}
         connectionChanged();

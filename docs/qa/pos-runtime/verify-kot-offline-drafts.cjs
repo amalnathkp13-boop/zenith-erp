@@ -710,10 +710,12 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     const healthRoute = '**/kot/KotBilling/touchSession';
     const blockRequest = route => route.abort('failed');
     const clearCart = () => page.locator('#kb-clear').click();
+    // Product-name search uses the warm catalogue. An exact code still checks
+    // the server online, so it can expose both isolated and ERP-wide failures.
     await page.route(catalogRoute,blockRequest);
     const isolatedSearch = page.waitForRequest(request => request.url().endsWith('/searchMenu'));
     const healthy = page.waitForResponse(response => response.url().endsWith('/touchSession') && response.ok());
-    await addItem('disposable pos b p5','POS_QA_B_P5');
+    await addItem('POS_QA_B_P5','POS_QA_B_P5');
     await isolatedSearch;
     await healthy;
     check('An isolated KOT search failure falls back to cached products without taking billing offline',
@@ -721,7 +723,7 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
     await clearCart();
 
     await page.route(healthRoute,blockRequest);
-    await addItem('disposable pos b p18',product);
+    await addItem(product,product);
     await page.locator('#kb-online.is-offline').waitFor();
     check('Cached search continues during an ERP connection failure with the network adapter still online',
       await page.evaluate(() => navigator.onLine) && await page.locator('#kb-online.is-offline').isVisible());

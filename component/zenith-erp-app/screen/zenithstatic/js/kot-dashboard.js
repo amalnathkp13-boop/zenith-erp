@@ -10,10 +10,18 @@
   let chart;
   let points = [];
   let positions = [];
-  let peak = 0;
   let selected = 0;
 
-  function selectPoint(index, announce = false) {
+  function hidePoint() {
+    for (const id of ['kd-guide', 'kd-dot', 'kd-tip']) byId(id).hidden = true;
+  }
+
+  function announcePoint() {
+    const point = points[selected];
+    byId('kd-chart-status').textContent = `${point.label}, sales ${currency.format(point.sales)}, ${point.orders} orders`;
+  }
+
+  function showPoint(index) {
     const point = points[index];
     const box = byId('kd-chartbox');
     if (!point || !box) return;
@@ -33,7 +41,6 @@
     tip.classList.toggle('kd-tip--below', y / height * box.clientHeight < tip.offsetHeight + 5);
     const halfWidth = tip.offsetWidth / 2;
     box.style.setProperty('--kd-tip-inset', `${halfWidth + 2}px`);
-    if (announce) byId('kd-chart-status').textContent = `${point.label}, sales ${sales}, ${point.orders} orders`;
   }
 
   function draw(range, button) {
@@ -89,14 +96,9 @@
       ...(range === 'today' ? [[width, positions.at(-1)[1]]] : [])].map(([x, y]) =>
       `<i class="kd-point" style="left:${x / width * 100}%;top:${y / height * 100}%"></i>`).join('')}`;
 
-    if (points.some(point => point.orders > 0)) {
-      peak = points.reduce((best, point, index) => point.orders && (best === -1 || point.sales > points[best].sales) ? index : best, -1);
-      selectPoint(peak);
-    } else {
-      peak = 0;
-      selected = 0;
-      for (const id of ['kd-dot', 'kd-guide', 'kd-tip']) byId(id).hidden = true;
-    }
+    const peak = points.reduce((best, point, index) => point.orders && (best === -1 || point.sales > points[best].sales) ? index : best, -1);
+    selected = Math.max(0, peak);
+    hidePoint();
   }
 
   window.kdRange = draw;
@@ -119,17 +121,19 @@
 
     const box = byId('kd-chartbox');
     box.addEventListener('pointermove', event => {
+      if (event.pointerType === 'touch') return;
       const rect = box.getBoundingClientRect();
       const x = (event.clientX - rect.left) / rect.width * width;
       const spacing = positions[1][0];
-      selectPoint(Math.max(0, Math.min(points.length - 1, Math.round(x / spacing))));
+      showPoint(Math.max(0, Math.min(points.length - 1, Math.round(x / spacing))));
     });
-    box.addEventListener('pointerleave', event => { if (event.pointerType !== 'touch' && points[peak].orders) selectPoint(peak); });
-    box.addEventListener('focus', () => selectPoint(selected, true));
+    box.addEventListener('pointerleave', hidePoint);
+    box.addEventListener('focus', announcePoint);
     box.addEventListener('keydown', event => {
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
       event.preventDefault();
-      selectPoint(Math.max(0, Math.min(points.length - 1, selected + (event.key === 'ArrowLeft' ? -1 : 1))), true);
+      selected = Math.max(0, Math.min(points.length - 1, selected + (event.key === 'ArrowLeft' ? -1 : 1)));
+      announcePoint();
     });
   };
   window.kdInit();
