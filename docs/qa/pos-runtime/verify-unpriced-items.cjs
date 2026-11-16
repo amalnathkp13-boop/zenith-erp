@@ -116,19 +116,20 @@ module.exports = async function ({a, base, check, q, invoke, post}) {
   await a.c.setOffline(true);
   await pos.locator('#pos-offline-banner').waitFor();
   check('POS starts the offline test with an empty editable cart',
-   await pos.locator('.ofl-price').count() === 0 && !await pos.evaluate(() => window._posOffline.paused()));
+   await pos.locator('.aj-p').count() === 0 && !await pos.evaluate(() => window._posOffline.paused()));
   await search.fill(name);
   await match.waitFor();
   check('Offline POS search shows the missing rate as ₹0', (await match.innerText()).includes('₹0'));
   await match.click();
-  const offlineRate = pos.locator('.ofl-price');
+  const offlineRate = pos.locator('.aj-p');
   await offlineRate.waitFor();
   await pos.locator('#pos-pay-cash').click();
   check('Cached POS product is editable at ₹0 and cannot be checked out at that rate',
-   Number(await offlineRate.inputValue()) === 0 && await pos.locator('#oflReceived').count() === 0);
+   Number(await offlineRate.inputValue()) === 0 && await pos.locator('#pos-cash-received').count() === 0);
   await offlineRate.fill('40');
   await pos.locator('#pos-pay-cash').click();
-  await pos.locator('#oflConfirmPayment').click();
+  await pos.locator('.pos-cash-quick').first().click();
+  await pos.locator('.pos-cash-confirm').click();
   await pos.getByRole('dialog',{name:'Sale saved on this device'}).waitFor();
   const queued = (await pos.evaluate(() => window._posOffline.getQueue()))[0];
   check('POS queues the offline sale with the cashier rate',
