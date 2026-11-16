@@ -31,8 +31,16 @@
                         categoryIds:(memberships[product.productId] ?: [])*.productCategoryId,
                         prices:standardMode ? [ (''):[price:product.listPrice,disc:0,blocked:false] ] : product.prices]
                 }
-                def template=ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#TerminalPrintTemplate')
-                    .parameter('terminalId',terminal.terminalId).call().template
+                def template=ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#KotPrintTemplate')
+                    .parameters([printUse:'kotBill',terminalId:terminal.terminalId]).call().template ?:
+                    ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#TerminalPrintTemplate')
+                        .parameter('terminalId',terminal.terminalId).call().template
+                if (template?.printUse=='kotBill') {
+                    workspace.receiptOptions=['normal','credit'].collectEntries { design ->
+                        [(design):ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#ReceiptOptions')
+                            .parameters([storedJson:template.receiptOptionsJson,receiptDesign:design]).call().options]
+                    }
+                }
                 if (template) {
                     workspace.store += [name:template.companyName ?: workspace.store.name,
                         address:[template.addressLine1,template.addressLine2,template.city,template.state,template.pincode].findAll { it }.join(', '),

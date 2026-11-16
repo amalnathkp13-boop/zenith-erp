@@ -19,6 +19,13 @@
 .pe-create :is(input:not([type=hidden]),select,textarea){box-sizing:border-box;display:block;width:100%;max-width:100%;min-height:40px;margin-top:4px;padding:7px 9px;border:1px solid #d7ddea;border-radius:6px;background:#fff;color:#20243d;font:inherit}
 .pe-create .select2-container{width:100%!important;max-width:100%}
 body:has(.modal.in #CreateProductForm,.q-dialog #CreateProductForm) #ai-copilot-container{visibility:hidden}
+#productEditor .pe-barcode-dialog{width:min(510px,calc(100vw - 2rem));max-height:calc(100dvh - 2rem);margin:auto;color:var(--z-text-main,#172554);overflow:auto}
+#productEditor .pe-barcode-dialog::backdrop{background:rgba(15,23,42,.55)}
+#productEditor .pe-barcode-dialog h2{margin:0 0 .65rem}
+#productEditor .pe-barcode-dialog p{font-size:14px;overflow-wrap:anywhere;margin-bottom:1rem}
+#productEditor .pe-barcode-dialog .pe-actions{justify-content:flex-end;flex-wrap:wrap}
+#productEditor [data-pe-barcode-review]:disabled{color:#64748b;cursor:default}
+@media(max-width:760px){#productEditor .pe-savebar{flex-wrap:wrap}#productEditor .pe-savebar [data-pe-status]:not(:empty){display:block;flex-basis:100%;overflow-wrap:anywhere}}
 .pe-create input[readonly],#productEditor input[readonly]{background:#f5f6fb;color:#52607c}
 .pe-create small,.pe-mode-prices small{display:block;color:#52607c;font-size:12px;font-weight:400;margin-top:4px}
 .pe-create footer{position:static;background:transparent;color:inherit;display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:12px;padding:0;text-align:start}

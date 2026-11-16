@@ -69,7 +69,41 @@ module.exports = async function({a, base, check, q, invoke, post, out, terminalI
    await page.waitForTimeout(200);
    check(method+' tax '+taxOn+' late checkout screen cannot erase the next cart',await page.locator('#cartInlineAddForm [name=transactionId]').inputValue()===newId&&(await page.locator('.pos-cart tbody').innerText()).includes('Disposable POS A P5'));
    await page.screenshot({path:path.join(out,`next-bill-${method}-${taxOn}.png`)});
-   reply=actionReply('clearCart'); await page.evaluate(()=>window._posClearCart()); await reply;
+   // A slow cart refresh can overlap a cashier clearing a new bill.
+   if (method === 'Card' && taxOn === 'N') {
+    let releaseRefresh;
+    const heldRefresh = new Promise(resolve => { releaseRefresh = resolve; });
+    const isCartRefresh = request => request.method() === 'POST' && request.url().includes('/ajaxCart') &&
+     new URLSearchParams(request.postData() || '').get('action') === 'refresh';
+    const delayRefresh = async route => {
+     if (isCartRefresh(route.request())) await heldRefresh;
+     await route.continue();
+    };
+    await page.route('**/Terminal/ajaxCart', delayRefresh);
+    try {
+     await Promise.all([
+      page.waitForRequest(isCartRefresh),
+      page.evaluate(() => { window.qaCartRefresh = window._posRefreshCart(); })
+     ]);
+     await page.evaluate(() => {
+      window.qaCartClear = window._posClearCart().then(() => null, error => error.message);
+     });
+    } finally {
+     releaseRefresh();
+    }
+    const clearError = await page.evaluate(async () => {
+     await window.qaCartRefresh;
+     return window.qaCartClear;
+    });
+    await page.unroute('**/Terminal/ajaxCart', delayRefresh);
+    check('Clear Cart succeeds during a background cart refresh', !clearError, {clearError});
+   } else {
+    await page.evaluate(() => window._posClearCart());
+   }
+   check(method+' tax '+taxOn+' clears only the new draft',
+    !(await page.locator('.pos-cart .aj-qi').count()) &&
+    q(`SELECT product_id FROM pos_transaction_item WHERE transaction_id='${newId}'`).length === 0 &&
+    q(`SELECT product_id FROM pos_transaction_item WHERE transaction_id='${oldId}'`).length === 1);
   }
   check('next-bill checkout produces no JavaScript exceptions',errors.length===0,{errors});
   await invoke('close',{sessionId:session.sessionId,closingCash:'0'});

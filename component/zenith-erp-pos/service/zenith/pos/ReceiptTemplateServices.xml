@@ -6,14 +6,15 @@
         <out-parameters><parameter name="options" type="Map"/><parameter name="optionsJson"/></out-parameters>
         <actions><script><![CDATA[
             def defaults = [openingPreset:'none',openingMessage:'',greetingAlign:'center',greetingBold:true,greetingSize:'medium',
-                showBillNumber:true,billNumberLabel:'Bill No:',showDate:true,showCustomerRow:true,showCustomerName:true,
+                showBillNumber:true,billNumberLabel:'Bill No:',showInvoiceNumber:true,invoiceNumberLabel:'Invoice No:',
+                showDailyBillNumber:false,dailyBillNumberLabel:'Bill No:',showDate:true,showCustomerRow:true,showCustomerName:true,
                 showCustomerPhone:true,customerLabel:'Customer:',showCashier:true,cashierLabel:'Cashier:',density:'standard',
                 headerAlign:'center',footerAlign:'center',companyBold:true,headerBold:false,footerBold:true]
             ['greeting','company','header','information','products','amounts','tax','payments','footer'].each { defaults[it+'Tone']='black' }
             def choices = [openingPreset:['none','Ayya Thunai','Praise the Lord','Mashallah','Bismillah','custom'],
                 greetingAlign:['left','center','right'],headerAlign:['left','center','right'],footerAlign:['left','center','right'],
                 greetingSize:['small','medium','large'],density:['light','standard','dark']]
-            def textLimits = [openingMessage:300,billNumberLabel:60,customerLabel:60,cashierLabel:60]
+            def textLimits = [openingMessage:300,billNumberLabel:60,invoiceNumberLabel:60,dailyBillNumberLabel:60,customerLabel:60,cashierLabel:60]
             def valid = { key,value ->
                 if (!defaults.containsKey(key)) return false
                 if (defaults[key] instanceof Boolean) return value instanceof Boolean
@@ -35,8 +36,12 @@
                     designs[receiptDesign]=(designs[receiptDesign] ?: [:]) + changes
                 } catch(Exception ignored) { ec.message.addError('Invalid receipt options. Check labels, message lengths and appearance choices.');return }
             }
-            options=defaults + (designs.normal ?: [:]) + (receiptDesign=='normal' ? [:] : (designs[receiptDesign] ?: [:]))
-            ['billNumberLabel','customerLabel','cashierLabel'].each { key -> if(!options[key]?.trim()) options[key]=defaults[key] }
+            def savedOptions=(designs.normal ?: [:]) + (receiptDesign=='normal' ? [:] : (designs[receiptDesign] ?: [:]))
+            options=defaults + savedOptions
+            if (!savedOptions.containsKey('showInvoiceNumber')) options.showInvoiceNumber=options.showBillNumber
+            if (!savedOptions.containsKey('invoiceNumberLabel') && options.billNumberLabel?.trim() && options.billNumberLabel!='Bill No:')
+                options.invoiceNumberLabel=options.billNumberLabel
+            ['billNumberLabel','invoiceNumberLabel','dailyBillNumberLabel','customerLabel','cashierLabel'].each { key -> if(!options[key]?.trim()) options[key]=defaults[key] }
             optionsJson=groovy.json.JsonOutput.toJson(designs)
         ]]></script></actions>
     </service>

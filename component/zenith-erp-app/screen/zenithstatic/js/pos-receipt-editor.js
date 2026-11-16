@@ -22,6 +22,7 @@
             items:[{name:'Sample cup',qty:2,uom:'Nos',rate:25,total:50,tax:2.5},{name:'Sample rice',qty:1.25,uom:'kg',rate:40,total:50,tax:5}],
             summary:{subtotal:100,tax:7.5,taxBreakdown:[{name:'CGST',amount:3.75},{name:'SGST',amount:3.75}],total:108,roundOff:0.5},payments:[{method:'Cash',amount:110}],change:2,
             isCredit:root.dataset.design==='credit',edited:root.dataset.design==='revised',outstanding:root.dataset.design==='credit'?108:0};
+        if(root.dataset.output==='kotBill')data.bill.numbers={invoice:'POS/FY 2026-27/00042',daily:3};
         ['headerText','footerText','termsText','receiptWidth','showLogo','logoUrl','showTaxBreakdown','showDiscount','showCustomerInfo','showPaymentDetails','showItemTax'].forEach(function(key){data.store[key]=template[key];});
         if(data.isCredit){data.payments=[];data.change=0;}
         frame.style.width=template.receiptWidth==='58mm'?'230px':'320px';
