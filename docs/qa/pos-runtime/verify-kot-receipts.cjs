@@ -31,6 +31,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await form.getByRole('button',{name:'Create Template',exact:true}).click();
    await page.getByRole('link',{name:new RegExp(templateName)}).click();
    const editor=page.locator('#receiptEditorForm');
+   await page.locator('#receiptEditor[data-bound="1"]').waitFor();
    await editor.locator('[name=headerText]').fill(header);
    await editor.locator('[name=isDefault]').selectOption('Y');
    if(printUse==='kotBill'){

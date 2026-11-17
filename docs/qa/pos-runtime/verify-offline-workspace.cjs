@@ -21,32 +21,53 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
   const snapshot=await (await snapshotResponse).json();
   check('POS has an authoritative snapshot of the fixture cart before disconnecting',
    snapshot.success&&snapshot.transactionId===draft.transactionId&&!!snapshot.sourceRevision);
+  const footer=()=>page.locator('.pos-reference-payments button').evaluateAll(buttons=>buttons.map(b=>[b.id,b.textContent.replace(/\s+/g,' ').trim()]));
+  const header=()=>page.locator('.nb-actionbar > a,.nb-actionbar > button,.nb-actionbar > details > summary,.nb-actionbar > form > button,#pos-held-wrap > button,#pos-held-wrap summary')
+   .evaluateAll(buttons=>buttons.map(b=>b.textContent.replace(/\s+/g,' ').trim()));
+  const onlineFooter=await footer(),onlineHeader=await header();
   await context.setOffline(true);
   await page.locator('#pos-offline-banner').waitFor();
   check('network loss preserves an editable existing bill instead of pausing it',!await page.evaluate(()=>window._posOffline.paused()));
-  check('the original item survives network loss',await page.locator('.ofl-price').count()===1);
-  await page.locator('.ofl-price').fill('80');
-  await page.locator('.ofl-qi').fill('2');
+  check('the original item survives network loss',await page.locator('.aj-p').count()===1);
+  await page.locator('.aj-p').fill('80');
+  await page.locator('.aj-qi').fill('2');
   check('offline price and quantity edits immediately update tax-inclusive payable',await page.locator('#posSumTotal').textContent()==='₹189.00');
   check('offline side summary matches the editable bill',await page.locator('#pos-side-subtotal').textContent()==='₹160.00'&&await page.locator('#pos-side-tax').textContent()==='₹28.80');
-  const controls=await page.locator('.pos-offline-payments button').evaluateAll(buttons=>buttons.map(b=>({text:b.textContent,rect:{top:b.getBoundingClientRect().top,bottom:b.getBoundingClientRect().bottom,left:b.getBoundingClientRect().left,right:b.getBoundingClientRect().right},width:innerWidth,height:innerHeight})));
-  check('all offline payment and utility controls fit the desktop viewport',controls.length===9&&controls.every(b=>b.rect.top>=0&&b.rect.bottom<=b.height+2&&b.rect.left>=0&&b.rect.right<=b.width+2),controls);
+  const controls=await page.locator('.pos-reference-payments button').evaluateAll(buttons=>buttons.map(b=>({text:b.textContent,rect:{top:b.getBoundingClientRect().top,bottom:b.getBoundingClientRect().bottom,left:b.getBoundingClientRect().left,right:b.getBoundingClientRect().right},width:innerWidth,height:innerHeight})));
+  check('all offline payment and utility controls fit the desktop viewport',controls.length===7&&controls.every(b=>b.rect.top>=0&&b.rect.bottom<=b.height+2&&b.rect.left>=0&&b.rect.right<=b.width+2),controls);
+  check('normal offline billing keeps the exact online header and payment actions',
+   JSON.stringify(await footer())===JSON.stringify(onlineFooter)&&JSON.stringify(await header())===JSON.stringify(onlineHeader)&&
+   await page.locator('.nb-side').isVisible()&&!await page.locator('.pos-left-panel').isVisible());
   check('offline Discount stays in the header as a single enabled action',await page.locator('.nb-actionbar #pos-discount:enabled').count()===1&&await page.locator('#pos-discount').count()===1);
   await page.screenshot({path:path.join(out,'offline-editable-bill.png'),fullPage:true});
-  await page.locator('.ofl-price').press('Enter');
-  check('Enter in rate focuses quantity offline',await page.locator('.ofl-qi').evaluate(el=>el===document.activeElement));
-  await page.locator('.ofl-qi').press('Enter');
+  await page.locator('.nb-modes__btn').click();await page.locator('[data-pos-layout="advanced"]').click();
+  check('advanced offline billing keeps the exact header and payment actions and the product grid',
+   JSON.stringify(await footer())===JSON.stringify(onlineFooter)&&JSON.stringify(await header())===JSON.stringify(onlineHeader)&&
+   await page.locator('.pos-left-panel').isVisible()&&!await page.locator('.nb-side').isVisible()&&await page.locator('.aj-qi').inputValue()==='2');
+  await page.locator('.pos-cat-strip a[href*="catId=POS_QA_A_CAT"]').click();
+  await page.locator('.pos-product-grid input[name=catId][value=POS_QA_A_CAT]').first().waitFor({state:'attached'});
+  check('advanced categories can display their cached product cards offline',
+   await page.locator('.pos-product-grid button').filter({hasText:'Disposable POS A P18'}).isVisible());
+  await page.screenshot({path:path.join(out,'pos-offline-advanced.png'),fullPage:true});
+  await page.locator('.nb-modes__btn').click();await page.locator('[data-pos-layout="normal"]').click();
+  await page.locator('.aj-p').press('Enter');
+  check('Enter in rate focuses quantity offline',await page.locator('.aj-qi').evaluate(el=>el===document.activeElement));
+  await page.locator('.aj-qi').press('Enter');
   check('Enter in quantity returns to product search offline',await page.locator('#cartInlineSearch').evaluate(el=>el===document.activeElement));
   await page.locator('#cartInlineSearch').press('Space');
   check('Space in empty product search focuses Cash',await page.locator('#pos-pay-cash').evaluate(el=>el===document.activeElement));
   await page.keyboard.press('Enter');
-  check('Enter opens cash with the exact bill amount',await page.locator('#oflReceived').inputValue()==='189.00');
-  await page.keyboard.press('Enter');
+  check('Enter opens the standard cash card offline',await page.locator('#pos-cash-received').inputValue()===''&&await page.locator('.pos-cash-confirm').isDisabled());
+  await page.locator('#pos-cash-received').fill('200');
+  check('the standard cash card shows live change offline',await page.getByText('Change: ₹11',{exact:true}).isVisible());
+  await page.screenshot({path:path.join(out,'pos-offline-cash.png')});
+  await page.locator('.pos-cash-quick[data-amt="189"]').click();
+  await page.locator('#pos-cash-received').press('Enter');
   await page.getByRole('dialog',{name:'Sale saved on this device'}).waitFor();
   const first=await page.evaluate(async()=>{const q=await window._posOffline.getQueue();return q[0];});
   check('offline sale is durable with source identity and revision',first?.sourceTransactionId===draft.transactionId&&!!first.sourceRevision&&first.items[0].price===80&&first.items[0].qty===2&&first.taxAmount===28.8,first);
   await page.locator('#posOfflineDialog .ofl-cancel').click();
-  check('completed offline sale clears the live cart',await page.locator('.ofl-price').count()===0);
+  check('completed offline sale clears the live cart',await page.locator('.aj-p').count()===0);
   await context.setOffline(false);
   await page.waitForFunction(async()=>!(await window._posOffline.getQueue()).length);
   let saved;
@@ -58,8 +79,8 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
   check('offline replay requires the session CSRF token',[401,403].includes(noToken.status()),{status:noToken.status()});
   await context.setOffline(true);
   await page.evaluate(()=>window._posOffline.add('POS_QA_A_P5'));
-  await page.locator('.ofl-mode').selectOption('WHOLESALE');
-  check('offline mode changes resolve the cached product price',Number(await page.locator('.ofl-price').inputValue())===90);
+  await page.locator('.aj-mode').selectOption('WHOLESALE');
+  check('offline mode changes resolve the cached product price',Number(await page.locator('.aj-p').inputValue())===90);
   await page.locator('.pos-header form[action*="toggleTax"] button').click();
   check('offline tax off preserves the selected selling price',await page.locator('#posSumTotal').textContent()==='₹90.00');
   await page.locator('#pos-split').click();
@@ -81,11 +102,11 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
   await page.evaluate(()=>window._posOffline.add('POS_QA_A_P18'));
   await page.locator('#pos-discount').click();await page.locator('#oflDiscount').fill('10');await page.locator('#posOfflineDialog button[type=submit]').click();
   check('offline bill discount updates payable with GST',await page.locator('#posSumTotal').textContent()==='₹106.00');
-  await page.keyboard.press('F7');await page.waitForFunction(()=>!document.querySelector('.ofl-price'));
-  await page.evaluate(()=>window._posOffline.add('POS_QA_A_P5'));await page.locator('.ofl-mode').selectOption('WHOLESALE');
-  await page.evaluate(()=>window._posOffline.clearDraft());await page.locator('#pos-offline-holds').click();await page.locator('[data-recall]').click();
-  check('offline held bill restores its original mode rate discount and GST',await page.locator('.ofl-mode').inputValue()==='RETAIL'&&await page.locator('.ofl-price').inputValue()==='100'&&await page.locator('#posSumTotal').textContent()==='₹106.00');
-  await page.locator('#pos-offline-customer').click();await page.locator('#oflName').fill('Synthetic Offline Customer');await page.locator('#oflPhone').fill('9876543678');await page.locator('#posOfflineDialog button[type=submit]').click();
+  await page.keyboard.press('F7');await page.waitForFunction(()=>!document.querySelector('.aj-p'));
+  await page.evaluate(()=>window._posOffline.add('POS_QA_A_P5'));await page.locator('.aj-mode').selectOption('WHOLESALE');
+  await page.evaluate(()=>window._posOffline.clearDraft());await page.locator('#pos-held-wrap :is(button,summary)').click();await page.locator('[data-recall]').click();
+  check('offline held bill restores its original mode rate discount and GST',await page.locator('.aj-mode').inputValue()==='RETAIL'&&await page.locator('.aj-p').inputValue()==='100'&&await page.locator('#posSumTotal').textContent()==='₹106.00');
+  await page.locator('#pos-customer-btn').click();await page.locator('#oflName').fill('Synthetic Offline Customer');await page.locator('#oflPhone').fill('9876543678');await page.locator('#posOfflineDialog button[type=submit]').click();
   await page.locator('#pos-credit').click();await page.locator('#oflConfirmPayment').click();await page.getByRole('dialog',{name:'Sale saved on this device'}).waitFor();
   const credit=(await page.evaluate(()=>window._posOffline.getQueue()))[0];
   check('offline credit retains customer and discounted tax',credit.paymentMethod==='Credit'&&credit.customer.name==='Synthetic Offline Customer'&&credit.total===106&&credit.taxAmount===16.2,credit);
@@ -96,6 +117,58 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
   await context.setOffline(false);await page.waitForFunction(async()=>!(await window._posOffline.getQueue()).length);
   let creditRow;for(let i=0;i<30;i++){creditRow=q("SELECT is_credit,paid_amount,payable_amount FROM pos_transaction WHERE customer_phone='9876543678' AND status_id='PtCompleted' ORDER BY completed_date DESC")[0];if(creditRow)break;await new Promise(r=>setTimeout(r,200));}
   check('offline credit sync creates the receivable without inventing payment',creditRow?.is_credit==='Y'&&Number(creditRow.paid_amount)===0&&Number(creditRow.payable_amount)===106,creditRow);
+  await page.waitForFunction(()=>!window._posOffline.active());
+  check('reconnection restores regular POS buttons after the completed offline bills sync',
+   await page.locator('.pos-reference-payments').count()===1&&await page.locator('#pos-connection-status').textContent()==='Online');
+  let outage=false, firstEdit=true;
+  await page.route('**/Terminal/**', route=>{
+   const action=new URLSearchParams(route.request().postData()||'').get('action');
+   if(firstEdit&&action==='addItem'){firstEdit=false;outage=true;}
+   return outage?route.abort('internetdisconnected'):route.continue();
+  });
+  await page.evaluate(()=>window._posAjax('POS_QA_A_P18',100,'Disposable POS A P18'));
+  await page.locator('#pos-connection-status').filter({hasText:'Offline'}).waitFor();
+  await page.locator('.aj-qi').waitFor();
+  check('an unreachable ERP hands the first product to the local cart while the browser still reports online',
+   await page.evaluate(()=>navigator.onLine)&&await page.locator('.aj-qi').inputValue()==='1'&&
+   !/could not be synchronized|Checking the saved cart/.test(await page.locator('body').innerText()));
+  await page.locator('.aj-q:has-text("+")').click();
+  await page.locator('#pos-pay-cash').click();await page.locator('.pos-cash-quick').first().click();await page.locator('.pos-cash-confirm').click();
+  await page.getByRole('dialog',{name:'Sale saved on this device'}).waitFor();
+  const queued=(await page.evaluate(()=>window._posOffline.getQueue()))[0];
+  check('a bill taken during an unreachable ERP is queued with the edited quantity',queued?.items.length===1&&queued.items[0].qty===2,queued);
+  await page.locator('#posOfflineDialog .ofl-cancel').click();
+  outage=false;
+  await page.locator('#pos-connection-status').filter({hasText:'Online'}).waitFor();
+  await page.waitForFunction(async()=>!window._posOffline.active()&&!(await window._posOffline.getQueue()).length);
+  const synced=q("SELECT t.status_id,t.payable_amount,t.paid_amount FROM pos_offline_transaction o JOIN pos_transaction t ON t.transaction_id=o.created_transaction_id WHERE t.session_id='"+session.sessionId+"' AND o.transaction_data_json LIKE '%"+queued.offlineId+"%'");
+  check('the connectivity probe syncs the queued bill exactly once without a browser online event',
+   synced.length===1&&synced[0].status_id==='PtCompleted'&&Number(synced[0].payable_amount)===queued.total&&Number(synced[0].paid_amount)===queued.total,synced);
+
+  outage=true;
+  await page.locator('#pos-connection-status').filter({hasText:'Offline'}).waitFor();
+  check('the POS switches to Offline before any cart operation when the browser still reports online',
+   await page.evaluate(()=>navigator.onLine)&&await page.locator('.aj-qi').count()===0);
+  await page.evaluate(()=>window._posAjax('POS_QA_A_P5',200,'Disposable POS A P5'));
+  await page.locator('#pos-pay-cash').click();await page.locator('.pos-cash-quick').first().click();await page.locator('.pos-cash-confirm').click();
+  await page.getByRole('dialog',{name:'Sale saved on this device'}).waitFor();
+  const idleSale=(await page.evaluate(()=>window._posOffline.getQueue()))[0];
+  await page.locator('#posOfflineDialog .ofl-cancel').click();
+  await page.locator('#pos-history-btn').click();
+  const history=page.getByRole('dialog',{name:'Bill history'});
+  await history.getByText(idleSale.offlineId,{exact:false}).waitFor();
+  check('the saved bill is visible in existing History while the connection badge is Offline',
+   await history.getByText('OFFLINE — PENDING SYNC',{exact:true}).isVisible()&&
+   await history.locator('[data-device-reprint]').isVisible()&&
+   await page.locator('#pos-offline-banner').textContent()==='Offline workspace · Pending: 1');
+  await page.screenshot({path:path.join(out,'pos-offline-pending-history.png')});
+  await history.locator('#hist-close').click();
+  outage=false;
+  await page.locator('#pos-connection-status').filter({hasText:'Online'}).waitFor();
+  await page.waitForFunction(async()=>!window._posOffline.active()&&!(await window._posOffline.getQueue()).length);
+  const idleSynced=q("SELECT count(*) AS n FROM pos_offline_transaction WHERE terminal_id='"+terminalId+"' AND transaction_data_json LIKE '%"+idleSale.offlineId+"%'");
+  check('the idle-disconnect test bill is removed from the device queue only after one server import',Number(idleSynced[0].n)===1,idleSynced);
+  await page.unroute('**/Terminal/**');
   const conflict=await invoke('cart',{sessionId:session.sessionId,reuseOpenCart:false});await invoke('add',{transactionId:conflict.transactionId,productId:'POS_QA_A_P18',quantity:'1',taxOn:'N'});
   const before=q("SELECT payable_amount,status_id FROM pos_transaction WHERE transaction_id='"+conflict.transactionId+"'")[0];
   const rejected=await invoke('offline',{terminalId,transactions:JSON.stringify([JSON.stringify({...first,offlineId:'CONFLICT-'+Date.now(),sourceTransactionId:conflict.transactionId,sourceRevision:'stale'})])});
