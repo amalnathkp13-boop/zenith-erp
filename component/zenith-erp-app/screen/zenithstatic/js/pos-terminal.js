@@ -5958,6 +5958,7 @@ window.posToggleFullscreen = function() {
             }
             else if (e.key === 'Escape') { resetSearch(); }
             for (var i = 0; i < items.length; i++) items[i].style.background = (i === aidx) ? '#e8f5e9' : '#fff';
+            if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && items[aidx]) items[aidx].scrollIntoView({block:'nearest'});
         });
         dd.addEventListener('click', function(e) {
             var item = e.target.closest('.cart-dd-item');

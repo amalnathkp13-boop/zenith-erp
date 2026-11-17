@@ -32,6 +32,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await page.getByRole('link',{name:new RegExp(templateName)}).click();
    await page.locator('#receiptEditor[data-bound="1"]').waitFor();
    const editor=page.locator('#receiptEditorForm');
+   await page.locator('#receiptEditor[data-bound="1"]').waitFor();
    await editor.locator('[name=headerText]').fill(header);
    await editor.locator('[name=isDefault]').selectOption('Y');
    if(printUse==='kotBill'){
