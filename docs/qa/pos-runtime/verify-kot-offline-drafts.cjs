@@ -416,11 +416,11 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
         window.kotOfflinePrints.length===previous,existingBrowserJobs));
     await page.locator('#kb-print-browser').click();
     await page.locator('#kb-print-choice').waitFor({state:'hidden'});
+    await printBanner.filter({hasText:'browser print requested'}).waitFor();
     check('Browser fallback prints only the remaining customer bill without charging again',
       await page.evaluate(({previous,number}) => window.kotOfflinePrints.length===previous+1 &&
         window.kotOfflinePrints.at(-1).includes(number) && window.kotQzJobs.length===3,
         {previous:existingBrowserJobs,number:officialNumber}) &&
-      (await printBanner.textContent()).includes('browser print requested') &&
       JSON.stringify(matchingOrders())===JSON.stringify(firstSave));
     await page.locator('#kb-history-detail-close').click();
     await page.locator('#kb-history-close').click();
