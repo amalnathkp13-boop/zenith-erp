@@ -5,7 +5,7 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
  const tabs = [
   ['KotDashboard', 'KOT Dashboard', '#kd-wrap'],
   ['KitchenDisplay', 'Kitchen Display', '.zk-display'],
-  ['KotBilling', 'KOT Billing', '#kot-terminal-entry'],
+  ['KotBilling', 'KOT Billing', '#kot-terminal-entry, #kb-wrap'],
   ['Tables', 'Tables', '#tm-wrap'],
   ['KotHistory', 'KOT History', '#zk-history-toolbar'],
   ['WaiterManagement', 'Waiters', '#wf-search']
@@ -27,6 +27,12 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
  ];
  const page = await a.c.newPage();
  const clerk = await browser.newContext({ viewport:{ width:1366, height:768 } });
+ const leaveActiveBilling = async () => {
+  if (!await page.locator('#kb-wrap').isVisible()) return;
+  await page.locator('#kb-wrap[data-ready=true]').waitFor();
+  await Promise.all([page.waitForURL('**/KotHistory'), page.locator('.kg-back').click()]);
+  await page.locator('#zk-history-toolbar').waitFor();
+ };
  const post = (actor, route, values) => actor.c.request.post(base+'/apps/zenith/'+route,{
   maxRedirects:0,form:{ moquiSessionToken:actor.t,...values }
  });
@@ -67,6 +73,10 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
     await page.locator(content).waitFor();
     check(shell+' opens '+name+' from KOT navigation',new URL(page.url()).pathname.endsWith('/kot/'+seg)&&await page.locator('#kitchen-tabs').count()===0);
     check(shell+' keeps its shell mounted on '+name,await page.evaluate(selector=>window.qaKotShell===document.querySelector(selector),shellSelector));
+    if (seg==='KotBilling') {
+     await leaveActiveBilling();
+     await page.evaluate(selector=>{window.qaKotShell=document.querySelector(selector);},shellSelector);
+    }
    }
    if(out) await page.screenshot({path:path.join(out,shell+'-standalone-kot.png')});
    for (const [seg,name] of tools) {
@@ -85,7 +95,8 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
      new URL(page.url()).pathname.includes('/kot/'+seg),{url:page.url(),status:response.status()});
    }
    await strip.getByRole('link',{name:'KOT Billing',exact:true}).click();
-   await page.locator('#kot-terminal-entry').waitFor();
+   await page.locator('#kot-terminal-entry, #kb-wrap').waitFor();
+   await leaveActiveBilling();
    await page.locator((shell==='apps'?'#z-sidebar':'#zq-sidebar')+' a[data-match="/pos"]').click();
    await page.waitForURL('**/'+shell+'/zenith/pos/Dashboard');
    await strip.locator('a[data-match="/pos/Dashboard"]').waitFor();

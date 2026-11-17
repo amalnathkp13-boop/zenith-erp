@@ -130,7 +130,7 @@ module.exports = async ({ a, foreign, base, check, q, out }) => {
   }
 
   try {
-    await page.goto(billing);
+    await page.goto(billing+'?chooseTerminal=Y');
     await enterCounter();
     await page.locator('#kb-wrap[data-offline-ready=true]').waitFor();
     const initialToday = Number(await page.locator('#kb-header-today-bills').textContent());

@@ -10,18 +10,14 @@
             def scope=ec.service.sync().name('zenith.pos.KotServices.get#BillingScope').parameter('terminalId',ec.context.terminalId).call()?.scope
             if(!scope?.allowed) return
             if(access.canWrite!=true) { ec.message.addError('KOT write access is required.'); return }
-            def counter=ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',ec.context.terminalId).forUpdate(true).one()
+            def counter=ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',ec.context.terminalId).one()
             def shop=ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call().activeShopId
             if(counter?.isActive!='Y' || !counter.facilityId || (shop && counter.facilityId!=shop)) { ec.message.addError('Choose an active terminal in this shop.'); return }
             if(ec.context.tableId) {
                 def selected=ec.service.sync().name('zenith.pos.KotServices.resolve#KotTable').parameter('tableId',ec.context.tableId).call()?.table
                 if(ec.message.hasError() || selected?.facilityId!=counter.facilityId) { ec.message.addError('Choose a terminal in the selected table’s shop.'); return }
             }
-            def existing=ec.entity.find('zenith.erp.pos.PosSession').condition('terminalId',counter.terminalId).condition('statusId','PsOpen').one()
-            if(existing) {
-                if(existing.operatorPartyId!=ec.user.userAccount?.partyId) { ec.message.addError('This terminal is in use by another cashier.'); return }
-                sessionId=existing.sessionId
-            } else sessionId=ec.service.sync().name('zenith.pos.PosServices.open#PosSession')
+            sessionId=ec.service.sync().name('zenith.pos.PosServices.open#PosSession')
                 .parameters([terminalId:counter.terminalId,openingCash:ec.context.openingCash ?: '0']).call()?.sessionId
         ]]></script></actions>
         <default-response url="." parameter-map="[sessionId:sessionId,tableId:tableId,loadDraft:loadDraft]"/>
@@ -80,11 +76,14 @@
 
     <transition name="touchSession" method="post" begin-transaction="true">
         <actions>
-            <service-call name="zenith.pos.KotServices.get#BillingSession" in-map="[sessionId:sessionId]" out-map="_billing"/>
+            <service-call name="zenith.pos.KotServices.get#BillingSession" in-map="[sessionId:sessionId,includeHandoffNotice:true]" out-map="_billing"/>
+            <if condition="_billing.sessionClosed">
+                <script>ec.web.sendJsonResponse([success:true,open:false,handoffUserId:_billing.handoffUserId])</script><return/>
+            </if>
             <if condition="ec.message.hasError() || !_billing.terminal"><return/></if>
-            <service-call name="zenith.pos.PosServices.touch#PosSessionActivity" in-map="[sessionId:sessionId]"/>
+            <service-call name="zenith.pos.PosServices.touch#PosSessionActivity" in-map="[sessionId:sessionId]" out-map="_touch"/>
             <service-call name="zenith.pos.KotServices.get#KitchenDisplayPolicy" in-map="[facilityId:_billing.terminal.facilityId]" out-map="_display"/>
-            <script>ec.web.sendJsonResponse([success:!ec.message.hasError(),displayEnabled:_display.enabled])</script>
+            <script>ec.web.sendJsonResponse([success:!ec.message.hasError(),open:_touch.open,displayEnabled:_display.enabled,handoffUserId:_touch.handoffUserId])</script>
         </actions>
         <default-response type="none"/>
     </transition>
@@ -149,6 +148,9 @@
                 org=scope.organizationPartyId
                 if (access?.canWrite != true || !scope.allowed) { ec.message.addError('POS write access and an active shop are required.'); return reply() }
 
+                def session = ec.context.sessionId ? ec.entity.find('zenith.erp.pos.PosSession').condition([sessionId:ec.context.sessionId,
+                    organizationPartyId:org,operatorPartyId:ec.user.userAccount?.partyId]).forUpdate(true).one() : null
+                if (session?.statusId != 'PsOpen') { ec.message.addError('Choose your open terminal session.'); return reply() }
                 def billing=ec.service.sync().name('zenith.pos.KotServices.get#BillingSession').parameter('sessionId',ec.context.sessionId).call()
                 if(ec.message.hasError() || !billing.terminal) return reply()
                 def display=ec.service.sync().name('zenith.pos.KotServices.get#KitchenDisplayPolicy').parameter('facilityId',billing.terminal.facilityId).call()
@@ -585,27 +587,40 @@
             billingSession=null; billingTerminal=null
             entryTerminals=[]
             if(!org) return
-            if(ec.context.sessionId) {
+            def sessionKey = "kot.billing.session.${org}.${ec.user.userId}".toString()
+            def requestedSession = ec.web.requestParameters.sessionId
+            if(!requestedSession) {
+                def shop=ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call()?.activeShopId
+                if(ec.message.hasError()) return
+                def terminals=ec.entity.find('zenith.erp.pos.PosTerminal')
+                    .condition([organizationPartyId:org,isActive:'Y'])
+                if(shop) terminals.condition('facilityId',shop)
+                entryTerminals=terminals.list().findAll { it.facilityId && (!scope.terminalRestricted || it.terminalId in (scope.allowedTerminalIds ?: [])) }
+                if(entryTerminals && ec.web.requestParameters.chooseTerminal != 'Y' && !ec.context.tableId && !ec.context.loadDraft) {
+                    def ownSessions = { -> ec.entity.find('zenith.erp.pos.PosSession')
+                        .condition([organizationPartyId:org,operatorPartyId:ec.user.userAccount?.partyId,statusId:'PsOpen'])
+                        .condition('terminalId','in',entryTerminals*.terminalId).useCache(false).selectField('sessionId') }
+                    def remembered = ec.web.sessionAttributes.get(sessionKey)
+                    requestedSession = remembered ? ownSessions().condition('sessionId',remembered).one()?.sessionId : null
+                    if(!requestedSession) requestedSession=ownSessions().orderBy('-openDate,-sessionId').limit(1).list()[0]?.sessionId
+                }
+            }
+            if(requestedSession) {
                 def billing=ec.service.sync().name('zenith.pos.KotServices.get#BillingSession')
-                    .parameters([sessionId:ec.context.sessionId,includeBillSummary:true]).call()
+                    .parameters([sessionId:requestedSession,includeBillSummary:true,includeHandoffNotice:true]).call()
                 if(!billing?.session || !billing?.terminal) {
+                    kotHandoffUserId=billing?.handoffUserId
                     kotSessionUnavailable=true
                     return
                 }
                 billingSession=billing.session; billingTerminal=billing.terminal
+                sessionId=billingSession.sessionId
+                ec.web.sessionAttributes.put(sessionKey,sessionId)
                 lastCompleted=billing.billSummary?.lastCompleted
                 todayBillCount=billing.billSummary?.todayBillCount
                 latestIssuedBillNo=billing.billSummary?.latestIssuedBillNo
             }
-            if(!billingSession) {
-                def shopScope=ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').call()
-                if(shopScope==null || ec.message.hasError()) return
-                def shop=shopScope.activeShopId
-                def terminals=ec.entity.find('zenith.erp.pos.PosTerminal').condition('organizationPartyId',org).condition('isActive','Y')
-                if(shop) terminals.condition('facilityId',shop)
-                entryTerminals=terminals.list().findAll { !scope.terminalRestricted || it.terminalId in (scope.allowedTerminalIds ?: []) }
-                return
-            }
+            if(!billingSession) return
             billingTaxPreference = ec.user.getPreference('KOT_BILLING_TAX_' + billingTerminal.organizationPartyId) == 'Y' ? 'Y' : 'N'
             def shop=billingTerminal.facilityId
             kitchenDisplayEnabled=ec.service.sync().name('zenith.pos.KotServices.get#KitchenDisplayPolicy').parameter('facilityId',shop).call().enabled
@@ -791,6 +806,7 @@
 <#if !billingSession??>
 <section class="kb-wrap kb-panel" id="kot-terminal-entry" aria-labelledby="kot-entry-title">
   <h1 id="kot-entry-title">KOT Billing Terminal</h1><p>Select your terminal to open or resume billing.</p>
+  <#if kotHandoffUserId?has_content><p role="alert">Your billing session was closed because user <strong>${kotHandoffUserId?html}</strong> opened this terminal.</p></#if>
   <#if modCanWrite && entryTerminals?has_content><form method="post" action="KotBilling/openSession" class="kb-dialog-fields">
     <input type="hidden" name="moquiSessionToken" value="${ec.web.sessionToken?html}"/>
     <input type="hidden" name="tableId" value="${(ec.context.tableId!'')?html}"/>

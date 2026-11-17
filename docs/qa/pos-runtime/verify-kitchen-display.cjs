@@ -53,14 +53,14 @@ try{
  check('slow real qapps Billing navigation has no loading card and keeps old actions unavailable',
   await page.locator('#zk-route-status').count()===0&&(!await staleDisplay.isVisible()||await staleDisplay.evaluate(node=>node.closest('[inert]')!==null)));
  check('existing global navigation remains visible during loading',await page.locator('#zq-subnav').isVisible());
- await page.screenshot({path:path.join(out,'slow-navigation.png')});release();await navigation;await page.locator('#kot-terminal-entry').waitFor();await page.waitForFunction(()=>!document.documentElement.classList.contains('zk-route-pending'));
+ await page.screenshot({path:path.join(out,'slow-navigation.png')});release();await navigation;await page.locator('#kot-terminal-entry, #kb-wrap').waitFor();await page.waitForFunction(()=>!document.documentElement.classList.contains('zk-route-pending'));
  check('qapps replaces child content without retaining a loading mask',await page.locator('#kitchen-page-frame').count()===1&&await page.locator('#zk-route-status').count()===0);
  await page.unroute('**/Kitchen/KotBilling.qvt*');
  for(const [label,selector] of [['Tables','#tm-wrap'],['KOT History','#zk-history-toolbar'],['Waiters','#wf-search'],['KOT Dashboard','#kd-wrap'],['KOT Billing','#kb-wrap']]){
   await page.getByRole('tab',{name:label,exact:true}).click();await page.locator(selector).waitFor();await page.waitForFunction(()=>!document.documentElement.classList.contains('zk-route-pending'));
   check('qapps '+label+' navigation replaces the previous content',await page.locator(selector).isVisible()&&await page.locator('#kitchen-page-frame').count()===1);
  }
- await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling');await page.locator('#kot-terminal-entry').waitFor();await page.waitForFunction(()=>!document.documentElement.classList.contains('zk-initial-loading'),undefined,{timeout:20000});
+ await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling');await page.locator('#kot-terminal-entry, #kb-wrap').waitFor();await page.waitForFunction(()=>!document.documentElement.classList.contains('zk-initial-loading'),undefined,{timeout:20000});
  check('KOT Billing direct entry waits for the existing shell',await page.locator('#z-sidebar').isVisible()&&await page.locator('#z-subnav').isVisible()&&await page.locator('#kb-wrap').isVisible());
  await page.screenshot({path:path.join(out,'kot-billing-current-shell.png')});
  const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(table,where)=>Number(q(`SELECT count(*) AS n FROM ${table} WHERE ${where}`)[0].n);

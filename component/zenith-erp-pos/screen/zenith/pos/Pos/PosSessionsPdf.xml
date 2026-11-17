@@ -29,10 +29,12 @@
             def x = { v -> (v ?: '').toString().replace('&','&amp;').replace('<','&lt;').replace('>','&gt;') }
             def slMap = [PsClosed:'Closed', PsOpen:'Open']
             rows = raw.collect { s ->
-                def unverified = s.closeReason in ['IdleNoSales','IdleUnverifiedCash']
+                def unverified = s.closeReason in ['IdleNoSales','IdleUnverifiedCash','HandoffUnverifiedCash']
+                def method = s.closeReason?.startsWith('Handoff') ? 'Terminal handoff' : 'Auto-closed'
                 [sid:x(s.sessionId), term:x(s.terminalName), op:x(s.operatorPartyId),
                  opened:dt(s.openDate), closed:dt(s.closeDate),
-                 status:(unverified ? 'Auto-closed - cash not counted' : (s.closeReason == 'IdleReviewed' ? 'Auto-closed - cash reviewed' : (slMap[s.statusId] ?: x(s.statusId)))),
+                 status:(unverified ? method + ' - cash not counted' :
+                    (s.closeReason in ['IdleReviewed','HandoffReviewed'] ? method + ' - cash reviewed' : (slMap[s.statusId] ?: x(s.statusId)))),
                  statusColor:(s.statusId == 'PsOpen' || unverified ? '#D97706' : '#059669'),
                  opening:num(s.openingCash), sales:num(s.totalSales), ret:num(s.totalReturns),
                  trans:(((s.totalTransactions ?: 0) as BigDecimal).toBigInteger().toString()),
