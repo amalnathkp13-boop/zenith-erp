@@ -22,8 +22,31 @@ const results=[];
  await test('clear rejects delayed response and resets grid immediately',async p=>{await p.locator('#cartInlineSearch').fill('pp');await request(p);await p.waitForFunction(()=>grid.includes('pp'));await p.locator('#cartInlineSearch').fill('');await reply(p);await p.waitForTimeout(50);assert.equal(await shown(p),false);assert.equal(await p.evaluate(()=>grid.at(-1)),'');});
  await test('new input invalidates displayed matches before debounce',async p=>{await p.locator('#cartInlineSearch').fill('pp');await request(p);await reply(p);await p.waitForFunction(()=>document.querySelector('.cart-dd-item'));await p.locator('#cartInlineSearch').fill('tea');assert.equal(await shown(p),false);assert.equal(await p.locator('.cart-dd-item').count(),0);});
  await test('older reply cannot replace newer query',async p=>{await p.locator('#cartInlineSearch').fill('pp');await request(p);await p.locator('#cartInlineSearch').fill('tea');await p.waitForFunction(()=>pending.length===2);await p.evaluate(()=>pending[1].resolve([{productId:'SYN_TEA',productName:'Tea Cup',mrpAmount:20}]));await reply(p);await p.waitForTimeout(50);assert.equal(await p.locator('.dd-name').textContent(),'Tea Cup');});
- await test('selection cancels pending lookup and grid timers',async p=>{await p.locator('#cartInlineSearch').fill('pp');await request(p);await reply(p);await p.locator('.cart-dd-item').click();await p.waitForTimeout(700);assert.equal(await shown(p),false);assert.equal(await p.evaluate(()=>adds.length),1);assert.deepEqual(await p.evaluate(()=>grid),[]);});
+ await test('selection cancels pending lookup and grid timers',async p=>{
+  await p.locator('#cartInlineSearch').fill('pp');await request(p);await reply(p);
+  await p.locator('.cart-dd-item').click();
+  const afterClick=await p.evaluate(()=>grid.slice());
+  await p.waitForTimeout(700);
+  assert.equal(await shown(p),false);
+  assert.equal(await p.evaluate(()=>adds.length),1);
+  assert.deepEqual(await p.evaluate(()=>grid),afterClick);
+  assert(afterClick.length===0||afterClick.at(-1)==='');
+ });
  await test('Escape rejects delayed lookup',async p=>{await p.locator('#cartInlineSearch').fill('pp');await request(p);await p.locator('#cartInlineSearch').press('Escape');await reply(p);await p.waitForTimeout(50);assert.equal(await shown(p),false);});
+ await test('search arrows keep the highlighted result visible and Enter selects it',async p=>{
+  await p.locator('#cartSearchDropdown').evaluate(e=>{e.style.maxHeight='100px';e.style.overflowY='auto';});
+  await p.locator('#cartInlineSearch').fill('qa');await request(p);
+  await p.evaluate(()=>pending[0].resolve(Array.from({length:20},(_,i)=>({productId:'SYN_'+i,productName:'QA product '+i,pseudoId:'QA-'+i,mrpAmount:10}))));
+  await p.locator('.cart-dd-item').first().waitFor();
+  for(let i=0;i<13;i++)await p.locator('#cartInlineSearch').press('ArrowDown');
+  const selected=await p.locator('#cartSearchDropdown').evaluate(e=>{const item=e.children[12],list=e.getBoundingClientRect(),row=item.getBoundingClientRect();return {scroll:e.scrollTop,visible:row.top>=list.top&&row.bottom<=list.bottom,focused:document.activeElement.id==='cartInlineSearch',color:item.style.background};});
+  assert(selected.scroll>0&&selected.visible&&selected.focused&&selected.color==='rgb(232, 245, 233)',JSON.stringify(selected));
+  for(let i=0;i<12;i++)await p.locator('#cartInlineSearch').press('ArrowUp');
+  const first=await p.locator('#cartSearchDropdown').evaluate(e=>{const list=e.getBoundingClientRect(),row=e.firstElementChild.getBoundingClientRect();return {scroll:e.scrollTop,visible:row.top>=list.top&&row.bottom<=list.bottom};});
+  assert(first.scroll<selected.scroll&&first.visible,JSON.stringify(first));
+  await p.locator('#cartInlineSearch').press('Enter');
+  assert.equal(await p.evaluate(()=>adds[0][0]),'SYN_0');
+ });
  await test('Up from empty search selects the first bill quantity',async p=>{
   await p.locator('#cartInlineSearch').press('ArrowUp');
   assert.equal(await p.evaluate(()=>document.activeElement.className),'aj-qi');

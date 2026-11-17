@@ -44,7 +44,7 @@
                 if (template) {
                     workspace.store += [name:template.companyName ?: workspace.store.name,
                         address:[template.addressLine1,template.addressLine2,template.city,template.state,template.pincode].findAll { it }.join(', '),
-                        phone:template.phone ?: workspace.store.phone,receiptWidth:template.receiptWidth ?: '80mm']
+                        phone:template.phone ?: workspace.store.phone,receiptWidth:template.receiptWidth ?: '80mm',printLeftMargin:template.printLeftMargin]
                 }
                 workspace.sessionId=sessionId
                 workspace.facilityId=terminal.facilityId
