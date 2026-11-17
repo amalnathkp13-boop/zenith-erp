@@ -60,7 +60,8 @@ module.exports = async function verifyKot({a,foreign,base,post,rows,count,check}
   });
   await printPage.locator('#kb-history-open').click();
   const printRow=printPage.locator(`#kb-history-rows [data-kot-id="${ticket.kot_id}"]`);
-  await printRow.getByRole('button',{name:'KOT Print',exact:true}).click();
+  await printRow.getByRole('button',{name:'Reprint',exact:true}).click();
+  await printPage.getByRole('dialog',{name:'Reprint',exact:true}).getByRole('button',{name:'KOT Print',exact:true}).click();
   await printPage.locator('#kb-history-print-status').filter({hasText:'Print request opened.'}).waitFor();
   await printPage.waitForFunction(()=>window.__printedHtml.includes('Disposable POS A P18'));
   check('Print on an existing KOT records one shop-owned reprint and opens the slip',
