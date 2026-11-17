@@ -7,10 +7,11 @@
         var d=data||{},s=d.store||{},b=d.bill||{},m=d.summary||{},o=d.options||{};
         var width=s.receiptWidth==='58mm'?58:80;
         var weight=o.density==='light'?400:o.density==='dark'?700:600;
-        // This printer prints with a large hardware left-offset, so the content is flush to the page's
-        // left edge (padL=0) — the printer's own offset becomes the left margin. The right pad keeps the
-        // Total column inside the ~72mm printable window. Any residual left bias is the printer, not this. See #182/#189.
-        var padL=0;
+        // Left print margin is PER-TEMPLATE (printers differ: some have a large rightward hardware
+        // offset so content must sit flush-left [padL=0], others clip the left edge and need a margin).
+        // Default 6mm suits most printers; a template sets 0 for a big right-offset printer. See #182/#189.
+        var padL=(s.printLeftMargin==null||s.printLeftMargin==='')?6:Number(s.printLeftMargin);
+        if(isNaN(padL)||padL<0||padL>20)padL=6;
         var padR=width===58?8:9;
         function enabled(key) { return o[key]!==false; }
         function shown(key) { return s[key]!=='N'; }

@@ -54,6 +54,7 @@
         <field name="revisedTermsText" type="text-long"/>
         <field name="receiptOptionsJson" type="text-long"><description>Validated presentation options by normal, credit and revised design; never transaction data.</description></field>
         <field name="receiptWidth" type="text-short" default="'80mm'"><description>58mm or 80mm</description></field>
+        <field name="printLeftMargin" type="number-integer"><description>Left print margin in mm; blank=default 6. Set 0 for a printer with a large rightward hardware offset.</description></field>
         <field name="showLogo" type="text-indicator" default="'N'"/>
         <field name="logoUrl" type="text-medium"/>
         <field name="showTaxBreakdown" type="text-indicator" default="'Y'"/>

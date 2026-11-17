@@ -153,7 +153,7 @@
                 def payable=grand.setScale(0,java.math.RoundingMode.HALF_UP)
                 receipt=[success:true,preview:true,store:[name:tpl?.companyName ?: party?.organizationName ?: 'Store',
                     address:tpl ? [tpl.addressLine1,tpl.addressLine2,tpl.city,tpl.state,tpl.pincode].findAll{it}.join(', ') : '',
-                    phone:tpl?.phone ?: '',email:tpl?.email ?: '',taxReg:receiptTaxReg,receiptWidth:tpl?.receiptWidth ?: '80mm',
+                    phone:tpl?.phone ?: '',email:tpl?.email ?: '',taxReg:receiptTaxReg,receiptWidth:tpl?.receiptWidth ?: '80mm',printLeftMargin:tpl?.printLeftMargin,
                     headerText:tpl?.headerText ?: '',footerText:tpl?.footerText ?: '',termsText:tpl?.termsText ?: '',
                     showLogo:tpl?.showLogo ?: 'N',logoUrl:tpl?.logoUrl ?: '',showTaxBreakdown:tpl?.showTaxBreakdown ?: 'Y',
                     showDiscount:tpl?.showDiscount ?: 'Y',showCustomerInfo:tpl?.showCustomerInfo ?: 'Y',showPaymentDetails:'N',showItemTax:tpl?.showItemTax ?: 'N'],
@@ -198,7 +198,7 @@
                                 // A layout change must not recalculate or overwrite the saved order amounts.
                                 record.store=(record.store ?: [:]) + [name:tpl.companyName ?: record.store?.name,
                                     address:[tpl.addressLine1,tpl.addressLine2,tpl.city,tpl.state,tpl.pincode].findAll{it}.join(', '),
-                                    phone:tpl.phone ?: '',email:tpl.email ?: '',receiptWidth:tpl.receiptWidth,
+                                    phone:tpl.phone ?: '',email:tpl.email ?: '',receiptWidth:tpl.receiptWidth,printLeftMargin:tpl.printLeftMargin,
                                     headerText:tpl.headerText,footerText:tpl.footerText,termsText:tpl.termsText,
                                     showLogo:tpl.showLogo,logoUrl:tpl.logoUrl,showTaxBreakdown:tpl.showTaxBreakdown,
                                     showDiscount:tpl.showDiscount,showCustomerInfo:tpl.showCustomerInfo,showItemTax:tpl.showItemTax]
@@ -222,7 +222,7 @@
                         def tpl=ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#KotPrintTemplate')
                             .parameters([printUse:'kotTicket',terminalId:k.terminalId]).call().template
                         if(tpl) {
-                            record.store=[name:tpl.companyName,receiptWidth:tpl.receiptWidth,headerText:tpl.headerText,footerText:tpl.footerText,
+                            record.store=[name:tpl.companyName,receiptWidth:tpl.receiptWidth,printLeftMargin:tpl.printLeftMargin,headerText:tpl.headerText,footerText:tpl.footerText,
                                 showLogo:tpl.showLogo,logoUrl:tpl.logoUrl]
                             record.options=ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#ReceiptOptions')
                                 .parameters([storedJson:tpl.receiptOptionsJson,receiptDesign:'normal']).call().options
