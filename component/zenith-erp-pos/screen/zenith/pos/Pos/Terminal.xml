@@ -2138,7 +2138,10 @@
                         def search = (p.search ?: '').toString().trim().take(150)
                         def offset = Math.max(0, p.offset ? (p.offset as int) : 0)
                         def limit = Math.max(1, Math.min(100, p.histLimit ? (p.histLimit as int) : 20))
-                        java.sql.Timestamp historyStart = null, historyEnd = null
+                        def zone = ec.user.timeZone.toZoneId()
+                        def today = ec.user.nowTimestamp.toInstant().atZone(zone).toLocalDate()
+                        def historyStart = java.sql.Timestamp.from(today.atStartOfDay(zone).toInstant())
+                        def historyEnd = java.sql.Timestamp.from(today.plusDays(1).atStartOfDay(zone).toInstant())
                         boolean historyEndExclusive = !p.historyToTime || p.historyToTime.toString() ==~ /\d{2}:\d{2}/
                         if (p.historyFromDate || p.historyToDate || p.historyFromTime || p.historyToTime) {
                             try {
@@ -2146,8 +2149,6 @@
                                         !(p.historyToDate?.toString() ==~ /\d{4}-\d{2}-\d{2}/)) throw new IllegalArgumentException()
                                 def from = java.time.LocalDate.parse(p.historyFromDate.toString())
                                 def to = java.time.LocalDate.parse(p.historyToDate.toString())
-                                def zone = ec.user.timeZone.toZoneId()
-                                def today = ec.user.nowTimestamp.toInstant().atZone(zone).toLocalDate()
                                 if (from.year < 1 || to.isAfter(today)) throw new IllegalArgumentException()
                                 def start = from.atTime(p.historyFromTime ? java.time.LocalTime.parse(p.historyFromTime.toString()) : java.time.LocalTime.MIDNIGHT)
                                 def end = to.atTime(p.historyToTime ? java.time.LocalTime.parse(p.historyToTime.toString()) : java.time.LocalTime.MAX)
@@ -2181,10 +2182,8 @@
                         if (posTerminalRestricted) {
                             txnBase.condition('operatorPartyId',ec.user.userAccount?.partyId)
                         }
-                        if (historyStart) {
-                            txnBase.condition('entryDate','greater-equals',historyStart)
-                                .condition('entryDate',historyEndExclusive ? 'less' : 'less-equals',historyEnd)
-                        }
+                        txnBase.condition('issuedAt','greater-equals',historyStart)
+                            .condition('issuedAt',historyEndExclusive ? 'less' : 'less-equals',historyEnd)
                         BigDecimal searchAmt = null
                         if (search) {
                             try { searchAmt = new BigDecimal(search) } catch (Exception ignored) {}
@@ -2196,7 +2195,7 @@
                             txnBase.condition(_ecf.makeCondition(_or, org.moqui.entity.EntityCondition.OR))
                         }
                         def totalCount = txnBase.count()
-                        def txns = txnBase.orderBy("-entryDate,-transactionId").offset(offset).limit(limit).list()
+                        def txns = txnBase.orderBy("-issuedAt,-transactionId").offset(offset).limit(limit).list()
                         def bills = []
                         txns.each { tx ->
                             def items = ec.entity.find("zenith.erp.pos.PosTransactionItem")
@@ -2207,7 +2206,7 @@
                                 .condition("transactionId", tx.transactionId).orderBy("-amendmentDate").list()
                             def names = displayNames(items + amendments)
                             bills.add([txId: tx.transactionId, billNo: tx.transactionNumber ?: tx.transactionId,
-                                date: ec.l10n.format(tx.entryDate, 'dd/MM/yyyy hh:mm a'),
+                                date: ec.l10n.format(tx.issuedAt, 'dd/MM/yyyy hh:mm a'),
                                 customer: tx.customerName ?: 'Walk-In',
                                 subtotal: tx.subtotal ?: 0, tax: tx.totalTaxAmount ?: 0,
                                 discount: tx.discountTotal ?: 0, grand: tx.grandTotal ?: 0,

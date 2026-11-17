@@ -682,6 +682,20 @@
         <alias entity-alias="PT" name="terminalName"/>
     </view-entity>
 
+    <view-entity entity-name="KotBillingHistoryView" package="zenith.erp.pos">
+        <member-entity entity-alias="KOT" entity-name="zenith.erp.pos.KitchenOrderTicket"/>
+        <member-entity entity-alias="PX" entity-name="zenith.erp.pos.PosTransaction" join-from-alias="KOT" join-optional="true">
+            <key-map field-name="transactionId"/>
+            <key-map field-name="organizationPartyId"/>
+            <entity-condition><econdition field-name="statusId" value="PtCompleted"/></entity-condition>
+        </member-entity>
+        <alias-all entity-alias="KOT"/>
+        <alias name="historyAt" type="date-time"><complex-alias function="COALESCE">
+            <complex-alias-field entity-alias="PX" field="completedDate"/>
+            <complex-alias-field entity-alias="KOT" field="kotDate"/>
+        </complex-alias></alias>
+    </view-entity>
+
     <view-entity entity-name="KotItemView" package="zenith.erp.pos">
         <member-entity entity-alias="KI" entity-name="zenith.erp.pos.KotItem"/>
         <member-entity entity-alias="KOT" entity-name="zenith.erp.pos.KitchenOrderTicket" join-from-alias="KI">
@@ -743,6 +757,10 @@
         <!-- expose member orgs so ZTF_POSSESS / ZTF_POSTERMINAL tenant filters apply to this view -->
         <alias entity-alias="PS" name="ztfSessionOrg" field="organizationPartyId"/>
         <alias entity-alias="PT" name="ztfTerminalOrg" field="organizationPartyId"/>
+        <alias name="issuedAt" type="date-time"><complex-alias function="COALESCE">
+            <complex-alias-field entity-alias="PX" field="completedDate"/>
+            <complex-alias-field entity-alias="PX" field="entryDate"/>
+        </complex-alias></alias>
         <entity-condition><econdition entity-alias="KOT" field-name="kotId" operator="is-null"/></entity-condition>
     </view-entity>
 

@@ -142,16 +142,21 @@
 #kb-wrap .kb-history-table tr:has([data-edit-remove][aria-pressed="true"]) th { text-decoration: line-through; }
 #kb-wrap .kb-history-table .kb-history-editable { display: none; }
 #kb-wrap #kb-history-edit.is-editable .kb-history-editable { display: table-cell; }
-#kb-wrap #kb-history-edit-fields:not([hidden]) { display: grid; gap: 8px; padding: 12px 0; }
+#kb-wrap #kb-history-edit-fields:not([hidden]) { position: relative; display: grid; margin: 12px 0 4px; }
 #kb-wrap #kb-history-edit-fields label { display: grid; gap: 4px; }
 #kb-wrap #kb-history-products:not(:empty) {
+  position: absolute;
+  inset-inline: 0;
+  bottom: calc(100% + 4px);
+  z-index: 2;
   display: grid;
-  max-height: 210px;
+  max-height: min(22vh, 210px);
   overflow: auto;
   border: 1px solid #ddd9e6;
   border-radius: 8px;
   background: #fff;
   color: #17152a;
+  box-shadow: 0 8px 24px #1d103e26;
 }
 #kb-wrap #kb-history-products:not(:has(button)):not(:empty) { padding: 8px 12px; }
 #kb-wrap .kb-history-match {
@@ -208,10 +213,13 @@
 #kb-wrap .kb-history-qty button,
 #kb-wrap [data-edit-remove] { min-width: 30px; min-height: 34px; padding: 4px 8px; }
 #kb-wrap [data-edit-remove] { border-color: #fecaca; color: #b91c1c; background: #fff5f5; }
-#kb-wrap .kb-bill-editor #kb-history-edit-fields { padding-bottom: 4px; }
-#kb-wrap .kb-bill-editor #kb-history-products { max-height: min(22vh, 210px); }
-#kb-wrap .kb-bill-editor .kb-history-detail-meta { margin-bottom: 0; }
-#kb-wrap .kb-bill-editor .kb-history-detail-actions > button { flex: 1 1 auto; }
+#kb-wrap #kb-history-detail:not(.kb-bill-editor) .kb-history-estimate { display: none; }
+#kb-wrap .kb-bill-editor .kb-history-detail-meta { justify-content: flex-start; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 0; color: #202036; }
+#kb-wrap .kb-bill-editor #kb-history-detail-total { margin-inline-start: 0; }
+#kb-wrap #kb-history-adjustment { color: #6d28d9; }
+#kb-wrap #kb-history-adjustment[data-due="collect"] { color: #b91c1c; }
+#kb-wrap #kb-history-amount-note { flex-basis: 100%; color: #605875; }
+#kb-wrap .kb-bill-editor .kb-history-detail-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 #kb-wrap .kb-bill-editor #kb-history-save,
 #kb-wrap #kb-history-revision-save { border-color: #2e7d32; background: #2e7d32; }
 #kb-wrap #kb-history-revision { width: min(440px, calc(100vw - 24px)); }

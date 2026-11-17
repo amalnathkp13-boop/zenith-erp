@@ -246,8 +246,8 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
      check(plan+' '+shell+' '+view+' opens the full KOT editor with the saved bill',
       await quantity.inputValue()===expected&&
       await editor.locator('[data-edit-rate]').first().isVisible()&&await editor.locator('[data-edit-remove]').first().isVisible()&&
-      await editor.locator('#kb-history-add').isVisible()&&await editor.locator('#kb-history-detail-reprint').innerText()==='Print bill'&&
-      await editor.locator('#kb-history-save').innerText()==='Save & print revised bill');
+      await editor.locator('#kb-history-add').isVisible()&&
+      (await editor.locator('footer button:visible').allTextContents()).map(label=>label.trim()).join('|')==='Print|Reprint|Save');
      if(plan==='KOT'&&shell==='apps'){
       await clerkPage.screenshot({path:path.join(out,'kot-cashier-history-editor.png')});
       await quantity.fill('2');

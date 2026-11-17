@@ -1086,9 +1086,10 @@
   function savedPrinter() {
     try { return localStorage.getItem('kotPrinter')||localStorage.getItem('posPrinter')||''; } catch { return ''; }
   }
-  let browserPrintRetry;
+  let browserPrintRetry, printerSetupNeeded=false;
   function clearPrintFeedback() {
     browserPrintRetry=null;
+    printerSetupNeeded=false;
     $('print-error').textContent='';
     $('print-recovery').hidden=true;
     $('printer-field').hidden=true;
@@ -1153,24 +1154,26 @@
       showBillingNotice(error.message||'Today sales printing failed.',false,true);
     } finally { button.disabled=false; }
   }
-  async function printChoice(kind,row=historyPrintRow,{printWindow,statusPrefix='',browserOnly=false}={}) {
+  async function printChoice(kind,row=historyPrintRow,{browserOnly=false}={}) {
     const queued=row?.dataset.kbLocalSale?device?.queue().find(entry=>entry.sale.offlineId===row.dataset.kbLocalSale):row?null:localReceipt;
     const kotId=row?.dataset.kotId||completedKotId;
     if(busy||(!kotId&&!queued))return;
     const chooser=$('print-choice');
     const detailStatus=row&&$('history-detail')?.open?$('history-detail-message'):null;
-    const errorOutput=chooser.open?$('print-error'):(detailStatus||$('history-error'));
+    const closeOnSelection=chooser.open&&chooser.classList.contains('kb-reprint');
+    const errorOutput=chooser.open&&!closeOnSelection?$('print-error'):(detailStatus||$('history-error'));
     const pending=chooser.open?browserPrintRetry:null;
     if(pending?.ticketSent&&kind!=='bill')return;
-    statusPrefix=statusPrefix||pending?.statusPrefix||'';
     const previousWarning=pending?.previousWarning||'';
     if(chooser.open)clearPrintFeedback();
-    else errorOutput.textContent='';
-    let printer, acknowledgement, ticketSent=Boolean(pending?.ticketSent), retryBrowser=false, printLabel;
+    errorOutput.textContent='';
+    let printer, printWindow, acknowledgement, ticketSent=Boolean(pending?.ticketSent), retryBrowser=false, printLabel;
     try {
-      busy=true;controls();
+      busy=true;
+      if(closeOnSelection)chooser.close();
+      controls();
       for(const button of root.querySelectorAll('[data-kb-print]'))button.disabled=true;
-      if(!browserOnly&&!printWindow&&!disconnected()&&window.PosQzPrint){
+      if(!browserOnly&&!disconnected()&&window.PosQzPrint){
         // Until the connection and printer are resolved, no job has been submitted.
         let client;
         try {
@@ -1183,12 +1186,17 @@
           }
           if(!printer){
             if(row&&!chooser.open)openReprint(row);
+            printerSetupNeeded=true;
+            if(pending){
+              browserPrintRetry=pending;
+              $('print-recovery').hidden=false;
+            }
             $('print-error').textContent='Choose a QZ printer, then try printing again.';
             return;
           }
         }
       }
-      if(!printer&&!printWindow){
+      if(!printer){
         retryBrowser=true;
         printWindow=KitchenPrint.open();
         retryBrowser=false;
@@ -1226,7 +1234,7 @@
       const message=printer?'Print request sent to QZ Tray.':'Print request opened.';
       if(row) {
         const status=detailStatus||$('history-print-status');
-        status.textContent=statusPrefix+message+warning;
+        status.textContent=message+warning;
       } else if(warning) $('order-status').textContent+=warning;
       if(chooser.open)chooser.close();
       showBillingNotice('🖨 '+printLabel+(kind==='both'?' + KOT':'')+
@@ -1235,23 +1243,22 @@
       const reason=error.message||String(error);
       const warning=previousWarning+((await acknowledgement)||'');
       if(retryBrowser||(ticketSent&&kind!=='kot')){
-        if(row&&!chooser.open){
-          if(detailStatus)detailStatus.textContent=statusPrefix;
-          openReprint(row);
-        }
-        browserPrintRetry={kind:ticketSent?'bill':kind,row,ticketSent,statusPrefix,previousWarning:warning};
+        if(row&&!chooser.open)openReprint(row);
+        browserPrintRetry={kind:ticketSent?'bill':kind,row,ticketSent,previousWarning:warning};
+        printerSetupNeeded=Boolean(printer);
         $('print-error').textContent=(ticketSent?'Kitchen ticket sent. ':'')+
           (printer?'QZ Tray did not confirm printing. Check the printer before retrying. ':'')+reason+warning;
         $('print-recovery').hidden=false;
       }else{
-        errorOutput.textContent=statusPrefix+reason+warning;
+        errorOutput.textContent=reason+warning;
       }
     } finally {
       if(printWindow&&!printWindow.closed)printWindow.close();
       busy=false;controls();
       updatePrintOptions();
       if(chooser.open&&browserPrintRetry)$('print-browser').focus();
-      else if(chooser.open&&chooser.classList.contains('kb-payment-complete')&&
+      else if(chooser.open&&printerSetupNeeded)$('printer-setup').focus();
+      else if(chooser.open&&(row||chooser.classList.contains('kb-payment-complete'))&&
         (document.activeElement===chooser||!chooser.contains(document.activeElement))){
         chooser.querySelector('[data-kb-print="'+kind+'"]:enabled')?.focus();
       }
@@ -1465,7 +1472,7 @@
     $('print-title').textContent='Payment Complete';
     clearPrintFeedback();
     updatePrintOptions();
-    setPrintChoiceLayout(true);
+    setPrintChoiceLayout('payment');
     $('print-choice').showModal();
     $('print-choice').querySelector('[data-kb-print="bill"]').focus();
     if(!bill.local){
@@ -1481,6 +1488,10 @@
   const history=$('history'), historyDetail=$('history-detail'), historyEdit=$('history-edit');
   const historyRevision=$('history-revision');
   let activeHistoryRow, editingBill, editSearchTimer, editSearchVersion=0, savingBill=false;
+  const historyDate=$('history-date');
+  const historyDateFormat=new Intl.DateTimeFormat('sv-SE',{timeZone:historyDate.dataset.timeZone,year:'numeric',month:'2-digit',day:'2-digit'});
+  const selectedHistoryDay=()=>historyDate.value||historyDateFormat.format();
+  let historyDay=$('history-rows').dataset.kbHistoryDay;
   const historyRows=()=>Array.from($('history-rows').children).filter(row=>!row.hidden);
   function selectHistoryRow(row, focus=false){
     activeHistoryRow?.classList.remove('is-current');
@@ -1499,12 +1510,12 @@
       return;
     }
     const term=$('history-search').value.trim().toLowerCase();
-    const status=$('history-status').value, date=$('history-date').value;
+    const status=$('history-status').value, date=selectedHistoryDay();
     for(const order of $('history-rows').children){
       const matchesStatus=!status||(status==='billed'?order.dataset.billed==='true':order.dataset.kotGroup===status);
       const text=(order.textContent+' '+order.dataset.search).toLowerCase();
       order.hidden=(!order.hasAttribute('data-kb-device-row')&&loadedHistoryVersion!==historyVersion)||
-        !matchesStatus||Boolean((date&&order.dataset.orderDate!==date)||(term&&!text.includes(term)));
+        !matchesStatus||order.dataset.orderDate!==date||Boolean(term&&!text.includes(term));
     }
     const rows=historyRows();
     const billed=rows.filter(row=>row.dataset.billed==='true'), counts=[];
@@ -1540,16 +1551,15 @@
         row.dataset.billed=String(record.group==='billed');
         row.dataset.hasBill=String(!held);
         row.dataset.orderAt=String(date.getTime());
-        row.dataset.orderDate=new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,10);
+        row.dataset.orderDate=historyDateFormat.format(date);
         row.dataset.search=record.name||'Walk-In Customer';
         row.innerHTML='<button type="button" class="kb-history-number" data-kb-history-detail>'+esc(record.label)+'</button>'+
           '<strong class="kb-history-amount">'+(record.total==null?'—':money.format(record.total))+'</strong>'+
           '<span class="kb-history-meta">'+esc(date.toLocaleString())+'</span>'+
           '<span class="kb-history-meta kb-history-info">'+esc(row.dataset.search)+' · '+record.items+' items · '+esc(record.note)+'</span>'+
           (held?'':
-            '<div class="kb-history-row-actions" role="group" aria-label="Print options">'+
-            '<button type="button" class="kb-history-button" data-kb-history-print="bill">Bill Print</button>'+
-            '<button type="button" class="kb-history-button" data-kb-history-print="kot">KOT Print</button>'+
+            '<div class="kb-history-row-actions">'+
+            '<button type="button" class="kb-history-button" data-kb-history-reprint aria-haspopup="dialog">Reprint</button>'+
             (record.group==='active'?'<button type="button" class="kb-history-button kb-history-primary" data-kb-bill-local>Bill Out</button>':'')+'</div>');
         if(held){
           const drafts=Array.from(host.querySelectorAll('[data-kot-group="draft"]'));
@@ -1631,6 +1641,8 @@
     if(heldOpen())heldMenu.hidePopover();
     const opened=!history.open;
     if(opened){
+      historyDate.value='';
+      historyDate.max=historyDateFormat.format();
       history.showModal();
       selectHistoryRow(null);
       $('history-print-status').textContent='';
@@ -1641,6 +1653,12 @@
     loadHistory();
   }
   async function loadHistory(){
+    const day=selectedHistoryDay();
+    if(historyDay!==day){
+      historyDay=day;
+      historyVersion++;
+      if(history.open)filterHistory();
+    }
     if(disconnected()){
       $('history-load-status').textContent='Offline. Showing orders available on this device.';
       $('history-load-status').hidden=false;
@@ -1655,7 +1673,7 @@
     status.hidden=false;
     status.textContent='Loading bill history…';
     try{
-      const response=await fetch('/apps'+billingPath+'?'+new URLSearchParams({sessionId:cfg.session,loadHistory:'Y'}),{cache:'no-store'});
+      const response=await fetch('/apps'+billingPath+'?'+new URLSearchParams({sessionId:cfg.session,loadHistory:'Y',historyDate:day}),{cache:'no-store'});
       if(!response.ok||response.redirected)throw Error('History request failed');
       const page=new DOMParser().parseFromString(await response.text(),'text/html');
       const rows=page.querySelector('#kb-history-rows[data-kb-history-loaded]'), billing=page.getElementById('kb-data')?.dataset;
@@ -1691,26 +1709,30 @@
     }
     if(!chooser)return;
     const qzAvailable=!disconnected()&&!!window.PosQzPrint;
-    $('printer-options').hidden=!qzAvailable;
+    $('printer-options').hidden=!qzAvailable||Boolean(historyPrintRow&&!printerSetupNeeded);
     $('print-browser').disabled=busy;
     $('printer-setup').disabled=$('printer-list').disabled=busy||!qzAvailable;
   }
   function openReprint(row){
     if(!row||!$('print-choice'))return;
-    setPrintChoiceLayout(false);
+    setPrintChoiceLayout('reprint');
     historyPrintRow=row;
     $('print-title').textContent='Reprint';
-    $('print-summary').textContent='Choose what to print for '+row.querySelector('[data-kb-history-detail]').textContent.trim()+'.';
+    const unsaved=historyDetail.open&&editingBill?.row===row&&editingBill?.canEdit&&billChanges().length;
+    $('print-summary').textContent='Choose what to print for '+row.querySelector('[data-kb-history-detail]').textContent.trim()+'.'+
+      (unsaved?' Save your changes first to print the revision.':'');
     clearPrintFeedback();
     updatePrintOptions();
     $('print-choice').showModal();
     $('print-choice').querySelector('[data-kb-print]:enabled')?.focus();
   }
 
-  function setPrintChoiceLayout(complete){
+  function setPrintChoiceLayout(layout){
     const dialog=$('print-choice'), close=$('print-close');
+    const complete=layout==='payment', reprint=layout==='reprint';
     dialog.classList.toggle('kb-payment-complete',complete);
-    $('print-both-label').textContent=complete?'Print Both':'Print both';
+    dialog.classList.toggle('kb-reprint',reprint);
+    dialog.setAttribute('closedby',reprint?'any':'closerequest');
     $('print-close-label').textContent=complete?'Save':'Done';
     if(complete)dialog.querySelector('.kb-print-options').append(close);
     else $('print-error').after(close);
@@ -1734,11 +1756,11 @@
   function previewBillAmounts(){
     const state=editingBill;
     if(!state?.canEdit)return;
-    let total=0, changed=false, incomplete=false, newTax=false;
+    let subtotal=0, gst=0, changed=false, incomplete=false, newTax=false;
     for(const line of state.lines){
       const row=line.element, removed=row.querySelector('[data-edit-remove]').getAttribute('aria-pressed')==='true';
-      const qty=row.querySelector('[data-edit-quantity]').valueAsNumber;
-      const rate=row.querySelector('[data-edit-rate]').valueAsNumber;
+      const quantityInput=row.querySelector('[data-edit-quantity]'), rateInput=row.querySelector('[data-edit-rate]');
+      const qty=quantityInput.valueAsNumber, rate=rateInput.valueAsNumber;
       const edited=!line.seq||qty!==Number(line.qty)||rate!==Number(line.rate);
       let tax=Number(line.tax||0), amount=Number(line.total||0);
       if(removed){
@@ -1746,7 +1768,7 @@
         tax=amount=null;
       }else if(edited){
         changed=true;
-        if(!Number.isFinite(qty)||!Number.isFinite(rate)||qty<=0||rate<0||(!line.seq&&rate===0)){
+        if(!quantityInput.validity.valid||!rateInput.validity.valid||(rate===0&&(!line.seq||rate!==Number(line.rate)))){
           incomplete=true;
           tax=amount=null;
         }else if(!line.seq){
@@ -1765,12 +1787,21 @@
       }
       row.querySelector('[data-edit-tax]').textContent=tax==null?'—':money.format(tax);
       row.querySelector('[data-edit-total]').textContent=amount==null?'—':money.format(amount);
-      total+=amount||0;
+      subtotal+=(amount??0)-(tax??0);
+      gst+=tax??0;
     }
-    $('history-detail-total').textContent=changed
-      ? 'Estimated total '+(incomplete?'—':money.format(Math.round(total)))
-      : money.format(state.savedTotal);
-    $('history-amount-note').hidden=!newTax;
+    const fee=state.additionalFee, estimate=changed?Math.round(subtotal+gst+fee):state.savedTotal;
+    const difference=incomplete?0:Math.round((estimate-state.savedTotal)*100)/100;
+    const feeLabel=$('history-fee'), adjustment=$('history-adjustment');
+    $('history-subtotal').textContent='Est. subtotal '+(incomplete?'—':money.format(subtotal));
+    $('history-tax').textContent='Est. GST '+(incomplete?'—':money.format(gst)+(newTax?' + new item GST':''));
+    feeLabel.hidden=!fee;
+    feeLabel.textContent='Additional fee '+money.format(fee);
+    $('history-detail-total').textContent='Estimated total '+(incomplete?'—':money.format(estimate));
+    adjustment.hidden=!difference;
+    adjustment.dataset.due=difference>0?'collect':'refund';
+    adjustment.textContent=(difference>0?'Collect ~':'Refund ~')+money.format(Math.abs(difference));
+    $('history-amount-note').textContent='Saved total '+money.format(state.savedTotal)+'. Final GST and total are recalculated when you save.';
   }
   async function openHistoryDetail(row){
     selectHistoryRow(row);
@@ -1782,23 +1813,22 @@
     historyEdit.classList.remove('is-editable');
     $('history-edit-fields').hidden=true;
     $('history-edit-help').hidden=true;
-    $('history-back').textContent='Back to History';
+    const back=$('history-back');
+    back.hidden=false;
     $('history-detail-label').textContent=billed?'Bill Details':held?'Held Order':'Order Details';
     $('history-detail-number').textContent=row.querySelector('[data-kb-history-detail]').textContent.trim();
     $('history-detail-total').textContent=row.querySelector('.kb-history-amount').textContent;
     $('history-detail-lines').replaceChildren();
-    $('history-amount-note').hidden=true;
     $('history-products').replaceChildren();
     $('history-edit-error').textContent='';
     $('history-detail-message').textContent='Loading items…';
     if($('history-save')){
-      $('history-reprint-label').textContent='Reprint';
-      $('history-save').hidden=true;
+      $('history-detail-print').hidden=$('history-save').hidden=true;
       $('history-resume').hidden=$('history-discard').hidden=!held;
       $('history-detail-reprint').hidden=!!row.dataset.kbResumeLocal;
     }
     historyDetail.showModal();
-    $('history-back').focus();
+    back.focus();
     try{
       const params={kotId:row.dataset.kotId};
       let data;
@@ -1816,21 +1846,24 @@
       } else data=billed?await request('historyBillDetails',params):(await request('printRecord',{...params,kind:'view'})).record;
       if(editingBill!==state||!historyDetail.open)return;
       state.salesModeId=data.salesModeId||salesModeId;
-      state.savedTotal=data.total;
+      state.savedTotal=Number(data.total??0);
+      state.additionalFee=Number(data.additionalFee??0);
       state.hasTax=data.items?.some(item=>Number(item.tax)>0);
       const canEdit=Boolean(data.canEdit&&$('history-save'));
       state.canEdit=canEdit;
-      if(canEdit){
-        $('history-detail-label').textContent='Editing Bill';
-        $('history-back').textContent='Cancel';
-        $('history-reprint-label').textContent='Print bill';
-      }
+      if(canEdit)$('history-detail-label').textContent='Editing Bill';
       for(const item of data.items||[])state.lines.push({...item,element:billLine(item,canEdit)});
       historyEdit.classList.toggle('is-editable',canEdit);
       historyDetail.classList.toggle('kb-bill-editor',canEdit);
       $('history-edit-help').hidden=!canEdit;
       $('history-edit-fields').hidden=!canEdit;
-      if($('history-save'))$('history-save').hidden=!canEdit;
+      if(canEdit){
+        const print=$('history-detail-print');
+        print.hidden=$('history-save').hidden=false;
+        previewBillAmounts();
+        if(document.activeElement===back)focusEditor(historyEdit.querySelector('[data-edit-quantity]')||$('history-add'));
+        back.hidden=true;
+      }
       $('history-detail-message').textContent='';
     }catch(error){if(editingBill===state)$('history-detail-message').textContent=error.message;}
   }
@@ -1884,11 +1917,6 @@
     const state=editingBill;
     savingBill=true;
     $('history-revision-save').disabled=$('history-revision-back').disabled=true;
-    let printWindow, printError;
-    // Reserve the browser window while the cashier's confirm gesture is active.
-    if(disconnected()||!window.PosQzPrint){
-      try{printWindow=KitchenPrint.open();}catch(failure){printError=failure;}
-    }
     try{
       const {bill}=await request('reviseHistoryBill',{kotId:state.row.dataset.kotId,editReason:reason,
         editOps:JSON.stringify(ops)});
@@ -1897,23 +1925,16 @@
         const line={...item,rate:item.price};
         return {...line,element:billLine(line,true)};
       });
-      state.savedTotal=bill.payable;
+      state.savedTotal=Number(bill.payable??0);
       state.hasTax=state.lines.some(line=>Number(line.tax)>0);
       previewBillAmounts();
       const adjustment=Number(bill.refundDue)>0?' Refund '+money.format(bill.refundDue)+'.':
         Number(bill.balanceDue)>0?' Collect '+money.format(bill.balanceDue)+'.':'';
       historyVersion++;
       historyRevision.close();
-      const savedMessage='Bill revision saved.'+adjustment;
-      if(printError)$('history-detail-message').textContent=savedMessage+' '+printError.message+' Use Print bill to retry.';
-      else{
-        const receiptWindow=printWindow;
-        printWindow=null;
-        await printChoice('bill',state.row,{printWindow:receiptWindow,statusPrefix:savedMessage+' '});
-      }
+      $('history-detail-message').textContent='Bill revision saved.'+adjustment;
     }catch(failure){error.textContent=failure.message;}
     finally{
-      if(printWindow&&!printWindow.closed)printWindow.close();
       savingBill=false;
       $('history-revision-save').disabled=$('history-revision-back').disabled=false;
     }
@@ -1945,7 +1966,7 @@
           state.lines.push({...line,element:row});
           previewBillAmounts();
           $('history-add').value='';host.replaceChildren();
-          (rate==null?row.querySelector('[data-edit-rate]'):$('history-add')).focus();
+          focusEditor(row.querySelector('[data-edit-quantity]'));
         };
         host.append(button);
       }
@@ -1965,7 +1986,7 @@
         completedKotId='';localReceipt=queued;historyPrintRow=null;
         resetOrder();refreshOpenHistory();
         status.textContent='Kitchen ticket saved on this device and queued to sync.';
-        setPrintChoiceLayout(false);
+        setPrintChoiceLayout();
         $('print-title').textContent='Kitchen ticket saved';
         $('print-summary').textContent='Print the ticket while the order is pending sync.';
         clearPrintFeedback();
@@ -2072,7 +2093,10 @@
   $('waiter').addEventListener('change',quote);
   $('history-search').addEventListener('input',()=>filterHistory());
   $('history-status').addEventListener('change',()=>filterHistory());
-  $('history-date').addEventListener('change',()=>filterHistory());
+  historyDate.addEventListener('change',()=>{
+    if(!historyDate.validity.valid)historyDate.value='';
+    loadHistory();
+  });
   $('history-close').addEventListener('click',()=>history.close());
   $('history-filter').addEventListener('click',()=>{
     const panel=$('history-filters');
@@ -2089,8 +2113,9 @@
     if(!row)return;
     selectHistoryRow(row);
     if(event.target.closest('[data-kb-bill-order],[data-kb-bill-local]'))return;
-    const print=event.target.closest('[data-kb-history-print]');
-    if(print){if(!print.disabled)printChoice(print.dataset.kbHistoryPrint,row);}
+    if(event.target.closest('[data-kb-history-reprint]')){
+      if(!busy)openReprint(row);
+    }
     else openHistoryDetail(row);
   });
   history.addEventListener('keydown',event=>{
@@ -2103,26 +2128,20 @@
       event.preventDefault();
       const rows=historyRows(), index=rows.indexOf(row)+(event.key==='ArrowDown'?1:-1);
       selectHistoryRow(rows[Math.max(0,Math.min(rows.length-1,index))],true);
-    } else if(row){
-      const buttons=Array.from(row.querySelectorAll('[data-kb-history-print]:enabled'));
-      if(!buttons.length)return;
-      const index=buttons.indexOf(event.target);
-      if(event.key===' '&&event.target.matches('[data-kb-history-detail]')){
-        event.preventDefault();
-        buttons[0].focus();
-      }else if(index!==-1&&['ArrowLeft','ArrowRight'].includes(event.key)){
-        event.preventDefault();
-        const next=index+(event.key==='ArrowRight'?1:-1);
-        buttons[(next+buttons.length)%buttons.length].focus();
-      }
+    } else if(row&&event.target.matches('[data-kb-history-detail]')&&[' ','ArrowRight'].includes(event.key)){
+      const reprint=row.querySelector('[data-kb-history-reprint]');
+      if(!reprint)return;
+      event.preventDefault();
+      reprint.focus();
+    } else if(row&&event.target.matches('[data-kb-history-reprint]')&&event.key==='ArrowLeft'){
+      event.preventDefault();
+      selectHistoryRow(row,true);
     }
   });
   for(const id of ['history-back','history-detail-close'])$(id).addEventListener('click',closeHistoryDetail);
   historyDetail.addEventListener('cancel',event=>{event.preventDefault();closeHistoryDetail();});
-  $('history-detail-reprint')?.addEventListener('click',()=>{
-    if(busy||savingBill)return;
-    if(editingBill?.canEdit)printChoice('bill',editingBill.row);
-    else openReprint(editingBill?.row);
+  for(const id of ['history-detail-print','history-detail-reprint'])$(id)?.addEventListener('click',()=>{
+    if(!busy&&!savingBill)openReprint(editingBill?.row);
   });
   function restoreServerDraft(draft, freshPage) {
     const snapshot=JSON.parse(draft.draftreceipt);
@@ -2243,13 +2262,20 @@
     previewBillAmounts();
   });
   historyEdit.addEventListener('keydown',event=>{
-    if(event.key!=='Enter'||event.isComposing||!event.target.matches('[data-edit-rate],[data-edit-quantity]'))return;
-    event.preventDefault();
-    if(!event.target.reportValidity())return;
-    const next=event.target.matches('[data-edit-rate]')
-      ?event.target.closest('tr').querySelector('[data-edit-quantity]'):$('history-add');
-    next.focus();
-    next.select();
+    if(!editingBill?.canEdit||ignoreDialogKey(event))return;
+    const {key,target}=event, add=$('history-add');
+    if(key==='Enter'&&event.repeat){event.preventDefault();return;}
+    if(key==='Enter'&&target.matches('[data-edit-rate],[data-edit-quantity]')){
+      event.preventDefault();
+      if(target.reportValidity())focusEditor(target.matches('[data-edit-rate]')
+        ?target.closest('tr').querySelector('[data-edit-quantity]'):add);
+    }else if(target.matches('[data-edit-quantity]')&&['ArrowUp','ArrowDown'].includes(key)){
+      event.preventDefault();
+      const quantities=Array.from(historyEdit.querySelectorAll('[data-edit-quantity]:enabled'));
+      const down=key==='ArrowDown', next=quantities[quantities.indexOf(target)+(down?1:-1)];
+      if(next)focusEditor(next);
+      else if(down)$('history-detail-print').focus();
+    }
   });
   $('history-add').addEventListener('input',event=>{
     clearTimeout(editSearchTimer);
@@ -2258,20 +2284,51 @@
     if(term)editSearchTimer=setTimeout(()=>lookupBillProducts(term,version),150);
   });
   $('history-add').addEventListener('keydown',event=>{
-    if(event.isComposing||!['Enter','ArrowDown'].includes(event.key))return;
+    if(ignoreDialogKey(event))return;
+    const {key,target}=event;
+    const start=target.selectionStart, end=target.selectionEnd;
+    const forward=key==='ArrowDown'||(key==='ArrowRight'&&start===end&&end===target.value.length);
+    const backward=key==='ArrowUp'||(key==='ArrowLeft'&&start===0&&end===0);
+    if(key!=='Enter'&&!forward&&!backward)return;
     event.preventDefault();
-    const matches=$('history-products').querySelectorAll('button');
-    const exact=$('history-products').querySelector('[data-exact]');
-    if(event.key==='Enter'&&(exact||matches.length===1))(exact||matches[0]).click();
-    else matches[0]?.focus();
+    if(event.repeat&&key==='Enter')return;
+    const products=$('history-products'), matches=Array.from(products.querySelectorAll('button'));
+    if(key==='Enter'){
+      const exact=products.querySelector('[data-exact]');
+      if(exact||matches.length===1)(exact||matches[0]).click();
+      else matches[0]?.focus();
+    }else if(matches.length){
+      (forward?matches[0]:matches.at(-1)).focus();
+    }else if(!target.value.trim()){
+      if(key==='ArrowDown')$('history-detail-print').focus();
+      if(key==='ArrowUp')focusEditor(Array.from(historyEdit.querySelectorAll('[data-edit-quantity]:enabled')).at(-1));
+    }
   });
   $('history-products').addEventListener('keydown',event=>{
-    if(!['ArrowUp','ArrowDown'].includes(event.key))return;
+    if(ignoreDialogKey(event)||!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key))return;
     event.preventDefault();
-    if(event.key==='ArrowDown')event.target.nextElementSibling?.focus();
+    if(event.key==='ArrowDown'||event.key==='ArrowRight')event.target.nextElementSibling?.focus();
     else (event.target.previousElementSibling||$('history-add')).focus();
   });
+  historyEdit.querySelector('footer').addEventListener('keydown',event=>{
+    if(!editingBill?.canEdit||ignoreDialogKey(event))return;
+    const {key,target}=event;
+    if(!['ArrowLeft','ArrowRight','ArrowUp'].includes(key))return;
+    const buttons=Array.from(event.currentTarget.querySelectorAll('button:not([hidden]):enabled'));
+    const index=buttons.indexOf(target);
+    if(index<0)return;
+    event.preventDefault();
+    if(key==='ArrowUp')$('history-add').focus();
+    else buttons[(index+(key==='ArrowRight'?1:-1)+buttons.length)%buttons.length].focus();
+  });
   historyDetail.addEventListener('keydown',event=>{
+    if(ignoreDialogKey(event))return;
+    const add=$('history-add');
+    if(editingBill?.canEdit&&event.key==='/'&&event.target!==add){
+      event.preventDefault();
+      add.focus();
+      return;
+    }
     const reprint=$('history-detail-reprint');
     if(event.key===' '&&reprint&&!reprint.hidden&&(event.target===$('history-back')||event.target===historyDetail)){
       event.preventDefault();reprint.focus();
@@ -2350,7 +2407,7 @@
     const dialog=e.currentTarget;
     if(!dialog.open)return;
     const complete=dialog.classList.contains('kb-payment-complete');
-    if(complete&&e.key==='Tab'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.defaultPrevented){
+    if((complete||historyPrintRow)&&e.key==='Tab'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.defaultPrevented){
       const controls=Array.from(dialog.querySelectorAll('button:enabled,select:enabled'))
         .filter(control=>control.getClientRects().length);
       const boundary=e.shiftKey?controls[0]:controls.at(-1);
@@ -2366,14 +2423,17 @@
       if(complete)e.stopPropagation();
       return;
     }
-    if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;
-    const buttons=Array.from(dialog.querySelectorAll(complete?'.kb-print-options button:enabled':'button:enabled'))
+    const arrows=historyPrintRow?['ArrowLeft','ArrowRight','ArrowUp','ArrowDown']:['ArrowLeft','ArrowRight'];
+    if(!arrows.includes(e.key))return;
+    const selector=historyPrintRow?'[data-kb-print]:enabled':'.kb-print-options button:enabled';
+    const buttons=Array.from(dialog.querySelectorAll(selector))
       .filter(button=>button.getClientRects().length);
     const index=buttons.indexOf(e.target);
     if(index<0)return;
     e.preventDefault();
     if(complete)e.stopPropagation();
-    buttons[(index+(e.key==='ArrowRight'?1:-1)+buttons.length)%buttons.length].focus();
+    const forward=e.key==='ArrowRight'||e.key==='ArrowDown';
+    buttons[(index+(forward?1:-1)+buttons.length)%buttons.length].focus();
   });
   $('print-choice')?.addEventListener('close',e=>{
     if(!e.currentTarget.open&&e.currentTarget.classList.contains('kb-payment-complete')&&
