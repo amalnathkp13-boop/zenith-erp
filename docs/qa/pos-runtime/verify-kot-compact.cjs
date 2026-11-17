@@ -54,13 +54,30 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await modes.locator('summary').click();
   await modes.locator('[data-kb-sales-mode="RETAIL"]').click();
   check('Retail can be restored in Modes',await page.locator('#kb-mode').inputValue()==='RETAIL');
-  await page.locator('#kb-waiter').selectOption({label:waiterName});
+  const search=page.locator('#kb-search');
+  const waiterMenu=page.locator('#kb-waiter-menu'),waiterTrigger=page.locator('#kb-waiter-trigger'),waiter=page.locator('#kb-waiter');
+  const searchHasFocus=()=>search.evaluate(el=>el===document.activeElement);
+  const verifyWaiterShortcut=async view=>{
+   await waiterTrigger.press('/');
+   check(view+' opens product search from the focused waiter control',await searchHasFocus());
+   await waiterTrigger.click();
+   await page.waitForFunction(()=>document.activeElement.id==='kb-waiter');
+   await page.keyboard.press('/');
+   check(view+' opens product search and dismisses the open waiter list',
+    await searchHasFocus()&&!(await waiterMenu.evaluate(el=>el.open)));
+   await waiterTrigger.click();
+   await waiter.selectOption({label:waiterName});
+   await waiter.press('Enter');
+   await page.keyboard.press('/');
+   check(view+' opens product search after selecting a waiter',
+    await searchHasFocus()&&(await waiterTrigger.textContent())===waiterName);
+  };
+  await verifyWaiterShortcut('List View');
   await page.locator('[data-ot="Take Away"]').click();
   check('List View has no table picker',await page.locator('#kb-table-field').count()===0&&await page.locator('#kb-table').isHidden());
   const taxSwitch=page.getByRole('switch',{name:'Tax'});
   if(await taxSwitch.getAttribute('aria-checked')==='true')await taxSwitch.click();
   check('List View omits the keypad instructions',await page.locator('#kb-key-help').count()===0);
-  const search=page.locator('#kb-search');
   const fullscreen=page.locator('#kb-fullscreen');
   const listMode=modes.getByRole('button',{name:'List View',exact:true});
   const gridMode=modes.getByRole('button',{name:'Grid View',exact:true});
@@ -70,6 +87,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await listMode.getAttribute('aria-pressed')==='true'&&
    await page.getByRole('button',{name:/^(Grid|List) View/}).count()===2);
   await gridMode.click();
+  await verifyWaiterShortcut('Grid View');
   check('Grid View keeps the tax setting and omits the keypad instructions',
    await taxSwitch.getAttribute('aria-checked')==='false'&&await page.locator('#kb-key-help').count()===0);
   check('Grid View has no table picker',await page.locator('#kb-table-field').count()===0&&await page.locator('#kb-table').isHidden());

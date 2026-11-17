@@ -1,12 +1,22 @@
-/* Scoped Kitchen content only; the existing shell owns navigation and background colours. */
-#kot-terminal-entry{box-sizing:border-box;width:min(100%,560px);margin:28px auto;padding:28px;border:1px solid var(--z-border,#e4dff3);border-radius:12px;background:#fff;color:#19152e;font-family:"Segoe UI",Arial,sans-serif}
-#kot-terminal-entry h1{margin:0 0 8px;font-size:24px;font-weight:750;line-height:1.3}
-#kot-terminal-entry p{margin:0 0 22px;color:#77718b;font-size:14px}
-#kot-terminal-entry form{display:grid;gap:16px;margin:0}
-#kot-terminal-entry label{display:grid;gap:7px;font-size:13px;font-weight:650}
-#kot-terminal-entry :is(input,select){box-sizing:border-box;width:100%;min-height:44px;border:1px solid #ded8e9;border-radius:8px;padding:8px 12px;background:#fff;color:inherit;font:inherit}
-#kot-terminal-entry button{min-height:44px;border:0;border-radius:8px;background:#6d28d9;color:#fff;font:650 14px "Segoe UI",Arial,sans-serif;padding:10px 16px;cursor:pointer}
-#kot-terminal-entry :is(button,input,select):focus-visible{outline:3px solid #c4b5fd;outline-offset:2px}
+/* Session opening cards and Kitchen content. */
+:is(#kot-terminal-entry,#pos-terminal-entry){box-sizing:border-box;width:min(100%,560px);margin:28px auto;padding:28px;border:1px solid var(--z-border,#e4dff3);border-radius:12px;background:#fff;color:#19152e;font:13px/1.5 "Segoe UI",Arial,sans-serif;box-shadow:0 1px 3px rgba(17,24,39,.06),0 1px 2px rgba(17,24,39,.04)}
+:is(#kot-terminal-entry,#pos-terminal-entry) h1{margin:0 0 8px;font-size:24px;font-weight:750;line-height:1.3}
+:is(#kot-terminal-entry,#pos-terminal-entry) p{margin:0 0 22px;color:#77718b;font-size:14px}
+:is(#kot-terminal-entry,#pos-terminal-entry) form{display:grid;gap:16px;margin:0}
+:is(#kot-terminal-entry,#pos-terminal-entry) label{display:grid;gap:7px;font-size:13px;font-weight:650}
+:is(#kot-terminal-entry,#pos-terminal-entry) :is(input,select){box-sizing:border-box;width:100%;min-height:44px;border:1px solid #ded8e9;border-radius:8px;padding:8px 12px;background:#fff;color:inherit;font:inherit}
+:is(#kot-terminal-entry,#pos-terminal-entry) button{min-height:44px;border:0;border-radius:8px;background:#6d28d9;color:#fff;font:650 14px "Segoe UI",Arial,sans-serif;padding:10px 16px;cursor:pointer}
+:is(#kot-terminal-entry,#pos-terminal-entry) :is(button,input,select):focus-visible{outline:3px solid #c4b5fd;outline-offset:2px}
+.pos-entry-actions{box-sizing:border-box;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;width:min(100%,560px);margin:-14px auto 28px}
+.pos-entry-actions a{padding:7px 0;color:var(--z-primary,#6d28d9);font:600 13px "Segoe UI",Arial,sans-serif}
+.pos-entry-actions #pos-history-btn-ns{display:inline-flex;align-items:center;gap:8px;min-height:38px;padding:6px 10px;border:1px solid #ddd2f7;border-radius:8px;background:#f5f0ff;color:#5b21b6;font:650 13px/1.4 "Segoe UI",Arial,sans-serif;cursor:pointer}
+.pos-entry-actions #pos-history-btn-ns:hover{background:#ede5ff}
+.pos-entry-actions #pos-history-btn-ns:focus-visible{outline:3px solid #c4b5fd;outline-offset:2px}
+.pos-entry-actions #pos-history-btn-ns svg{width:16px;height:16px;flex:none}
+.pos-entry-actions kbd{padding:2px 5px;border:1px solid #ddd2f7;border-radius:5px;background:#fff;color:inherit;font:700 11px/1.2 "Segoe UI",Arial,sans-serif}
+body.body--dark .pos-entry-actions #pos-history-btn-ns{background:#30234d;border-color:#5c477c;color:#e1d2ff}
+body.body--dark .pos-entry-actions #pos-history-btn-ns:hover{background:#3f2d63}
+body.body--dark .pos-entry-actions kbd{background:#211a33;border-color:#5c477c}
 .zk-help{position:relative;border:1px solid var(--z-border,#E4DFF3);border-radius:8px;margin:8px 12px 12px;color:var(--z-secondary,#463D7A);font:13px/1.6 "Segoe UI",Arial,sans-serif}
 .zk-help summary{cursor:pointer;padding:9px 44px 9px 14px;font-weight:600;list-style:none}.zk-help summary span{font-weight:400;margin-left:8px;color:#726B85}.zk-help summary button{position:absolute;right:8px;top:3px;border:0;background:transparent;font-size:22px;color:inherit;cursor:pointer;padding:2px 8px}.zk-help p{margin:0;padding:0 14px 12px}
 .zk-display{padding:20px 16px 28px;color:#17152C;font-family:"Segoe UI",Arial,sans-serif}.zk-heading{display:flex;align-items:center;gap:13px;margin-bottom:24px}.zk-heading h1{font-size:25px;font-weight:750;line-height:1.25;margin:0 0 5px}.zk-heading p{font-size:13px;line-height:1.5;color:#77718B;margin:0}.zk-heading-icon{display:grid;place-items:center;flex:0 0 44px;height:44px;background:#F4F0FF;border-radius:10px;color:#7C3AED}.zk-display svg{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}

@@ -3668,7 +3668,7 @@ window.posToggleFullscreen = function() {
                 var countBadge = document.getElementById('pos-today-bills');
                 if (countBadge && countBadge.dataset.day !== currentDay && !dayRefreshPending) {
                     dayRefreshPending = true;
-                    fetchScreen({}).then(syncIssuedBillHeader).catch(function(){}).finally(function(){dayRefreshPending = false;});
+                    fetchScreen({}).then(syncCompletedBillSummary).catch(function(){}).finally(function(){dayRefreshPending = false;});
                 }
             }
         }
@@ -4334,8 +4334,8 @@ window.posToggleFullscreen = function() {
                 + payBtn('UPI','UPI'+badge('F5'),'#9518dd')
                 + '<button id="pos-split" type="button" class="pos-split-btn">Split Payment'+badge('F6')+'</button>'
                 + actionBtn('holdSale','Hold'+badge('F7'),'#ff9b00')
-                + '<button id="pos-copilot" type="button" onclick="posCheckoutCopilot()">AI Copilot</button></div>';
-            if (disabled) html=html.replace(/<button(?![^>]*id="pos-copilot")/g,'<button disabled');
+                + '</div>';
+            if (disabled) html=html.replace(/<button /g,'<button disabled ');
             return html;
         }
 
@@ -4580,12 +4580,6 @@ window.posToggleFullscreen = function() {
             });
             document.querySelectorAll('.pos-pay-form input[name="amount"]').forEach(function(el) { el.value = d.pay; });
             document.querySelectorAll('.pos-pay-form input[name="transactionId"]').forEach(function(el) { if (el.value !== TX) el.value = TX; });
-            var bn = document.getElementById('pos-bill-badge');
-            if (bn) {
-                if (d.txnNum) bn.dataset.lastBill = d.txnNum;
-                bn.textContent = bn.dataset.lastBill || '—';
-                bn.classList.toggle('nb-billno__new', !bn.dataset.lastBill);
-            }
             lastTxnNum = d.txnNum || '';
             lastPay = d.pay || 0;
             lastCartData = d;
@@ -4594,9 +4588,9 @@ window.posToggleFullscreen = function() {
         }
 
         function lastCompletedMarkup() {
-            var bill = document.getElementById('pos-bill-badge');
-            return '<div id="pos-last-completed" style="font-size:13px;color:#777">Last amount: '
-                + cartText(bill && bill.dataset.sessionLastAmount || '0') + '</div>';
+            var root = document.getElementById('pos-terminal-root');
+            var amount = cartText(root?.dataset.lastCompletedAmount || '0');
+            return '<div id="pos-last-completed" style="font-size:13px;color:#777">Last amount: ' + amount + '</div>';
         }
 
         function resetCompletedCart(keepCategory) {
@@ -4616,18 +4610,14 @@ window.posToggleFullscreen = function() {
             if (current.href !== location.href) history.replaceState(history.state, '', current.pathname + current.search + current.hash);
         }
 
-        function syncIssuedBillHeader(doc) {
-            var sourceBill = doc.querySelector('#pos-bill-badge');
-            var bill = document.getElementById('pos-bill-badge');
-            if (sourceBill && bill) {
-                bill.dataset.lastBill = sourceBill.dataset.lastBill || '';
-                bill.dataset.sessionLastBill = sourceBill.dataset.sessionLastBill || '-';
-                bill.dataset.sessionLastAmount = sourceBill.dataset.sessionLastAmount || '0';
-                bill.textContent = sourceBill.textContent;
-                bill.classList.toggle('nb-billno__new', !bill.dataset.lastBill);
+        function syncCompletedBillSummary(doc) {
+            var source = doc.getElementById('pos-terminal-root');
+            var root = document.getElementById('pos-terminal-root');
+            if (source && root) {
+                root.dataset.lastCompletedAmount = source.dataset.lastCompletedAmount || '0';
+                var lastSummary = document.getElementById('pos-last-completed');
+                if (lastSummary) lastSummary.textContent = 'Last amount: ' + root.dataset.lastCompletedAmount;
             }
-            var lastSummary = document.getElementById('pos-last-completed');
-            if (lastSummary && bill) lastSummary.textContent = 'Last amount: ' + (bill.dataset.sessionLastAmount || '0');
             var sourceCount = doc.querySelector('#pos-today-bills');
             var count = document.getElementById('pos-today-bills');
             if (sourceCount && count) {
@@ -5678,7 +5668,7 @@ window.posToggleFullscreen = function() {
                         if (ntk && ntk.value) TK = ntk.value;
                         // Only refresh catalog/header metadata: a new bill may already be active.
                         swapGrid(doc);
-                        syncIssuedBillHeader(doc);
+                        syncCompletedBillSummary(doc);
                         appendRecallIfNeeded();
                         var bn = document.querySelector('.pos-header [style*="background:#e65100"]') || document.querySelector('.pos-header [style*="background: rgb(230, 81, 0)"]');
                         if (bn) bn.textContent = 'BILL- 0';
@@ -5725,7 +5715,7 @@ window.posToggleFullscreen = function() {
                         if (ntk && ntk.value) TK = ntk.value;
                         // Only refresh catalog/header metadata: a new bill may already be active.
                         swapGrid(doc);
-                        syncIssuedBillHeader(doc);
+                        syncCompletedBillSummary(doc);
                         appendRecallIfNeeded();
                         var bn = document.querySelector('.pos-header [style*="background:#e65100"]') || document.querySelector('.pos-header [style*="background: rgb(230, 81, 0)"]');
                         if (bn) bn.textContent = 'BILL- 0';
@@ -5827,7 +5817,7 @@ window.posToggleFullscreen = function() {
                         if (ntk && ntk.value) TK = ntk.value;
                         // Only refresh catalog/header metadata: a new bill may already be active.
                         swapGrid(doc);
-                        syncIssuedBillHeader(doc);
+                        syncCompletedBillSummary(doc);
                         appendRecallIfNeeded();
                         var bn = document.querySelector('.pos-header [style*="background:#e65100"]') || document.querySelector('.pos-header [style*="background: rgb(230, 81, 0)"]');
                         if (bn) bn.textContent = 'BILL- 0';

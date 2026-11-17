@@ -9,6 +9,7 @@
   const search=$('search'), suggestions=$('suggestions'), cart=new Map();
   const stats=$('stats'), summaryStack=stats.parentElement, checkout=root.querySelector('.kb-bottom');
   const modesMenu=root.querySelector('.kg-modes');
+  const waiterMenu=$('waiter-menu'), waiter=$('waiter'), waiterTrigger=$('waiter-trigger');
   const modeOptions=modesMenu.querySelectorAll('[data-kb-view]');
   const salesModeSection='[aria-label="Sales mode"]';
   const paymentButtons=Array.from(root.querySelectorAll('[data-kb-payment]'));
@@ -503,7 +504,9 @@
     const readOnly=search.disabled?' readonly':'';
     const modeName=$('mode').selectedOptions[0]?.textContent||'—';
     $('list-mode').textContent=modeName;
-    $('list-waiter').textContent=$('waiter').value?$('waiter').selectedOptions[0]?.textContent:'—';
+    const waiterName=waiter.selectedOptions[0]?.textContent;
+    waiterTrigger.textContent=waiterName||waiter.options[0].textContent;
+    $('list-waiter').textContent=waiter.value?waiterName:'—';
     cartRows.innerHTML=Array.from(cart.values(),(it,i)=>'<tr data-product="'+esc(it.id)+'"><td>'+(i+1)+'</td><td><strong>'+esc(it.name)+'</strong><small>'+esc(it.code)+'</small></td>'
       +'<td class="kg-normal"><span class="kl-line-mode">'+esc(modeName)+'</span></td>'
       +'<td><input type="text" inputmode="decimal" class="kl-line-rate" data-kb-edit="rate" aria-label="Rate for '+esc(it.name)+'" value="'+esc(it.price)+'"'+readOnly+'></td>'
@@ -819,9 +822,10 @@
       window.removeEventListener('pageshow',claimOfflineOrder);
     } else updateHeader();
   },1000);
-  document.addEventListener('click',function dismissModes(e){
-    if(!root.isConnected){document.removeEventListener('click',dismissModes);return;}
+  document.addEventListener('click',function dismissToolbarMenus(e){
+    if(!root.isConnected){document.removeEventListener('click',dismissToolbarMenus);return;}
     if(!modesMenu.contains(e.target))modesMenu.open=false;
+    if(!waiterMenu.contains(e.target))waiterMenu.open=false;
   });
   function fullscreenElement() {
     return document.fullscreenElement||document.webkitFullscreenElement;
@@ -2069,7 +2073,24 @@
     for(const item of cart.values())delete item.manualRate;
     salesModeId=$('mode').value;paintSalesMode();browsePage=null;quote();lookup();
   });
-  $('waiter').addEventListener('change',quote);
+  function closeWaiterMenu() {
+    waiterMenu.open=false;
+    waiterTrigger.focus({preventScroll:true});
+  }
+  waiterMenu.addEventListener('toggle',()=>{
+    if(!waiterMenu.open)return;
+    const left=waiterMenu.getBoundingClientRect().left;
+    waiter.style.left=Math.min(0,innerWidth-left-waiter.offsetWidth-8)+'px';
+    waiter.focus({preventScroll:true});
+  });
+  waiterMenu.addEventListener('focusout',e=>{
+    if(!waiterMenu.contains(e.relatedTarget))waiterMenu.open=false;
+  });
+  waiter.addEventListener('change',quote);
+  waiter.addEventListener('click',closeWaiterMenu);
+  waiter.addEventListener('keydown',e=>{
+    if(e.key==='Enter'){e.preventDefault();closeWaiterMenu();}
+  });
   $('history-search').addEventListener('input',()=>filterHistory());
   $('history-status').addEventListener('change',()=>filterHistory());
   $('history-date').addEventListener('change',()=>filterHistory());
@@ -2390,7 +2411,7 @@
     } catch { $('print-error').textContent='This browser could not save the printer. Use browser printing.'; }
   });
   let shiftAlone=false;
-  const editable=e=>e.target?.closest?.('input,textarea,select,button,a,[contenteditable],dialog');
+  const editable=e=>e.target===waiterTrigger||e.target?.closest?.('input,textarea,select,button,a,[contenteditable],dialog');
   function shortcut(e) {
     if(!root.isConnected){document.removeEventListener('keydown',shortcut);document.removeEventListener('keyup',shortcut);return;}
     if(document.documentElement.classList.contains('zk-billing-pending')||document.getElementById('posCloseSessionOverlay')){shiftAlone=false;return;}
@@ -2400,11 +2421,14 @@
       return;
     }
     if(e.key!=='Shift')shiftAlone=false;
+    if(e.key==='Escape'&&waiterMenu.open){
+      e.preventDefault();closeWaiterMenu();return;
+    }
     if(e.key==='Escape'&&modesMenu.open){
       modesMenu.open=false;modesMenu.querySelector('summary').focus();return;
     }
     if(!e.repeat&&!e.isComposing&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.shiftKey&&!root.querySelector('dialog[open]')){
-      if(e.key.toLowerCase()==='c'&&$('close-session')&&!e.target?.closest?.('input,textarea,select,[contenteditable]')){e.preventDefault();openSessionClose();return;}
+      if(e.key.toLowerCase()==='c'&&$('close-session')&&e.target!==waiterTrigger&&!e.target?.closest?.('input,textarea,select,[contenteditable]')){e.preventDefault();openSessionClose();return;}
       if(e.key==='F9'&&$('held-open')){e.preventDefault();$('held-open').click();return;}
       if(e.key==='F10'){e.preventDefault();showHistory();return;}
       if(e.key==='F7'&&!$('draft')?.disabled){e.preventDefault();$('draft')?.click();return;}
@@ -2413,9 +2437,12 @@
       }
       if(e.key==='/'&&!e.defaultPrevented&&!search.disabled) {
         const editor=e.target?.dataset.kbEdit;
-        if(editor || !e.target?.closest?.('input,textarea,select,[contenteditable]')) {
+        if(editor || waiterMenu.contains(e.target) || !e.target?.closest?.('input,textarea,select,[contenteditable]')) {
           e.preventDefault();
-          if(!editor||commitEdit(e.target))search.focus();
+          if(!editor||commitEdit(e.target)){
+            waiterMenu.open=false;
+            search.focus();
+          }
           return;
         }
       }

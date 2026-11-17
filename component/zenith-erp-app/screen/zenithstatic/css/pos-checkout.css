@@ -57,15 +57,12 @@ html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-sta
 #kb-wrap .nb-hrow .nb-status:has(.is-offline) { color:#d84949; }
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-meta svg,
 #kb-wrap :is(.nb-hrow,.nb-actionbar) .nb-meta svg { width:18px; }
-html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-billno,
 #kb-wrap :is(.nb-hrow,.nb-actionbar) .nb-billno { display:flex; align-items:center; gap:8px; padding:12px; border-radius:10px; background:#f1f4fa; white-space:nowrap; font-size:13px; }
-html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-billno svg,
 #kb-wrap :is(.nb-hrow,.nb-actionbar) .nb-billno svg { width:17px; color:var(--pos-muted); }
-html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-billno__val,
 #kb-wrap :is(.nb-hrow,.nb-actionbar) .nb-billno__val { font-weight:700; }
-html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-billno__new { color:var(--pos-muted); }
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-today-bills,
 #kb-wrap :is(.nb-hrow,.nb-actionbar) .nb-today-bills { font-size:13px; gap:4px; }
+html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-customer-picker { margin-inline-start:auto; }
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-hspace,
 #kb-wrap :is(.nb-hrow,.nb-actionbar) .nb-hspace { flex:1; }
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-customer-picker,
@@ -81,9 +78,11 @@ html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-mod
   position:absolute; z-index:50; top:calc(100% + 8px); left:0; min-width:245px; max-width:min(90vw,460px);
   max-height:65dvh; overflow:auto; padding:8px; background:white; border:1px solid var(--pos-line); border-radius:12px; box-shadow:0 12px 40px #17163826;
 }
-html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-modes__section { padding:8px; color:var(--pos-muted); font-size:12px; }
-html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-modes__item { display:block; width:100%; text-align:left; background:transparent; border:0; border-radius:8px; padding:10px; color:var(--pos-ink); text-decoration:none; cursor:pointer; }
-html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-modes__item:hover, html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-modes__item.is-active { background:#f0eaff; color:var(--pos-purple); }
+html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-modes__menu { top:calc(100% + 5px); width:min(240px,100vw - 152px); min-width:0; max-height:min(65dvh,430px); padding:9px; border-color:#e1e7f0; box-shadow:0 6px 18px #27245220; }
+html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-modes__section { margin-top:8px; border-top:1px solid #edf0f6; padding:13px 10px 5px; color:#667196; font-size:13px; }
+html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-modes__section:first-child { padding-top:5px; }
+html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-modes__item { display:block; width:100%; min-height:38px; text-align:left; background:white; border:0; border-radius:8px; padding:8px 10px; color:#10152e; text-decoration:none; cursor:pointer; }
+html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-modes__item:is(:hover,:focus-visible,.is-active) { background:#f0ebff; color:#5916c8; }
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-tax,
 #kb-wrap :is(.nb-hrow,.nb-actionbar) .nb-tax { padding:0 18px; border-color:var(--pos-line); background:white; }
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-toggle,
@@ -179,7 +178,6 @@ html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference #pos-sp
 #kb-wrap .kb-checkout-actions [data-kb-payment=Split] { flex:1.35; --pos-action-bg:#e5f0ff; --pos-action-ink:#1667b4; --pos-action-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 6-6 6 6 6M0 12h24m-6-6 6 6-6 6'/%3E%3C/svg%3E"); }
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference #pos-hold,
 #kb-wrap .kb-checkout-actions #kb-draft { --pos-action-bg:#fff0e5; --pos-action-ink:#b7440f; --pos-action-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='4' y='3' width='5' height='18' rx='1.5'/%3E%3Crect x='15' y='3' width='5' height='18' rx='1.5'/%3E%3C/svg%3E"); }
-html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference #pos-copilot { --pos-action-bg:#ede8ff; --pos-action-ink:#5b36b1; --pos-action-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4H5a3 3 0 0 0-3 3v9a3 3 0 0 0 3 3h2v3l4-3h6a3 3 0 0 0 3-3v-4M6 10h4m-4 4h8m3-13 1.8 4.2L23 7l-4.2 1.8L17 13l-1.8-4.2L11 7l4.2-1.8L17 1Z'/%3E%3C/svg%3E"); }
 body:has(.pos-checkout-reference) #ai-copilot-toggle { display:none!important; }
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .pos-cart-search { position:fixed!important; z-index:100; width:min(620px,90vw); left:-10000px; top:150px; padding:8px!important; background:white!important; border:1px solid var(--pos-line); border-radius:10px; box-shadow:0 15px 45px #15152b26; }
 html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .pos-cart-search.is-open { left:auto; right:24px; }
@@ -229,9 +227,7 @@ html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .pos-sp
   html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-hrow { flex-wrap:wrap; padding:10px 12px; margin:0 -12px; gap:8px; }
   html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-brand { flex-basis:110px; }
   html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-brand img { max-width:105px; }
-  html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-billno { font-size:11px; padding:8px; }
   html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-customer-picker { flex:1; max-width:none; }
-  html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-hrow .nb-hspace { display:none; }
   html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-actionbar { flex-wrap:wrap; margin:-10px -12px 0; padding:10px 12px; gap:6px; }
   html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-actionbar > .nb-hspace { display:none; }
   html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-actionbar .nb-abtn, html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-tax, html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-back, html body.Terminal .z-pos-page #pos-terminal-root.pos-checkout-reference .nb-actionbar .nb-pill { font-size:12px; padding:0 8px; min-height:40px; }

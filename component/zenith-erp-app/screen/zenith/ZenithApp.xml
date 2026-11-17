@@ -345,7 +345,7 @@
         ]]></script>
         <script><![CDATA[
             if (html_stylesheets == null) html_stylesheets = []
-            html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=311')
+            html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=312')
             html_stylesheets.add('/zenithstatic/css/users-access.css?v=2')
             html_stylesheets.add('/zenithstatic/css/sidebar-manager.css?v=3')
             html_stylesheets.add('/zenithstatic/css/subnav-manager.css?v=3')
@@ -421,7 +421,7 @@
             html_scripts.add('/zenithstatic/js/kitchen-display.js?v=7')
             html_scripts.add('/zenithstatic/js/pos-receipt-layout.js?v=12')
             html_scripts.add('/zenithstatic/js/kitchen-print.js?v=9')
-            html_stylesheets.add('/zenithstatic/css/kitchen-display.css?v=5')
+            html_stylesheets.add('/zenithstatic/css/kitchen-display.css?v=7')
             // ZE-DASH-0402: neutralise the stock framework "notifications disabled" nag toast (Safari fires it
             // on every load). HEAD script so it runs before WebrootVue's mounted() hook. Both surfaces.
             html_scripts.add('/zenithstatic/js/notif-nag-fix.js?v=2')
@@ -615,7 +615,6 @@
                 }
                 context.posBillingBack = exit('/pos', '/pos/Terminal', ['/pos/Dashboard'])
                 context.kotBillingBack = exit('/kot', '/kot/KotBilling', ['/kot/KotHistory', '/kot/KotDashboard'])
-                context.showPosSessionReview = (routes['/pos'] ?: []).contains('/pos/PosSessions')
             }
             context.saasVisibleModules = navigation.moduleIds
             context.navRestricted = navigation.moduleIds != null
@@ -826,10 +825,10 @@
         body.z-side-collapsed #z-sidebar .zs-cat,body.z-side-collapsed #z-sidebar .zs-brand span,body.z-side-collapsed #z-sidebar .zs-link span.t{display:none}
         body.z-side-collapsed #z-sidebar .zs-link{justify-content:center}
         #z-side-burger,#z-side-backdrop{display:none}
-        /* full-screen focused modes (POS billing terminal) opt out — keep the whole width */
-        body.z-side-off #z-sidebar,body.z-side-off #z-side-burger{display:none}
-        body.z-side-off #top,body.z-side-off #content,body.z-side-off #footer{margin-left:0 !important}
-        body.z-side-off #z-subnav{display:none !important}
+        /* Active POS checkout and receipts use the full width. */
+        body:has(#pos-terminal-root,.pos-receipt-card) #z-sidebar,body:has(#pos-terminal-root,.pos-receipt-card) #z-side-burger{display:none}
+        body:has(#pos-terminal-root,.pos-receipt-card) #top,body:has(#pos-terminal-root,.pos-receipt-card) #content,body:has(#pos-terminal-root,.pos-receipt-card) #footer{margin-left:0 !important}
+        body:has(#pos-terminal-root,.pos-receipt-card) #z-subnav{display:none !important}
         /* ZE-NAV: per-module sub-navigation bar (current module's sections as tabs; report Fig 3.x / Image #3) */
         #z-subnav{display:none;background:#fff;border-bottom:1px solid var(--z-border,#E4DFF3);overflow-x:auto;overflow-y:hidden;white-space:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:#DCD3F2 transparent}
         #z-subnav.show{display:flex;align-items:stretch;overflow:visible}
@@ -1175,7 +1174,6 @@
           if(bd&&bd.parentNode!==body)body.appendChild(bd);
           // active highlight: longest data-match prefix of the path after /apps/zenith
           var rel=location.pathname.replace(/^\/apps\/zenith/,'')||'/';
-          if(/^\/pos\/Terminal/.test(rel)){body.classList.add('z-side-off');return;} // billing = full-screen focused mode
           var links=[].slice.call(side.querySelectorAll('.zs-link')), best=null, bestLen=-1;
           links.forEach(function(a){var m=a.getAttribute('data-match')||'';if(m&&m!=='/__more'&&rel.indexOf(m)===0&&m.length>bestLen){best=a;bestLen=m.length;}});
           if(!best)best=links[0];
@@ -1362,7 +1360,7 @@
             <link rel="preconnect" href="https://fonts.googleapis.com"/>
             <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"/>
             <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
-            <link rel="stylesheet" href="/zenithstatic/css/zenith-theme-v4.css?v=311"/>
+            <link rel="stylesheet" href="/zenithstatic/css/zenith-theme-v4.css?v=312"/>
             <link rel="stylesheet" href="/zenithstatic/css/users-access.css?v=2"/>
             <link rel="stylesheet" href="/zenithstatic/css/my-subscription-reference.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/saas-admin.css?v=4"/>

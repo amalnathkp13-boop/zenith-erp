@@ -856,7 +856,12 @@
       <button type="button" class="kb-otbtn nb-abtn" data-ot="Take Away"><@ic 'box'/> Take Away</button>
     </div>
     <input type="hidden" id="kb-table" value="" data-labels="${tableLabelsJson?html}"/>
-    <label class="kb-fld"><select class="nb-pill" id="kb-waiter" aria-label="Waiter"><option value="">Choose waiter</option><#list waiters as w><option value="${w.waiterId?html}">${w.waiterName?html}</option></#list></select></label>
+    <details id="kb-waiter-menu">
+      <summary class="kb-control nb-pill" id="kb-waiter-trigger">Choose waiter</summary>
+      <select class="kg-menu" id="kb-waiter" aria-label="Waiter" size="${([2, [waiters?size + 1, 6]?min]?max)?c}">
+        <option value="">Choose waiter</option><#list waiters as w><option value="${w.waiterId?html}">${w.waiterName?html}</option></#list>
+      </select>
+    </details>
     <#if kitchenModuleId == 'kot'><button type="button" class="kb-control nb-abtn nb-abtn--history" id="kb-today-sales"><@ic 'printer' 20/> Today Sales Print</button></#if>
     <div class="kb-toolbar-end">
       <#if modCanWrite && kitchenModuleId != 'kot'><button type="button" class="kb-control nb-power" id="kb-close-session" aria-label="Close" aria-keyshortcuts="C" title="Review cash and close this POS session"><@ic 'close-session' 22/> Close <kbd aria-hidden="true">C</kbd></button></#if>
