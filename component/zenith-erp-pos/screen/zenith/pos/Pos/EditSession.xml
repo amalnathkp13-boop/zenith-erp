@@ -149,8 +149,8 @@
             <row-col lg="3" md="6">
                 <container-box><box-header title="Closing"/>
                 <box-body>
-                    <section name="IdleCashUnverified" condition="['IdleNoSales','IdleUnverifiedCash'].contains(session.closeReason)">
-                        <widgets><label text="Cash not counted — enter the actual drawer count below to review this idle closure." type="p"/></widgets>
+                    <section name="IdleCashUnverified" condition="['IdleNoSales','IdleUnverifiedCash','HandoffUnverifiedCash'].contains(session.closeReason)">
+                        <widgets><label text="Cash not counted — enter the actual drawer count below to review this closure." type="p"/></widgets>
                     </section>
                     <form-single name="ClosingInfo" map="session">
                         <field name="closingCash"><default-field title="Closing Cash"><display format="₹#,##,##0.00"/></default-field></field>
@@ -188,7 +188,7 @@
                             </container-dialog>
                         </widgets>
                     </section>
-                    <section name="ReviewIdleCashAction" condition="session.statusId == 'PsClosed' &amp;&amp; ['IdleNoSales','IdleUnverifiedCash'].contains(session.closeReason) &amp;&amp; modCanWrite">
+                    <section name="ReviewIdleCashAction" condition="session.statusId == 'PsClosed' &amp;&amp; ['IdleNoSales','IdleUnverifiedCash','HandoffUnverifiedCash'].contains(session.closeReason) &amp;&amp; modCanWrite">
                         <widgets>
                             <container-dialog id="ReviewIdleCashDialog" button-text="Review Cash Count">
                                 <form-single name="ReviewIdleCashForm" transition="reviewIdleCash">

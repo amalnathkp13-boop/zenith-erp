@@ -1,6 +1,9 @@
 // Disposable KOT browser and transition checks. Runs only from verify-runtime.cjs.
 module.exports = async function verifyKot({a,foreign,base,post,rows,count,check}) {
- const kotSessionId=await require('./kot-test-session.cjs')({a,base});
+ const terminalId='POS_QA_A_KOT_FLOW';
+ await post('PosTerminals','createTerminal',{terminalId,terminalName:'Disposable KOT workflow counter',
+  facilityId:'POS_QA_A_FAC',stateCode:'33',isActive:'Y'});
+ const kotSessionId=await require('./kot-test-session.cjs')({a,base,terminalId});
  const rawPost=post; post=(screen,action,args={},actor)=>rawPost(screen,action,screen==='Kitchen/KotBilling'?{sessionId:kotSessionId,...args}:args,actor);
 
   const kotRows = () => rows('kitchen_order_ticket', "organization_party_id='POS_QA_A'");
@@ -133,4 +136,6 @@ module.exports = async function verifyKot({a,foreign,base,post,rows,count,check}
   await waiters.close();
   await post('Kitchen/WaiterManagement','deleteWaiter',{waiterId:waiter.waiter_id});
   check('authorized waiter delete persists',count('waiter',`waiter_id='${waiter.waiter_id}'`)===0);
+  const closed=await post('Terminal','closeSession',{sessionId:kotSessionId,closingCash:'0',wantJson:'1'});
+  check('KOT workflow closes its own test drawer after verification', (await closed.json()).success===true);
 };
