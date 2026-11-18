@@ -144,7 +144,7 @@
                 try {date=java.sql.Timestamp.valueOf(java.time.LocalDate.parse(receiptDate.toString().trim()).atStartOfDay())} catch(Exception ignored) {ec.message.addError('Enter a valid receipt date.');return}
                 def amounts=[freightAmount,insuranceAmount,customsDutyAmount]
                 if(amounts.any {it!=null && it<0}) {ec.message.addError('Landed surcharges cannot be negative.');return}
-                def row=ec.entity.makeValue('zenith.erp.purchase.GoodsReceiptNote').setAll([purchaseOrderId:purchaseOrderId,vendorPartyId:access.part.vendorPartyId,receiptDate:date,freightAmount:freightAmount,insuranceAmount:insuranceAmount,customsDutyAmount:customsDutyAmount]).setSequencedIdPrimary().create()
+                def row=ec.entity.makeValue('zenith.erp.purchase.GoodsReceiptNote').setAll([purchaseOrderId:purchaseOrderId,vendorPartyId:access.part.vendorPartyId,statusId:'GrnDraft',receiptDate:date,freightAmount:freightAmount,insuranceAmount:insuranceAmount,customsDutyAmount:customsDutyAmount]).setSequencedIdPrimary().create()
                 grnId=row.grnId
             ]]></script>
         </actions>

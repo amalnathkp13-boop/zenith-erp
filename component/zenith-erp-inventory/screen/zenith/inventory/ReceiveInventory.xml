@@ -4,6 +4,7 @@
         default-menu-title="Receive Inventory" default-menu-include="false">
 
     <parameter name="orderId" required="true"/>
+    <parameter name="grnId"/>
 
     <transition name="findReceipt"><default-response url="../FindReceipt"/></transition>
     
@@ -15,8 +16,8 @@
             <service-call name="zenith.inventory.ReceiptServices.receive#Stock"
                 in-map="[orderId:orderId, orderItemSeqId:orderItemSeqId, facilityId:facilityId,
                     quantityAccepted:quantityAccepted, batchNumber:batchNumber, mrpAmount:mrpAmount,
-                    manufacturingDate:manufacturingDate, expiryDate:expiryDate]"/>
-        </actions><default-response url="."/>
+                    manufacturingDate:manufacturingDate, expiryDate:expiryDate, grnId:grnId, grnReceivedBefore:grnReceivedBefore]"/>
+        </actions><default-response url="." parameter-map="[orderId:orderId,grnId:grnId]"/>
     </transition>
 
     <actions>
@@ -42,6 +43,22 @@
             <field-map field-name="partyId" from="orderPart?.vendorPartyId"/>
         </entity-find-one>
 
+        <set field="grn" from="null"/>
+        <set field="grnLines" from="[:]"/>
+        <if condition="grnId">
+            <entity-find-one entity-name="zenith.erp.purchase.GoodsReceiptNote" value-field="grn"><field-map field-name="grnId"/></entity-find-one>
+            <if condition="!grn || grn.purchaseOrderId != orderId || grn.vendorPartyId != orderPart.vendorPartyId">
+                <set field="noAccess" from="true"/>
+                <set field="grn" from="null"/>
+                <else>
+                    <entity-find entity-name="zenith.erp.purchase.GoodsReceiptNoteItem" list="deliveryLines"><econdition field-name="grnId"/></entity-find>
+                    <set field="grnLines" from="deliveryLines.findAll { it.orderItemSeqId != null }.collectEntries { [(it.orderItemSeqId):it] }"/>
+                    <set field="orderItems" from="orderItems.findAll { grnLines.containsKey(it.orderItemSeqId) }"/>
+                    <set field="facilityId" from="grn.facilityId"/>
+                </else>
+            </if>
+        </if>
+        <service-call name="zenith.inventory.ReceiptServices.get#PendingGrnQuantities" in-map="[orderId:orderId]" out-map="pendingGrns"/>
         <service-call name="zenith.inventory.ReceiptServices.get#OrderReceiptQuantities" in-map="[orderId:orderId]" out-map="receiptTotals"/>
         <!-- Only destinations in the active organization may receive its goods. -->
         <entity-find entity-name="mantle.facility.Facility" list="facilityList">
@@ -55,7 +72,7 @@
         <render-mode><text type="html,qvt,vuet"><![CDATA[<link rel="stylesheet" href="/zenithstatic/css/receiving-stock.css?v=14"/>]]></text></render-mode>
         <container id="receivingStockDetail" style="receiving-page">
         <container style="receiving-detail-back">
-            <link url="findReceipt" text="← Back to Receiving List" link-type="anchor"/>
+            <link url="../FindReceipt" text="← Back to Receiving List" link-type="anchor"/>
             <label text="Received items go straight into stock and are ready to sell." type="span" style="text-grey-7 text-caption"/>
         </container>
 
@@ -91,6 +108,7 @@
         <!-- Items to Receive -->
         <container style="zenith-card q-pa-md bg-white shadow-1 border-radius-md q-mb-lg">
             <label text="Items to Receive" type="h5" style="text-primary text-weight-bold q-mb-md border-bottom q-pb-sm"/>
+            <label condition="grn" text="GRN ${grnId} · Supplier invoice ${grn.vendorInvoiceNumber ?: 'awaiting invoice'}" type="p" style="text-weight-bold"/>
             <label text="For each item, enter how many actually arrived and which store to put them in, then press Confirm." type="p" style="text-grey-7 q-mb-md"/>
             
             <form-list name="ReceiveItemsForm" list="orderItems" skip-form="true">
@@ -101,7 +119,10 @@
                     
                     <set field="qtyReceived" from="receiptTotals.receivedByItem[orderItemSeqId] ?: 0G"/>
                     <set field="qtyRemaining" from="((quantity ?: 0G) - (quantityCancelled ?: 0G) - qtyReceived).max(0G)"/>
-                    <set field="canReceiveLine" from="qtyRemaining > 0 &amp;&amp; (order.statusId in ['OrderApproved','OrderCompleted'])"/>
+                    <set field="grnLine" from="grnLines[orderItemSeqId]"/>
+                    <set field="grnReceivedBefore" from="grnLine?.inventoryReceivedQuantity ?: 0G"/>
+                    <set field="qtyRemaining" from="grnLine ? qtyRemaining.min(((grnLine.plannedQuantity ?: 0G) - grnReceivedBefore).max(0G)) : (qtyRemaining - (pendingGrns.reservedByItem[orderItemSeqId] ?: 0G)).max(0G)"/>
+                    <set field="canReceiveLine" from="qtyRemaining > 0 &amp;&amp; (order.statusId in ['OrderApproved','OrderCompleted']) &amp;&amp; (!grn || grn.statusId in ['GrnPending','GrnPartial'])"/>
                 </row-actions>
 
                 <field name="orderItemSeqId"><default-field title="#"><label text="${orderItemSeqId}" type="span" style="text-grey-7"/></default-field></field>
@@ -131,11 +152,13 @@
                             <form-single name="ReceiveForm" transition="receiveItem">
                                 <field name="orderId"><default-field><hidden/></default-field></field>
                                 <field name="orderItemSeqId"><default-field><hidden/></default-field></field>
+                                <field name="grnId"><default-field><hidden/></default-field></field>
+                                <field name="grnReceivedBefore"><default-field><hidden/></default-field></field>
                                 
                                 <field name="facilityId">
                                     <default-field title="Put stock into (store / warehouse)">
                                         <drop-down allow-empty="false">
-                                            <list-options list="facilityList" key="${facilityId}" text="${facilityName}"/>
+                                            <list-options list="facilityList.findAll { !grn || it.facilityId == grn.facilityId }" key="${facilityId}" text="${facilityName}"/>
                                         </drop-down>
                                     </default-field>
                                 </field>
@@ -170,10 +193,10 @@
                             </form-single>
                         </container-dialog>
 
-                        <label text="Fully Received" type="span" style="zenith-badge success" condition="qtyRemaining &lt;= 0"/>
+                        <label text="${grn || !(pendingGrns.reservedByItem[orderItemSeqId] ?: 0G) ? 'Fully Received' : 'Queued on GRN'}" type="span" style="zenith-badge success" condition="qtyRemaining &lt;= 0"/>
                     </conditional-field>
                     <default-field title="Receive">
-                        <label text="Fully Received" type="span" style="zenith-badge success" condition="qtyRemaining &lt;= 0"/>
+                        <label text="${grn || !(pendingGrns.reservedByItem[orderItemSeqId] ?: 0G) ? 'Fully Received' : 'Queued on GRN'}" type="span" style="zenith-badge success" condition="qtyRemaining &lt;= 0"/>
                     </default-field>
                 </field>
             </form-list>
