@@ -17,6 +17,7 @@
         <subscreens-item name="CreatePurchaseInvoice" location="component://zenith-erp-purchase/screen/zenith/purchase/CreatePurchaseInvoice.xml"/>
         <subscreens-item name="EditPurchaseInvoice" location="component://zenith-erp-purchase/screen/zenith/purchase/EditPurchaseInvoice.xml" menu-include="false"/>
         
+        <subscreens-item name="GoodsReceiptDetail" location="component://zenith-erp-purchase/screen/zenith/purchase/Purchase/GoodsReceiptDetail.xml" menu-include="false"/>
         <subscreens-item name="GoodsReceipt" location="component://zenith-erp-purchase/screen/zenith/purchase/Purchase/GoodsReceipt.xml"/>
         <subscreens-item name="JobWorkChallan" location="component://zenith-erp-purchase/screen/zenith/purchase/Purchase/JobWorkChallan.xml"/>
         <subscreens-item name="JobWorkChallanDetail" location="component://zenith-erp-purchase/screen/zenith/purchase/Purchase/JobWorkChallanDetail.xml" menu-include="false"/>

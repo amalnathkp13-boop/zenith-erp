@@ -3,7 +3,9 @@
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         default-menu-title="Goods Receipt Note (GRN)" default-menu-index="1">
 
-    <transition name="createGrn"><actions><service-call name="zenith.purchase.OperationsServices.create#GoodsReceiptNote" in-map="[purchaseOrderId:purchaseOrderId,receiptDate:receiptDate,freightAmount:freightAmount,insuranceAmount:insuranceAmount,customsDutyAmount:customsDutyAmount]"/></actions><default-response url="."/><error-response url="."/></transition>
+    <transition name="createGrn"><actions>
+        <if condition="ec.web.request.method != 'POST'"><return error="true" message="Create a GRN using the form."/></if>
+        <if condition="!ec.web.parameters.moquiSessionToken || ec.web.parameters.moquiSessionToken != ec.web.sessionToken"><return error="true" message="Your session expired. Reload Goods Receipt."/></if><service-call name="zenith.purchase.OperationsServices.create#GoodsReceiptNote" in-map="[purchaseOrderId:purchaseOrderId,receiptDate:receiptDate,freightAmount:freightAmount,insuranceAmount:insuranceAmount,customsDutyAmount:customsDutyAmount]" out-map="context"/></actions><default-response url="../GoodsReceiptDetail" parameter-map="[grnId:grnId]"/><error-response url="."/></transition>
 
     <transition name="exportCsv" read-only="true"><actions><script><![CDATA[
         exportFilters=[:]
@@ -43,7 +45,7 @@
         <container style="zsec-hdr row items-center justify-between q-mb-lg z-newbtn-wrap">
             <container style="column">
                 <label condition="sri.getRenderMode() != 'csv'" text="Goods Receipt Notes" type="h3" style="text-primary text-weight-bold q-my-none"/>
-                <label condition="sri.getRenderMode() != 'csv'" text="Record receipt references and landed surcharges. Manage inventory receipts in Inventory." type="p" style="text-grey-7 q-mt-sm q-mb-none"/>
+                <label condition="sri.getRenderMode() != 'csv'" text="Prepare supplier deliveries and invoice references, then receive the goods in Inventory." type="p" style="text-grey-7 q-mt-sm q-mb-none"/>
             </container>
             <container style="z-hdractions">
                 <link url="." parameter-map="csvFilters + [renderMode:'csv',pageNoLimit:'true',saveFilename:'GoodsReceipt.csv',lastStandalone:'true']" text="Export CSV" icon="download" link-type="anchor" style="z-obtn"/>
@@ -113,7 +115,7 @@
                 <field name="grnId">
                     <header-field title="GRN No." show-order-by="true"/>
                     <conditional-field condition="isCsv"><display text="${grnId}"/></conditional-field>
-                    <default-field><label text="${grnId}" type="span" style="z-pillid"/></default-field>
+                    <default-field><link url="../GoodsReceiptDetail" parameter-map="[grnId:grnId]" text="${grnId}" link-type="anchor" style="z-pillid"/></default-field>
                 </field>
                 <field name="purchaseOrderId">
                     <header-field title="Purchase Order"/>
@@ -131,6 +133,8 @@
                         <label text="${receiptDisp}" type="span" style="text-dark"/>
                     </default-field>
                 </field>
+                <field name="deliveryStatus"><header-field title="Status"/><default-field><label text="${[GrnDraft:'Draft',GrnPending:'Awaiting receipt',GrnPartial:'Partially received',GrnReceived:'Received',GrnCancelled:'Cancelled'][statusId] ?: 'Draft'}"/></default-field></field>
+                <field name="vendorInvoiceNumber"><header-field title="Invoice reference"/><default-field><display/></default-field></field>
                 <field name="currencyUomId"><header-field title="Currency"/><default-field><display/></default-field></field>
                 <field name="freightAmount">
                     <header-field title="Freight"/>
