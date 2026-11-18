@@ -1713,11 +1713,16 @@ window._posOffline = (function () {
                 ]);
             })
             .then(function (saved) {
+                if (saved[3]) {
+                    storageReady = true;
+                    showClosed(saved[3]);
+                    window.PosDeferredClose.flush();
+                    return;
+                }
                 draft = saved[0] || null;
                 holds = saved[2] || [];
                 if (!snapshot) snapshot = saved[1] || null;
                 storageReady = true;
-                if (saved[3]) { showClosed(saved[3]); window.PosDeferredClose.flush(); return; }
                 if (draft || disconnected()) begin();
                 connectionChanged();
             })
