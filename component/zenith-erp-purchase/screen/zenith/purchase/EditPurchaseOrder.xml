@@ -61,7 +61,16 @@
             'OrderCompleted': 'dark',
             'OrderCancelled': 'danger'
         ]"/>
-        <set field="statusColor" from="statusColorMap[order?.statusId] ?: 'dark'"/><set field="currSymbol" from="order?.currencyUomId ?: ''"/>
+        <set field="statusColor" from="statusColorMap[order?.statusId] ?: 'dark'"/>
+        <script><![CDATA[
+            def currency = order.currencyUomId
+            context.poCurrencyLabel = currency == 'INR' ? '₹' : currency
+            context.poAmount = { value ->
+                def number = ec.l10n.format(value ?: 0G, '#,##0.00')
+                if (currency == 'INR') return '₹' + zinr.inr(number)
+                return currency ? currency + ' ' + number : number
+            }
+        ]]></script>
         </if>
     </actions>
 
@@ -137,40 +146,50 @@
             <row-col lg="8">
                 <!-- PO Items -->
                 <container style="zenith-card q-pa-md bg-white shadow-1 border-radius-md q-mb-lg">
-                    <container style="row justify-between items-center q-mb-md border-bottom q-pb-sm">
-                        <label text="Order Items" type="h5" style="text-primary text-weight-bold q-my-none"/>
-                        
-                        <section name="POAddItem_write"><condition><expression>modCanWrite</expression></condition><widgets>
-                        <container-dialog id="AddItemDialog" button-text="Add Item" button-class="q-btn--flat bg-primary text-white border-radius-md" condition="order?.statusId == 'OrderOpen'">
+                    <section name="POAddItem_write"><condition><expression>modCanWrite &amp;&amp; order?.statusId == 'OrderOpen'</expression></condition><widgets>
+                        <container style="po-entry-panel">
+                            <label text="Add a product" type="h4" style="po-entry-title"/>
                             <form-single name="AddItemForm" transition="addItem">
                                 <field name="orderId"><default-field><hidden/></default-field></field>
-                                
                                 <field name="productId"><default-field title="Product">
                                     <drop-down allow-empty="true">
-                                        <entity-options key="${productId}" text="${pseudoId} - ${productName}">
+                                        <entity-options key="${productId}" text="${productName ?: productId}${pseudoId ? ' · ' + pseudoId : ''}">
                                             <entity-find entity-name="mantle.product.Product"><econdition field-name="ownerPartyId" from="orderPart?.customerPartyId ?: '__NO_ORGANIZATION__'"/><order-by field-name="productName"/></entity-find>
                                         </entity-options>
                                     </drop-down>
                                 </default-field></field>
-                                <field name="itemDescription"><default-field title="Description"><text-line size="60"/></default-field></field>
-                                <field name="quantity"><default-field><text-line size="8"/></default-field></field>
-                                <field name="unitAmount"><default-field title="Unit Price (Estimated)"><text-line size="15"/></default-field></field>
-                                <field name="requiredByDate"><default-field title="Expected Date"><date-time type="date"/></default-field></field>
-                                
-                                <field name="submitButton"><default-field title="Add Item"><submit/></default-field></field>
+                                <field name="quantity"><default-field title="Quantity"><text-line default-value="1" size="8"/></default-field></field>
+                                <field name="unitAmount"><default-field title="Unit price${poCurrencyLabel ? ' (' + poCurrencyLabel + ')' : ''}"><text-line size="15"/></default-field></field>
+                                <field name="itemDescription"><default-field title="Custom description"><text-line size="45"/></default-field></field>
+                                <field name="requiredByDate"><default-field title="Expected date"><date-time type="date"/></default-field></field>
+                                <field name="submitButton"><default-field title="Add to order"><submit/></default-field></field>
+                                <field-layout>
+                                    <field-ref name="orderId"/>
+                                    <field-group title="" style="po-entry-fields">
+                                        <field-ref name="productId"/><field-ref name="quantity"/><field-ref name="unitAmount"/>
+                                    </field-group>
+                                    <field-accordion active="false">
+                                        <field-group title="Custom description or expected date" style="po-entry-extra">
+                                            <field-ref name="itemDescription"/><field-ref name="requiredByDate"/>
+                                        </field-group>
+                                    </field-accordion>
+                                    <field-ref name="submitButton"/>
+                                </field-layout>
                             </form-single>
-                        </container-dialog>
-                        </widgets></section>
+                        </container>
+                    </widgets></section>
+                    <container style="row justify-between items-center q-mb-md border-bottom q-pb-sm">
+                        <label text="Order items" type="h5" style="text-primary text-weight-bold q-my-none"/>
                     </container>
 
                     <form-list name="OrderItemsForm" list="orderItems" skip-form="true">
                         <field name="orderItemSeqId"><default-field title="#"><label text="${orderItemSeqId}" type="span" style="text-grey-7"/></default-field></field>
-                        <field name="itemDescription"><default-field title="Description"><label text="${itemDescription ?: 'N/A'}" type="strong" style="text-dark"/></default-field></field>
+                        <field name="itemDescription"><default-field title="Description"><label text="${itemDescription ?: productId ?: '—'}" type="strong" style="text-dark"/></default-field></field>
                         <field name="requiredByDate"><default-field title="Expected"><label text="${ec.l10n.format(requiredByDate, 'dd MMM') ?: '-'}" type="span" style="zenith-badge grey"/></default-field></field>
                         <field name="quantity"><default-field><label text="${quantity}" type="span" style="text-dark"/></default-field></field>
-                        <field name="unitAmount"><default-field title="Unit Price"><label text="${zinr.inr(ec.l10n.format(unitAmount ?: 0, '#,##,##0.00'))}" type="span"/></default-field></field>
+                        <field name="unitAmount"><default-field title="Unit Price"><label text="${poAmount(unitAmount)}" type="span"/></default-field></field>
                         <field name="total"><default-field title="Est. Total">
-                            <label text="${currSymbol}${zinr.inr(ec.l10n.format((quantity ?: 0) * (unitAmount ?: 0), '#,##,##0.00'))}" type="span" style="text-weight-bold text-dark"/>
+                            <label text="${poAmount((quantity ?: 0) * (unitAmount ?: 0))}" type="span" style="text-weight-bold text-dark"/>
                         </default-field></field>
                         
                         <field name="deleteItem">
@@ -189,7 +208,7 @@
                     <label text="PO Summary" type="h5" style="text-white text-weight-bold q-mb-md border-bottom q-pb-sm"/>
                     <container style="row justify-between q-mb-sm">
                         <label text="Est. Total" type="span" style="text-indigo-2"/>
-                        <label text="${currSymbol}${zinr.inr(ec.l10n.format(order?.grandTotal ?: 0, '#,##,##0.00'))}" type="strong" style="font-size:1.2rem;"/>
+                        <label text="${poAmount(order.grandTotal)}" type="strong" style="font-size:1.2rem;"/>
                     </container>
                     <container style="q-mt-md border-top q-pt-sm">
                         <label text="Note: Taxes and final amounts will be reconciled when the Vendor Bill is logged." type="p" style="text-indigo-2 text-caption"/>

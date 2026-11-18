@@ -172,3 +172,89 @@ body.body--dark:has(.receiving-page),body.z-dark:has(.receiving-page) {
   --text-secondary:#BAC2D0; --text-muted:#94A3B8; --primary-light:#302345; --green-bg:#13382D;
 }
 body.body--dark:has(#receivingStocks) input[type=date],body.z-dark:has(#receivingStocks) input[type=date] {color-scheme:dark;}
+
+#receivingStocks .receiving-filter-disclosure {margin-bottom:14px;}
+#receivingStocks .receiving-filter-summary {
+  display:flex; align-items:center; gap:8px; padding:11px 16px; cursor:pointer;
+  list-style:none; color:var(--text-primary); font-size:13px; font-weight:650;
+}
+#receivingStocks .receiving-filter-summary::-webkit-details-marker {display:none;}
+#receivingStocks .receiving-filter-summary svg {width:17px; height:17px; color:var(--primary);}
+#receivingStocks .receiving-filter-summary span {margin-left:auto; font-size:18px; line-height:1;}
+#receivingStocks .receiving-filter-disclosure[open] > summary {border-bottom:1px solid var(--border);}
+#receivingStocks .receiving-filter-disclosure[open] > summary span {transform:rotate(180deg);}
+#receivingStocks .receiving-grn-queue {margin-bottom:20px; border-top:3px solid var(--primary);}
+#receivingStocks .receiving-grn-count {
+  padding:3px 10px; border-radius:999px; background:var(--primary-light);
+  color:var(--text-primary); font-size:12px; font-weight:600; white-space:nowrap;
+}
+#receivingStocks .receiving-grn-empty {margin:0; padding:20px; color:var(--text-secondary);}
+#receivingStockDetail .receiving-detail-back {margin-bottom:14px;}
+#receivingStockDetail .receiving-detail-heading {margin-bottom:22px;}
+#receivingStockDetail .receiving-title {
+  margin:0 0 16px; color:var(--text-primary); font-size:26px; font-weight:700; line-height:1.25;
+}
+#receivingStockDetail .receiving-detail-meta {
+  display:flex; flex-wrap:wrap; gap:14px 30px; padding:16px 20px; background:var(--white);
+  border:1px solid var(--border); border-inline-start:3px solid var(--primary); border-radius:var(--radius-sm);
+}
+#receivingStockDetail .receiving-detail-meta div:has(> strong) {display:grid; gap:3px;}
+#receivingStockDetail .receiving-detail-meta span {font-size:12px; color:var(--text-secondary);}
+#receivingStockDetail .receiving-detail-meta strong {font-size:14px; color:var(--text-primary); overflow-wrap:anywhere;}
+#receivingStockDetail .receiving-detail-items {min-width:0; background:var(--white); border:1px solid var(--border); border-radius:var(--radius-sm);}
+#receivingStockDetail .receiving-items-heading {padding:16px 20px; border-bottom:1px solid var(--border);}
+#receivingStockDetail .receiving-items-heading h2 {margin:0; color:var(--text-primary); font-size:19px; font-weight:700; line-height:1.4;}
+#receivingStockDetail .receiving-items-heading p {margin:3px 0 0; color:var(--text-secondary);}
+#receivingStockDetail .receiving-table-scroll {max-width:100%; overflow-x:auto;}
+body:has(#receivingStockDetail) .modal.container-dialog[id^="ReceiveDialog_"] .modal-dialog {width:min(560px,calc(100vw - 24px))!important;}
+body:has(#receivingStockDetail) .receiving-fixed-location {margin:0 0 14px; color:var(--text-secondary); font-size:13px;}
+body:has(#receivingStockDetail) .receiving-dialog-product {margin:0 0 6px; color:var(--text-primary); font-size:15px; font-weight:650;}
+body:has(#receivingStockDetail) :is(.panel,.q-list):has(.receiving-tracking-fields) {
+  background:var(--white); border:1px solid var(--border); border-radius:8px; box-shadow:none; margin:12px 0;
+}
+body:has(#receivingStockDetail) .panel:has(.receiving-tracking-fields) > .panel-heading {
+  padding:0; border-radius:8px; background:var(--bg);
+}
+body:has(#receivingStockDetail) .panel:has(.receiving-tracking-fields) .panel-title a {
+  display:block; padding:12px 14px; color:var(--text-primary); font-size:14px; font-weight:600; text-decoration:none;
+}
+body:has(#receivingStockDetail) .panel:has(.receiving-tracking-fields) .panel-title a::after {content:'−'; float:right;}
+body:has(#receivingStockDetail) .panel:has(.receiving-tracking-fields) .panel-title a.collapsed::after {content:'+';}
+body:has(#receivingStockDetail) .receiving-tracking-fields {padding:14px;}
+:is(#receivingStocks #IncomingGrnList_table,#receivingStockDetail #ReceiveItemsForm_table) {
+  display:table;
+  width:100%; margin:0; border-collapse:collapse; font-variant-numeric:tabular-nums;
+}
+:is(#receivingStocks #IncomingGrnList_table,#receivingStockDetail #ReceiveItemsForm_table) > .thead {display:table-header-group;}
+:is(#receivingStocks #IncomingGrnList_table,#receivingStockDetail #ReceiveItemsForm_table) > .tbody {display:table-row-group;}
+:is(#receivingStocks #IncomingGrnList_table,#receivingStockDetail #ReceiveItemsForm_table) .tr {display:table-row;}
+:is(#receivingStocks #IncomingGrnList_table,#receivingStockDetail #ReceiveItemsForm_table) :is(.th,.td) {display:table-cell;}
+#receivingStocks #IncomingGrnList_table {min-width:850px;}
+#receivingStockDetail #ReceiveItemsForm_table {min-width:640px;}
+:is(#receivingStocks #IncomingGrnList_table,#receivingStockDetail #ReceiveItemsForm_table) :is(th,.th,td,.td) {
+  padding:9px 12px!important; color:var(--text-primary)!important; border:0!important;
+  border-bottom:1px solid var(--border)!important; vertical-align:middle;
+}
+:is(#receivingStocks #IncomingGrnList_table,#receivingStockDetail #ReceiveItemsForm_table) :is(th,.th) {
+  background:var(--bg)!important; color:var(--text-secondary)!important; font-weight:600; font-size:12px; white-space:nowrap;
+}
+:is(#receivingStocks,#receivingStockDetail) .receiving-reference {font-weight:650; color:var(--text-primary);}
+#receivingStocks .receiving-grn-queue .receiving-status {font-weight:600;}
+#receivingStocks .receiving-grn-queue .receiving-status.approved {background:#f2edff; color:#5632a5;}
+#receivingStocks .receiving-grn-queue .receiving-status.partial {background:#fff4db; color:#855000;}
+#receivingStocks .receiving-grn-queue :is(a,button).receiving-receive-link,
+#content #receivingStocks #IncomingGrnList_table :is(td,.td):last-child :is(a,button),
+#receivingStockDetail #ReceiveItemsForm_table [id^="ReceiveDialog_"][id$="-button"] {
+  display:inline-flex; align-items:center; justify-content:center; padding:6px 12px!important; min-height:32px;
+  border:0!important; border-radius:6px!important; background:var(--primary-dark)!important; color:#fff!important;
+  font-size:12px; font-weight:600; line-height:1.4; text-decoration:none!important; white-space:nowrap;
+}
+#receivingStocks .receiving-filter-summary:focus-visible,
+:is(#receivingStocks .receiving-grn-queue,#receivingStockDetail .receiving-detail-items) :is(a,button):focus-visible {
+  outline:2px solid var(--primary); outline-offset:2px;
+}
+@media (max-width:600px) {
+  #receivingStocks .receiving-filter-buttons {flex-wrap:wrap;}
+  #receivingStockDetail .receiving-detail-meta {gap:12px 18px; padding:14px;}
+  #receivingStockDetail .receiving-items-heading {padding:14px;}
+}

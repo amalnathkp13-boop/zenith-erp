@@ -91,6 +91,58 @@
         </actions>
     </service>
 
+    <service verb="save" noun="GoodsReceiptDraft" no-tx-cache="true">
+        <in-parameters>
+            <parameter name="grnId" required="true"/><parameter name="facilityId" required="true"/>
+            <parameter name="vendorInvoiceNumber"/><parameter name="invoiceId"/>
+            <parameter name="draftVersion" required="true"/><parameter name="draftAction" required="true"/>
+            <parameter name="lines" type="Map" required="true"/>
+        </in-parameters>
+        <actions>
+            <service-call name="zenith.purchase.OperationsServices.assert#PurchaseWrite"/>
+            <service-call name="zenith.purchase.GoodsReceiptServices.get#GoodsReceipt" in-map="[grnId:grnId]" out-map="access"/>
+            <if condition="!access.allowed"><return error="true" message="Select a goods receipt from your active organization."/></if>
+            <script><![CDATA[
+                if (!(draftAction in ['save','send'])) { ec.message.addError('Choose Save draft or Send to Receiving.'); return }
+                // Use the same lock order as inventory confirmation and GRN submission.
+                ec.entity.find('mantle.order.OrderHeader').condition('orderId',access.grn.purchaseOrderId).forUpdate(true).one()
+                def current = ec.entity.find('zenith.erp.purchase.GoodsReceiptNote').condition('grnId',grnId).forUpdate(true).useCache(false).one()
+                if ((current.statusId && current.statusId != 'GrnDraft') || current.lastUpdatedStamp.time.toString() != draftVersion) {
+                    ec.message.addError('This delivery has changed. Reload it before saving.'); return
+                }
+                def savedLines = ec.entity.find('zenith.erp.purchase.GoodsReceiptNoteItem').condition('grnId',grnId).list()
+                    .collectEntries { [(it.itemSeqId):it] }
+                if (!lines.keySet().containsAll(savedLines.keySet())) {
+                    ec.message.addError('The delivery products have changed. Reload before saving.'); return
+                }
+                for (entry in lines) {
+                    def previous = savedLines[entry.key]
+                    def input = entry.value
+                    if (!(input instanceof Map) || input.version != (previous?.lastUpdatedStamp?.time?.toString() ?: '') || (previous && !previous.orderItemSeqId)) {
+                        ec.message.addError('A delivery line has changed or needs review. Reload before saving.'); return
+                    }
+                    BigDecimal qty, cost
+                    try {
+                        qty = new BigDecimal(input.quantity?.toString() ?: '')
+                        if (!previous && qty == 0G) continue
+                        cost = qty == 0G ? 0G : new BigDecimal(input.cost?.toString() ?: '')
+                    } catch (NumberFormatException ignored) {
+                        ec.message.addError('Enter a quantity and a unit cost for each included product.'); return
+                    }
+                    if (previous && previous.plannedQuantity == qty && previous.unitAmount == cost) continue
+                    ec.service.sync().name('zenith.purchase.GoodsReceiptServices.save#GoodsReceiptLine')
+                        .parameters([grnId:grnId,orderItemSeqId:entry.key,plannedQuantity:qty,unitAmount:cost]).call()
+                    if (ec.message.hasError()) return
+                }
+                ec.service.sync().name('zenith.purchase.GoodsReceiptServices.save#GoodsReceiptDetails')
+                    .parameters([grnId:grnId,facilityId:facilityId,vendorInvoiceNumber:vendorInvoiceNumber,invoiceId:invoiceId]).call()
+                if (!ec.message.hasError() && draftAction == 'send') {
+                    ec.service.sync().name('zenith.purchase.GoodsReceiptServices.submit#GoodsReceipt').parameters([grnId:grnId]).call()
+                }
+            ]]></script>
+        </actions>
+    </service>
+
     <service verb="submit" noun="GoodsReceipt" no-tx-cache="true">
         <in-parameters><parameter name="grnId" required="true"/></in-parameters>
         <actions>

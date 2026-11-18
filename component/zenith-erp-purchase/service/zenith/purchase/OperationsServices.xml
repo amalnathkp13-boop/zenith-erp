@@ -110,7 +110,11 @@
             <if condition="quantity&lt;=0 || unitAmount&lt;0 || (!productId &amp;&amp; !itemDescription?.trim())"><return error="true" message="Enter a product or description, positive quantity and nonnegative unit price."/></if>
             <script><![CDATA[
                 def product=productId ? ec.entity.find('mantle.product.Product').condition('productId',productId).disableAuthz().one() : null
-                if(productId && (!product || product.ownerPartyId!=access.part.customerPartyId)) ec.message.addError('Select a product from the buying organization.')
+                if (productId && (!product || product.ownerPartyId != access.part.customerPartyId)) {
+                    ec.message.addError('Select a product from the buying organization.')
+                } else if (product && !itemDescription?.trim()) {
+                    itemDescription = product.productName ?: product.pseudoId ?: product.productId
+                }
             ]]></script>
             <if condition="ec.message.hasError()"><return/></if>
             <service-call name="create#mantle.order.OrderItem" in-map="[orderId:orderId,orderPartSeqId:'01',productId:productId,itemDescription:itemDescription,quantity:quantity,unitAmount:unitAmount,requiredByDate:requiredByDate,itemTypeEnumId:'ItemInventory']" out-map="context"/>

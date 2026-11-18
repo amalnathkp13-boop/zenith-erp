@@ -154,12 +154,21 @@
                 if (product.enableSerialTracking == 'Y') { ec.message.addError('Serial-tracked goods require the serial-number receipt workflow.'); return }
                 if (product.enableBatchTracking == 'Y' && !batchNumber?.toString()?.trim()) { ec.message.addError('Batch / lot number is required for this product.'); return }
                 if (ec.message.hasError()) return
+                def costCurrency = header?.currencyUomId
+                if (!orderId && (cost != null || mrp != null)) {
+                    def setting = ec.entity.find('zenith.erp.base.CompanySettings').condition('organizationPartyId', orgId)
+                        .condition('settingKey', 'CURRENCY_UOM_ID').one()
+                    costCurrency = setting?.settingValue ?: 'INR'
+                    if (ec.entity.find('moqui.basic.Uom').condition('uomId', costCurrency).one()?.uomTypeEnumId != 'UT_CURRENCY_MEASURE') {
+                        ec.message.addError('Configure a valid currency for this organization before receiving stock.'); return
+                    }
+                }
                 // A separate lot keeps each delivery's cost, dates and batch identity intact.
                 def result = ec.service.sync().name('create#mantle.product.asset.Asset').parameters([
                     assetTypeEnumId:'AstTpInventory', classEnumId:'AsClsInventory', statusId:'AstAvailable', hasQuantity:'Y',
                     ownerPartyId:orgId, productId:productId, facilityId:facilityId,
                     quantityOnHandTotal:0G, availableToPromiseTotal:0G,
-                    acquireCost:cost, valuationRate:cost, acquireCostUomId:header?.currencyUomId,
+                    acquireCost:cost, valuationRate:cost, acquireCostUomId:costCurrency,
                     acquireOrderId:orderId, acquireOrderItemSeqId:item?.orderItemSeqId,
                     batchNumber:batchNumber?.toString()?.trim(), manufacturingDate:mfg, expiryDate:expiry,
                     mrpAmount:mrp, receivedDate:ec.user.nowTimestamp]).call()

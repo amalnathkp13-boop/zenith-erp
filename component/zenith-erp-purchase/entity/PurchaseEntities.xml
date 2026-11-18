@@ -168,6 +168,7 @@
             <key-map field-name="purchaseOrderId" related="orderId"/></member-entity>
         <member-entity entity-alias="OH" entity-name="mantle.order.OrderHeader" join-from-alias="GRN" join-optional="true"><key-map field-name="purchaseOrderId" related="orderId"/></member-entity>
         <alias entity-alias="OH" name="currencyUomId"/>
+        <alias entity-alias="OH" name="poStatusId" field="statusId"/>
         <alias entity-alias="GRN" name="grnId"/>
         <alias entity-alias="GRN" name="facilityId"/>
         <alias entity-alias="GRN" name="invoiceId"/>

@@ -39,7 +39,7 @@
         </entity-find>
     </actions>
 
-    <widgets><container style="zpur-page">
+    <widgets><container style="zpur-page grn-register">
         <section name="GrnHeader" condition="!(sri.getRenderMode() in ['csv','xlsx'])"><widgets>
         <!-- Page header: title + subtitle (left); Export CSV (violet outline) + New GRN (solid) (right) -->
         <container style="zsec-hdr row items-center justify-between q-mb-lg z-newbtn-wrap">
@@ -81,8 +81,9 @@
         </container>
 
         </widgets></section>
-        <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-md">
+        <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-md grn-register-card">
             <container style="zsec-hdr row items-center justify-between q-mb-md">
+                <label condition="!(sri.getRenderMode() in ['csv','xlsx'])" text="Delivery register" type="h4" style="grn-heading"/>
                 <container-dialog id="FindOptionsDialog" button-text="Find Options" button-class="btn btn-default">
                     <form-single name="FindOptionsForm" transition="." type="find">
                         <field name="grnId"><default-field title="GRN No."><text-find hide-options="true"/></default-field></field>
@@ -100,7 +101,10 @@
                         <field-map field-name="partyId" from="vendorLookupId"/>
                     </entity-find-one>
                     <script><![CDATA[
-                        def grp = { v -> ec.l10n.format((v ?: 0.0) as BigDecimal, '#,##,##0.00') }
+                        def grp = { v ->
+                            def amount = ec.l10n.format((v ?: 0G) as BigDecimal, '#,##0.00')
+                            currencyUomId == 'INR' ? '₹' + zinr.inr(amount) : [currencyUomId, amount].findAll().join(' ')
+                        }
                         vendorDisp = ((vendor?.organizationName ?: vendor?.firstName ?: '') + ' ' + (vendor?.lastName ?: '')).trim() ?: '—'
                         freightDisp = grp(freightAmount)
                         insuranceDisp = grp(insuranceAmount)
@@ -133,7 +137,7 @@
                         <label text="${receiptDisp}" type="span" style="text-dark"/>
                     </default-field>
                 </field>
-                <field name="deliveryStatus"><header-field title="Status"/><default-field><label text="${[GrnDraft:'Draft',GrnPending:'Awaiting receipt',GrnPartial:'Partially received',GrnReceived:'Received',GrnCancelled:'Cancelled'][statusId] ?: 'Draft'}"/></default-field></field>
+                <field name="deliveryStatus"><header-field title="Status"/><default-field><label text="${[GrnDraft:'Draft',GrnPending:'Awaiting receipt',GrnPartial:'Partially received',GrnReceived:'Received',GrnCancelled:'Cancelled'][statusId] ?: 'Draft'}" type="span" style="grn-state grn-state-${statusId ?: 'GrnDraft'}"/></default-field></field>
                 <field name="vendorInvoiceNumber"><header-field title="Invoice reference"/><default-field><display/></default-field></field>
                 <field name="currencyUomId"><header-field title="Currency"/><default-field><display/></default-field></field>
                 <field name="freightAmount">

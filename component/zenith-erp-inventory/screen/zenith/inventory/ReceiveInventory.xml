@@ -15,7 +15,7 @@
             <if condition="!ec.web.parameters.moquiSessionToken || ec.web.parameters.moquiSessionToken != ec.web.sessionToken"><return error="true" message="Your session expired. Reload Receiving and try again."/></if>
             <service-call name="zenith.inventory.ReceiptServices.receive#Stock"
                 in-map="[orderId:orderId, orderItemSeqId:orderItemSeqId, facilityId:facilityId,
-                    quantityAccepted:quantityAccepted, batchNumber:batchNumber, mrpAmount:mrpAmount,
+                    quantityAccepted:quantityAccepted, batchNumber:batchNumber ?: optionalBatchNumber, mrpAmount:mrpAmount,
                     manufacturingDate:manufacturingDate, expiryDate:expiryDate, grnId:grnId, grnReceivedBefore:grnReceivedBefore]"/>
         </actions><default-response url="." parameter-map="[orderId:orderId,grnId:grnId]"/>
     </transition>
@@ -65,15 +65,15 @@
             <econdition field-name="ownerPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION') ?: '__NO_ORGANIZATION__'"/>
             <order-by field-name="facilityName"/>
         </entity-find>
+        <set field="grnDestination" from="grn ? (facilityList.find { it.facilityId == grn.facilityId }?.facilityName ?: grn.facilityId) : null"/>
         </if>
     </actions>
 
     <widgets>
-        <render-mode><text type="html,qvt,vuet"><![CDATA[<link rel="stylesheet" href="/zenithstatic/css/receiving-stock.css?v=14"/>]]></text></render-mode>
+        <render-mode><text type="html,qvt,vuet"><![CDATA[<link rel="stylesheet" href="/zenithstatic/css/receiving-stock.css?v=16"/>]]></text></render-mode>
         <container id="receivingStockDetail" style="receiving-page">
         <container style="receiving-detail-back">
             <link url="../FindReceipt" text="← Back to Receiving List" link-type="anchor"/>
-            <label text="Received items go straight into stock and are ready to sell." type="span" style="text-grey-7 text-caption"/>
         </container>
 
         <!-- ZE-INV-IV-06A: cross-tenant / missing PO — plain notice, never another org's PO -->
@@ -90,27 +90,26 @@
         <section name="TheReceipt">
         <condition><expression>!noAccess</expression></condition>
         <widgets>
-        <!-- Header Banner -->
-        <container style="zenith-profile-banner q-pa-lg bg-white shadow-1 border-radius-lg q-mb-lg">
-            <container style="row items-center justify-between no-wrap">
-                <container style="row items-center">
-                    <container style="zenith-avatar q-mr-lg text-white; border-radius:12px; background:linear-gradient(135deg, #0ea5e9, #0284c7);">
-                        <label text="GRN" type="span" style="font-weight:bold; font-size:1.2rem;"/>
-                    </container>
-                    <container style="column">
-                        <label text="Receive Goods for Order #${orderId}" type="h3" style="text-primary text-weight-bold q-my-none"/>
-                        <label text="Supplier: ${vendor?.organizationName ?: vendor?.firstName + ' ' + vendor?.lastName}" type="p" style="text-grey-7 text-subtitle2 q-mt-xs q-mb-none"/>
-                    </container>
-                </container>
+        <container style="receiving-detail-heading">
+            <label text="${grn ? 'Receive delivery' : 'Receive purchase order'}" type="h1" style="receiving-title"/>
+            <container style="receiving-detail-meta">
+                <container><label text="Purchase order" type="span"/><label text="${orderId}" type="strong"/></container>
+                <container><label text="Supplier" type="span"/><label text="${vendor?.organizationName ?: [vendor?.firstName, vendor?.lastName].findAll().join(' ') ?: orderPart?.vendorPartyId ?: '—'}" type="strong"/></container>
+                <section name="DeliveryReferences"><condition><expression>grn != null</expression></condition><widgets>
+                    <container><label text="Goods receipt note" type="span"/><label text="${grnId}" type="strong"/></container>
+                    <container><label text="Supplier invoice" type="span"/><label text="${grn.vendorInvoiceNumber ?: 'Awaiting invoice'}" type="strong"/></container>
+                    <container><label text="Receiving location" type="span"/><label text="${grnDestination ?: '—'}" type="strong"/></container>
+                </widgets></section>
             </container>
         </container>
 
         <!-- Items to Receive -->
-        <container style="zenith-card q-pa-md bg-white shadow-1 border-radius-md q-mb-lg">
-            <label text="Items to Receive" type="h5" style="text-primary text-weight-bold q-mb-md border-bottom q-pb-sm"/>
-            <label condition="grn" text="GRN ${grnId} · Supplier invoice ${grn.vendorInvoiceNumber ?: 'awaiting invoice'}" type="p" style="text-weight-bold"/>
-            <label text="For each item, enter how many actually arrived and which store to put them in, then press Confirm." type="p" style="text-grey-7 q-mb-md"/>
-            
+        <container style="receiving-detail-items">
+            <container style="receiving-items-heading">
+                <label text="Items to receive" type="h2"/>
+                <label text="Confirm the quantity that arrived for each item to add it to stock." type="p"/>
+            </container>
+            <container style="receiving-table-scroll">
             <form-list name="ReceiveItemsForm" list="orderItems" skip-form="true">
                 <row-actions>
                     <entity-find-one entity-name="mantle.product.Product" value-field="product">
@@ -132,18 +131,18 @@
                     <label text="${itemDescription ?: product?.productName}" type="span" style="block text-dark"/>
                 </default-field></field>
 
-                <field name="quantities"><default-field title="Order vs Received">
-                    <label text="Ordered: ${quantity ?: 0}" type="span" style="block text-dark"/>
-                    <label text="Received: ${qtyReceived}" type="span" style="block text-success text-weight-bold"/>
-                    <label text="Pending: ${qtyRemaining}" type="span" style="block text-warning text-weight-bold"/>
-                </default-field></field>
+                <field name="expectedQuantity"><default-field title="Expected"><label text="${ec.l10n.format((grnLine ? grnLine.plannedQuantity : quantity) ?: 0, '#,##0.######')}" type="span"/></default-field></field>
+                <field name="receivedQuantity"><default-field title="Received"><label text="${ec.l10n.format(grnLine ? grnReceivedBefore : qtyReceived, '#,##0.######')}" type="span"/></default-field></field>
+                <field name="remainingQuantity"><default-field title="Available to receive"><label text="${ec.l10n.format(qtyRemaining, '#,##0.######')}" type="strong" style="receiving-reference"/></default-field></field>
                 
                 <field name="receiveAction">
                     <header-field title="Receive"/>
                     <!-- ZE-INV-010 (IV-110): the receive form only for users with full Inventory write access; the
                          "Fully Received" status stays visible to everyone (read-only). Form name/transition untouched. -->
                     <conditional-field name="receive_write" condition="invCanWrite" title="Receive">
-                        <container-dialog id="ReceiveDialog_${orderItemSeqId}" button-text="Process Receipt" button-class="q-btn--flat bg-primary text-white border-radius-md" condition="canReceiveLine">
+                        <container-dialog id="ReceiveDialog_${orderItemSeqId}" button-text="Receive item" width="560" condition="canReceiveLine">
+                            <label text="${itemDescription ?: product?.productName ?: productId}" type="p" style="receiving-dialog-product"/>
+                            <label condition="grn != null" text="Receiving location · ${grnDestination}" type="p" style="receiving-fixed-location"/>
                             <!-- ZE-INV-001 f/u: form-single name must be a STATIC identifier — Moqui does NOT
                                  interpolate ${} in it (the container-dialog id above does), so the old
                                  name="ReceiveForm_${orderItemSeqId}" left moquiFormName as that literal string and
@@ -156,23 +155,33 @@
                                 <field name="grnReceivedBefore"><default-field><hidden/></default-field></field>
                                 
                                 <field name="facilityId">
-                                    <default-field title="Put stock into (store / warehouse)">
+                                    <conditional-field name="saved_grn_location" condition="grn != null">
+                                        <hidden/>
+                                    </conditional-field>
+                                    <default-field title="Receiving location">
                                         <drop-down allow-empty="false">
-                                            <list-options list="facilityList.findAll { !grn || it.facilityId == grn.facilityId }" key="${facilityId}" text="${facilityName}"/>
+                                            <list-options list="facilityList" key="${facilityId}" text="${facilityName}"/>
                                         </drop-down>
                                     </default-field>
                                 </field>
                                 
                                 <field name="quantityAccepted">
-                                    <default-field title="Quantity Received">
-                                        <text-line size="10" default-value="${qtyRemaining}"/>
+                                    <default-field title="Quantity received">
+                                        <text-line size="10" default-value="${qtyRemaining.stripTrailingZeros().toPlainString()}"/>
                                     </default-field>
                                 </field>
                                 
                                 <field name="batchNumber">
-                                    <default-field title="Batch / Lot Number (Optional)">
+                                    <conditional-field name="tracked_batch" condition="product?.enableBatchTracking == 'Y'" title="Batch / lot number (required)">
                                         <text-line size="20"/>
-                                    </default-field>
+                                    </conditional-field>
+                                    <default-field><ignored/></default-field>
+                                </field>
+                                <field name="optionalBatchNumber">
+                                    <conditional-field name="untracked_batch" condition="product?.enableBatchTracking != 'Y'" title="Batch / lot number">
+                                        <text-line size="20"/>
+                                    </conditional-field>
+                                    <default-field><ignored/></default-field>
                                 </field>
                                 
                                 <field name="manufacturingDate">
@@ -184,12 +193,24 @@
                                 </field>
                                 
                                 <field name="mrpAmount">
-                                    <default-field title="Batch MRP (Optional)">
+                                    <default-field title="Batch MRP${companyCurrency ? ' (' + (currSymbol?.trim() ?: companyCurrency) + ')' : ''}">
                                         <text-line size="10" default-value="${product?.mrpAmount ?: ''}"/>
                                     </default-field>
                                 </field>
                                 
                                 <field name="submitButton"><default-field title="Confirm Receipt"><submit/></default-field></field>
+                                <field-layout>
+                                    <field-ref name="orderId"/><field-ref name="orderItemSeqId"/>
+                                    <field-ref name="grnId"/><field-ref name="grnReceivedBefore"/>
+                                    <field-ref name="facilityId"/><field-ref name="quantityAccepted"/><field-ref name="batchNumber"/>
+                                    <field-accordion active="false">
+                                        <field-group title="Optional tracking details" style="receiving-tracking-fields">
+                                            <field-ref name="optionalBatchNumber"/><field-ref name="manufacturingDate"/>
+                                            <field-ref name="expiryDate"/><field-ref name="mrpAmount"/>
+                                        </field-group>
+                                    </field-accordion>
+                                    <field-ref name="submitButton"/>
+                                </field-layout>
                             </form-single>
                         </container-dialog>
 
@@ -200,7 +221,27 @@
                     </default-field>
                 </field>
             </form-list>
+            </container>
         </container>
+        <!-- The Bootstrap renderer names an accordion after its form, which is shared by every receipt row. -->
+        <render-mode><text type="html"><![CDATA[<script>
+            document.querySelectorAll('#receivingStockDetail .modal[id^="ReceiveDialog_"]').forEach(function (dialog) {
+                var fields = dialog.querySelector('.receiving-tracking-fields');
+                if (!fields) return;
+                var group = fields.closest('.panel-group');
+                var panel = fields.closest('.panel-collapse');
+                var heading = group.querySelector('.panel-heading');
+                var toggle = heading.querySelector('a');
+                group.id = dialog.id + '-tracking';
+                panel.id = group.id + '-fields';
+                heading.id = group.id + '-heading';
+                toggle.setAttribute('data-parent', '#' + group.id);
+                toggle.setAttribute('href', '#' + panel.id);
+                toggle.setAttribute('aria-controls', panel.id);
+                toggle.setAttribute('aria-expanded', String(panel.classList.contains('in')));
+                panel.setAttribute('aria-labelledby', heading.id);
+            });
+        </script>]]></text></render-mode>
         </widgets>
         </section>
 
