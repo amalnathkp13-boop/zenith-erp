@@ -15,7 +15,8 @@
     window.posShowNoHeld = function () { notice('No held bills in this session. Use Hold (F7) to save the current cart.'); };
     function connection() {
         var el = document.getElementById('pos-connection-status');
-        if (el) { el.textContent = navigator.onLine ? 'Online' : 'Offline'; el.parentElement.classList.toggle('is-offline', !navigator.onLine); }
+        var offline = !navigator.onLine || window._posOffline?.disconnected();
+        if (el) { el.textContent = offline ? 'Offline' : 'Online'; el.parentElement.classList.toggle('is-offline', !!offline); }
     }
     function paint() {
         scheduled = false;
@@ -56,7 +57,7 @@
         }
     }
     function refreshStock() {
-        if (!root || !root.isConnected || document.hidden || !navigator.onLine || stockBusy) return;
+        if (!root || !root.isConnected || document.hidden || !navigator.onLine || window._posOffline?.disconnected() || stockBusy) return;
         var grid=root.querySelector('.pos-product-grid'); if (!grid) return;
         var bounds=grid.getBoundingClientRect(), top=Math.max(0,bounds.top), bottom=Math.min(innerHeight,bounds.bottom);
         if (bottom<=top) return;
@@ -103,6 +104,7 @@
         });
         root.addEventListener('input',function(event){ if(event.target.id==='cartInlineSearch' && event.target.value) search(true); });
         window.addEventListener('online',connection); window.addEventListener('offline',connection);
+        window.addEventListener('posconnectionchange',connection);
         document.addEventListener('visibilitychange',refreshStock);
         stockTimer = setInterval(function () { if (!root.isConnected) { clearInterval(stockTimer); observer.disconnect(); return; } refreshStock(); },30000);
         // Cart completion replaces the visible grid with server-rendered stock, so polling is only a fallback.

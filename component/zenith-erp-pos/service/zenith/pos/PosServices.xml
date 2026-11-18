@@ -1918,12 +1918,12 @@
             <if condition="!_posAccess.allowed"><return/></if>
             <script><![CDATA[
                 syncedIds=[]; failedCount=0; failures=[]
-                transactions.each { raw ->
+                transactions.eachWithIndex { raw, index ->
                     try {
                         def r=ec.service.sync().name('zenith.pos.PosServices.import#OfflinePosSale').parameters([terminalId:terminalId,saleJson:raw as String]).call()
                         if (!ec.message.hasError() && r?.offlineId) syncedIds.add(r.offlineId)
-                        else { failedCount++; failures.add([error:ec.message.errorsString ?: 'Sale needs review.']) }
-                    } catch (Exception e) { failedCount++; failures.add([error:e.message ?: 'Sale needs review.']) }
+                        else { failedCount++; failures.add([index:index, error:ec.message.errorsString ?: 'Sale needs review.']) }
+                    } catch (Exception e) { failedCount++; failures.add([index:index, error:e.message ?: 'Sale needs review.']) }
                     ec.message.clearErrors()
                 }
                 syncedCount=syncedIds.size()

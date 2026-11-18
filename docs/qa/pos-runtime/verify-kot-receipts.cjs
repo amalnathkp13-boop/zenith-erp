@@ -32,6 +32,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await page.getByRole('link',{name:new RegExp(templateName)}).click();
    await page.locator('#receiptEditor[data-bound="1"]').waitFor();
    const editor=page.locator('#receiptEditorForm');
+   await page.locator('#receiptEditor[data-bound="1"]').waitFor();
    await editor.locator('[name=headerText]').fill(header);
    await editor.locator('[name=isDefault]').selectOption('Y');
    if(printUse==='kotBill'){
@@ -186,10 +187,14 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    };
   });
   await page.locator('#kb-history-open').click();
-  const historyRow=page.locator('#kb-history-rows [data-kot-id="'+draft.kotId+'"]');
-  await historyRow.getByRole('button',{name:'KOT Print',exact:true}).click();
+  async function printFromHistory(kotId,name){
+   await page.locator('#kb-history-rows [data-kot-id="'+kotId+'"]')
+    .getByRole('button',{name:'Reprint',exact:true}).click();
+   await page.getByRole('dialog',{name:'Reprint',exact:true}).getByRole('button',{name,exact:true}).click();
+  }
+  await printFromHistory(draft.kotId,'KOT Print');
   await page.locator('#kb-history-print-status').getByText('Print request opened.').waitFor();
-  await historyRow.getByRole('button',{name:'Bill Print',exact:true}).click();
+  await printFromHistory(draft.kotId,'Bill Print');
   await page.waitForFunction(()=>window.qaPrintHtml.length===2&&window.qaPrintWindows.every(popup=>popup.closed));
   check('browser prints the configured kitchen ticket and customer bill',
    await page.evaluate(([orderText,billText])=>window.qaPrintHtml[0].includes(orderText)&&
@@ -200,8 +205,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    const value=label=>Array.from(doc.querySelectorAll('.meta td')).find(cell=>cell.textContent===label)?.nextElementSibling?.textContent;
    return value('Invoice No:')===invoice&&value('Daily receipt:')===String(daily);
   },{invoice:fiscal,daily:firstDaily}));
-  await page.locator('#kb-history-rows [data-kot-id="'+dineIn.kotId+'"]')
-   .getByRole('button',{name:'Bill Print',exact:true}).click();
+  await printFromHistory(dineIn.kotId,'Bill Print');
   await page.waitForFunction(()=>window.qaPrintHtml.length===3&&window.qaPrintWindows.every(popup=>popup.closed));
   check('customer bill reprints show the selected order type',await page.evaluate(()=>{
    const readType=html=>{

@@ -86,6 +86,15 @@
   <moqui.security.UserGroupMember userId="POS_QA_MANAGER" userGroupId="TENANT_POS_QA_A" fromDate="2020-01-01 00:00:00" />
   <mantle.party.PartyRelationship partyRelationshipId="POS_QA_MANAGER_REL" fromPartyId="POS_QA_MANAGER" toPartyId="POS_QA_A" relationshipTypeEnumId="PrtAgent" toRoleTypeId="OrgInternal" fromDate="2020-01-01 00:00:00" />
   <moqui.security.UserPreference userId="POS_QA_MANAGER" preferenceKey="ACTIVE_ORGANIZATION" preferenceValue="POS_QA_A" />
+  <!-- Dedicated cashier: no drawers from earlier scenarios can receive its credit collection. -->
+  <mantle.party.Party partyId="POS_QA_COLLECTOR" partyTypeEnumId="PtyPerson" />
+  <mantle.party.Person partyId="POS_QA_COLLECTOR" firstName="Disposable" lastName="POS QA" />
+  <moqui.security.UserAccount userId="POS_QA_COLLECTOR" username="pos.collector.qa" userFullName="Disposable credit collector" partyId="POS_QA_COLLECTOR" timeZone="Asia/Kolkata" disabled="Y" requirePasswordChange="N" />
+  <moqui.security.UserGroupMember userId="POS_QA_COLLECTOR" userGroupId="ZENITH_ADMIN" fromDate="2020-01-01 00:00:00" />
+  <moqui.security.UserGroupMember userId="POS_QA_COLLECTOR" userGroupId="ZENITH_ALL" fromDate="2020-01-01 00:00:00" />
+  <moqui.security.UserGroupMember userId="POS_QA_COLLECTOR" userGroupId="TENANT_POS_QA_A" fromDate="2020-01-01 00:00:00" />
+  <mantle.party.PartyRelationship partyRelationshipId="POS_QA_COLLECTOR_REL" fromPartyId="POS_QA_COLLECTOR" toPartyId="POS_QA_A" relationshipTypeEnumId="PrtAgent" toRoleTypeId="OrgInternal" fromDate="2020-01-01 00:00:00" />
+  <moqui.security.UserPreference userId="POS_QA_COLLECTOR" preferenceKey="ACTIVE_ORGANIZATION" preferenceValue="POS_QA_A" />
   <mantle.party.Party partyId="POS_QA_CASHIER" partyTypeEnumId="PtyPerson" />
   <mantle.party.Person partyId="POS_QA_CASHIER" firstName="Disposable" lastName="POS QA" />
   <moqui.security.UserAccount userId="POS_QA_CASHIER" username="pos.cashier.qa" userFullName="Disposable POS QA" partyId="POS_QA_CASHIER" timeZone="Asia/Kolkata" disabled="Y" requirePasswordChange="N" />

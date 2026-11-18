@@ -400,29 +400,48 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   });
   check('Selecting an editable KOT bill opens the POS-style billing workspace',
    editorLayout.fillsWorkspace&&editorLayout.title.includes(tx.transaction_number)&&
-   editorLayout.actions.join('|')==='Cancel|Print bill|Save & print revised bill',editorLayout);
-  await page.keyboard.press('Space');
-  const editorPrint=page.locator('#kb-history-detail-reprint');
-  check('Space focuses Print bill in the editor',await focused(editorPrint));
+   editorLayout.actions.join('|')==='Print|Reprint|Save',editorLayout);
+  const editorPrint=page.locator('#kb-history-detail-print');
+  const reprintChooser=page.getByRole('dialog',{name:'Reprint',exact:true});
   const editQuantity=page.locator('#kb-history-detail [data-edit-quantity]').first();
+  check('The bill editor focuses the first quantity',await focused(editQuantity));
   await billEditor.getByRole('button',{name:'Increase quantity for Disposable POS A P18'}).click();
-  check('Edit Bill shows the new amount before saving',
+  check('Edit Bill shows the new amount and amount to collect before saving',
    await page.locator('#kb-history-detail [data-edit-total]').first().innerText()==='₹300.00'&&
-   await page.locator('#kb-history-detail-total').innerText()==='Estimated total ₹300.00');
+   await page.locator('#kb-history-detail-total').innerText()==='Estimated total ₹300.00'&&
+   await page.locator('#kb-history-adjustment').innerText()==='Collect ~₹100.00');
+  await editQuantity.press('/');
+  const addItem=page.locator('#kb-history-add');
+  check('Slash focuses the bill editor search',await focused(addItem));
+  await page.keyboard.press('ArrowDown');
+  check('Down from empty search focuses Print',await focused(editorPrint));
+  await page.keyboard.press('ArrowRight');
+  check('Right from Print focuses Reprint',await focused(page.locator('#kb-history-detail-reprint')));
+  await page.keyboard.press('ArrowRight');
+  check('Right from Reprint focuses Save',await focused(page.locator('#kb-history-save')));
+  await page.keyboard.press('ArrowLeft');await page.keyboard.press('ArrowLeft');
   await editorPrint.press('Enter');
+  check('Editor Print opens the standard chooser with Bill Print focused',
+   await focused(reprintChooser.getByRole('button',{name:'Bill Print',exact:true})));
+  await page.keyboard.press('Enter');
   await page.waitForFunction(()=>window.kotPrints.length===3);
-  check('Print bill uses the saved receipt despite unsaved edits',
+  check('Editor Print uses the saved receipt despite unsaved edits',
    await page.evaluate(()=>window.kotPrints[2]===window.kotPrints[1]&&window.kotPrintWindows===2)&&
    q("SELECT amendment_id FROM pos_transaction_amendment WHERE transaction_id='"+kot.transaction_id+"'").length===0);
-  const addItem=page.locator('#kb-history-add');
   await editQuantity.press('Enter');
   check('Enter from the quantity field returns to product search',await focused(addItem));
+  const searchTop=await addItem.evaluate(input=>input.getBoundingClientRect().top);
   await addItem.fill('Disposable POS A NOWS');
   await page.locator('#kb-history-products button').filter({hasText:'POS_QA_A_NOWS'}).waitFor();
+  const searchLayout=await addItem.evaluate(input=>({top:input.getBoundingClientRect().top,
+   resultsBottom:document.getElementById('kb-history-products').getBoundingClientRect().bottom}));
+  check('Editor search results open above the stationary search field',
+   Math.abs(searchLayout.top-searchTop)<1&&searchLayout.resultsBottom<=searchLayout.top,searchLayout);
   await addItem.fill('POS_QA_A_UNPRICED');
   await page.locator('#kb-history-products button').filter({hasText:'Disposable unpriced item'}).waitFor();
   await addItem.press('Enter');
   const added=page.locator('#kb-history-detail-lines tr').filter({hasText:'Disposable unpriced item'});
+  check('Adding an item focuses its quantity',await focused(added.locator('[data-edit-quantity]')));
   await added.locator('[data-edit-rate]').fill('25');
   check('Name and code search can add an item without a saved rate',
    await added.locator('[data-edit-total]').innerText()==='₹25.00'&&
@@ -434,18 +453,21 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   await removeAdded.click();
   await page.screenshot({path:path.join(out,'kot-history-pos-editor.png')});
   page.once('dialog',dialog=>dialog.accept());
-  await page.locator('#kb-history-back').click();
+  await page.locator('#kb-history-detail-close').click();
   const printActions=historyBill.locator('..');
   await page.waitForFunction(()=>document.activeElement?.matches('#kb-history .is-current [data-kb-history-detail]'));
   await page.keyboard.press('Space');
-  const focusedPrint=await page.evaluate(()=>({action:document.activeElement?.dataset.kbHistoryPrint,
+  const focusedPrint=await page.evaluate(()=>({action:document.activeElement?.hasAttribute('data-kb-history-reprint'),
    bill:document.activeElement?.closest('.kb-history-row')?.querySelector('[data-kb-history-detail]')?.textContent.trim()}));
-  check('Space moves from the bill number to Bill Print',focusedPrint.action==='bill'&&focusedPrint.bill==='#'+tx.transaction_number,focusedPrint);
+  check('Space moves from the bill number to Reprint',focusedPrint.action&&focusedPrint.bill==='#'+tx.transaction_number,focusedPrint);
   await page.keyboard.press('Enter');
+  await reprintChooser.getByRole('button',{name:'Bill Print',exact:true}).click();
   await page.waitForFunction(()=>window.kotPrints.length===4);
-  await printActions.getByRole('button',{name:'KOT Print'}).click();
+  await page.locator('#kb-history-print-status').getByText(/Print request opened/).waitFor();
+  await printActions.getByRole('button',{name:'Reprint',exact:true}).click();
+  await reprintChooser.getByRole('button',{name:'KOT Print',exact:true}).click();
   await page.waitForFunction(()=>window.kotPrints.length===5);
-  check('History has direct Bill Print and KOT Print actions',
+  check('History Reprint can produce either saved document',
    !await page.locator('#kb-print-choice').isVisible()&&
    await page.evaluate(()=>window.kotPrints[3]===window.kotPrints[1]&&window.kotPrints[4]===window.kotPrints[0]));
   await page.locator('#kb-history-close').click();
@@ -544,22 +566,27 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    await billEditor.locator('[data-edit-rate]').fill('160');
    await billEditor.locator('[data-edit-rate]').press('Enter');
    check('Enter from the rate field moves to quantity',await focused(billEditor.locator('[data-edit-quantity]')));
-   await billEditor.getByRole('button',{name:'Save & print revised bill'}).click();
+   await billEditor.getByRole('button',{name:'Save',exact:true}).click();
    const reason=page.locator('#kb-history-edit-reason');
    await reason.waitFor();
    check('Selecting a bill by click opens the same editor and requires an audit reason',await focused(reason)&&
     await reason.getAttribute('required')!==null);
    await reason.fill('Synthetic KOT rate correction');
    await page.locator('#kb-history-revision-save').click();
-   await page.waitForFunction(()=>window.kotPrints.length===6);
+   await billEditor.locator('#kb-history-detail-message').getByText(/Bill revision saved/).waitFor();
    const revised=q("SELECT transaction_number,payable_amount FROM pos_transaction WHERE transaction_id='"+cardBill.transaction_id+"'")[0];
    const audit=q("SELECT change_type,reason FROM pos_transaction_amendment WHERE transaction_id='"+cardBill.transaction_id+"'");
-   check('Saving a KOT revision audits one change, keeps the number, and prints the saved total',
+   check('Saving a KOT revision audits one change and keeps the number without printing',
     revised.transaction_number===cardBill.transaction_number&&Number(revised.payable_amount)===480&&
     audit.length===1&&audit[0].change_type==='PRICE_CHANGE'&&audit[0].reason==='Synthetic KOT rate correction'&&
-    await page.evaluate(number=>window.kotPrints[5].includes(number)&&window.kotPrints[5].includes('480.00'),cardBill.transaction_number),
+    await page.evaluate(()=>window.kotPrints.length===5),
     {revised,audit});
-   await page.locator('#kb-history-back').click();
+   await billEditor.getByRole('button',{name:'Reprint',exact:true}).click();
+   await reprintChooser.getByRole('button',{name:'Bill Print',exact:true}).click();
+   await page.waitForFunction(()=>window.kotPrints.length===6);
+   check('Editor Reprint prints the saved revision',
+    await page.evaluate(number=>window.kotPrints[5].includes(number)&&window.kotPrints[5].includes('480.00'),cardBill.transaction_number));
+   await page.locator('#kb-history-detail-close').click();
    await page.locator('#kb-history-close').click();
   }
   await modes.locator('summary').click();

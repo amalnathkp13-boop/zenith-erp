@@ -55,7 +55,8 @@
                 .parameter('moduleId',ec.context.kitchenModuleId ?: 'pos').call()
             def lines = ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId',tx.transactionId).orderBy('itemSeqId').list()
             ec.web.sendJsonResponse([success:true,transactionId:tx.transactionId,number:tx.transactionNumber ?: tx.transactionId,
-                total:tx.payableAmount ?: 0,salesModeId:tx.salesModeId,canEdit:access.canWrite == true,
+                total:tx.payableAmount ?: 0,additionalFee:tx.additionalFee ?: 0,
+                salesModeId:tx.salesModeId,canEdit:access.canWrite == true,
                 items:lines.collect { [seq:it.itemSeqId,name:it.productName ?: it.productId,qty:it.quantity,
                     rate:it.unitPrice,discountPercent:it.discountPercent,discountAmount:it.discountAmount,
                     taxableAmount:it.taxableAmount,tax:it.totalTaxAmount ?: 0,total:it.lineTotal ?: 0] }])
@@ -647,8 +648,8 @@
                 if (st == 'KotPreparing' || st == 'KotReady') return 'green'
                 return 'grey'
             }
-            def findKots = { statuses ->
-                def f = ec.entity.find('zenith.erp.pos.KitchenOrderTicket').condition('statusId', IN, statuses)
+            def findKots = { statuses, entityName = 'zenith.erp.pos.KitchenOrderTicket' ->
+                def f = ec.entity.find(entityName).condition('statusId', IN, statuses)
                 f.condition('organizationPartyId', org ?: '__NO_ORGANIZATION__')
                 if(billingTerminal) f.condition(cf.makeCondition([cf.makeCondition('terminalId',EntityCondition.ComparisonOperator.EQUALS,billingTerminal.terminalId),
                     cf.makeCondition('terminalId',EntityCondition.ComparisonOperator.EQUALS,null)],EntityCondition.JoinOperator.OR))
@@ -669,10 +670,10 @@
                 }
                 ks
             }
-            def loadKots = { statuses, lim ->
-                def f = findKots(statuses)
-                if(lim) f.limit(lim)
-                def ks = visibleKots(f.orderBy('-kotDate').list())
+            def loadKots = { statuses, historyStart, historyEnd ->
+                def f = findKots(statuses, historyStart ? 'zenith.erp.pos.KotBillingHistoryView' : 'zenith.erp.pos.KitchenOrderTicket')
+                if(historyStart) f.condition('historyAt','greater-equals',historyStart).condition('historyAt','less',historyEnd).limit(60)
+                def ks = visibleKots(f.orderBy(historyStart ? '-historyAt,-kotId' : '-kotDate,-kotId').list())
                 if (!ks) return []
                 def kids = ks.collect { it.kotId }
                 def its = ec.entity.find('zenith.erp.pos.KotItem').condition('kotId', IN, kids).orderBy('kotId,kotItemSeqId').list()
@@ -714,9 +715,23 @@
                 .count { it.kotId != ec.context.loadDraft } : 0
             includeBillingHistory = ec.web.parameters.loadHistory == 'Y'
             if(includeBillingHistory) {
-                def activeKots = loadKots(['KotNew', 'KotPreparing', 'KotReady'], 60)
-                def completedKots = loadKots(['KotServed', 'KotCancelled'], 60)
-                def draftKots = loadKots(['KotDraft'], null)
+                def zone = ec.user.timeZone.toZoneId()
+                def today = ec.user.nowTimestamp.toInstant().atZone(zone).toLocalDate()
+                def day = today
+                def requestedDay = ec.web.parameters.historyDate?.toString()
+                if (requestedDay ==~ /\d{4}-\d{2}-\d{2}/) {
+                    try {
+                        def parsed = java.time.LocalDate.parse(requestedDay)
+                        if (parsed.year >= 1 && !parsed.isAfter(today)) day = parsed
+                    } catch (java.time.format.DateTimeParseException ignored) { }
+                }
+                historyDay = day.toString()
+                def start = java.sql.Timestamp.from(day.atStartOfDay(zone).toInstant())
+                def end = java.sql.Timestamp.from(day.plusDays(1).atStartOfDay(zone).toInstant())
+                def activeKots = loadKots(['KotNew', 'KotPreparing', 'KotReady'], start, end)
+                def completedKots = loadKots(['KotServed', 'KotCancelled'], start, end)
+                // Hold Bills also reads these drafts and must be able to resume earlier orders.
+                def draftKots = loadKots(['KotDraft'], null, null)
                 historyKots=(draftKots.collect { it + [group:'draft'] } + activeKots.collect { it + [group:'active'] } +
                     completedKots.collect { it + [group:'completed'] }).sort { a,b ->
                     ((b.billNumber ? 1 : 0) <=> (a.billNumber ? 1 : 0)) ?: (b.sortedAt <=> a.sortedAt) ?: (b.id <=> a.id)
@@ -986,7 +1001,7 @@
     </div>
     <div id="kb-history-filters" class="kb-history-filters" hidden>
       <label>Status <select id="kb-history-status"><option value="">All</option><option value="billed">Billed</option><option value="draft">Held</option><option value="active">Active</option><option value="completed">Served / Cancelled</option></select></label>
-      <label>Date <input id="kb-history-date" type="date"></label>
+      <label>Date <input id="kb-history-date" type="date" min="0001-01-01" data-time-zone="${ec.user.timeZone.ID?html}"></label>
     </div>
     <div class="kb-history-scroll">
       <p id="kb-history-count" role="status"></p>
@@ -994,7 +1009,7 @@
       <p id="kb-history-error" class="kb-history-error" role="alert"></p>
       <p id="kb-history-load-status" role="status" hidden></p>
       <button type="button" id="kb-history-retry" class="kb-history-button" hidden>Retry</button>
-      <div id="kb-history-rows"<#if includeBillingHistory> data-kb-history-loaded</#if>>
+      <div id="kb-history-rows"<#if includeBillingHistory> data-kb-history-loaded data-kb-history-day="${historyDay?html}"</#if>>
         <#list (historyKots![]) as k>
         <article class="kb-history-row" data-kot-id="${k.id?html}" data-kot-group="${k.group}" data-order-date="${k.isoDate}" data-order-at="${k.sortedAt?c}"<#if k.group == 'draft'> data-held-time="${k.heldTime?html}" data-held-items="${k.items?size?c}"</#if> data-billed="${k.billNumber?has_content?c}" data-has-bill="${k.hasBill?c}" data-kot-number="${k.num?html}" data-search="${(k.searchText!'')?html}">
           <button type="button" class="kb-history-number" data-kb-history-detail>#<#if k.billNumber?has_content>${k.billNumber?html}<#else>KOT ${k.num?html}</#if></button>
@@ -1002,9 +1017,8 @@
           <span class="kb-history-meta">${k.time?html}</span>
           <span class="kb-history-meta kb-history-info">${k.customer?html} · ${k.items?size} <#if k.items?size == 1>item<#else>items</#if> · ${(k.payment?has_content?then(k.payment,k.label))?html}</span>
           <#if modCanWrite>
-          <div class="kb-history-row-actions" role="group" aria-label="Print options">
-            <button type="button" class="kb-history-button" data-kb-history-print="bill" <#if !k.hasBill>disabled title="No saved bill or order pricing is available."</#if>><@ic 'printer' 14/> Bill Print</button>
-            <button type="button" class="kb-history-button" data-kb-history-print="kot"><@ic 'printer' 14/> KOT Print</button>
+          <div class="kb-history-row-actions">
+            <button type="button" class="kb-history-button" data-kb-history-reprint aria-haspopup="dialog"><@ic 'printer' 14/> Reprint</button>
             <#if k.canBill><button type="button" class="kb-history-button kb-history-primary" data-kb-bill-order="${k.id?html}" data-kb-bill-total="${k.total?c}"
               data-kb-bill-customer="${k.customerPartyId?html}" data-kb-bill-name="${k.customer?html}" data-kb-bill-phone="${k.customerPhone?html}"
               aria-label="Bill out KOT ${k.num?html}"><@ic 'cash' 14/> Bill Out</button></#if>
@@ -1030,10 +1044,17 @@
           <tbody id="kb-history-detail-lines"></tbody>
         </table></div>
         <div id="kb-history-edit-fields" hidden>
-          <label>Add item <input id="kb-history-add" type="search" placeholder="Search by product name, code or barcode" autocomplete="off" aria-controls="kb-history-products"></label>
+          <label>Add item <input id="kb-history-add" type="search" placeholder="Search by product name, code or barcode" autocomplete="off" aria-controls="kb-history-products" aria-keyshortcuts="/"></label>
           <div id="kb-history-products" role="group" aria-label="Matching products"></div>
         </div>
-        <p class="kb-history-detail-meta"><span id="kb-history-amount-note" hidden>Tax on newly added items is calculated when you save.</span><strong id="kb-history-detail-total"></strong></p>
+        <p class="kb-history-detail-meta" role="status">
+          <span class="kb-history-estimate" id="kb-history-subtotal"></span>
+          <span class="kb-history-estimate" id="kb-history-tax"></span>
+          <span class="kb-history-estimate" id="kb-history-fee" hidden></span>
+          <strong id="kb-history-detail-total"></strong>
+          <strong class="kb-history-estimate" id="kb-history-adjustment" hidden></strong>
+          <small class="kb-history-estimate" id="kb-history-amount-note"></small>
+        </p>
         <p id="kb-history-detail-message" role="status"></p>
         <p id="kb-history-edit-error" class="kb-history-error" role="alert"></p>
         <footer class="kb-history-detail-actions">
@@ -1041,8 +1062,9 @@
           <#if modCanWrite>
           <button type="button" class="kb-history-button" id="kb-history-resume" hidden>Resume Order</button>
           <button type="button" class="kb-history-button" id="kb-history-discard" hidden>Discard Held Order</button>
-          <button type="button" class="kb-history-button" id="kb-history-detail-reprint" aria-keyshortcuts="Space"><@ic 'printer' 14/><span id="kb-history-reprint-label">Reprint</span></button>
-          <button type="submit" class="kb-history-button kb-history-primary" id="kb-history-save" hidden>Save &amp; print revised bill</button>
+          <button type="button" class="kb-history-button" id="kb-history-detail-print" aria-haspopup="dialog" hidden><@ic 'printer' 14/> Print</button>
+          <button type="button" class="kb-history-button" id="kb-history-detail-reprint" aria-haspopup="dialog"><@ic 'printer' 14/> Reprint</button>
+          <button type="submit" class="kb-history-button kb-history-primary" id="kb-history-save" hidden>Save</button>
           </#if>
         </footer>
       </form>
@@ -1057,7 +1079,7 @@
       <p id="kb-history-revision-error" class="kb-history-error" role="alert"></p>
       <footer class="kb-history-detail-actions">
         <button type="button" class="kb-history-button" id="kb-history-revision-back">Back</button>
-        <button type="submit" class="kb-history-button kb-history-primary" id="kb-history-revision-save">Confirm, save &amp; print</button>
+        <button type="submit" class="kb-history-button kb-history-primary" id="kb-history-revision-save">Confirm Save</button>
       </footer>
     </form>
   </dialog>
@@ -1077,6 +1099,7 @@
   </dialog></#if>
   <#if modCanWrite><dialog id="kb-print-choice" class="zk-history-view" aria-labelledby="kb-print-title">
     <span class="kb-completion-icon kb-print-success" aria-hidden="true"><@ic 'check' 26/></span>
+    <span class="kb-completion-icon kb-reprint-icon" aria-hidden="true"><@ic 'printer' 24/></span>
     <h2 id="kb-print-title">Payment complete</h2><p id="kb-print-summary"></p>
     <div id="kb-printer-options" hidden>
       <button type="button" class="kb-control" id="kb-printer-setup">Choose QZ printer</button>
@@ -1085,7 +1108,7 @@
     <div class="zk-history-actions kb-print-options" role="group" aria-label="Print options">
       <button type="button" class="kb-control" data-kb-print="bill"><span class="kb-completion-icon" aria-hidden="true"><@ic 'printer' 18/></span>Bill Print</button>
       <button type="button" class="kb-control" data-kb-print="kot"><span class="kb-completion-icon" aria-hidden="true"><@ic 'printer' 18/></span>KOT Print</button>
-      <button type="button" class="kb-control" data-kb-print="both"><span class="kb-completion-icon" aria-hidden="true"><@ic 'printer' 18/></span><span id="kb-print-both-label">Print both</span></button>
+      <button type="button" class="kb-control" data-kb-print="both"><span class="kb-completion-icon" aria-hidden="true"><@ic 'printer' 18/></span>Print Both</button>
     </div>
     <p id="kb-print-error" role="alert"></p>
     <div id="kb-print-recovery" hidden><button type="button" class="kb-control" id="kb-print-browser">Print using browser</button></div>

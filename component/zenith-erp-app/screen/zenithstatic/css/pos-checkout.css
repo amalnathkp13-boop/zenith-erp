@@ -392,7 +392,7 @@ html body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root.pos-checkout-r
   padding:0!important; opacity:1!important; pointer-events:auto!important; clip-path:none!important; border:0; box-shadow:none;
 }
 html body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root.pos-checkout-reference #cartInlineSearch { min-height:42px; height:44px; border:1px solid var(--pos-line)!important; background:#fff; }
-html body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root.pos-checkout-reference #cartSearchDropdown { top:auto!important; bottom:100%!important; }
+html body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root.pos-checkout-reference .pos-cart-search #cartSearchDropdown { top:auto!important; bottom:100%!important; }
 html body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root.pos-checkout-reference #cartScroll tr>:nth-child(6) { display:table-cell; width:10%; }
 html body.Terminal.pos-mode-normal .z-pos-page #pos-terminal-root.pos-checkout-reference .pos-sum-total>span:last-child { min-height:0; align-self:stretch; border-radius:0; padding:0 22px 0 40px; clip-path:polygon(20px 0,100% 0,100% 100%,0 100%); background:linear-gradient(115deg,#8275d3,#4536b3); }
 @media (max-width:900px) {
