@@ -56,7 +56,19 @@ const checks=[];function check(name,value){assert.ok(value,name);checks.push(nam
   await cashier.p.goto(base+'/apps/zenith/pos/Terminal?sessionId='+s.sessionId);
   check('billing header has no counter switch for a locked login',await cashier.p.locator('details.nb-counter').count()===0);
   await cashier.p.screenshot({path:path.join(out,'locked-billing.png')});
-  await invoke(cashier,'close',{sessionId:s.sessionId,closingCash:'0'});
+  await invoke(admin,'add',{transactionId:ot.transactionId,productId:'POS_QA_A_P18',quantity:'1',taxOn:'N'});
+  await invoke(foreign,'open',{terminalId:'POS_QA_A_TERM1'},true);
+  const taken=await invoke(admin,'open',{terminalId:'POS_QA_A_TERM1',openingCash:'0'});
+  const notice=cashier.p.getByRole('dialog',{name:'Billing session closed'});
+  await notice.waitFor();
+  check('handoff closes only the requested terminal and names the incoming user',
+   (await notice.innerText()).includes('POS_QA_MANAGER')&&
+   q(`SELECT status_id, handoff_user_id FROM pos_session WHERE session_id='${s.sessionId}'`)
+    .some(row=>row.status_id==='PsClosed'&&row.handoff_user_id==='POS_QA_MANAGER')&&
+   q(`SELECT status_id FROM pos_session WHERE session_id='${other.sessionId}'`)[0].status_id==='PsOpen'&&
+   q(`SELECT session_id, status_id FROM pos_transaction WHERE transaction_id='${ot.transactionId}'`)
+    .some(row=>row.session_id===other.sessionId&&row.status_id==='PtCreated'));
+  await invoke(admin,'close',{sessionId:taken.sessionId,closingCash:'0'});
   await invoke(admin,'close',{sessionId:other.sessionId,closingCash:'0'});
   await invoke(admin,'assignTerminal',{userId:'POS_QA_CASHIER',terminalId:'POS_QA_A_TERM2'});
   const historyResponse=await post(cashier,'Terminal','ajaxCart',{action:'billHistory'});

@@ -1,8 +1,7 @@
 // Read-only catalog boundary checks, using the full acceptance suite's independent DB probe.
 module.exports = async function ({a, foreign, base, check, q, invoke}) {
-    let session = q("SELECT session_id FROM pos_session WHERE organization_party_id='POS_QA_A' AND status_id='PsOpen' ORDER BY session_id")[0];
-    if (!session) session = {session_id:(await invoke('open',{terminalId:'POS_QA_A_TERM1',openingCash:'0'})).sessionId};
-    const sessionId = session.session_id;
+    const session = q("SELECT session_id FROM pos_session WHERE organization_party_id='POS_QA_A' AND status_id='PsOpen' ORDER BY session_id")[0];
+    const sessionId = session?.session_id || (await invoke('open',{terminalId:'POS_QA_A_TERM1',openingCash:'0'})).sessionId;
     const snapshot = () => JSON.stringify([
         q("SELECT * FROM pos_transaction WHERE organization_party_id='POS_QA_A' ORDER BY transaction_id"),
         q("SELECT * FROM pos_transaction_item WHERE transaction_id IN (SELECT transaction_id FROM pos_transaction WHERE organization_party_id='POS_QA_A') ORDER BY transaction_id,item_seq_id"),
@@ -146,5 +145,6 @@ module.exports = async function ({a, foreign, base, check, q, invoke}) {
     } finally {
         await p.close();
         await invoke('void',{transactionId:cart.transactionId});
+        if (!session) await invoke('close',{sessionId,closingCash:'0'});
     }
 };

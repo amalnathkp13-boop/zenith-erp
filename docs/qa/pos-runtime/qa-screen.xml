@@ -21,7 +21,7 @@
     }
     ec.service.sync().name('zenith.inventory.InventoryStockServices.adjust#AssetOnHand').parameters([organizationPartyId:'POS_QA_A',productId:'POS_QA_A_STOCK',quantityDiff:100,reason:'Disposable POS opening fixture',facilityId:'POS_QA_A_FAC']).call()
     def demo=ec.entity.find('moqui.security.UserAccount').condition('userId','EX_JOHN_DOE').one()
-    ['POS_QA_MANAGER','POS_QA_CASHIER','POS_QA_MANAGER_B'].each { id ->
+    ['POS_QA_MANAGER','POS_QA_CASHIER','POS_QA_MANAGER_B','POS_QA_COLLECTOR'].each { id ->
         def user=ec.entity.find('moqui.security.UserAccount').condition('userId',id).one()
         ['currentPassword','passwordSalt','passwordHashType','passwordBase64'].each { user.set(it,demo.get(it)) }
         user.disabled='N';user.requirePasswordChange='N';user.update()
@@ -342,7 +342,7 @@
     <default-response type="none"/>
 </transition>
 <transition name="invoke"><actions><script><![CDATA[
-    if (System.getProperty('pos.qa.disposable')!='true' || !['pos.qa','pos.b.qa','pos.cashier.qa'].contains(ec.user.username)) {
+    if (System.getProperty('pos.qa.disposable')!='true' || !['pos.qa','pos.b.qa','pos.cashier.qa','pos.collector.qa'].contains(ec.user.username)) {
         ec.web.response.setStatus(403);ec.web.sendJsonResponse([denied:true]);return
     }
     if (ec.web.parameters.op=='idleJobState') {

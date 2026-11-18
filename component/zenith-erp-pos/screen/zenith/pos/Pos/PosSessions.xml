@@ -53,8 +53,10 @@
                 csv.append("Generated on: ${ec.l10n.format(ec.user.nowTimestamp, 'dd MMM yyyy HH:mm')}\n\n")
                 csv.append("Session,Terminal,Operator,Opened,Closed,Status,Opening,Sales,Returns,Trans,Closing,Diff\n")
                 rows.each { r ->
-                    def unverified = r.closeReason in ['IdleNoSales','IdleUnverifiedCash']
-                    def state = unverified ? 'Auto-closed (cash not counted)' : (r.closeReason == 'IdleReviewed' ? 'Auto-closed (cash reviewed)' : (slMap[r.statusId] ?: esc(r.statusId)))
+                    def unverified = r.closeReason in ['IdleNoSales','IdleUnverifiedCash','HandoffUnverifiedCash']
+                    def method = r.closeReason?.startsWith('Handoff') ? 'Terminal handoff' : 'Auto-closed'
+                    def state = unverified ? method + ' (cash not counted)' :
+                        (r.closeReason in ['IdleReviewed','HandoffReviewed'] ? method + ' (cash reviewed)' : (slMap[r.statusId] ?: esc(r.statusId)))
                     csv.append("${esc(r.sessionId)},${esc(r.terminalName)},${esc(r.operatorPartyId)},${dt(r.openDate)},${dt(r.closeDate)},${state},${num(r.openingCash)},${num(r.totalSales)},${num(r.totalReturns)},${(long)((r.totalTransactions ?: 0) as double)},${unverified ? '' : num(r.closingCash)},${unverified ? '' : num(r.cashDifference)}\n")
                 }
                 ec.web.sendTextResponse(csv.toString(), "text/csv", "${kot ? 'KOT' : 'POS'}_Sessions_${ec.l10n.format(ec.user.nowTimestamp, 'yyyyMMdd_HHmm')}.csv")
@@ -78,7 +80,7 @@
             <field-map field-name="organizationPartyId" from="posOrganizationPartyId ?: '__NO_ORGANIZATION__'"/>
         </entity-find-one>
         <set field="idlePolicyEnabled" from="idlePolicy ? idlePolicy.idleSessionAutoClose : 'Y'"/>
-        <set field="idleRuleMessage" from="idlePolicyEnabled == 'Y' ? 'New sessions close after one hour without cashier input or a completed bill. Cash stays unverified for later review.' : 'Automatic closure is disabled by this organization policy. Sessions require manual closing.'"/>
+        <set field="idleRuleMessage" from="idlePolicyEnabled == 'Y' ? 'New sessions close after one hour without cashier input or a completed bill. Cash stays unverified for later review.' : 'Automatic closure for inactivity is disabled by this organization policy.'"/>
         <entity-find-one entity-name="moqui.service.job.ServiceJob" value-field="idleSweepJob">
             <field-map field-name="jobName" value="zenith_PosIdleSessionSweep_5min"/>
         </entity-find-one>
@@ -167,9 +169,10 @@
                             def slMap = [PsClosed:'Closed', PsOpen:'Open']
                             statusColor = scMap[statusId] ?: 'grey'
                             statusText  = slMap[statusId] ?: (statusId ?: '—')
-                            def unverified = closeReason in ['IdleNoSales','IdleUnverifiedCash']
-                            if (unverified) { statusText = 'Auto-closed · cash not counted'; statusColor = 'warning' }
-                            else if (closeReason == 'IdleReviewed') statusText = 'Auto-closed · cash reviewed'
+                            def unverified = closeReason in ['IdleNoSales','IdleUnverifiedCash','HandoffUnverifiedCash']
+                            def method = closeReason?.startsWith('Handoff') ? 'Terminal handoff' : 'Auto-closed'
+                            if (unverified) { statusText = method + ' · cash not counted'; statusColor = 'warning' }
+                            else if (closeReason in ['IdleReviewed','HandoffReviewed']) statusText = method + ' · cash reviewed'
                             def z = zinr ?: com.zenith.Fmt.INSTANCE
                             def money = { v -> z.inr(ec.l10n.format((v ?: 0) as BigDecimal, '#,##0.00')) }
                             openingDisp = money(openingCash)

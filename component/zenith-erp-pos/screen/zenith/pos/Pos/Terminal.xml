@@ -1590,7 +1590,7 @@
     <transition name="touchSession" begin-transaction="true">
         <actions>
             <service-call name="zenith.pos.PosServices.touch#PosSessionActivity" in-map="[sessionId:sessionId]" out-map="_touch"/>
-            <script>ec.web.sendJsonResponse([open:_touch.open ?: false, success:!ec.message.hasError()])</script>
+            <script>ec.web.sendJsonResponse([open:_touch.open ?: false, success:!ec.message.hasError(),handoffUserId:_touch.handoffUserId])</script>
         </actions>
         <default-response type="none"/>
     </transition>
@@ -2501,7 +2501,7 @@
 
 
 
-        <if condition="!sessionId">
+        <if condition="!sessionId &amp;&amp; ec.web.parameters.chooseTerminal != 'Y'">
 
 
 
@@ -3425,29 +3425,26 @@
 
         </entity-find>
 
-        <!-- ZE-POS-001 (PS-002): don't default the Open-Session dropdown to a terminal that already has an
-             open session WITH a recorded sale (which open#PosSession would reject). List AVAILABLE terminals
-             first (original order preserved among each group, so nothing changes when no terminal is busy),
-             keep busy ones selectable but labelled "(in use)", and pre-select the first available one. The
-             "busy" test mirrors open#PosSession exactly: PsOpen session that has ≥1 PtCompleted transaction
-             (an open-but-empty session is auto-closed on open, so it is NOT treated as busy). -->
+        <!-- Put available terminals first so opening a counter does not default to a handoff. -->
         <set field="terminalList" from="posTerminalRestricted ? (terminalList ?: []).findAll { (posAllowedTerminalIds ?: []).contains(it.terminalId) } : terminalList"/>
-        <set field="_blockedTerms" from="(terminalList ?: []).findAll{ _t -> ec.entity.find('zenith.erp.pos.PosSession').condition('terminalId', _t.terminalId).condition('statusId', 'PsOpen').list().any{ _s -> ec.entity.find('zenith.erp.pos.PosTransaction').condition('sessionId', _s.sessionId).condition('statusId', 'PtCompleted').count() > 0 } }.collect{ it.terminalId } as Set"/>
-        <!-- A recorded sale means the terminal cannot be silently recycled. Give the operator a
-             direct path to the existing, org-guarded session detail for a counted close. -->
         <script><![CDATA[
+            def occupied = !sessionId && terminalList ? ec.entity.find('zenith.erp.pos.PosSession')
+                .condition([organizationPartyId:posOrganizationPartyId,statusId:'PsOpen'])
+                .condition('terminalId','in',terminalList*.terminalId).list()
+                .collectEntries { [(it.terminalId):it.sessionId] } : [:]
             busySessionLinks = []
-            (terminalList ?: []).findAll { _blockedTerms.contains(it.terminalId) }.each { term ->
-                def matching = ec.entity.find('zenith.erp.pos.PosSession')
-                    .condition('organizationPartyId', posOrg ?: '__NO_ORGANIZATION__')
-                    .condition('terminalId', term.terminalId).condition('statusId', 'PsOpen').list()
-                    .find { s -> ec.entity.find('zenith.erp.pos.PosTransaction')
-                        .condition('sessionId', s.sessionId).condition('statusId', 'PtCompleted').count() > 0 }
-                if (matching) busySessionLinks.add([terminalName:term.terminalName ?: term.terminalId,
-                    sessionId:matching.sessionId])
+            def available = [], inUse = []
+            for (term in terminalList ?: []) {
+                def name = term.terminalName ?: term.terminalId
+                if (occupied[term.terminalId]) {
+                    busySessionLinks.add([terminalName:name,sessionId:occupied[term.terminalId]])
+                    inUse.add([terminalId:term.terminalId,terminalName:name + ' (in use)'])
+                } else {
+                    available.add([terminalId:term.terminalId,terminalName:name])
+                }
             }
+            terminalList = available + inUse
         ]]></script>
-        <set field="terminalList" from="(terminalList ?: []).findAll{ !_blockedTerms.contains(it.terminalId) }.collect{ [terminalId: it.terminalId, terminalName: (it.terminalName ?: it.terminalId)] } + (terminalList ?: []).findAll{ _blockedTerms.contains(it.terminalId) }.collect{ [terminalId: it.terminalId, terminalName: ((it.terminalName ?: it.terminalId) + ' (in use)')] }"/>
         <script><![CDATA[
             def checkoutNames=(terminalList ?: []).collectEntries { [(it.terminalId):it.terminalName] }
             checkoutCounters=sessionId && !posTerminalRestricted ? ec.entity.find('zenith.erp.pos.PosSession')
@@ -3861,7 +3858,7 @@
                         <render-mode><text type="html,qvt,vuet" template="true"><![CDATA[
                           <#if (showPosSessionReview!true) && busySessionLinks?has_content>
                           <div class="pos-busy-session-note" style="margin-top:18px;padding:14px;border:1px solid #f3d99c;border-radius:8px;background:#fffbeb;color:#664d03;font-size:13px;line-height:1.5">
-                            <strong>Terminal already in use?</strong> A shift with recorded sales must be reviewed and closed after the drawer is counted.
+                            <strong>Terminal in use</strong> Opening a terminal used by another cashier closes their session once any unfinished payment is resolved.
                             <#list busySessionLinks as busy>
                               <div style="margin-top:7px"><a href="/qapps/zenith/pos/EditSession?sessionId=${busy.sessionId?url('UTF-8')}" style="color:#5b3ac6;font-weight:700">Review ${busy.terminalName?html} session</a></div>
                             </#list>
@@ -4598,7 +4595,7 @@ window.sendWhatsAppWithPdf=function() {
     <#if (customRoleNavigation!false)><a class="pos-logo-link nb-brand" href="${posBillingBack?html}" title="Leave billing"><img src="/zenithstatic/img/zetaerp-logo.svg?v=2" alt="ZetaERP"/></a><#elseif (posOnlyUser!false)><a class="pos-logo-link nb-brand" href="/apps/zenith/Dashboard" title="Go to the Dashboard"><img src="/zenithstatic/img/zetaerp-logo.svg?v=2" alt="ZetaERP"/></a><#else><a class="pos-logo-link nb-brand" href="/qapps/zenith" title="Back to the app (dashboard)"><img src="/zenithstatic/img/zetaerp-logo.svg?v=2" alt="ZetaERP"/></a></#if>
     <#if (posTerminalRestricted!false)><span class="nb-pill" title="Terminal assigned by your administrator">${((terminal.terminalName)!'Assigned terminal')?html}</span><#else>
     <details class="nb-counter"><summary class="nb-pill" title="Switch between your open counters"><span>${((terminal.terminalName)!'Terminal')?html}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
-      <div class="nb-counter-menu"><span>Your open counters</span><#list (checkoutCounters![]) as counter><a href="/apps/zenith/pos/Terminal?sessionId=${counter.sessionId?url('UTF-8')}" <#if counter.sessionId==sessionId>aria-current="true"</#if>>${counter.name?html}</a></#list><a href="/apps/zenith/pos/PosTerminals">Manage counters</a></div>
+      <div class="nb-counter-menu"><span>Your open counters</span><#list (checkoutCounters![]) as counter><a href="/apps/zenith/pos/Terminal?sessionId=${counter.sessionId?url('UTF-8')}" <#if counter.sessionId==sessionId>aria-current="true"</#if>>${counter.name?html}</a></#list><#if (terminalList![])?size gt 1><a href="/apps/zenith/pos/Terminal?chooseTerminal=Y">Open another counter</a></#if><a href="/apps/zenith/pos/PosTerminals">Manage counters</a></div>
     </details>
     </#if>
     <span class="nb-status" role="status"><span class="nb-dot"></span><span id="pos-connection-status">Online</span></span>

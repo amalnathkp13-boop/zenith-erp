@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Disposable test harness. Copy into the local Pricing screen directory only. -->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd" default-menu-include="false">
+<transition name="initialize"><actions><script><![CDATA[
+    if (System.getProperty('purchase.pricing.qa.disposable') != 'true' || !ec.user.isInGroup('ADMIN')) {
+        ec.web.response.setStatus(403); ec.web.sendJsonResponse([denied:true]); return
+    }
+    if (ec.entity.find('mantle.party.Party').condition('partyId','PP_QA_A').disableAuthz().count()) {
+        ec.web.response.setStatus(409); ec.web.sendJsonResponse([denied:true]); return
+    }
+    ec.entity.makeDataLoader().location('component://zenith-erp-purchase/PurchaseRemainingQaFixture.xml').load()
+    if (ec.message.hasError()) throw new IllegalStateException('Fixture did not load')
+    def demo = ec.entity.find('moqui.security.UserAccount').condition('userId','EX_JOHN_DOE').one()
+    for (id in ['PP_QA_USER','PP_QA_VIEWER']) {
+        def user = ec.entity.find('moqui.security.UserAccount').condition('userId',id).one()
+        for (key in ['currentPassword','passwordSalt','passwordHashType','passwordBase64']) user.set(key,demo.get(key))
+        user.setAll([disabled:'N',requirePasswordChange:'N']).update()
+    }
+    for (org in ['PP_QA_A','PP_QA_B']) {
+        ec.entity.makeValue('mantle.party.PartyIdentification').setAll([partyId:org,partyIdTypeEnumId:'PtidOrgCode',idValue:org]).create()
+        ec.entity.makeValue('mantle.facility.Facility').setAll([facilityId:org+'_STORE',facilityName:'Disposable receiving store '+org,ownerPartyId:org]).create()
+    }
+    ec.web.sendJsonResponse([initialized:true])
+]]></script></actions><default-response type="none"/></transition>
+<transition name="invoke"><actions><script><![CDATA[
+    if (System.getProperty('purchase.pricing.qa.disposable') != 'true' ||
+            !(ec.user.username in ['purchase.pricing.qa','purchase.pricing.viewer'])) {
+        ec.web.response.setStatus(403); ec.web.sendJsonResponse([denied:true]); return
+    }
+    def calls = [
+        createPo:'zenith.purchase.OperationsServices.create#PurchaseOrder',
+        addPoLine:'zenith.purchase.OperationsServices.add#PurchaseOrderLine',
+        updatePo:'zenith.purchase.OperationsServices.update#PurchaseOrder',
+        create:'zenith.purchase.OperationsServices.create#GoodsReceiptNote',
+        get:'zenith.purchase.GoodsReceiptServices.get#GoodsReceipt',
+        details:'zenith.purchase.GoodsReceiptServices.save#GoodsReceiptDetails',
+        line:'zenith.purchase.GoodsReceiptServices.save#GoodsReceiptLine',
+        submit:'zenith.purchase.GoodsReceiptServices.submit#GoodsReceipt',
+        cancel:'zenith.purchase.GoodsReceiptServices.cancel#GoodsReceipt',
+        receive:'zenith.inventory.ReceiptServices.receive#Stock',
+        reserved:'zenith.inventory.ReceiptServices.get#PendingGrnQuantities',
+        received:'zenith.inventory.ReceiptServices.get#OrderReceiptQuantities'
+    ]
+    def name = calls[ec.web.parameters.op]
+    if (!name) { ec.web.response.setStatus(400); ec.web.sendJsonResponse([denied:true]); return }
+    def values = [:]
+    ['orderId','orderItemSeqId','vendorPartyId','organizationPartyId','productId','itemDescription','quantity','unitAmount',
+        'purchaseOrderId','receiptDate','grnId','facilityId','invoiceId','vendorInvoiceNumber','plannedQuantity','grnReceivedBefore',
+        'quantityAccepted','valuationRate','batchNumber','manufacturingDate','expiryDate','statusId'].each { key ->
+        if (ec.web.parameters.containsKey(key)) values[key] = ec.web.parameters[key]
+    }
+    if (values.statusId) { values.updates = [statusId:values.remove('statusId')] }
+    ec.message.clearErrors()
+    def result = ec.service.sync().name(name).parameters(values).call()
+    def errors = ec.message.hasError() ? [ec.message.getErrorsString()] : []
+    ec.message.clearErrors()
+    ec.web.sendJsonResponse([result:result,errors:errors])
+]]></script></actions><default-response type="none"/></transition>
+</screen>
