@@ -87,7 +87,11 @@
         </actions>
     </service>
     <service verb="import" noun="WorkspaceSale" transaction="force-new">
-        <in-parameters><parameter name="terminalId" required="true"/><parameter name="sale" type="Map" required="true"/></in-parameters>
+        <in-parameters>
+            <parameter name="terminalId" required="true"/>
+            <parameter name="sale" type="Map" required="true"/>
+            <parameter name="holdOnly" type="Boolean" default="false"/>
+        </in-parameters>
         <out-parameters><parameter name="offlineId"/></out-parameters>
         <actions>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[terminalId:terminalId,sessionId:sale.sessionId,customerPartyId:sale.customer?.partyId]" out-map="access"/>
@@ -99,7 +103,14 @@
                 def issued=java.sql.Timestamp.from(java.time.Instant.parse(sale.ts as String))
                 if (issued.time>ec.user.nowTimestamp.time+300000L) fail('The terminal clock is ahead. Keep this sale for review.')
                 ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',terminalId).forUpdate(true).one()
-                def key=java.util.UUID.nameUUIDFromBytes((org+'\u0000'+sale.offlineId).getBytes('UTF-8')).toString()
+                def key=java.util.UUID.nameUUIDFromBytes((org+'\u0000'+(holdOnly ? 'held\u0000' : '')+sale.offlineId).getBytes('UTF-8')).toString()
+                if (holdOnly) {
+                    def held=ec.entity.find('zenith.erp.pos.PosHeldTransaction').condition('heldId',key).one()
+                    if (held) {
+                        if (held.sessionId!=sale.sessionId) fail('The held bill belongs to a different session.')
+                        offlineId=sale.offlineId; return
+                    }
+                }
                 def prior=ec.entity.find('zenith.erp.pos.PosOfflineTransaction').condition('offlineTransactionId',key).one()
                 if (prior?.statusId=='OtSynced') { offlineId=sale.offlineId; return }
                 def session=ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',sale.sessionId).condition('organizationPartyId',org).condition('terminalId',terminalId).condition('statusId','PsOpen').one()
@@ -129,7 +140,8 @@
                 def discountSetting=ec.entity.find('moqui.security.UserPreference').condition('userId',org).condition('preferenceKey','POS_DISC_LIMIT').one()?.preferenceValue
                 def discountLimit=discountSetting?.trim() ? new BigDecimal(discountSetting) : null
                 sale.items.each { item ->
-                    if (!(item instanceof Map) || item.qty==null || item.price==null || (item.qty as BigDecimal)<=0 || (item.price as BigDecimal)<=0) fail('Positive prices and quantities are required offline; free items need online manager approval.')
+                    if (!(item instanceof Map) || item.qty==null || item.price==null || (item.qty as BigDecimal)<=0 ||
+                        (holdOnly ? (item.price as BigDecimal)<0 : (item.price as BigDecimal)<=0)) fail('Positive prices and quantities are required offline; free items need online manager approval.')
                     ec.service.sync().name('zenith.pos.PosModeServices.assert#TerminalMode').parameters([terminalId:terminalId,salesModeId:item.mode]).call()
                     def resolved=ec.service.sync().name('zenith.pos.PosServices.resolve#PosModePrice').parameters([productId:item.productId,salesModeId:item.mode]).call()
                     if (!priceAccess.canOverride && (resolved.blocked || (resolved.unitPrice as BigDecimal).compareTo(item.price as BigDecimal)!=0)) fail('POS write permission is required for this offline price override.')
@@ -149,6 +161,16 @@
                 ec.service.sync().name('zenith.pos.PosServices.refresh#PosTransactionTax').parameters([transactionId:transactionId,taxOn:sale.taxOn]).call()
                 txn=ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',transactionId).one()
                 if (sale.total==null || (sale.total as BigDecimal).compareTo(txn.payableAmount as BigDecimal)!=0 || sale.taxAmount==null || (sale.taxAmount as BigDecimal).compareTo(txn.totalTaxAmount as BigDecimal)!=0) fail('Offline tax or total differs from current rules. Sale retained for review, without changing its collected amount.')
+                if (holdOnly) {
+                    def held=ec.service.sync().name('zenith.pos.PosServices.hold#Transaction')
+                        .parameters([transactionId:transactionId,heldId:key,holdReason:'Held on this device while offline']).call()
+                    if (!ec.message.hasError() && held.heldId) {
+                        def record=ec.entity.find('zenith.erp.pos.PosHeldTransaction').condition('heldId',held.heldId).one()
+                        record.set('holdTime',issued).update()
+                        offlineId=sale.offlineId
+                    }
+                    return
+                }
                 if (sale.paymentMethod=='Credit') {
                     if (!sale.customer?.name || !sale.customer?.phone) fail('Credit requires a customer name and phone.')
                     ec.service.sync().name('zenith.pos.PosServices.complete#PosTransactionCredit').parameters([transactionId:transactionId,customerPartyId:sale.customer.partyId,customerName:sale.customer.name,customerPhone:sale.customer.phone,creditDays:sale.customer.creditDays]).call()

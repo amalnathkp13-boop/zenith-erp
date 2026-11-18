@@ -104,7 +104,7 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
   check('offline bill discount updates payable with GST',await page.locator('#posSumTotal').textContent()==='₹106.00');
   await page.keyboard.press('F7');await page.waitForFunction(()=>!document.querySelector('.aj-p'));
   await page.evaluate(()=>window._posOffline.add('POS_QA_A_P5'));await page.locator('.aj-mode').selectOption('WHOLESALE');
-  await page.evaluate(()=>window._posOffline.clearDraft());await page.locator('#pos-held-wrap :is(button,summary)').click();await page.locator('[data-recall]').click();
+  await page.evaluate(()=>window._posOffline.clearDraft());await page.locator('#pos-held-wrap summary').click();await page.locator('[data-recall]').click();
   check('offline held bill restores its original mode rate discount and GST',await page.locator('.aj-mode').inputValue()==='RETAIL'&&await page.locator('.aj-p').inputValue()==='100'&&await page.locator('#posSumTotal').textContent()==='₹106.00');
   await page.locator('#pos-customer-btn').click();await page.locator('#oflName').fill('Synthetic Offline Customer');await page.locator('#oflPhone').fill('9876543678');await page.locator('#posOfflineDialog button[type=submit]').click();
   await page.locator('#pos-credit').click();await page.locator('#oflConfirmPayment').click();await page.getByRole('dialog',{name:'Sale saved on this device'}).waitFor();
@@ -183,6 +183,7 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
   check('equal-price lines in different modes sync successfully',modeResult.syncedIds?.includes(separateModes.offlineId),modeResult);
   let modeRows=[];for(let i=0;i<30;i++){modeRows=q("SELECT i.sales_mode_id FROM pos_transaction_item i JOIN pos_offline_transaction o ON o.created_transaction_id=i.transaction_id WHERE o.transaction_data_json LIKE '%"+separateModes.offlineId+"%'");if(modeRows.length===2)break;await new Promise(r=>setTimeout(r,200));}
   check('replay keeps separate line modes instead of merging equal-price items',modeRows.length===2&&new Set(modeRows.map(r=>r.sales_mode_id)).size===2,modeRows);
+  await require('./verify-offline-held-bills.cjs')({a,base,check,q,invoke,post,out});
   await page.screenshot({path:path.join(out,'offline-workspace.png')});
  } finally {
   await context.setOffline(false);

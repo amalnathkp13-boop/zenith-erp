@@ -228,6 +228,7 @@ window._posOffline = (function () {
     var booted = false;
     var syncing = false;
     var payPending = false;
+    var heldSyncing = false;
     var serverDraftPaused = false;
     var transportDown = false, connectionProbe, connectionTimer;
     var pendingLocalEdits = [], storageReady = false, rejectedSales = new Map();
@@ -822,7 +823,8 @@ window._posOffline = (function () {
                                 return;
                             }
                             leaseReady = true;
-                            if (active() || draft) begin();
+                            if (active() || draft || holds.length) begin();
+                            if (holds.length && !disconnected()) sync();
                             return new Promise(function () {});
                         },
                     )
@@ -900,18 +902,19 @@ window._posOffline = (function () {
     function money(n) {
         return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
     }
-    function totals() {
+    function totals(bill) {
+        bill = bill || draft;
         var sub = 0,
             tax = 0,
             discount = 0,
             qty = 0;
-        cart.forEach(function (i) {
+        bill.items.forEach(function (i) {
             var p = catalog[i.productId] || {},
                 m = modeInfo(i.mode),
                 gross = Number(i.price) * Number(i.qty),
                 disc = (gross * Number(i.discount || 0)) / 100,
                 net = gross - disc;
-            var destination = (draft.customer || {}).state || draft.destinationState || settings.state,
+            var destination = (bill.customer || {}).state || bill.destinationState || settings.state,
                 interstate = destination && String(destination) !== String(settings.state);
             var rates = (interstate ? p.interstateRates : p.taxRates) || [],
                 sum = rates.reduce(function (s, r) {
@@ -919,7 +922,7 @@ window._posOffline = (function () {
                 }, 0),
                 base = net,
                 amount = 0;
-            if (draft.taxOn === 'Y') {
+            if (bill.taxOn === 'Y') {
                 if (m.inclusive && sum > 0) base = money((net * 100) / (100 + sum));
                 amount = rates.reduce(function (s, r) {
                     return s + money((base * Number(r)) / 100);
@@ -976,6 +979,7 @@ window._posOffline = (function () {
             taxButton.setAttribute('aria-pressed', String(draft.taxOn === 'Y'));
         }
         window._posSetCustomerChip(draft.customer && draft.customer.name, draft.customer && draft.customer.phone);
+        renderHeldPicker();
     }
     function change() {
         saveDraft();
@@ -1053,7 +1057,7 @@ window._posOffline = (function () {
         begin();
     }
     function edit(op) {
-        if (serverDraftPaused) return;
+        if (serverDraftPaused || payPending) return;
         pendingLocalEdits.push(op);
         begin();
     }
@@ -1202,10 +1206,14 @@ window._posOffline = (function () {
     }
     function holdDraft() {
         if (!cart.length || payPending) return;
+        if (heldSyncing) { toast('Held bills are reconnecting. Try again in a moment.'); return; }
         payPending = true;
-        var all = holds.concat([copy(draft)]),
+        var saved = copy(draft);
+        saved.draftId = crypto.randomUUID();
+        saved.heldAt = Date.now();
+        var all = holds.concat([saved]),
             next = newDraft();
-        writeTail
+        writeTail = writeTail
             .then(function () {
                 return storeWorkspace(next, all);
             })
@@ -1214,65 +1222,101 @@ window._posOffline = (function () {
                 draft = next;
                 cart = draft.items;
                 render();
-                toast('Bill held on this device.');
+                toast('Bill held', '#b45309');
             })
             .catch(function () {
                 toast('Could not hold the bill. Keep it open.', '#c62828');
             })
             .finally(function () {
                 payPending = false;
+                if (!disconnected()) sync();
             });
     }
-    function heldDialog() {
-        var ov = modal(
-            'Offline held bills',
-            holds.length
-                ? holds
-                      .map(function (h, index) {
-                          return (
-                              '<button type="button" data-recall="' +
-                              index +
-                              '">' +
-                              esc(modeInfo(h.mode).name) +
-                              ' · ' +
-                              h.items.length +
-                              ' items</button>'
-                          );
-                      })
-                      .join('')
-                : '<p>No offline held bills.</p>',
-        );
-        ov.querySelectorAll('[data-recall]').forEach(function (b) {
-            b.onclick = function () {
-                if (cart.length || payPending) {
-                    toast('Hold or clear this bill before recalling another.', '#c62828');
-                    return;
-                }
-                payPending = true;
-                var index = Number(b.dataset.recall),
-                    next = copy(holds[index]),
-                    rest = holds.filter(function (h, i) {
-                        return i !== index;
-                    });
-                writeTail
-                    .then(function () {
-                        return storeWorkspace(next, rest);
-                    })
-                    .then(function () {
-                        draft = next;
-                        holds = rest;
-                        cart = draft.items;
-                        render();
-                        ov.remove();
-                    })
-                    .catch(function () {
-                        toast('Could not recall this bill. Keep this page open.', '#c62828');
-                    })
-                    .finally(function () {
-                        payPending = false;
-                    });
-            };
+    function renderHeldPicker() {
+        var wrap = document.getElementById('pos-held-wrap');
+        if (!wrap || !localEditing) return;
+        var button = wrap.querySelector('summary,button');
+        if (!button) return;
+        var open = !!wrap.querySelector('details[open]');
+        var summary = document.createElement('summary');
+        summary.className = 'nb-abtn nb-abtn--hold';
+        summary.innerHTML = button.innerHTML;
+        summary.querySelectorAll('.nb-cnt').forEach(function (count) { count.remove(); });
+        if (holds.length) {
+            var count = document.createElement('span');
+            count.className = 'nb-cnt'; count.textContent = holds.length;
+            summary.insertBefore(count, summary.querySelector('kbd'));
+        }
+        var details = document.createElement('details');
+        details.className = 'nb-held__d'; details.open = open;
+        details.appendChild(summary);
+        var menu = document.createElement('div');
+        menu.className = 'nb-held__menu';
+        menu.innerHTML = '<div class="nb-held__hint">Tap a bill to switch to it. Your current cart is held automatically.</div>';
+        holds.slice().reverse().forEach(function (held, index) {
+            var row = document.createElement('button');
+            row.type = 'button'; row.className = 'nb-held__item'; row.dataset.recall = held.draftId;
+            var time = held.heldAt ? new Date(held.heldAt).toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'}) : '';
+            row.innerHTML = '<span><b>Held bill ' + (index + 1) + '</b> · ' + held.items.length + (held.items.length === 1 ? ' item' : ' items') +
+                '<div class="nb-held__t">' + (time ? 'held ' + esc(time) + ' · ' : '') + 'Saved on this device</div></span>' +
+                '<span class="nb-held__amt">₹ ' + totals(held).sub.toLocaleString('en-IN', {minimumFractionDigits:2,maximumFractionDigits:2}) + '</span>';
+            menu.appendChild(row);
         });
+        if (!holds.length) menu.innerHTML += '<div class="nb-held__hint">No held bills on this device.</div>';
+        details.appendChild(menu);
+        wrap.replaceChildren(details);
+    }
+    function heldDialog() {
+        renderHeldPicker();
+        var picker = document.querySelector('#pos-held-wrap details');
+        if (picker) picker.open = !picker.open;
+    }
+    function recallDraft(id) {
+        if (payPending || heldSyncing) return;
+        var held = holds.find(function (bill) { return bill.draftId === id; });
+        if (!held) return;
+        payPending = true;
+        var next = copy(held), rest = holds.filter(function (bill) { return bill.draftId !== id; });
+        if (cart.length) {
+            var current = copy(draft); current.draftId = crypto.randomUUID(); current.heldAt = Date.now(); rest.push(current);
+        }
+        writeTail = writeTail.then(function () { return storeWorkspace(next, rest); }).then(function () {
+            draft = next; holds = rest; cart = draft.items;
+            render();
+            var picker = document.querySelector('#pos-held-wrap details');
+            if (picker) picker.open = false;
+        }).catch(function () {
+            toast('Could not recall this bill. Keep this page open.', '#c62828');
+        }).finally(function () { payPending = false; });
+    }
+    function syncHeldDrafts() {
+        if (!leaseReady || serverDraftPaused || !holds.length || heldSyncing || payPending || !draft || cart.length ||
+            draft.sourceTransactionId || disconnected()) return Promise.resolve();
+        heldSyncing = true;
+        var saved = holds.slice(0,100).map(function (bill) {
+            var amounts = totals(bill);
+            return Object.assign(copy(bill), {version:2,offlineId:bill.draftId,userId:settings.userId,
+                organizationPartyId:orgId,total:amounts.pay,taxAmount:amounts.tax,
+                ts:new Date(bill.heldAt || Date.now()).toISOString()});
+        });
+        var token = document.querySelector('[name=moquiSessionToken]');
+        return fetch('Terminal/syncOfflineHeldBills', {method:'POST',credentials:'same-origin',signal:AbortSignal.timeout(20000),
+            headers:{'Content-Type':'application/json'},body:JSON.stringify({terminalId:tCtx().terminalId,sessionId:tCtx().sessionId,
+                moquiSessionToken:token && token.value,heldBills:saved})
+        }).then(function (response) {
+            if (!response.ok) throw Error('Held bills remain saved on this device.');
+            return response.json();
+        }).then(function (result) {
+            var ids = new Set((result.syncedIds || []).filter(function (id) { return saved.some(function (bill) { return bill.offlineId === id; }); }));
+            if (!ids.size) return;
+            var rest = holds.filter(function (bill) { return !ids.has(bill.draftId); });
+            writeTail = writeTail.then(function () { return stateWrite('holds:' + scope, copy(rest)); }).then(function () {
+                holds = rest;
+                renderHeldPicker();
+            });
+            return writeTail;
+        }).catch(function (error) { return transportFailure(error); })
+          .finally(function () { heldSyncing = false; });
     }
     function validation(method) {
         if (!cart.length) return 'Add products first.';
@@ -1534,12 +1578,16 @@ window._posOffline = (function () {
             });
         });
     }
+    function currentSessionHasQueuedSale(sales) {
+        var sessionId = tCtx().sessionId;
+        return sales.some(function (sale) { return !sale.sessionId || sale.sessionId === sessionId; });
+    }
     function resumeOnline() {
         if (disconnected() || !localEditing || !draft || draft.items.length || draft.sourceTransactionId || holds.length ||
             syncing || payPending || pendingLocalEdits.length || document.getElementById('posOfflineDialog') ||
             typeof window._posResumeOnline !== 'function') return;
         getQueue().then(function (sales) {
-            if (sales.length || disconnected() || !localEditing || !draft || draft.items.length || draft.sourceTransactionId ||
+            if (currentSessionHasQueuedSale(sales) || disconnected() || !localEditing || !draft || draft.items.length || draft.sourceTransactionId ||
                 holds.length || syncing || payPending || pendingLocalEdits.length || document.getElementById('posOfflineDialog')) return;
             localEditing = false;
             draft = null;
@@ -1601,6 +1649,11 @@ window._posOffline = (function () {
                             });
                     });
             })
+            .then(function (count) {
+                return getQueue().then(function (remaining) {
+                    return currentSessionHasQueuedSale(remaining) ? count : syncHeldDrafts().then(function () { return count; });
+                });
+            })
             .catch(function (error) { return transportFailure(error).then(function () { return 0; }); })
             .finally(function () {
                 syncing = false;
@@ -1647,9 +1700,10 @@ window._posOffline = (function () {
             .then(function (saved) {
                 draft = saved[0] || null;
                 holds = saved[2] || [];
+                holds.forEach(function (bill) { bill.draftId = bill.draftId || crypto.randomUUID(); });
                 if (!snapshot) snapshot = saved[1] || null;
                 storageReady = true;
-                if (draft || disconnected()) begin();
+                if (draft || holds.length || disconnected()) begin();
                 connectionChanged();
             })
             .catch(function () {
@@ -1733,6 +1787,11 @@ window._posOffline = (function () {
                     return;
                 }
                 if (b.closest('#posOfflineDialog')) return;
+                if (b.matches('#pos-held-wrap [data-recall]')) {
+                    e.preventDefault(); e.stopImmediatePropagation();
+                    if (begin()) recallDraft(b.dataset.recall);
+                    return;
+                }
                 if (
                     b.matches(
                         '.pos-cart .aj-q,.pos-cart .aj-rm,#pos-held-wrap > button,#pos-held-wrap summary,#pos-pay-cash,#pos-pay-card,#pos-credit,#pos-pay-upi,#pos-split,#pos-discount,#pos-hold',
@@ -1847,6 +1906,7 @@ window._posOffline = (function () {
         add: add,
         scan: scan,
         sync: sync,
+        hold: function () { if (begin()) holdDraft(); },
         clearDraft: clearDraft,
         render: render,
         chooseCustomer: function () { if (begin()) chooseCustomer(); },
@@ -4727,7 +4787,10 @@ window.posToggleFullscreen = function() {
             if (smRoot) smRoot.removeAttribute('data-sig');
             resetCompletedCart(true);
             applyTaxMode(TO);
-            fetchScreen({}).then(syncIssuedBillHeader).catch(function () {});
+            fetchScreen({}).then(function (doc) {
+                syncHeldWrap(doc);
+                syncIssuedBillHeader(doc);
+            }).catch(function () {});
         };
 
         /* ============================================================
@@ -5700,7 +5763,13 @@ window.posToggleFullscreen = function() {
         // Refresh the server-rendered held-bills picker (#pos-held-wrap <details>) from a full
         // terminal render after an AJAX void.
         function syncHeldWrap(doc) {
-            try { var s = doc.querySelector('#pos-held-wrap'); var d = document.getElementById('pos-held-wrap'); if (s && d) d.innerHTML = s.innerHTML; } catch (e) {}
+            if (window._posOffline?.active?.()) return;
+            var source = doc.querySelector('#pos-held-wrap'), target = document.getElementById('pos-held-wrap');
+            if (!source || !target) return;
+            var open = !!target.querySelector('details[open]');
+            target.innerHTML = source.innerHTML;
+            var picker = target.querySelector('details');
+            if (picker) picker.open = open;
         }
         // Hold in place: a native navigation exits browser fullscreen.
         document.addEventListener('submit', function(e) {
@@ -5710,6 +5779,7 @@ window.posToggleFullscreen = function() {
             var act = form.getAttribute('action') || '';
             if (act.indexOf('holdSale') !== -1) {
                 e.preventDefault(); e.stopImmediatePropagation();
+                if (window._posOffline?.active?.()) { window._posOffline.hold(); return; }
                 if (cartClearing || modeSwitching || !TX) return;
                 cartClearing = true;
                 OPT.whenIdle().then(function() {

@@ -1268,6 +1268,7 @@
         <in-parameters>
             <parameter name="transactionId" required="true"/>
             <parameter name="holdReason"/>
+            <parameter name="heldId"/>
         </in-parameters>
         <out-parameters><parameter name="heldId"/></out-parameters>
         <actions>
@@ -1290,7 +1291,7 @@
             ]]></script>
 
             <service-call name="create#zenith.erp.pos.PosHeldTransaction" out-map="heldOut"
-                          in-map="[sessionId:txn.sessionId, holdTime:ec.user.nowTimestamp,
+                          in-map="[heldId:heldId, sessionId:txn.sessionId, holdTime:ec.user.nowTimestamp,
                                    holdReason:holdReason, cashierPartyId:ec.user.userAccount?.partyId,
                                    customerPartyId:txn.customerPartyId, itemsJson:itemsJson,
                                    subtotal:txn.subtotal, statusId:'PhHeld']"/>
