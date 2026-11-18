@@ -1870,7 +1870,7 @@
                 receipt = [success:true, action:'receiptData',
                     store:[name:storeName, address:storeAddr, phone:rTpl?.phone ?: '', email:rTpl?.email ?: '',
                         taxReg:receiptTaxReg,
-                        headerText:receiptText('headerText'), footerText:receiptText('footerText'), termsText:receiptText('termsText'),receiptWidth:rTpl?.receiptWidth ?: '80mm',printLeftMargin:rTpl?.printLeftMargin,
+                        headerText:receiptText('headerText'), footerText:receiptText('footerText'), termsText:receiptText('termsText'),receiptWidth:rTpl?.receiptWidth ?: '80mm',printLeftMargin:rTpl?.printLeftMargin,printTopMargin:rTpl?.printTopMargin,
                         showLogo:rTpl?.showLogo ?: 'N',logoUrl:rTpl?.logoUrl ?: '',showTaxBreakdown:rTpl?.showTaxBreakdown ?: 'Y',
                         showDiscount:rTpl?.showDiscount ?: 'Y',showCustomerInfo:rTpl?.showCustomerInfo ?: 'Y',
                         showPaymentDetails:rTpl?.showPaymentDetails ?: 'N',showItemTax:rTpl?.showItemTax ?: 'N'],options:receiptOptions,
