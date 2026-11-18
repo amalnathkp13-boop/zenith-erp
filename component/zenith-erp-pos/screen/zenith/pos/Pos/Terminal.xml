@@ -305,7 +305,20 @@
         <actions><script><![CDATA[
             if (!ec.web.parameters.terminalId) {ec.web.sendJsonResponse([products:[],customers:[]]);return}
             def res = ec.service.sync().name('zenith.pos.PosOfflineServices.export#Workspace').parameters([terminalId:ec.web.parameters.terminalId]).call()
-            ec.web.sendJsonResponse(res?.workspace ?: [products:[],customers:[]])
+            def workspace = res?.workspace
+            if (!workspace) { ec.web.sendJsonResponse([products:[],customers:[]]); return }
+            def ids = workspace.products*.productId
+            def products = ids ? ec.entity.find('mantle.product.Product')
+                .condition([ownerPartyId:workspace.organizationPartyId, productTypeEnumId:'PtAsset'])
+                .condition('productId','in',ids).selectFields(['productId','inventoryTracked']).list() : []
+            def categories = ec.entity.find('mantle.product.category.ProductCategory')
+                .condition('ownerPartyId',workspace.organizationPartyId).selectFields(['productCategoryId']).list()*.productCategoryId
+            workspace.gridStockTracking = products.collectEntries { [(it.productId):it.inventoryTracked=='Y'] }
+            workspace.gridCategories = categories && products ? ec.entity.find('mantle.product.category.ProductCategoryMember')
+                .condition('productCategoryId','in',categories).condition('productId','in',products*.productId)
+                .conditionDate('fromDate','thruDate',ec.user.nowTimestamp).selectFields(['productCategoryId','productId']).list()
+                .groupBy { it.productCategoryId }.collectEntries { id, entries -> [(id):entries*.productId.unique()] } : [:]
+            ec.web.sendJsonResponse(workspace)
         ]]></script></actions>
         <default-response type="none"/>
     </transition>

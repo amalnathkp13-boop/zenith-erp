@@ -55,6 +55,51 @@
     finally { clearTimeout(timer); }
   }
 
+  // JavaFX WebKit in QZ Tray can detach Indic vowel signs even with the right font.
+  // Shape each word in the browser and let the existing receipt HTML wrap the images.
+  function shapeIndicItemNames(html) {
+    const indic = /[\u0900-\u0dff]/u;
+    if (!indic.test(html)) return html;
+    const receipt = new DOMParser().parseFromString(html, 'text/html');
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    const fontSize = 44;
+    let changed = false;
+    for (const item of receipt.querySelectorAll('.item-name')) {
+      const weight = item.closest('[data-item-font-weight]')?.dataset.itemFontWeight || '600';
+      const font = weight + ' ' + fontSize + 'px "Nirmala UI","Noto Sans Tamil","Noto Sans Telugu","Noto Sans Malayalam","Noto Sans Devanagari",sans-serif';
+      const color = item.closest('[style*="color:"]')?.style.color || '#000';
+      for (const node of Array.from(item.childNodes)) {
+        if (node.nodeType !== Node.TEXT_NODE || !indic.test(node.textContent)) continue;
+        const words = receipt.createDocumentFragment();
+        for (const word of node.textContent.split(/(\s+)/u)) {
+          if (!indic.test(word)) {
+            words.append(word);
+            continue;
+          }
+          context.font = font;
+          const metrics = context.measureText(word);
+          const x = Math.ceil(Math.max(0, metrics.actualBoundingBoxLeft)) + 1;
+          const baseline = Math.ceil(metrics.actualBoundingBoxAscent) + 1;
+          canvas.width = x + Math.ceil(Math.max(metrics.width, metrics.actualBoundingBoxRight)) + 1;
+          canvas.height = baseline + Math.ceil(Math.max(0, metrics.actualBoundingBoxDescent)) + 1;
+          context.font = font;
+          context.fillStyle = color;
+          context.fillText(word, x, baseline);
+          const image = receipt.createElement('img');
+          image.src = canvas.toDataURL('image/png');
+          image.alt = word;
+          image.style.cssText = 'display:inline;margin:0;max-width:100%;max-height:none;height:auto;width:' +
+            (canvas.width / fontSize) + 'em;vertical-align:' + ((baseline - canvas.height) / fontSize) + 'em';
+          words.append(image);
+        }
+        node.replaceWith(words);
+        changed = true;
+      }
+    }
+    return changed ? '<!doctype html>' + receipt.documentElement.outerHTML : html;
+  }
+
   async function printHtml(printer,html) {
     const client=await connect();
     const width=/data-paper-width="58"/.test(html)?58:80;
@@ -62,7 +107,7 @@
       size:{width},units:'mm',colorType:'grayscale',
       margins:{top:0,right:0,bottom:0,left:0},scaleContent:false
     });
-    await client.print(config,[{type:'pixel',format:'html',flavor:'plain',data:html,
+    await client.print(config,[{type:'pixel',format:'html',flavor:'plain',data:shapeIndicItemNames(html),
       options:{pageWidth:width,pageHeight:null}}]);
   }
   window.PosQzPrint={connect,printHtml};

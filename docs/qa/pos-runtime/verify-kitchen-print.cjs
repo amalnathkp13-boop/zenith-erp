@@ -109,7 +109,14 @@ module.exports=async function({a,foreign,base,post,rows,count,check,out}){
  await stubPrint();await choosePrint('KOT Print');await page.locator('#kb-history-print-status').filter({hasText:'Print request opened.'}).waitFor();
  await reprint.click();
  check('accepted KOT print increments only its own count once',printCount()===pc+1);
- check('KOT template contains only product names and quantities',await page.evaluate(()=>{const html=window.__printHtml.join('');const body=html.split('<body>')[1];return body.includes('<td>Disposable POS A P18</td><td class="q">1</td>')&&body.includes('<td>Disposable POS A P5</td><td class="q">1</td>')&&!body.includes('Saved kitchen note')&&!body.includes('Table:')&&!body.includes('GRAND TOTAL')}));
+ check('KOT template contains only product names and quantities',await page.evaluate(()=>{
+  const slip=new DOMParser().parseFromString(window.__printHtml.join(''),'text/html');
+  const itemRows=Array.from(slip.querySelectorAll('table tbody tr'));
+  const expectedNames=['Disposable POS A P18','Disposable POS A P5'];
+  return itemRows.length===expectedNames.length&&expectedNames.every(name=>itemRows.some(({cells})=>
+   cells.length===2&&cells[0].textContent===name&&cells[1].textContent==='1'))&&
+   ['Saved kitchen note','Table:','GRAND TOTAL'].every(text=>!slip.body.textContent.includes(text));
+ }));
  await stubPrint();const state=readState();await card.getByRole('button',{name:'Bill Print',exact:true}).click();await page.waitForFunction(()=>window.__printCalls===1);
  check('order-card Bill Print reuses saved pricing without writing a sale',sameState(readState(),state)&&printCount()===pc+1&&await page.evaluate(()=>window.__printHtml.join('').includes('328.00')));
  await post('Kitchen/KitchenDisplay','updateStatus',{kotId:kot.kot_id,statusId:'KotCancelled'});

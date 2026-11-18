@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const source = fs.readFileSync(path.join(__dirname, '../../../component/zenith-erp-app/screen/zenithstatic/js/pos-terminal.js'), 'utf8');
+const unicodeNames = ['குண்டு உளுந்து', 'తెలుగు బియ్యం', 'മലയാളം അരി', 'أرز بسمتي', 'भुना चना & rice'];
 const data = {
     success:true, store:{name:'Disposable receipt store',headerText:'Header <literal>',footerText:'Footer & text',termsText:'Terms <literal>'}, bill:{number:'QA-RECEIPT',date:'01/01/2040',customer:'QA customer'},
     items:[{name:'QA pieces',qty:1,uom:'Nos',rate:10,total:10},{name:'QA weight',qty:1.25,uom:'kg',rate:8,total:10}],
@@ -16,6 +17,14 @@ for (const [name, end] of [['buildReceiptHtml','function iframePrint'],['buildHi
     const helper = source.indexOf('window._posReceiptTextData=');
     vm.runInContext(source.slice(helper,source.indexOf('\n};',helper)+3),context);
     vm.runInContext(source.slice(start,source.indexOf(end,start)),context);
+    for (const width of ['58mm','80mm']) {
+        const sample = {success:true,store:{receiptWidth:width},items:unicodeNames.map(name=>({name,qty:1,rate:10,total:10}))};
+        context.sample = sample;
+        const html = vm.runInContext(`${name}(sample,false,false)`,context);
+        for (const script of ['Tamil','Telugu','Malayalam']) assert.ok(html.includes('Noto Sans '+script),name+' declares '+script+' font fallback');
+        assert.match(html,/\.item-name\{[^}]*white-space:pre-wrap[^}]*word-spacing:/,name+' preserves readable gaps in product names');
+        for (const productName of unicodeNames) assert.ok(html.includes(productName.replace('&','&amp;')),name+' preserves the saved spelling and spaces');
+    }
     for (const tax of [true,false]) for (const design of ['normal','credit','revised','revised-credit']) {
         data.edited=design.includes('revised');data.isCredit=design.includes('credit');data.outstanding=data.isCredit?22:0;
         const html = vm.runInContext(`${name}(data,${tax},false)`,context);
@@ -30,4 +39,15 @@ for (const [name, end] of [['buildReceiptHtml','function iframePrint'],['buildHi
         if (tax) assert.ok(/CGST|SGST|<td>Tax<\/td>/.test(html),name+' keeps GST information');
     }
 }
-console.log('PASS thermal receipt: saved units, compact totals, black text, tax on/off and revised reprint');
+const kitchen = vm.createContext({window:{},document:{addEventListener(){}}});
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../../../component/zenith-erp-app/screen/zenithstatic/js/kitchen-print.js'),'utf8'),kitchen);
+for (const receiptWidth of ['58mm','80mm']) {
+    const store = {receiptWidth};
+    const html = kitchen.window.KitchenPrint.kotHtml({store,items:unicodeNames.map(name=>({name,qty:1}))});
+    const sales = kitchen.window.KitchenPrint.salesHtml({store,qty:1,subtotal:10,total:10,products:unicodeNames.map(name=>({name,qty:1,net:1}))});
+    for (const output of [html,sales]) {
+        assert.match(output,/\.item-name\{[^}]*white-space:pre-wrap[^}]*word-spacing:/);
+        for (const productName of unicodeNames) assert.ok(output.includes(productName.replace('&','&amp;')));
+    }
+}
+console.log('PASS thermal receipt: saved units, compact totals, black text, multilingual names, tax on/off and revised reprint');
