@@ -128,6 +128,7 @@
         <field name="lastActivityDate" type="date-time"><description>Last cashier interaction or completed bill; null on pre-upgrade sessions so they are not closed by an idle sweep.</description></field>
         <field name="closeDate" type="date-time"/>
         <field name="closeReason" type="text-short"><description>IdleUnverifiedCash until a later count; IdleReviewed after review. IdleNoSales is retained for earlier empty-session closures.</description></field>
+        <field name="handoffUserId" type="id"><description>Authenticated user who took over this terminal.</description></field>
         <field name="cashReviewedByPartyId" type="id"/>
         <field name="cashReviewedDate" type="date-time"/>
         <field name="openingCash" type="currency-amount"/>

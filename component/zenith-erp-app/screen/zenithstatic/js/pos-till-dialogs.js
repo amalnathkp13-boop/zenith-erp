@@ -265,5 +265,23 @@
         dialog.showModal(); update(); input.focus(); input.select();
     }
 
-    window.PosTillDialogs = {cashMarkup, updateCash, digitalMarkup, upiReceiptMarkup, splitMarkup, updateSplit, bindSplit, creditMarkup, openClose};
+    function showHandoff(userId, leave) {
+        if (document.getElementById('pos-terminal-handoff')) return;
+        const dialog = document.createElement('dialog');
+        dialog.id = 'pos-terminal-handoff';
+        dialog.setAttribute('aria-labelledby', 'pos-terminal-handoff-title');
+        dialog.style.cssText = 'max-width:min(460px,90vw);padding:24px;border:1px solid #ddd;border-radius:14px;background:#fff;color:#18182c';
+        dialog.innerHTML = '<h2 id="pos-terminal-handoff-title">Billing session closed</h2>'
+            + '<p>User <strong></strong> opened this terminal. Your billing session has been closed and the counter is now assigned to that user.</p>'
+            + '<button type="button" class="btn btn-primary">Leave billing</button>';
+        dialog.querySelector('strong').textContent = userId;
+        dialog.querySelector('button').addEventListener('click', leave);
+        dialog.addEventListener('cancel', event => event.preventDefault());
+        dialog.addEventListener('keydown', event => event.stopPropagation());
+        dialog.addEventListener('keyup', event => event.stopPropagation());
+        (document.fullscreenElement || document.body).append(dialog);
+        dialog.showModal();
+    }
+
+    window.PosTillDialogs = {cashMarkup, updateCash, digitalMarkup, upiReceiptMarkup, splitMarkup, updateSplit, bindSplit, creditMarkup, openClose, showHandoff};
 })();

@@ -86,6 +86,43 @@
             ]]></script>
         </actions>
     </service>
+    <!-- Called only inside an offline import transaction. The terminal/session locks keep a retired
+         drawer closed to other requests while its already-collected sale is reconciled atomically. -->
+    <service verb="prepare" noun="OfflineSession" allow-remote="false">
+        <in-parameters><parameter name="terminalId" required="true"/><parameter name="sessionId" required="true"/></in-parameters>
+        <out-parameters><parameter name="closedSession" type="Map"/></out-parameters>
+        <actions>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[terminalId:terminalId,sessionId:sessionId]" out-map="access"/>
+            <if condition="!access.allowed"><return/></if>
+            <script><![CDATA[
+                ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',terminalId).forUpdate(true).one()
+                def original=ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',sessionId)
+                    .condition('terminalId',terminalId).condition('organizationPartyId',access.organizationPartyId).forUpdate(true).one()
+                if (!original || !(original.statusId in ['PsOpen','PsClosed'])) throw new IllegalArgumentException('The original session is unavailable. Keep this saved sale for review.')
+                if (original.statusId=='PsClosed') {
+                    closedSession=[sessionId:sessionId,closeDate:original.closeDate,lastActivityDate:original.lastActivityDate]
+                    original.statusId='PsOpen'; original.update()
+                }
+            ]]></script>
+        </actions>
+    </service>
+    <service verb="restore" noun="OfflineSession" allow-remote="false">
+        <in-parameters><parameter name="closedSession" type="Map"/></in-parameters>
+        <actions>
+            <if condition="!closedSession"><return/></if>
+            <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[sessionId:closedSession.sessionId]" out-map="access"/>
+            <if condition="!access.allowed"><return/></if>
+            <script><![CDATA[
+                def session=ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',closedSession.sessionId).forUpdate(true).one()
+                session.setAll([statusId:'PsClosed',closeDate:closedSession.closeDate,lastActivityDate:closedSession.lastActivityDate]); session.update()
+                def cash=ec.service.sync().name('zenith.pos.PosServices.get#PosSessionCashSummary').parameter('sessionId',session.sessionId).call()
+                if (ec.message.hasError()) return
+                session.expectedCash=cash.expectedCash
+                session.cashDifference=((session.closingCash ?: 0) as BigDecimal) - (cash.expectedCash as BigDecimal)
+                session.update()
+            ]]></script>
+        </actions>
+    </service>
     <service verb="import" noun="WorkspaceSale" transaction="force-new">
         <in-parameters><parameter name="terminalId" required="true"/><parameter name="sale" type="Map" required="true"/></in-parameters>
         <out-parameters><parameter name="offlineId"/></out-parameters>
@@ -102,27 +139,40 @@
                 def key=java.util.UUID.nameUUIDFromBytes((org+'\u0000'+sale.offlineId).getBytes('UTF-8')).toString()
                 def prior=ec.entity.find('zenith.erp.pos.PosOfflineTransaction').condition('offlineTransactionId',key).one()
                 if (prior?.statusId=='OtSynced') { offlineId=sale.offlineId; return }
-                def session=ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',sale.sessionId).condition('organizationPartyId',org).condition('terminalId',terminalId).condition('statusId','PsOpen').one()
-                if (!session) fail('The original terminal session is closed. Keep this sale on the device for reconciliation.')
+                def recovery=ec.service.sync().name('zenith.pos.PosOfflineServices.prepare#OfflineSession').parameters([terminalId:terminalId,sessionId:sale.sessionId]).call()
+                if (ec.message.hasError()) return
+                def session=ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',sale.sessionId).one()
                 def transactionId
                 if (sale.sourceTransactionId) {
-                    def permission=ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess').parameters([transactionId:sale.sourceTransactionId]).call()
-                    if (!permission?.allowed) return
                     def source=ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',sale.sourceTransactionId).forUpdate(true).one()
-                    def revision=ec.service.sync().name('zenith.pos.PosOfflineServices.get#DraftRevision').parameter('transactionId',source.transactionId).call().revision
-                    if (source.sessionId!=session.sessionId || source.statusId!='PtCreated' || (source.paidAmount ?: 0)!=0 || !sale.sourceRevision || sale.sourceRevision!=revision ||
-                        ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId',source.transactionId).count()>0 ||
-                        ec.entity.find('zenith.erp.pos.PosQrPayment').condition('transactionId',source.transactionId).count()>0) fail('The original draft changed or has a tender in progress. Keep this offline sale for review; it was not imported twice.')
-                    transactionId=source.transactionId
-                    ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId',transactionId).list().each { item ->
-                        ec.service.sync().name('zenith.pos.PosServices.remove#PosTransactionItem').parameters([transactionId:transactionId,itemSeqId:item.itemSeqId]).call()
+                    if (source) {
+                        def permission=ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess').parameters([transactionId:source.transactionId]).call()
+                        if (!permission?.allowed) return
+                        if (source.sessionId!=session.sessionId || source.transactionNumber || (source.paidAmount ?: 0)!=0 ||
+                            ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId',source.transactionId).count()>0 ||
+                            ec.entity.find('zenith.erp.pos.PosQrPayment').condition('transactionId',source.transactionId).count()>0) fail('The original draft changed or has a tender in progress. Keep this offline sale for review; it was not imported twice.')
+                        // Closing a drawer can discard its unpaid draft. Preserve the voided record and
+                        // recover the complete local snapshot into a new bill, retaining its source in the ledger.
+                        if (!(recovery.closedSession && source.statusId=='PtVoided')) {
+                            def revision=ec.service.sync().name('zenith.pos.PosOfflineServices.get#DraftRevision').parameter('transactionId',source.transactionId).call().revision
+                            if (source.statusId!='PtCreated' || !sale.sourceRevision || sale.sourceRevision!=revision) fail('The original draft changed. Keep this offline sale for review; its saved draft was not overwritten.')
+                            transactionId=source.transactionId
+                            ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId',transactionId).list().each { item ->
+                                ec.service.sync().name('zenith.pos.PosServices.remove#PosTransactionItem').parameters([transactionId:transactionId,itemSeqId:item.itemSeqId]).call()
+                            }
+                        }
+                    } else if (!recovery.closedSession) {
+                        fail('The original draft is unavailable. Keep this offline sale for review.')
                     }
-                } else transactionId=ec.service.sync().name('zenith.pos.PosServices.create#PosTransaction').parameters([sessionId:session.sessionId,reuseOpenCart:false]).call().transactionId
+                }
+                if (!transactionId) transactionId=ec.service.sync().name('zenith.pos.PosServices.create#PosTransaction').parameters([sessionId:session.sessionId,reuseOpenCart:false]).call().transactionId
+                if (ec.message.hasError()) return
+                if (!transactionId) fail('The saved bill could not be created. It remains on the device for retry.')
                 def txn=ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',transactionId).one()
                 def registration=sale.customer?.partyId ? ec.service.sync().name('zenith.tax.TaxServices.get#PartyTaxRegistration').parameter('partyId',sale.customer.partyId).call() : null
                 def canonical=sale.customer?.partyId ? ec.entity.find('mantle.party.PartyDetailAndRole').condition('partyId',sale.customer.partyId).limit(1).list() : []
                 def customerName=canonical ? (canonical[0].organizationName ?: [canonical[0].firstName,canonical[0].lastName].findAll { it }.join(' ')) : sale.customer?.name
-                txn.setAll([customerPartyId:sale.customer?.partyId,customerName:customerName,customerPhone:sale.customer?.phone,salesModeId:sale.mode ?: null,
+                txn.setAll([entryDate:issued,customerPartyId:sale.customer?.partyId,customerName:customerName,customerPhone:sale.customer?.phone,salesModeId:sale.mode ?: null,
                     customerTaxRegNumber:registration?.registrationNumber,destinationRegionGeoId:registration?.regionGeoId ?: txn.originRegionGeoId])
                 txn.update()
                 def priceAccess=ec.service.sync().name('zenith.pos.PosPriceServices.get#PriceOverrideAccess').call()
@@ -166,11 +216,17 @@
                     def change=(sale.change ?: 0) as BigDecimal
                     if (change<0 || (paid-change).compareTo(txn.payableAmount as BigDecimal)!=0 ||
                         (change>0 && (sale.paymentMethod!='Cash' || sale.payments.size()!=1 || sale.payments[0].method!='Cash'))) fail('Payment breakdown or change does not match the sale.')
-                    sale.payments.each { payment -> ec.service.sync().name('zenith.pos.PosServices.process#PosPayment').parameters([transactionId:transactionId,paymentMethod:payment.method,amount:payment.amount,referenceNumber:'OFFLINE:'+sale.offlineId]).call() }
+                    sale.payments.each { payment ->
+                        def received=ec.service.sync().name('zenith.pos.PosServices.process#PosPayment').parameters([transactionId:transactionId,paymentMethod:payment.method,amount:payment.amount,referenceNumber:'OFFLINE:'+sale.offlineId]).call()
+                        if (!ec.message.hasError() && received?.paymentId) ec.service.sync().name('update#zenith.erp.pos.PosPayment').parameters([paymentId:received.paymentId,paymentDate:issued]).call()
+                    }
+                    if (ec.message.hasError()) return
                     ec.service.sync().name('zenith.pos.PosServices.complete#PosTransaction').parameters([transactionId:transactionId]).call()
                 }
                 if (ec.message.hasError()) return
+                ec.service.sync().name('update#zenith.erp.pos.PosTransaction').parameters([transactionId:transactionId,completedDate:issued]).call()
                 ec.service.sync().name('create#zenith.erp.pos.PosOfflineTransaction').parameters([offlineTransactionId:key,terminalId:terminalId,offlineTimestamp:issued,syncedTimestamp:ec.user.nowTimestamp,transactionDataJson:groovy.json.JsonOutput.toJson(sale),itemCount:sale.items.size(),grandTotal:sale.total,paymentMethod:sale.paymentMethod,statusId:'OtSynced',syncAttempts:1,createdTransactionId:transactionId]).call()
+                if (!ec.message.hasError()) ec.service.sync().name('zenith.pos.PosOfflineServices.restore#OfflineSession').parameter('closedSession',recovery.closedSession).call()
                 if (!ec.message.hasError()) offlineId=sale.offlineId
             ]]></script>
         </actions>

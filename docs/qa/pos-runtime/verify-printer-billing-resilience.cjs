@@ -94,6 +94,9 @@ module.exports = async ({a, base, check, q, invoke, post, out}) => {
     }
    });
   }
- } finally { await context.close(); }
+ } finally {
+  await context.close();
+  await invoke('close',{sessionId,closingCash:'0'});
+ }
  check('Printer form and cached billing search regressions',failures.length===0,{failures});
 };

@@ -32,9 +32,11 @@
     </service>
 
     <service verb="get" noun="BillingSession">
-        <in-parameters><parameter name="sessionId" required="true"/><parameter name="includeBillSummary" type="Boolean"/></in-parameters>
+        <in-parameters><parameter name="sessionId" required="true"/><parameter name="includeBillSummary" type="Boolean"/>
+            <parameter name="includeHandoffNotice" type="Boolean"/></in-parameters>
         <out-parameters>
             <parameter name="session" type="Map"/><parameter name="terminal" type="Map"/>
+            <parameter name="sessionClosed" type="Boolean"/><parameter name="handoffUserId"/>
             <parameter name="billSummary" type="Map"/>
         </out-parameters>
         <actions>
@@ -48,13 +50,20 @@
                 if(scope.kotCounterConfigured == false || (scope.kotCounterId && counter?.terminalId != scope.kotCounterId)) {
                     ec.message.addError('KOT Plan allows billing at one active counter. Ask your administrator to check the counter setup.'); return
                 }
-                if(row?.statusId!='PsOpen' || row.operatorPartyId!=ec.user.userAccount?.partyId || counter?.isActive!='Y' ||
+                if(!row || row.operatorPartyId!=ec.user.userAccount?.partyId || counter?.isActive!='Y' ||
                     counter.organizationPartyId!=scope.organizationPartyId || facility?.ownerPartyId!=scope.organizationPartyId || (shop && counter.facilityId!=shop)) {
                     ec.message.addError('Choose your open terminal session in this shop.'); return
                 }
+                if(row.statusId!='PsOpen') {
+                    if(includeHandoffNotice) {
+                        sessionClosed=true
+                        handoffUserId=row.handoffUserId
+                    } else ec.message.addError('This billing session is closed.')
+                    return
+                }
                 session=row.getMap(); terminal=counter.getMap()
             ]]></script>
-            <if condition="includeBillSummary"><script><![CDATA[
+            <if condition="includeBillSummary &amp;&amp; terminal"><script><![CDATA[
                 def completedBills = {
                     def bills = ec.entity.find('zenith.erp.pos.KotTransactionDetailView')
                         .condition([kotOrganizationPartyId:scope.organizationPartyId,facilityId:terminal.facilityId,statusId:'PtCompleted'])
