@@ -26,8 +26,9 @@ const server=http.createServer(async(req,res)=>{
   await page.keyboard.press('Enter');await page.locator('.pos-cash-quick[data-amt="189"]').click();await page.locator('#pos-cash-received').press('Enter');await page.locator('#oflPrintReceipt').waitFor();
   assert.equal((await page.evaluate(()=>window._posOffline.getQueue())).length,1,'confirmed sale is durable');assert.equal(await page.locator('.aj-p').count(),0,'queued sale clears draft');await page.locator('.ofl-cancel').click();
   await page.evaluate(()=>window._posOffline.add('P1'));await page.locator('#pos-pay-upi').click();await page.locator('#oflConfirmPayment').click();await page.locator('#oflPrintReceipt').waitFor();await page.locator('.ofl-cancel').click();assert.equal((await page.evaluate(()=>window._posOffline.getQueue())).length,2);
-  await context.setOffline(false);await page.getByRole('status').filter({hasText:'Review in History: 1'}).waitFor();assert.equal((await page.evaluate(()=>window._posOffline.getQueue())).length,2,'missing acknowledgement never removes sales');
-  await page.reload();await page.getByRole('status').filter({hasText:'Review in History: 1'}).waitFor();
+  await context.setOffline(false);await page.waitForFunction(async()=>{const q=await window._posOffline.getQueue();return q.length&&window._posOffline.reviewReason(q[0].offlineId)});assert.equal((await page.evaluate(()=>window._posOffline.getQueue())).length,2,'missing acknowledgement never removes sales');
+  await page.reload();await page.waitForFunction(async()=>{const q=await window._posOffline.getQueue();return q.length&&window._posOffline.reviewReason(q[0].offlineId)});
+  assert.equal(await page.locator('#pos-offline-banner').count(),0,'pending status is kept in History instead of the billing row');
   assert.doesNotMatch(await page.locator('body').innerText(),/Offline sales retained for review/,'pending sales do not trigger the old opening popup');
   ackMode='partial';assert.equal(await page.evaluate(()=>window._posOffline.sync()),1);assert.equal((await page.evaluate(()=>window._posOffline.getQueue())).length,1);
   ackMode='error';assert.equal(await page.evaluate(()=>window._posOffline.sync()),0);assert.equal((await page.evaluate(()=>window._posOffline.getQueue())).length,1,'HTTP failure retains sale');

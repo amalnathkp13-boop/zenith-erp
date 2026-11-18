@@ -393,6 +393,7 @@
             footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=14')
             footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=58')
             footer_scripts.add('/zenithstatic/js/profile-menu.js?v=1')
+            footer_scripts.add('/zenithstatic/js/pos-deferred-close.js?v=' + ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-deferred-close.js').getLastModified())
             footer_scripts.add('/zenithstatic/js/sidebar-manager.js?v=3')
             footer_scripts.add('/zenithstatic/js/subnav-manager.js?v=5')
             footer_scripts.add('/zenithstatic/js/pricing-price-lists.js?v=1')
@@ -741,6 +742,7 @@
             <div id="zenith-saas-cfg" data-role-scope="${(roleNavJson!'{}')?html}" style="display:none" data-nav-restricted="${(navRestricted!false)?c}" data-tenant="${(isSaasTenant!false)?c}" data-all="${(saasHasAllAccess!false)?c}" data-pos-only="${(posOnlyUser!false)?c}" data-is-admin="${(canManageSettings!false)?c}" data-super="${(isSuperAdmin!false)?c}" data-org-name="${(zTopOrgName!'')?html}" data-user-name="${((ec.user.userAccount.userFullName)!(ec.user.username)!'')?html}" data-modules='${saasVisibleModulesJson!saasAllowedModulesJson!"[]"}'></div>
             <!-- ZE-SHOP: shop switcher data (rendered server-side to avoid attribute-escaping pitfalls in shop names). -->
             <div id="z-shopdata" style="display:none" data-multishop="${(hasMultiShop!false)?c}" data-restricted="${(shopAccessRestricted!false)?c}" data-shop-name="${(activeShopName!'')?html}" data-active="${(activeShopId!'')?html}" data-token="${(ec.web.sessionToken)!''}"><#if shopList??><#list shopList as s><i data-id="${(s.id!'')?html}" data-name="${(s.name!'')?html}"></i></#list></#if></div>
+            <div id="pos-sync-context" hidden data-organization="${(ec.user.getPreference('ACTIVE_ORGANIZATION')!'')?html}" data-user="${(ec.user.userId!'')?html}" data-token="${(ec.web.sessionToken!'')?html}"></div>
         ]]></text></render-mode>
 
         <section name="SaasBillingAccess">

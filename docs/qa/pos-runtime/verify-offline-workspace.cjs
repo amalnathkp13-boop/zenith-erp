@@ -26,7 +26,7 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
    .evaluateAll(buttons=>buttons.map(b=>b.textContent.replace(/\s+/g,' ').trim()));
   const onlineFooter=await footer(),onlineHeader=await header();
   await context.setOffline(true);
-  await page.locator('#pos-offline-banner').waitFor();
+  await page.waitForFunction(()=>window._posOffline?.active()&&document.querySelector('.pos-reference-payments'));
   check('network loss preserves an editable existing bill instead of pausing it',!await page.evaluate(()=>window._posOffline.paused()));
   check('the original item survives network loss',await page.locator('.aj-p').count()===1);
   await page.locator('.aj-p').fill('80');
@@ -160,7 +160,7 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
   check('the saved bill is visible in existing History while the connection badge is Offline',
    await history.getByText('OFFLINE — PENDING SYNC',{exact:true}).isVisible()&&
    await history.locator('[data-device-reprint]').isVisible()&&
-   await page.locator('#pos-offline-banner').textContent()==='Offline workspace · Pending: 1');
+   await page.locator('#pos-offline-banner').count()===0);
   await page.screenshot({path:path.join(out,'pos-offline-pending-history.png')});
   await history.locator('#hist-close').click();
   outage=false;

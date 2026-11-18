@@ -1934,6 +1934,8 @@
                 if (!(sale instanceof Map) || !sale.offlineId || sale.offlineId.toString().size()>120 || sale.terminalId!=terminalId || (sale.organizationPartyId && sale.organizationPartyId!=org) || !(sale.items instanceof List) || !sale.items || !['Cash','Card','UPI'].contains(sale.paymentMethod)) {
                     ec.message.addError('Invalid offline sale or terminal.'); return
                 }
+                def issued=sale.ts instanceof Number ? new java.sql.Timestamp(sale.ts as long) : sale.ts ? java.sql.Timestamp.from(java.time.Instant.parse(sale.ts.toString())) : ec.user.nowTimestamp
+                if (issued.time>ec.user.nowTimestamp.time+300000L) { ec.message.addError('The terminal clock is ahead. Keep this sale for review.'); return }
                 // Lock serializes replay on a terminal; the org/id key also isolates identical ids in different tenants.
                 ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',terminalId).forUpdate(true).one()
                 def key=java.util.UUID.nameUUIDFromBytes((org+'\u0000'+sale.offlineId).getBytes('UTF-8')).toString()
@@ -1942,9 +1944,13 @@
                 // Compatibility with older imports, always through the caller's owned transaction.
                 def legacy=ec.entity.find('zenith.erp.pos.PosPayment').condition('referenceNumber','OFFLINE:'+sale.offlineId).list()
                 if (legacy.any { ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',it.transactionId).condition('organizationPartyId',org).condition('statusId','PtCompleted').one() }) { offlineId=sale.offlineId; return }
-                def sess=sale.sessionId ? ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',sale.sessionId).condition('terminalId',terminalId).condition('organizationPartyId',org).condition('statusId','PsOpen').one() : null
-                if (!sess) { ec.message.addError('Open the original terminal session before syncing this sale.'); return }
+                if (!sale.sessionId) { ec.message.addError('The saved sale does not identify its original session. Keep it for review.'); return }
+                def recovery=ec.service.sync().name('zenith.pos.PosOfflineServices.prepare#OfflineSession').parameters([terminalId:terminalId,sessionId:sale.sessionId]).call()
+                if (ec.message.hasError()) return
+                def sess=ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',sale.sessionId).one()
                 def cr=ec.service.sync().name('zenith.pos.PosServices.create#PosTransaction').parameters([sessionId:sess.sessionId,reuseOpenCart:false]).call()
+                if (ec.message.hasError()) return
+                if (!cr?.transactionId) { ec.message.addError('The saved bill could not be created. It remains on the device for retry.'); return }
                 sale.items.each { it ->
                     if (!(it instanceof Map) || it.qty==null || it.price==null) { ec.message.addError('Invalid offline item.'); return }
                     ec.service.sync().name('zenith.pos.PosServices.add#PosTransactionItem').parameters([transactionId:cr.transactionId,productId:it.productId,quantity:it.qty,unitPrice:it.price,taxOn:sale.taxOn ?: 'Y']).call()
@@ -1953,10 +1959,14 @@
                 def txn=ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',cr.transactionId).one()
                 // Never invent cash collected. Old tax-free snapshots that differ remain on the device for review.
                 if (sale.total==null || (sale.total as BigDecimal).compareTo(txn.payableAmount as BigDecimal)!=0) { ec.message.addError('Offline total differs from the recorded payable; review the retained sale.'); return }
-                ec.service.sync().name('zenith.pos.PosServices.process#PosPayment').parameters([transactionId:cr.transactionId,paymentMethod:sale.paymentMethod,amount:sale.total,referenceNumber:'OFFLINE:'+sale.offlineId,bypassModeRules:true]).call()
+                def received=ec.service.sync().name('zenith.pos.PosServices.process#PosPayment').parameters([transactionId:cr.transactionId,paymentMethod:sale.paymentMethod,amount:sale.total,referenceNumber:'OFFLINE:'+sale.offlineId,bypassModeRules:true]).call()
+                if (!ec.message.hasError() && received?.paymentId) ec.service.sync().name('update#zenith.erp.pos.PosPayment').parameters([paymentId:received.paymentId,paymentDate:issued]).call()
+                if (ec.message.hasError()) return
                 ec.service.sync().name('zenith.pos.PosServices.complete#PosTransaction').parameters([transactionId:cr.transactionId]).call()
                 if (ec.message.hasError()) return
-                ec.service.sync().name('create#zenith.erp.pos.PosOfflineTransaction').parameters([offlineTransactionId:key,terminalId:terminalId,offlineTimestamp:ec.user.nowTimestamp,syncedTimestamp:ec.user.nowTimestamp,transactionDataJson:saleJson,itemCount:sale.items.size(),grandTotal:sale.total,paymentMethod:sale.paymentMethod,statusId:'OtSynced',syncAttempts:1,createdTransactionId:cr.transactionId]).call()
+                ec.service.sync().name('update#zenith.erp.pos.PosTransaction').parameters([transactionId:cr.transactionId,entryDate:issued,completedDate:issued]).call()
+                ec.service.sync().name('create#zenith.erp.pos.PosOfflineTransaction').parameters([offlineTransactionId:key,terminalId:terminalId,offlineTimestamp:issued,syncedTimestamp:ec.user.nowTimestamp,transactionDataJson:saleJson,itemCount:sale.items.size(),grandTotal:sale.total,paymentMethod:sale.paymentMethod,statusId:'OtSynced',syncAttempts:1,createdTransactionId:cr.transactionId]).call()
+                if (!ec.message.hasError()) ec.service.sync().name('zenith.pos.PosOfflineServices.restore#OfflineSession').parameter('closedSession',recovery.closedSession).call()
                 if (!ec.message.hasError()) offlineId=sale.offlineId
             ]]></script>
         </actions>
@@ -2416,6 +2426,8 @@
                     .condition("sessionId", sessionId)
                     .condition("statusId", "PtCompleted").list()
                 def txnIds = txns*.transactionId
+                def offlineBills = txnIds ? ec.entity.find('zenith.erp.pos.PosOfflineTransaction').condition('createdTransactionId','in',txnIds).condition('statusId','OtSynced').list() : []
+                def offlineTxnIds = offlineBills*.createdTransactionId as Set
 
                 // New payments name the collecting drawer. Legacy rows retain original-session attribution,
                 // but a closed drawer never acquires a later collection retroactively.
@@ -2423,7 +2435,7 @@
                 if (txnIds) received.addAll(ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId','in',txnIds).condition('collectionSessionId',null).condition('paymentMethod','Cash').list())
                 received=received.findAll { pay ->
                     def bill=ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',pay.transactionId).condition('organizationPartyId',session.organizationPartyId).one()
-                    bill?.statusId=='PtCompleted' && (!session.closeDate || !pay.paymentDate || pay.paymentDate<=session.closeDate)
+                    bill?.statusId=='PtCompleted' && (!session.closeDate || !pay.paymentDate || pay.paymentDate<=session.closeDate || offlineTxnIds.contains(pay.transactionId))
                 }
                 cashReceived=received.sum { (it.amount ?: 0) as BigDecimal } ?: BigDecimal.ZERO
                 changeGiven=BigDecimal.ZERO
@@ -2455,6 +2467,7 @@
                     def other = txnIds ? ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId','in',txnIds)
                         .condition('paymentMethod','in',['Card','UPI']).list() : []
                     checkoutSummary = [billCount:txns.size(),totalSales:txns.sum { it.grandTotal ?: 0G } ?: 0G,
+                        offlineIds:offlineBills.collect { new groovy.json.JsonSlurper().parseText(it.transactionDataJson ?: '{}').offlineId }.findAll { it },
                         openingCash:session.openingCash ?: 0G,cashReceived:cashReceived,changeGiven:changeGiven,
                         movementNet:movementNet,expectedCash:expectedCash,
                         cardReceived:other.findAll { it.paymentMethod=='Card' }.sum { it.amount ?: 0G } ?: 0G,

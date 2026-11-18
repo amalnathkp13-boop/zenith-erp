@@ -232,12 +232,12 @@ window._posOffline = (function () {
     var heldSyncing = false;
     var serverDraftPaused = false;
     var transportDown = false, connectionProbe, connectionTimer;
-    var pendingLocalEdits = [], storageReady = false, rejectedSales = new Map();
+    var pendingLocalEdits = [], storageReady = false, rejectedSales = new Map(), localClose = null;
     function disconnected() {
         return !navigator.onLine || transportDown;
     }
     function active() {
-        return disconnected() || localEditing;
+        return !!localClose || disconnected() || localEditing;
     }
     function probeConnection() {
         if (!navigator.onLine) return Promise.resolve(false);
@@ -262,6 +262,7 @@ window._posOffline = (function () {
     function connectionChanged() {
         scheduleConnectionCheck();
         window.dispatchEvent(new Event('posconnectionchange'));
+        if (localClose) { if (window.PosDeferredClose) window.PosDeferredClose.flush(); return; }
         if (disconnected()) {
             begin();
         } else {
@@ -745,10 +746,9 @@ window._posOffline = (function () {
     function paused() {
         return serverDraftPaused;
     }
-    var bannerVersion = 0;
     function banner(show) {
-        var version = ++bannerVersion;
         var b = document.getElementById('pos-offline-banner');
+        if (!serverDraftPaused || localClose) { if (b) b.remove(); return; }
         if (!b) {
             b = document.createElement('span');
             b.id = 'pos-offline-banner';
@@ -758,21 +758,7 @@ window._posOffline = (function () {
             document.body.appendChild(b);
         }
         b.hidden = !show;
-        var strip = document.getElementById('pos-last-completed') || document.querySelector('.pos-sum-strip');
-        if (strip && !serverDraftPaused) {
-            strip.append(b);
-            b.style.cssText = 'color:#92400e;font-weight:600;margin-left:12px';
-        }
-        var message = serverDraftPaused ? 'Offline snapshot unavailable. Reconnect before changing this draft.'
-            : disconnected() ? 'Offline workspace' : show ? 'Saved workspace' : '';
-        if (show) b.textContent = message;
-        getQueue().then(function (q) {
-            if (version !== bannerVersion) return;
-            var reviews = q.filter(function (sale) { return rejectedSales.has(sale.offlineId); }).length;
-            b.hidden = !show && !q.length;
-            b.textContent = [message, q.length ? 'Pending: ' + q.length : '', reviews ? 'Review in History: ' + reviews : '']
-                .filter(Boolean).join(' · ');
-        }).catch(function () {});
+        b.textContent = 'Offline snapshot unavailable. Reconnect before changing this draft.';
     }
     function newDraft() {
         var c = tCtx();
@@ -817,6 +803,7 @@ window._posOffline = (function () {
     var leaseReady = false,
         leasePending = false;
     function begin() {
+        if (localClose) return false;
         if (!storageReady || (window._posCartWriteInFlight && window._posCartWriteInFlight())) return false;
         if (!leaseReady) {
             if (!leasePending) {
@@ -1610,7 +1597,7 @@ window._posOffline = (function () {
         return sales.some(function (sale) { return !sale.sessionId || (sale.sessionId === sessionId && sale.sourceTransactionId); });
     }
     function canResumeOnline() {
-        if (disconnected() || !localEditing || !draft || sessionHolds().length || syncing || payPending ||
+        if (localClose || disconnected() || !localEditing || !draft || sessionHolds().length || syncing || payPending ||
             pendingLocalEdits.length || document.getElementById('posOfflineDialog')) return false;
         if (!draft.sourceTransactionId) return !draft.items.length;
         // An unchanged cached copy can safely give control back to its server draft.
@@ -1634,6 +1621,7 @@ window._posOffline = (function () {
         }).catch(function () {});
     }
     function sync() {
+        if (localClose) return window.PosDeferredClose ? window.PosDeferredClose.flush() : Promise.resolve(0);
         if (syncTask) return syncTask;
         if (disconnected()) return Promise.resolve(0);
         syncing = true;
@@ -1677,6 +1665,7 @@ window._posOffline = (function () {
                             })
                             .then(function () {
                                 ack.forEach(function (id) { rejectedSales.delete(id); });
+                                if (ack.length) window.dispatchEvent(new Event('posofflinesynced'));
                                 (d.failures || []).forEach(function (failure) {
                                     var sale = q[failure.index];
                                     if (sale && failure.error) rejectedSales.set(sale.offlineId, failure.error);
@@ -1695,9 +1684,87 @@ window._posOffline = (function () {
                 syncing = false;
                 syncTask = null;
                 banner(active());
+                cacheSummary();
                 return resumeOnline();
             });
         return syncTask;
+    }
+    var summaryRequest;
+    function rememberSummary(summary) {
+        if (summary && summary.success) return stateWrite('summary:' + tCtx().sessionId, copy(summary));
+        return Promise.resolve();
+    }
+    function cacheSummary() {
+        if (summaryRequest || disconnected() || localClose || !tCtx().sessionId) return summaryRequest || Promise.resolve();
+        summaryRequest = fetch('Terminal/ajaxCart', {method:'POST', credentials:'same-origin', signal:AbortSignal.timeout(5000),
+            body:new URLSearchParams({action:'sessionSummary', sessionId:tCtx().sessionId,
+                moquiSessionToken:(document.querySelector('[name=moquiSessionToken]') || {}).value || ''})})
+            .then(function (response) { if (response.ok) return response.json(); })
+            .then(rememberSummary).catch(function () {}).finally(function () { summaryRequest = null; });
+        return summaryRequest;
+    }
+    async function closeSummary() {
+        var summary = await stateRead('summary:' + tCtx().sessionId);
+        var saved = !!summary;
+        summary = Object.assign({billCount:0,totalSales:0,openingCash:0,cashReceived:0,changeGiven:0,movementNet:0,expectedCash:0,cardReceived:0,upiReceived:0}, summary);
+        ['billCount','totalSales','openingCash','cashReceived','changeGiven','movementNet','expectedCash','cardReceived','upiReceived'].forEach(function (field) { summary[field] = Number(summary[field] || 0); });
+        var known = new Set(summary.offlineIds || []);
+        (await getQueue()).filter(function (sale) { return sale.sessionId === tCtx().sessionId && !known.has(sale.offlineId); }).forEach(function (sale) {
+            summary.billCount++;
+            summary.totalSales += Number(sale.total || 0);
+            summary.changeGiven += Number(sale.change || 0);
+            (sale.payments || []).forEach(function (payment) {
+                var field = {Cash:'cashReceived',Card:'cardReceived',UPI:'upiReceived'}[payment.method];
+                if (field) summary[field] += Number(payment.amount || 0);
+            });
+        });
+        summary.expectedCash = Number(summary.openingCash) + Number(summary.cashReceived) - Number(summary.changeGiven) + Number(summary.movementNet);
+        summary.warning = saved ? 'Offline estimate from the last saved session summary. Enter the actual cash in the drawer. Saved bills will sync automatically when connected.'
+            : 'The online summary is unavailable. Enter the actual cash in the drawer. Saved bills will sync automatically when connected.';
+        if ((draft && draft.items.length) || holds.length) summary.warning += ' Unpaid cart items and held bills in this session will be discarded.';
+        return summary;
+    }
+    function showClosed(request) {
+        if (!request || request.sessionId !== tCtx().sessionId) return;
+        localClose = request;
+        localEditing = false;
+        draft = null; holds = []; cart = []; snapshot = null;
+        banner(false);
+        var dialog = document.getElementById('posSessionClosed');
+        if (!dialog) {
+            dialog = document.createElement('dialog');
+            dialog.id = 'posSessionClosed';
+            dialog.className = 'pos-close-overlay';
+            dialog.setAttribute('role','dialog');
+            dialog.setAttribute('aria-labelledby','pos-closed-title');
+            dialog.innerHTML = '<div style="background:#fff;border-radius:16px;padding:32px;max-width:480px;color:#17213b">' +
+                '<h2 id="pos-closed-title" style="margin:0 0 12px;font-size:24px">Session closed</h2>' +
+                '<p class="pos-closed-status" role="status"></p><p>Closing cash: ₹' + f2(request.closingCash) + '</p>' +
+                '<div style="display:flex;gap:12px;margin-top:20px"><button type="button" class="pos-closed-history" style="padding:10px 14px;border:1px solid #7c3aed;border-radius:8px;background:#fff;color:#6d28d9;font:inherit">Bill History</button>' +
+                '<a href="/apps/zenith/pos/PosTerminals" style="padding:10px 14px;border-radius:8px;background:#7c3aed;color:white;text-decoration:none">Back to counters</a></div></div>';
+            dialog.addEventListener('cancel', function (event) { event.preventDefault(); });
+            dialog.querySelector('button').addEventListener('click', function () {
+                if (window.posOpenHistory) window.posOpenHistory();
+                var history = document.getElementById('pos-history-overlay');
+                if (history) dialog.append(history);
+            });
+            (document.fullscreenElement || document.body).append(dialog);
+            dialog.showModal();
+        }
+        dialog.querySelector('.pos-closed-status').textContent = request.syncedAt ? 'All saved bills and the session closure have synchronized.'
+            : request.error ? 'Closed on this device. Saved bills are retained for automatic retry. You can check them in Bill History.'
+            : 'Closed on this device. Saved bills will sync automatically when the connection returns.';
+        Object.keys(request.failures || {}).forEach(function (id) { rejectedSales.set(id, request.failures[id]); });
+    }
+    async function deferClose(amount) {
+        if (payPending || (window._posCartWriteInFlight && window._posCartWriteInFlight())) throw Error('Please finish the current payment or cart update, then close the session.');
+        if (!window.PosDeferredClose) throw Error('Offline session closure is unavailable. Reload while connected before going offline.');
+        await writeTail;
+        var ctx = tCtx();
+        var request = await window.PosDeferredClose.save({sessionId:ctx.sessionId, terminalId:ctx.terminalId, closingCash:amount});
+        showClosed(request);
+        window.PosDeferredClose.flush();
+        return {success:true,deferred:true};
     }
     function clearDraft() {
         if (!begin()) return;
@@ -1733,9 +1800,16 @@ window._posOffline = (function () {
                     stateRead('draft:' + scope),
                     stateRead('snapshot:' + scope),
                     stateRead('holds:' + scope),
+                    window.PosDeferredClose ? window.PosDeferredClose.get(tCtx().sessionId) : Promise.resolve(null),
                 ]);
             })
             .then(function (saved) {
+                if (saved[3]) {
+                    storageReady = true;
+                    showClosed(saved[3]);
+                    window.PosDeferredClose.flush();
+                    return;
+                }
                 draft = saved[0] || null;
                 holds = saved[2] || [];
                 holds.forEach(function (bill) { bill.draftId = bill.draftId || crypto.randomUUID(); });
@@ -1748,6 +1822,7 @@ window._posOffline = (function () {
                 toast('Offline storage unavailable. Keep online checkout.', '#c62828');
             });
         window.addEventListener('offline', connectionChanged);
+        window.addEventListener('possessionclosed', function (event) { showClosed(event.detail); });
         window.addEventListener('online', function () { checkConnection(true); });
         document.addEventListener('visibilitychange', function () {
             if (document.hidden) clearTimeout(connectionTimer);
@@ -1768,22 +1843,6 @@ window._posOffline = (function () {
                         draft.taxOn = draft.taxOn === 'Y' ? 'N' : 'Y';
                         change();
                     }
-                } else if (e.target.matches('.pos-header form[action*="closeSession"]')) {
-                    e.preventDefault();
-                    e.stopImmediatePropagation();
-                    var form = e.target;
-                    if (!disconnected() && !cart.length && !holds.length && !payPending) {
-                        sync().then(getQueue).then(function (pending) {
-                            if (pending.length) { toast('Resolve the pending offline sales before closing.', '#c62828'); return; }
-                            localEditing = false;
-                            form.requestSubmit();
-                        });
-                        return;
-                    }
-                    toast(
-                        'Sync pending sales and finish this workspace before closing the session.',
-                        '#c62828',
-                    );
                 }
             },
             true,
@@ -1794,12 +1853,14 @@ window._posOffline = (function () {
                 if (!active()) return;
                 var b = e.target.closest('button,a,summary');
                 if (!b) return;
+                if (b.closest('#posSessionClosed,#pos-history-overlay,#posCloseSessionOverlay')) return;
+                if (localClose) { e.preventDefault(); e.stopImmediatePropagation(); return; }
                 if (payPending) {
                     e.preventDefault();
                     e.stopImmediatePropagation();
                     return;
                 }
-                if (serverDraftPaused) {
+                if (serverDraftPaused && !b.closest('.pos-header form[action*="closeSession"]')) {
                     e.preventDefault();
                     e.stopImmediatePropagation();
                     return;
@@ -1977,6 +2038,10 @@ window._posOffline = (function () {
         reviewReason: function (id) { return rejectedSales.get(id); },
         recoverLegacy: recoverLegacy,
         sessionClosed: sessionClosed,
+        closeSummary: closeSummary,
+        rememberSummary: rememberSummary,
+        deferClose: deferClose,
+        acknowledgeLegacy: acknowledgeLegacy,
     };
 })();
 
@@ -2013,7 +2078,7 @@ window._posOffline = (function () {
     }
         /* === Bill History Panel === */
         var historyOverlay = null, historyCriteria = {}, historyRequest, historyVersion = 0;
-        var historyReconnect, historyFailed = false;
+        var historyReconnect, historySynced, historyFailed = false;
         function openBillHistory(search) {
             closeHistory(); historyCriteria = {};
             var ov = document.createElement('div');
@@ -2066,6 +2131,8 @@ window._posOffline = (function () {
             function reload() { clearTimeout(searchTimer); loadHistoryList(searchInput.value); }
             historyReconnect = function() { if (historyFailed) reload(); };
             window.addEventListener('online', historyReconnect);
+            historySynced = reload;
+            window.addEventListener('posofflinesynced', historySynced);
             filter.addEventListener('click', function () {
                 form.hidden = !form.hidden;
                 filter.setAttribute('aria-expanded', String(!form.hidden));
@@ -2100,6 +2167,8 @@ window._posOffline = (function () {
         function closeHistory() {
             ++historyVersion;
             window.removeEventListener('online', historyReconnect);
+            window.removeEventListener('posofflinesynced', historySynced);
+            historySynced = null;
             historyReconnect = null; historyFailed = false;
             if (historyRequest) historyRequest.abort();
             if (historyOverlay) { historyOverlay.remove(); historyOverlay = null; }
@@ -5737,20 +5806,43 @@ window.posToggleFullscreen = function() {
             if (closeForm.dataset.loading || document.getElementById('posCloseSessionOverlay')) return;
             closeForm.dataset.loading = '1';
             try {
-                var response = await fetch('Terminal/ajaxCart', {
-                    method:'POST', credentials:'same-origin',
-                    body:new URLSearchParams({action:'sessionSummary', sessionId:SI, taxOn:TO, salesModeId:SM, moquiSessionToken:TK})
-                });
-                var summary = await response.json();
-                if (!response.ok || !summary.success) throw new Error(summary.error || 'Failed to load session summary');
-                PosTillDialogs.openClose({sessionId:SI, summary:summary, close:async function(amount) {
+                var offline = window._posOffline;
+                var deferred = offline && (offline.active() || (await offline.getQueue()).length > 0);
+                var summary;
+                if (!deferred) {
+                    try {
+                        var response = await fetch('Terminal/ajaxCart', {
+                            method:'POST', credentials:'same-origin', signal:AbortSignal.timeout(5000),
+                            body:new URLSearchParams({action:'sessionSummary', sessionId:SI, taxOn:TO, salesModeId:SM, moquiSessionToken:TK})
+                        });
+                        summary = await response.json();
+                        if (!response.ok || !summary.success) throw new Error(summary.error || 'Failed to load session summary');
+                        if (offline) await offline.rememberSummary(summary).catch(function () {});
+                    } catch (error) {
+                        if (!offline || !(await offline.transportFailure(error))) throw error;
+                        deferred = true;
+                    }
+                }
+                if (deferred) summary = await offline.closeSummary();
+                PosTillDialogs.openClose({sessionId:SI, summary:summary, warning:summary.warning, close:async function(amount) {
+                    if (deferred || (offline && offline.disconnected())) return offline.deferClose(amount);
                     var fd = new FormData(closeForm);
                     fd.set('closingCash',amount); fd.set('wantJson','1'); fd.set('moquiSessionToken',TK);
-                    var response = await fetch(closeForm.action,{method:'POST',body:new URLSearchParams(fd),credentials:'same-origin'});
+                    var response;
+                    try { response = await fetch(closeForm.action,{method:'POST',body:new URLSearchParams(fd),credentials:'same-origin',signal:AbortSignal.timeout(5000)}); }
+                    catch (error) {
+                        if (offline && await offline.transportFailure(error)) return offline.deferClose(amount);
+                        throw error;
+                    }
+                    if ([502,503,504].includes(response.status) && offline) {
+                        var gateway = new Error('Session close unavailable'); gateway.posGateway = true;
+                        if (await offline.transportFailure(gateway)) return offline.deferClose(amount);
+                    }
                     var result = await response.json().catch(function() { return {}; });
                     if (!response.ok || !result.success) throw new Error(result.error || 'Session close failed. Please try again.');
                     return result;
                 }, onClosed:function(result) {
+                    if (result.deferred) return;
                     showToast('Session closed successfully');
                     var cleared = window._posOffline ? window._posOffline.sessionClosed() : Promise.resolve();
                     cleared.finally(function() { location.assign(result.redirectUrl || '/apps/zenith/pos/Terminal?sessionId='+encodeURIComponent(SI)); });
