@@ -119,6 +119,43 @@ def form_inputs(path, action):
     return parser.values
 
 
+class ReceivingTables(HTMLParser):
+    """Read table cell text from Bootstrap tables and Quasar's nested divs."""
+    def __init__(self):
+        super().__init__()
+        self.cells = {"FindPendingReceiptsList_table": [], "IncomingGrnList_table": []}
+        self.active = None
+        self.tag = None
+        self.depth = 0
+
+    def handle_starttag(self, tag, attrs):
+        table_id = dict(attrs).get("id")
+        if table_id in self.cells:
+            self.active, self.tag, self.depth = table_id, tag, 1
+        elif self.active and tag == self.tag:
+            self.depth += 1
+
+    def handle_endtag(self, tag):
+        if self.active and tag == self.tag:
+            self.depth -= 1
+            if not self.depth:
+                self.active = None
+
+    def handle_data(self, data):
+        if self.active and data.strip():
+            self.cells[self.active].append(data.strip())
+
+
+def receiving_tables(order_id):
+    for shell, suffix in (("apps", ""), ("qapps", ".qvt")):
+        args = urllib.parse.urlencode({"orderId": order_id, "orderId_op": "equals"})
+        path = f"/{shell}/zenith/Inventory/FindReceipt{suffix}?{args}"
+        parser = ReceivingTables()
+        with user[0].open(BASE + path, timeout=120) as response:
+            parser.feed(response.read().decode())
+        yield parser.cells["FindPendingReceiptsList_table"], parser.cells["IncomingGrnList_table"]
+
+
 def verify_draft_editor():
     initial_stock = quantity()
     po = invoke("createPo", vendorPartyId="PP_QA_SUPPLIER_A")["orderId"]
@@ -181,11 +218,21 @@ user = session("purchase.pricing.qa")
 viewer = session("purchase.pricing.viewer")
 before_billing = fingerprint()
 before_stock = quantity()
+for _, deliveries in receiving_tables("PP_QA_PO_A"):
+    assert "PP_QA_GRN_A" in deliveries and "Needs review" in deliveries and "Receive delivery" not in deliveries
+for orders, deliveries in receiving_tables("PP_QA_PO_B"):
+    assert "PP_QA_PO_B" not in orders and "PP_QA_GRN_B" not in deliveries
 primary_po = invoke("createPo", vendorPartyId="PP_QA_SUPPLIER_A")["orderId"]
+for orders, _ in receiving_tables(primary_po):
+    assert primary_po in orders and "Awaiting products" in orders and "Receive Stock" not in orders
 invoke("addPoLine", orderId=primary_po, productId="PP_QA_PRODUCT_A",
        quantity="2", unitAmount="100", itemDescription="Disposable receipt arithmetic control")
 item = query(f"SELECT ORDER_ITEM_SEQ_ID FROM ORDER_ITEM WHERE ORDER_ID='{primary_po}'")[0]["order_item_seq_id"]
 grn = invoke("create", purchaseOrderId=primary_po, receiptDate="2026-01-02")["grnId"]
+for orders, deliveries in receiving_tables(primary_po):
+    assert primary_po in orders and "Open" in orders and "Awaiting approval" in orders and "Receive Stock" not in orders
+    assert grn in deliveries and "Draft" in deliveries and "Receive delivery" not in deliveries
+invoke("receive", orderId=primary_po, orderItemSeqId=item, facilityId="PP_QA_A_STORE", quantityAccepted="1", denied=True)
 invoke("details", grnId=grn, facilityId="PP_QA_A_STORE", vendorInvoiceNumber="QA-INVOICE")
 invoke("line", grnId=grn, orderItemSeqId=item, plannedQuantity="2", unitAmount="100")
 assert quantity() == before_stock
@@ -195,11 +242,16 @@ invoke("updatePo", orderId=primary_po, statusId="OrderPlaced")
 assert row("order_header", "order_id", primary_po)["status_id"] in ("OrderApproved", "OrderPlaced")
 if row("order_header", "order_id", primary_po)["status_id"] == "OrderPlaced":
     invoke("updatePo", orderId=primary_po, statusId="OrderApproved")
+for orders, deliveries in receiving_tables(primary_po):
+    assert primary_po in orders and "Receive Stock" in orders
+    assert grn in deliveries and "Receive delivery" not in deliveries
 invoke("submit", grnId=grn)
 invoke("submit", grnId=grn)
 assert quantity() == before_stock
 assert Decimal(invoke("reserved", orderId=primary_po)["reservedByItem"][item]) == 2
 assert row("goods_receipt_note", "grn_id", grn)["status_id"] == "GrnPending"
+for orders, deliveries in receiving_tables(primary_po):
+    assert primary_po not in orders and grn in deliveries and "Receive delivery" in deliveries
 print("PASS draft/approval/submit creates incoming quantities without changing stock", flush=True)
 
 invoke("details", grnId=grn, facilityId="PP_QA_B_STORE", denied=True)
@@ -247,6 +299,8 @@ print("PASS partial/final receipts update stock once and preserve recorded cost"
 invoke("details", grnId=grn, facilityId="PP_QA_A_STORE", invoiceId="PP_QA_GRN_BILL_INR", vendorInvoiceNumber="QA-INVOICE")
 assert fingerprint() == before_billing
 invoke("cancel", grnId=second)
+for orders, deliveries in receiving_tables(primary_po):
+    assert primary_po not in orders and grn not in deliveries and second not in deliveries
 assert quantity() == before_stock + 2
 assert invoke("reserved", orderId=primary_po)["reservedByItem"] == {}
 po = invoke("createPo", vendorPartyId="PP_QA_SUPPLIER_A")["orderId"]

@@ -71,7 +71,7 @@
         <entity-find entity-name="mantle.order.OrderHeaderAndPart" list="poList">
             <econdition field-name="customerPartyId" from="activeOrgId"/>
             <econdition field-name="vendorPartyId" operator="is-not-null"/>
-            <econdition field-name="statusId" operator="in" value="OrderApproved,OrderCompleted"/>
+            <econdition field-name="statusId" operator="in" value="OrderOpen,OrderProposed,OrderPlaced,OrderApproved,OrderCompleted"/>
             <search-form-inputs input-fields-map="receiptSearch" default-order-by="-entryDate,-orderId"/>
         </entity-find>
 
@@ -84,22 +84,23 @@
                 if (!checked.add(po.orderId)) continue
                 def access = ec.service.sync().name('zenith.inventory.ReceiptServices.get#PurchaseOrderAccess').parameters([orderId:po.orderId]).call()
                 if (!access.allowed) continue
+                def approved = po.statusId in ['OrderApproved','OrderCompleted']
                 def totals = ec.service.sync().name('zenith.inventory.ReceiptServices.get#OrderReceiptQuantities').parameters([orderId:po.orderId]).call().receivedByItem
                 def reserved = ec.service.sync().name('zenith.inventory.ReceiptServices.get#PendingGrnQuantities').parameters([orderId:po.orderId]).call().reservedByItem
-                def items = ec.entity.find('mantle.order.OrderItem').condition('orderId', po.orderId).list()
-                if (items.any { it.productId && (it.quantity ?: 0G) - (it.quantityCancelled ?: 0G) > (totals[it.orderItemSeqId] ?: 0G) + (reserved[it.orderItemSeqId] ?: 0G) }) {
-                    def productItems = items.findAll { it.productId != null }
-                    def outstanding = productItems.sum { ((it.quantity ?: 0G) - (it.quantityCancelled ?: 0G) - (totals[it.orderItemSeqId] ?: 0G) - (reserved[it.orderItemSeqId] ?: 0G)).max(0G) } ?: 0G
-                    def partial = productItems.any { (totals[it.orderItemSeqId] ?: 0G) > 0G }
+                def productItems = ec.entity.find('mantle.order.OrderItem').condition('orderId', po.orderId).list().findAll { it.productId != null }
+                def outstanding = productItems.sum { ((it.quantity ?: 0G) - (it.quantityCancelled ?: 0G) - (totals[it.orderItemSeqId] ?: 0G) - (reserved[it.orderItemSeqId] ?: 0G)).max(0G) } ?: 0G
+                if (outstanding > 0G || (!approved && !productItems)) {
+                    def partial = approved && productItems.any { (totals[it.orderItemSeqId] ?: 0G) > 0G }
                     def supplier = ec.entity.find('mantle.party.PartyDetail').condition('partyId', po.vendorPartyId).one()
                     def state = partial ? 'Partial' : po.statusId.replace('Order', '')
-                    receivingViewByOrder[po.orderId] = [supplier:supplier?.organizationName ?: [supplier?.firstName,supplier?.lastName].findAll { it }.join(' '), itemCount:productItems.size(), expectedQuantity:outstanding, status:state, statusClass:partial ? 'partial' : po.statusId == 'OrderCompleted' ? 'completed' : 'approved']
+                    receivingViewByOrder[po.orderId] = [supplier:supplier?.organizationName ?: [supplier?.firstName,supplier?.lastName].findAll { it }.join(' '), itemCount:productItems.size(), expectedQuantity:outstanding, status:state, approved:approved, statusClass:state.toLowerCase()]
                     pending.add(po)
                 }
             }
             // Filter only the read model; never modify the stored purchase-order status.
             receivingStatus = ec.web.requestParameters.receivingStatus?.toString()
-            if (!(receivingStatus in ['Approved','Completed','Partial'])) receivingStatus = ''
+            receivingStatuses = ['Open','Proposed','Placed','Approved','Partial','Completed']
+            if (!(receivingStatus in receivingStatuses)) receivingStatus = ''
             if (receivingStatus) pending = pending.findAll { receivingViewByOrder[it.orderId].status == receivingStatus }
             receivingExportRows = pending.collect { po ->
                 def view = receivingViewByOrder[po.orderId]
@@ -143,7 +144,7 @@
             def selected = { value, expected -> value == expected ? ' selected' : '' }
             def suppliers = ec.entity.find('mantle.party.PartyDetailAndRole').condition('ownerPartyId', activeOrgId).condition('roleTypeId','Supplier').orderBy('organizationName,partyId').list()
             def supplierOptions = '<option value="">Select supplier</option>' + suppliers.unique { it.partyId }.collect { '<option value="' + html(it.partyId) + '"' + selected(receiptSearch.vendorPartyId,it.partyId) + '>' + html(it.organizationName ?: [it.firstName,it.lastName].findAll { it }.join(' ')) + '</option>' }.join('')
-            def statusOptions = '<option value="">Select status</option>' + ['Approved','Completed','Partial'].collect { '<option' + selected(receivingStatus,it) + '>' + it + '</option>' }.join('')
+            def statusOptions = '<option value="">Select status</option>' + receivingStatuses.collect { '<option' + selected(receivingStatus,it) + '>' + it + '</option>' }.join('')
             def fromDate = receiptSearch.entryDate_from?.take(10) ?: ''
             def toDate = receiptSearch.entryDate_thru?.take(10) ?: ''
             def sortValue = ec.web.requestParameters.orderByField?.toString() ?: '-entryDate'
@@ -157,7 +158,7 @@
 <label for="receiving-date-from">Date From<input id="receiving-date-from" name="entryDate_from" type="date" value="${html(fromDate)}"/></label>
 <label for="receiving-date-to">Date To<input id="receiving-date-to" name="entryDate_thru" type="date" value="${html(toDate)}"/></label>
 <label for="receiving-supplier">Supplier<select id="receiving-supplier" name="vendorPartyId">${supplierOptions}</select></label>
-<label for="receiving-status">Status<select id="receiving-status" name="receivingStatus">${statusOptions}</select></label></div>
+<label for="receiving-status">PO status<select id="receiving-status" name="receivingStatus">${statusOptions}</select></label></div>
 <div class="receiving-filter-bottom"><details><summary>More Filters</summary><div class="receiving-more-grid"><label for="receiving-match">Order number match<select id="receiving-match" name="orderId_op"><option value="contains"${selected(receiptSearch.orderId_op ?: 'contains','contains')}>Contains</option><option value="equals"${selected(receiptSearch.orderId_op,'equals')}>Exact match</option></select></label><label for="receiving-sort">Sort by<select id="receiving-sort" name="orderByField">${sortOptions}</select></label></div></details><div class="receiving-filter-buttons"><a class="receiving-secondary" href="FindReceipt">Clear Filters</a><button type="reset" class="receiving-secondary">Cancel</button><button type="submit" class="receiving-apply"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/></svg> Apply Filters</button></div></div></form></details>"""
             def parameters = [:] + receiptSearch
             parameters.remove('pageNoLimit'); parameters.orderByField = sortValue
@@ -173,21 +174,33 @@
             receivingExportHref = html(sri.getScreenUrlInstance().cloneUrlInstance().addParameter('renderMode','csv').addParameter('lastStandalone','true').addParameter('saveFilename','receiving-orders.csv').pathWithParams)
         ]]></script>
         <script><![CDATA[
-            pendingGrnList = []
+            incomingGrns = []
+            def preparingGrns = []
             if (ec.entity.isEntityDefined('zenith.erp.purchase.GoodsReceiptNoteView')) {
                 def grnFilters = [:]
-                ['orderId':'purchaseOrderId','vendorPartyId':'vendorPartyId','entryDate_from':'receiptDate_from','entryDate_thru':'receiptDate_thru'].each { source,target ->
+                ['orderId':'purchaseOrderId','orderId_op':'purchaseOrderId_op','orderId_ic':'purchaseOrderId_ic','vendorPartyId':'vendorPartyId','entryDate_from':'receiptDate_from','entryDate_thru':'receiptDate_thru'].each { source,target ->
                     if (receiptSearch[source]) grnFilters[target] = receiptSearch[source]
                 }
+                def cf = ec.entity.conditionFactory
+                def EC = org.moqui.entity.EntityCondition
+                def activeOrLegacy = cf.makeCondition([cf.makeCondition('statusId',EC.IN,['GrnDraft','GrnPending','GrnPartial']),
+                    cf.makeCondition('statusId',EC.EQUALS,null)],EC.OR)
                 def candidates = ec.entity.find('zenith.erp.purchase.GoodsReceiptNoteView').condition('customerPartyId',activeOrgId)
-                    .condition('statusId','in',['GrnPending','GrnPartial']).searchFormInputs(null,grnFilters,null,null,false).orderBy('-receiptDate,grnId').list()
+                    .condition(activeOrLegacy).searchFormInputs(null,grnFilters,null,null,false).orderBy('-receiptDate,-grnId').list()
                 def checkedGrns = new HashSet()
                 for (grn in candidates) {
-                    if (!checkedGrns.add(grn.grnId)) continue
+                    if (grn.vendorPartyId != grn.poVendorPartyId || !checkedGrns.add(grn.grnId)) continue
+                    def ready = grn.statusId in ['GrnPending','GrnPartial']
+                    if (!ready && grn.poStatusId in ['OrderCancelled','OrderRejected']) continue
+                    if (!grn.statusId && grn.poStatusId == 'OrderCompleted') continue
                     def access = ec.service.sync().name('zenith.inventory.ReceiptServices.get#PurchaseOrderAccess').parameters([orderId:grn.purchaseOrderId]).call()
-                    if (access.allowed) pendingGrnList.add(grn)
+                    if (!access.allowed) continue
+                    if (ready) incomingGrns.add(grn)
+                    else preparingGrns.add(grn)
                 }
             }
+            readyGrnCount = incomingGrns.size()
+            incomingGrns.addAll(preparingGrns)
         ]]></script>
     </actions>
 
@@ -232,29 +245,33 @@
         <container style="receiving-orders receiving-grn-queue">
             <container style="receiving-orders-heading">
                 <label text="Incoming supplier deliveries" type="h2" style="receiving-orders-title"/>
-                <label text="${pendingGrnList.size()} ${pendingGrnList.size() == 1 ? 'delivery' : 'deliveries'}" type="span" style="receiving-grn-count"/>
+                <label text="${readyGrnCount} ready · ${incomingGrns.size() - readyGrnCount} in preparation" type="span" style="receiving-grn-count"/>
             </container>
-            <section name="IncomingGrnRows"><condition><expression>pendingGrnList</expression></condition><widgets>
+            <section name="IncomingGrnRows"><condition><expression>incomingGrns</expression></condition><widgets>
             <container style="receiving-table-scroll">
-                <form-list name="IncomingGrnList" list="pendingGrnList" skip-form="true">
+                <form-list name="IncomingGrnList" list="incomingGrns" skip-form="true">
                     <row-actions>
                         <entity-find-one entity-name="mantle.party.PartyDetail" value-field="grnSupplier"><field-map field-name="partyId" from="vendorPartyId"/></entity-find-one>
-                        <entity-find-one entity-name="mantle.facility.Facility" value-field="grnLocation"><field-map field-name="facilityId"/></entity-find-one>
-                        <entity-find entity-name="zenith.erp.purchase.GoodsReceiptNoteItem" list="grnItems"><econdition field-name="grnId"/></entity-find>
-                        <set field="incomingQuantity" from="grnItems.sum { ((it.plannedQuantity ?: 0G) - (it.inventoryReceivedQuantity ?: 0G)).max(0G) } ?: 0G"/>
+                        <set field="readyForReceipt" from="statusId in ['GrnPending','GrnPartial']"/>
+                        <set field="grnLocation" from="null"/>
+                        <if condition="facilityId"><entity-find-one entity-name="mantle.facility.Facility" value-field="grnLocation"><field-map field-name="facilityId"/></entity-find-one></if>
+                        <if condition="readyForReceipt">
+                            <entity-find entity-name="zenith.erp.purchase.GoodsReceiptNoteItem" list="grnItems"><econdition field-name="grnId"/></entity-find>
+                            <set field="incomingQuantity" from="grnItems.sum { ((it.plannedQuantity ?: 0G) - (it.inventoryReceivedQuantity ?: 0G)).max(0G) } ?: 0G"/>
+                        </if>
                     </row-actions>
                     <field name="grnId"><default-field title="GRN"><label text="${grnId}" type="strong" style="receiving-reference"/></default-field></field>
                     <field name="purchaseOrderId"><default-field title="Purchase order"><display/></default-field></field>
                     <field name="supplierName"><default-field title="Supplier"><label text="${grnSupplier?.organizationName ?: grnSupplier?.firstName ?: vendorPartyId}"/></default-field></field>
                     <field name="vendorInvoiceNumber"><default-field title="Invoice reference"><label text="${vendorInvoiceNumber ?: 'Awaiting invoice'}"/></default-field></field>
-                    <field name="locationName"><default-field title="Receiving location"><label text="${grnLocation?.facilityName ?: facilityId}"/></default-field></field>
-                    <field name="incomingQuantity"><default-field title="Qty due"><label text="${ec.l10n.format(incomingQuantity, '#,##0.######')}" type="strong" style="receiving-reference"/></default-field></field>
-                    <field name="deliveryStatus"><default-field title="Status"><label text="${statusId == 'GrnPartial' ? 'Partially received' : 'Awaiting receipt'}" type="span" style="receiving-status ${statusId == 'GrnPartial' ? 'partial' : 'approved'}"/></default-field></field>
-                    <field name="receiveGrn"><default-field title="Action"><link url="../ReceiveInventory" link-type="anchor" parameter-map="[orderId:purchaseOrderId,grnId:grnId]" text="Receive delivery" condition="invCanWrite" style="receiving-receive-link"/></default-field></field>
+                    <field name="locationName"><default-field title="Receiving location"><label text="${grnLocation?.facilityName ?: facilityId ?: 'Unassigned'}"/></default-field></field>
+                    <field name="incomingQuantity"><default-field title="Qty due"><label text="${readyForReceipt ? ec.l10n.format(incomingQuantity, '#,##0.######') : '—'}" type="strong" style="receiving-reference"/></default-field></field>
+                    <field name="deliveryStatus"><default-field title="Status"><label text="${[GrnPending:'Awaiting receipt',GrnPartial:'Partially received',GrnDraft:'Draft'][statusId] ?: 'Needs review'}" type="span" style="receiving-status ${readyForReceipt ? (statusId == 'GrnPartial' ? 'partial' : 'approved') : 'open'}"/></default-field></field>
+                    <field name="receiveGrn"><conditional-field condition="!readyForReceipt" title="Action"><label text="Awaiting Purchase submission"/></conditional-field><default-field title="Action"><link url="../ReceiveInventory" link-type="anchor" parameter-map="[orderId:purchaseOrderId,grnId:grnId]" text="Receive delivery" condition="invCanWrite" style="receiving-receive-link"/></default-field></field>
                 </form-list>
             </container>
             </widgets></section>
-            <label condition="!pendingGrnList" text="No deliveries awaiting receipt. Submitted GRNs appear here until their quantities are received." type="p" style="receiving-grn-empty"/>
+            <label condition="!incomingGrns" text="No open GRNs match this view." type="p" style="receiving-grn-empty"/>
         </container>
 
         <container style="receiving-orders ${poListPageMaxIndex == 0 ? 'receiving-single-page' : ''}">
@@ -277,7 +294,8 @@
                 <field name="receiptStatus"><header-field title="Status"/><default-field><label text="${receiptView.status}" type="span" style="receiving-status ${receiptView.statusClass}"/></default-field></field>
                 <field name="receiveAction">
                     <header-field title="Action"/>
-                    <conditional-field name="receive_write" condition="invCanWrite">
+                    <conditional-field name="awaiting_po" condition="!receiptView.approved"><label text="${receiptView.itemCount ? 'Awaiting approval' : 'Awaiting products'}"/></conditional-field>
+                    <conditional-field name="receive_write" condition="invCanWrite &amp;&amp; receiptView.approved">
                         <link url="../ReceiveInventory" link-type="anchor" text="Receive Stock" parameter-map="[orderId:orderId]" btn-type="primary" style="receiving-receive-link"/>
                     </conditional-field>
                     <default-field><label text="View only" type="span" style="text-grey-6 text-caption"/></default-field>
@@ -301,8 +319,8 @@
   <circle cx="108" cy="76" r="15" fill="var(--white)" fill-opacity=".8" stroke="currentColor" stroke-opacity=".5" stroke-width="5"/>
   <path d="m120 87 12 12" stroke="currentColor" stroke-opacity=".5" stroke-width="6" stroke-linecap="round"/>
 </svg>]]></text></render-mode>
-                        <label text="No purchase orders are waiting to be received right now." type="h3" style="receiving-empty-title"/>
-                        <label text="Approve a purchase order to receive its unallocated balance here, or submit a GRN in Purchase to queue a supplier delivery above." type="p" style="receiving-empty-description"/>
+                        <label text="No outstanding purchase orders match this view." type="h3" style="receiving-empty-title"/>
+                        <label text="Quantities assigned to a submitted GRN appear under Incoming supplier deliveries." type="p" style="receiving-empty-description"/>
                     </container>
                 </widgets>
             </section>
