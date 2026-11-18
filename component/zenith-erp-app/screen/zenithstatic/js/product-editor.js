@@ -124,9 +124,11 @@
   const refresh=bindModePrices(form);
   const name=form.elements.namedItem('productName'),print=form.elements.namedItem('printName');
   const taxPicker=form.querySelector('[data-pe-tax-picker]');
-  taxPicker.addEventListener('toggle',()=>{if(taxPicker.open)taxPicker.querySelector('input:checked').focus();});
-  taxPicker.addEventListener('change',event=>{taxPicker.querySelector('[data-pe-tax-value]').textContent=event.target.parentElement.textContent.trim();});
-  taxPicker.addEventListener('click',event=>{if(event.target.name==='gstSlabId'&&event.detail)taxPicker.open=false;});
+  if(taxPicker){
+   taxPicker.addEventListener('toggle',()=>{if(taxPicker.open)taxPicker.querySelector('input:checked').focus();});
+   taxPicker.addEventListener('change',event=>{taxPicker.querySelector('[data-pe-tax-value]').textContent=event.target.parentElement.textContent.trim();});
+   taxPicker.addEventListener('click',event=>{if(event.target.name==='gstSlabId'&&event.detail)taxPicker.open=false;});
+  }
   let custom=false;
   name.addEventListener('input',()=>{if(!custom)print.value=name.value;});
   print.addEventListener('input',()=>{custom=print.value.trim()!=='';});
