@@ -8,4 +8,5 @@
     <depends-on name="zenith-erp-tax"/>
     <depends-on name="zenith-erp-contacts"/>
     <depends-on name="zenith-erp-accounting"/>
+    <depends-on name="zenith-erp-inventory"/>
 </component>

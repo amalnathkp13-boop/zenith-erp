@@ -36,7 +36,6 @@
             'OrderOpen': 'Open', 'OrderProposed': 'Pending', 'OrderPlaced': 'Pending',
             'OrderApproved': 'Approved', 'OrderCompleted': 'Completed', 'OrderCancelled': 'Cancelled'
         ]"/>
-        <set field="currSymbol" from="currSymbol ?: '₹'"/>
     </actions>
 
     <widgets><container style="zpur-page">
@@ -102,6 +101,8 @@
                     <set field="vendorName2" from="vendorParty?.organizationName ?: ((vendorParty?.firstName ?: '') + ' ' + (vendorParty?.lastName ?: '')).trim()"/>
                     <set field="statusColor" from="statusColorMap[statusId] ?: 'grey'"/>
                     <set field="statusLabel" from="statusLabelMap[statusId] ?: (statusId ? statusId.replace('Order','') : 'Open')"/>
+                    <set field="totalNumber" from="ec.l10n.format(grandTotal ?: 0G, '#,##0.00')"/>
+                    <set field="totalDisplay" from="currencyUomId == 'INR' ? '₹' + com.zenith.Fmt.regroup(totalNumber) : (currencyUomId ? currencyUomId + ' ' : '') + totalNumber"/>
                 </row-actions>
 
                 <field name="orderId">
@@ -144,8 +145,7 @@
                     <header-field title="Grand Total" show-order-by="true"/>
                     <conditional-field condition="sri.getRenderMode() in ['csv','xlsx']"><display text="${grandTotal ?: 0}"/></conditional-field>
                     <default-field>
-                        <label text="${currencyUomId}" type="span" style="text-grey-6 q-mr-xs"/>
-                        <label text="${ec.l10n.format(grandTotal ?: 0, '#,##,##0.00')}" type="span" style="text-weight-bold z-amt-green"/>
+                        <label text="${totalDisplay}" type="span" style="text-weight-bold z-amt-green"/>
                     </default-field>
                 </field>
 

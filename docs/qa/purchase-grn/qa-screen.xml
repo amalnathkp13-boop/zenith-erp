@@ -10,6 +10,12 @@
     }
     ec.entity.makeDataLoader().location('component://zenith-erp-purchase/PurchaseRemainingQaFixture.xml').load()
     if (ec.message.hasError()) throw new IllegalStateException('Fixture did not load')
+    ec.entity.find('zenith.erp.base.CompanySettings').condition('organizationPartyId','PP_QA_A')
+        .condition('settingKey','CURRENCY_UOM_ID').one().set('settingValue','INR').update()
+    ec.entity.makeValue('mantle.account.invoice.Invoice').setAll([invoiceId:'PP_QA_GRN_BILL_INR',
+        invoiceTypeEnumId:'InvoicePurchase', statusId:'InvoiceApproved', currencyUomId:'INR',
+        fromPartyId:'PP_QA_SUPPLIER_A', toPartyId:'PP_QA_A', invoiceDate:ec.user.nowTimestamp,
+        invoiceTotal:200G, unpaidTotal:200G]).create()
     def demo = ec.entity.find('moqui.security.UserAccount').condition('userId','EX_JOHN_DOE').one()
     for (id in ['PP_QA_USER','PP_QA_VIEWER']) {
         def user = ec.entity.find('moqui.security.UserAccount').condition('userId',id).one()

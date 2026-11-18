@@ -148,8 +148,9 @@
             def toDate = receiptSearch.entryDate_thru?.take(10) ?: ''
             def sortValue = ec.web.requestParameters.orderByField?.toString() ?: '-entryDate'
             def sortOptions = ['-entryDate':'Newest first','entryDate':'Oldest first','orderId':'Order number ascending','-orderId':'Order number descending'].collect { key, title -> '<option value="' + key + '"' + selected(sortValue,key) + '>' + title + '</option>' }.join('')
-            receivingFilterHtml = """<section class="receiving-filters" aria-labelledby="receiving-filters-title">
-<div class="receiving-filter-heading"><h2 id="receiving-filters-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 4h18l-7 8v8l-4 1v-9z"/></svg> Filters</h2><a class="receiving-secondary" href="FindReceipt">↶ &nbsp;Clear Filters</a></div>
+            def hasFilters = receiptSearch.orderId || receiptSearch.vendorPartyId || fromDate || toDate || receivingStatus || sortValue != '-entryDate'
+            receivingFilterHtml = """<details class="receiving-filters receiving-filter-disclosure"${hasFilters ? ' open' : ''}>
+<summary class="receiving-filter-summary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M3 6h18M6 12h12M9 18h6"/></svg>Filters<span aria-hidden="true">⌄</span></summary>
 <form id="ReceivingFilters" action="FindReceipt" method="get"><input type="hidden" name="pageSize" value="${poListPageSize}"/>
 <div class="receiving-filter-grid">
 <label for="receiving-order">Order #<input id="receiving-order" name="orderId" value="${html(receiptSearch.orderId)}" placeholder="Search order #..."/></label>
@@ -157,7 +158,7 @@
 <label for="receiving-date-to">Date To<input id="receiving-date-to" name="entryDate_thru" type="date" value="${html(toDate)}"/></label>
 <label for="receiving-supplier">Supplier<select id="receiving-supplier" name="vendorPartyId">${supplierOptions}</select></label>
 <label for="receiving-status">Status<select id="receiving-status" name="receivingStatus">${statusOptions}</select></label></div>
-<div class="receiving-filter-bottom"><details><summary>More Filters</summary><div class="receiving-more-grid"><label for="receiving-match">Order number match<select id="receiving-match" name="orderId_op"><option value="contains"${selected(receiptSearch.orderId_op ?: 'contains','contains')}>Contains</option><option value="equals"${selected(receiptSearch.orderId_op,'equals')}>Exact match</option></select></label><label for="receiving-sort">Sort by<select id="receiving-sort" name="orderByField">${sortOptions}</select></label></div></details><div class="receiving-filter-buttons"><button type="reset" class="receiving-secondary">Cancel</button><button type="submit" class="receiving-apply"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/></svg> Apply Filters</button></div></div></form></section>"""
+<div class="receiving-filter-bottom"><details><summary>More Filters</summary><div class="receiving-more-grid"><label for="receiving-match">Order number match<select id="receiving-match" name="orderId_op"><option value="contains"${selected(receiptSearch.orderId_op ?: 'contains','contains')}>Contains</option><option value="equals"${selected(receiptSearch.orderId_op,'equals')}>Exact match</option></select></label><label for="receiving-sort">Sort by<select id="receiving-sort" name="orderByField">${sortOptions}</select></label></div></details><div class="receiving-filter-buttons"><a class="receiving-secondary" href="FindReceipt">Clear Filters</a><button type="reset" class="receiving-secondary">Cancel</button><button type="submit" class="receiving-apply"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/></svg> Apply Filters</button></div></div></form></details>"""
             def parameters = [:] + receiptSearch
             parameters.remove('pageNoLimit'); parameters.orderByField = sortValue
             if (receivingStatus) parameters.receivingStatus = receivingStatus
@@ -195,11 +196,11 @@
         <section name="ReceivingPage">
         <condition><expression>ec.web.requestParameters.renderMode != 'csv'</expression></condition>
         <widgets>
-        <render-mode><text type="html,qvt,vuet"><![CDATA[<link rel="stylesheet" href="/zenithstatic/css/receiving-stock.css?v=14"/>]]></text></render-mode>
+        <render-mode><text type="html,qvt,vuet"><![CDATA[<link rel="stylesheet" href="/zenithstatic/css/receiving-stock.css?v=16"/>]]></text></render-mode>
         <container id="receivingStocks" style="receiving-page">
         <container style="receiving-header">
-            <label text="Receiving (Incoming Stock)" type="h1" style="receiving-title"/>
-            <label text="Record incoming stock — from a purchase order, a supplier delivery with no PO, or a branch / inter-state transfer." type="p" style="receiving-subtitle"/>
+            <label text="Receiving" type="h1" style="receiving-title"/>
+            <label text="Match incoming deliveries to their purchase orders and confirm what arrived." type="p" style="receiving-subtitle"/>
         </container>
 
         <section name="DirectReceiveToolbar">
@@ -216,11 +217,11 @@
                                 <drop-down allow-empty="false"><list-options list="facilityList" key="${facilityId}" text="${facilityName}"/></drop-down>
                             </default-field></field>
                             <field name="quantityDiff"><default-field title="Quantity Received"><text-line size="10"/></default-field></field>
-                            <field name="valuationRate"><default-field title="Unit Cost (optional)"><text-line size="10"/></default-field></field>
+                            <field name="valuationRate"><default-field title="Unit Cost (${currSymbol?.trim() ?: companyCurrency}, optional)"><text-line size="10"/></default-field></field>
                             <field name="batchNumber"><default-field title="Batch / Lot Number (optional)"><text-line size="20"/></default-field></field>
                             <field name="manufacturingDate"><default-field title="Manufacturing Date (optional)"><date-time type="date"/></default-field></field>
                             <field name="expiryDate"><default-field title="Expiry Date (optional)"><date-time type="date"/></default-field></field>
-                            <field name="mrpAmount"><default-field title="Batch MRP (optional)"><text-line size="10"/></default-field></field>
+                            <field name="mrpAmount"><default-field title="Batch MRP (${currSymbol?.trim() ?: companyCurrency}, optional)"><text-line size="10"/></default-field></field>
                             <field name="submitButton"><default-field title="Receive into stock"><submit text="Receive Stock" icon="login"/></default-field></field>
                         </form-single>
                     </container-dialog>
@@ -228,8 +229,12 @@
         </section>
         <render-mode><text type="html,qvt,vuet"><![CDATA[${receivingFilterHtml}]]></text></render-mode>
 
-        <container style="receiving-orders">
-            <container style="receiving-orders-heading"><label text="Incoming supplier deliveries (GRNs)" type="h2" style="receiving-orders-title"/></container>
+        <container style="receiving-orders receiving-grn-queue">
+            <container style="receiving-orders-heading">
+                <label text="Incoming supplier deliveries" type="h2" style="receiving-orders-title"/>
+                <label text="${pendingGrnList.size()} ${pendingGrnList.size() == 1 ? 'delivery' : 'deliveries'}" type="span" style="receiving-grn-count"/>
+            </container>
+            <section name="IncomingGrnRows"><condition><expression>pendingGrnList</expression></condition><widgets>
             <container style="receiving-table-scroll">
                 <form-list name="IncomingGrnList" list="pendingGrnList" skip-form="true">
                     <row-actions>
@@ -238,17 +243,18 @@
                         <entity-find entity-name="zenith.erp.purchase.GoodsReceiptNoteItem" list="grnItems"><econdition field-name="grnId"/></entity-find>
                         <set field="incomingQuantity" from="grnItems.sum { ((it.plannedQuantity ?: 0G) - (it.inventoryReceivedQuantity ?: 0G)).max(0G) } ?: 0G"/>
                     </row-actions>
-                    <field name="grnId"><default-field title="GRN"><display/></default-field></field>
+                    <field name="grnId"><default-field title="GRN"><label text="${grnId}" type="strong" style="receiving-reference"/></default-field></field>
                     <field name="purchaseOrderId"><default-field title="Purchase order"><display/></default-field></field>
                     <field name="supplierName"><default-field title="Supplier"><label text="${grnSupplier?.organizationName ?: grnSupplier?.firstName ?: vendorPartyId}"/></default-field></field>
                     <field name="vendorInvoiceNumber"><default-field title="Invoice reference"><label text="${vendorInvoiceNumber ?: 'Awaiting invoice'}"/></default-field></field>
                     <field name="locationName"><default-field title="Receiving location"><label text="${grnLocation?.facilityName ?: facilityId}"/></default-field></field>
-                    <field name="incomingQuantity"><default-field title="Incoming quantity"><display/></default-field></field>
-                    <field name="deliveryStatus"><default-field title="Status"><label text="${statusId == 'GrnPartial' ? 'Partially received' : 'Awaiting receipt'}"/></default-field></field>
+                    <field name="incomingQuantity"><default-field title="Qty due"><label text="${ec.l10n.format(incomingQuantity, '#,##0.######')}" type="strong" style="receiving-reference"/></default-field></field>
+                    <field name="deliveryStatus"><default-field title="Status"><label text="${statusId == 'GrnPartial' ? 'Partially received' : 'Awaiting receipt'}" type="span" style="receiving-status ${statusId == 'GrnPartial' ? 'partial' : 'approved'}"/></default-field></field>
                     <field name="receiveGrn"><default-field title="Action"><link url="../ReceiveInventory" link-type="anchor" parameter-map="[orderId:purchaseOrderId,grnId:grnId]" text="Receive delivery" condition="invCanWrite" style="receiving-receive-link"/></default-field></field>
                 </form-list>
             </container>
-            <label condition="!pendingGrnList" text="Submitted GRNs appear here until their delivery quantities are received." type="p" style="text-grey-7 q-pa-md"/>
+            </widgets></section>
+            <label condition="!pendingGrnList" text="No deliveries awaiting receipt. Submitted GRNs appear here until their quantities are received." type="p" style="receiving-grn-empty"/>
         </container>
 
         <container style="receiving-orders ${poListPageMaxIndex == 0 ? 'receiving-single-page' : ''}">
