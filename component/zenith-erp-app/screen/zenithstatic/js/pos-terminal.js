@@ -227,6 +227,7 @@ window._posOffline = (function () {
     var lastLocalAmount;
     var booted = false;
     var syncing = false;
+    var syncTask;
     var payPending = false;
     var heldSyncing = false;
     var serverDraftPaused = false;
@@ -269,7 +270,9 @@ window._posOffline = (function () {
                 draft = null;
                 pendingLocalEdits.length = 0;
             }
-            sync();
+            sync().then(function () {
+                if (localEditing && canUseOnlineHeldPicker()) window._posRefreshHeldPicker?.();
+            });
             if (!localEditing) cacheCatalog();
         }
     }
@@ -791,6 +794,26 @@ window._posOffline = (function () {
         snapshot = copy(data);
         if (db) stateWrite('snapshot:' + scope, snapshot).catch(function () {});
     }
+    function setDraftSource(bill) {
+        bill.sourceTransactionId = snapshot.transactionId;
+        bill.sourceRevision = snapshot.sourceRevision;
+        bill.originState = snapshot.originState;
+        bill.destinationState = snapshot.destinationState;
+        bill.items = snapshot.items.map(function (item) {
+            return {productId:item.pid,seq:item.seq,name:item.name,printName:item.printName,
+                qty:Number(item.qty),price:Number(item.price),mode:item.mode || bill.mode,
+                uom:item.uom,discount:Number(item.disc || 0)};
+        });
+        bill.customer = snapshot.customer ? {partyId:snapshot.customerPartyId,name:snapshot.customer,
+            phone:snapshot.customerPhone,creditDays:snapshot.customerCreditDays,state:snapshot.destinationState} : null;
+        return bill;
+    }
+    function draftContent(bill) {
+        var lines = bill.items.map(function (item) {
+            return [item.productId, item.qty, item.price, item.mode, item.discount];
+        });
+        return JSON.stringify([lines, bill.mode, bill.taxOn, bill.customer, bill.destinationState, bill.sourceRevision]);
+    }
     var leaseReady = false,
         leasePending = false;
     function begin() {
@@ -823,8 +846,8 @@ window._posOffline = (function () {
                                 return;
                             }
                             leaseReady = true;
-                            if (active() || draft || holds.length) begin();
-                            if (holds.length && !disconnected()) sync();
+                            if (active() || draft || sessionHolds().length) begin();
+                            if (sessionHolds().length && !disconnected()) sync();
                             return new Promise(function () {});
                         },
                     )
@@ -860,33 +883,9 @@ window._posOffline = (function () {
                     banner(true);
                     return false;
                 }
-                draft.sourceTransactionId = snapshot.transactionId;
-                draft.sourceRevision = snapshot.sourceRevision;
-                draft.originState = snapshot.originState;
-                draft.destinationState = snapshot.destinationState;
-                draft.items = snapshot.items.map(function (i) {
-                    return {
-                        productId: i.pid,
-                        seq: i.seq,
-                        name: i.name,
-                        printName: i.printName,
-                        qty: Number(i.qty),
-                        price: Number(i.price),
-                        mode: i.mode || draft.mode,
-                        uom: i.uom,
-                        discount: Number(i.disc || 0),
-                    };
-                });
-                draft.customer = snapshot.customer
-                    ? {
-                          partyId: snapshot.customerPartyId,
-                          name: snapshot.customer,
-                          phone: snapshot.customerPhone,
-                          creditDays: snapshot.customerCreditDays,
-                          state: snapshot.destinationState,
-                      }
-                    : null;
+                setDraftSource(draft);
             }
+            if (draft.sourceTransactionId) draft.onlineBaseline = draftContent(draft);
         }
         cart = draft.items;
         if (!applyPendingEdits()) change();
@@ -1205,10 +1204,14 @@ window._posOffline = (function () {
         });
     }
     function holdDraft() {
-        if (!cart.length || payPending) return;
-        if (heldSyncing) { toast('Held bills are reconnecting. Try again in a moment.'); return; }
+        if (!cart.length || payPending) return Promise.resolve(false);
+        if (heldSyncing) {
+            toast('Held bills are reconnecting. Try again in a moment.');
+            return Promise.resolve(false);
+        }
         payPending = true;
         var saved = copy(draft);
+        delete saved.onlineBaseline;
         saved.draftId = crypto.randomUUID();
         saved.heldAt = Date.now();
         var all = holds.concat([saved]),
@@ -1223,18 +1226,26 @@ window._posOffline = (function () {
                 cart = draft.items;
                 render();
                 toast('Bill held', '#b45309');
+                return true;
             })
             .catch(function () {
                 toast('Could not hold the bill. Keep it open.', '#c62828');
+                return false;
             })
             .finally(function () {
                 payPending = false;
-                if (!disconnected()) sync();
             });
+        return writeTail.then(function (saved) {
+            if (!saved || disconnected()) return false;
+            return (syncTask || Promise.resolve()).then(sync).then(function () { return !active(); });
+        });
+    }
+    function canUseOnlineHeldPicker() {
+        return !disconnected() && !serverDraftPaused && !sessionHolds().length;
     }
     function renderHeldPicker() {
         var wrap = document.getElementById('pos-held-wrap');
-        if (!wrap || !localEditing) return;
+        if (!wrap || !localEditing || canUseOnlineHeldPicker()) return;
         var button = wrap.querySelector('summary,button');
         if (!button) return;
         var open = !!wrap.querySelector('details[open]');
@@ -1242,9 +1253,10 @@ window._posOffline = (function () {
         summary.className = 'nb-abtn nb-abtn--hold';
         summary.innerHTML = button.innerHTML;
         summary.querySelectorAll('.nb-cnt').forEach(function (count) { count.remove(); });
-        if (holds.length) {
+        var currentHolds = sessionHolds();
+        if (currentHolds.length) {
             var count = document.createElement('span');
-            count.className = 'nb-cnt'; count.textContent = holds.length;
+            count.className = 'nb-cnt'; count.textContent = currentHolds.length;
             summary.insertBefore(count, summary.querySelector('kbd'));
         }
         var details = document.createElement('details');
@@ -1253,7 +1265,7 @@ window._posOffline = (function () {
         var menu = document.createElement('div');
         menu.className = 'nb-held__menu';
         menu.innerHTML = '<div class="nb-held__hint">Tap a bill to switch to it. Your current cart is held automatically.</div>';
-        holds.slice().reverse().forEach(function (held, index) {
+        currentHolds.reverse().forEach(function (held, index) {
             var row = document.createElement('button');
             row.type = 'button'; row.className = 'nb-held__item'; row.dataset.recall = held.draftId;
             var time = held.heldAt ? new Date(held.heldAt).toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'}) : '';
@@ -1262,7 +1274,7 @@ window._posOffline = (function () {
                 '<span class="nb-held__amt">₹ ' + totals(held).sub.toLocaleString('en-IN', {minimumFractionDigits:2,maximumFractionDigits:2}) + '</span>';
             menu.appendChild(row);
         });
-        if (!holds.length) menu.innerHTML += '<div class="nb-held__hint">No held bills on this device.</div>';
+        if (!currentHolds.length) menu.innerHTML += '<div class="nb-held__hint">No held bills on this device.</div>';
         details.appendChild(menu);
         wrap.replaceChildren(details);
     }
@@ -1273,12 +1285,14 @@ window._posOffline = (function () {
     }
     function recallDraft(id) {
         if (payPending || heldSyncing) return;
-        var held = holds.find(function (bill) { return bill.draftId === id; });
+        var held = sessionHolds().find(function (bill) { return bill.draftId === id; });
         if (!held) return;
         payPending = true;
         var next = copy(held), rest = holds.filter(function (bill) { return bill.draftId !== id; });
         if (cart.length) {
-            var current = copy(draft); current.draftId = crypto.randomUUID(); current.heldAt = Date.now(); rest.push(current);
+            var current = copy(draft);
+            delete current.onlineBaseline;
+            current.draftId = crypto.randomUUID(); current.heldAt = Date.now(); rest.push(current);
         }
         writeTail = writeTail.then(function () { return storeWorkspace(next, rest); }).then(function () {
             draft = next; holds = rest; cart = draft.items;
@@ -1289,11 +1303,22 @@ window._posOffline = (function () {
             toast('Could not recall this bill. Keep this page open.', '#c62828');
         }).finally(function () { payPending = false; });
     }
-    function syncHeldDrafts() {
-        if (!leaseReady || serverDraftPaused || !holds.length || heldSyncing || payPending || !draft || cart.length ||
-            draft.sourceTransactionId || disconnected()) return Promise.resolve();
+    function sessionHolds() {
+        var sessionId = tCtx().sessionId;
+        return holds.filter(function (bill) { return bill.sessionId === sessionId; });
+    }
+    function syncHeldDrafts(sales) {
+        if (!leaseReady || serverDraftPaused || heldSyncing || payPending || disconnected()) return Promise.resolve();
+        var activeSource = draft && draft.sourceTransactionId;
+        var ready = sessionHolds().filter(function (bill) {
+            if (!bill.sourceTransactionId) return true;
+            return bill.sourceTransactionId !== activeSource && !sales.some(function (sale) {
+                return sale.sourceTransactionId === bill.sourceTransactionId;
+            });
+        });
+        if (!ready.length) return Promise.resolve();
         heldSyncing = true;
-        var saved = holds.slice(0,100).map(function (bill) {
+        var saved = ready.slice(0,100).map(function (bill) {
             var amounts = totals(bill);
             return Object.assign(copy(bill), {version:2,offlineId:bill.draftId,userId:settings.userId,
                 organizationPartyId:orgId,total:amounts.pay,taxAmount:amounts.tax,
@@ -1313,6 +1338,7 @@ window._posOffline = (function () {
             writeTail = writeTail.then(function () { return stateWrite('holds:' + scope, copy(rest)); }).then(function () {
                 holds = rest;
                 renderHeldPicker();
+                if (cart.length && canUseOnlineHeldPicker()) window._posRefreshHeldPicker?.();
             });
             return writeTail;
         }).catch(function (error) { return transportFailure(error); })
@@ -1463,6 +1489,7 @@ window._posOffline = (function () {
                 payments: payments,
                 ts: new Date().toISOString(),
             });
+        delete sale.onlineBaseline;
         writeTail
             .catch(function () {
                 throw Error('Draft storage failed');
@@ -1580,28 +1607,37 @@ window._posOffline = (function () {
     }
     function currentSessionHasQueuedSale(sales) {
         var sessionId = tCtx().sessionId;
-        return sales.some(function (sale) { return !sale.sessionId || sale.sessionId === sessionId; });
+        return sales.some(function (sale) { return !sale.sessionId || (sale.sessionId === sessionId && sale.sourceTransactionId); });
+    }
+    function canResumeOnline() {
+        if (disconnected() || !localEditing || !draft || sessionHolds().length || syncing || payPending ||
+            pendingLocalEdits.length || document.getElementById('posOfflineDialog')) return false;
+        if (!draft.sourceTransactionId) return !draft.items.length;
+        // An unchanged cached copy can safely give control back to its server draft.
+        if (!snapshot || snapshot.transactionId !== draft.sourceTransactionId || draft.sessionId !== tCtx().sessionId) return false;
+        var baseline = draft.onlineBaseline || draftContent(setDraftSource(newDraft()));
+        return draftContent(draft) === baseline;
     }
     function resumeOnline() {
-        if (disconnected() || !localEditing || !draft || draft.items.length || draft.sourceTransactionId || holds.length ||
-            syncing || payPending || pendingLocalEdits.length || document.getElementById('posOfflineDialog') ||
-            typeof window._posResumeOnline !== 'function') return;
-        getQueue().then(function (sales) {
-            if (currentSessionHasQueuedSale(sales) || disconnected() || !localEditing || !draft || draft.items.length || draft.sourceTransactionId ||
-                holds.length || syncing || payPending || pendingLocalEdits.length || document.getElementById('posOfflineDialog')) return;
+        if (!canResumeOnline() || typeof window._posResumeOnline !== 'function') return Promise.resolve();
+        return getQueue().then(function (sales) {
+            if (currentSessionHasQueuedSale(sales) || !canResumeOnline()) return;
+            var source = draft.sourceTransactionId ? snapshot : null;
             localEditing = false;
             draft = null;
             writeTail = writeTail.catch(function () {}).then(function () { return stateWrite('draft:' + scope, null); });
             writeTail.catch(function () {});
-            window._posResumeOnline();
+            var restored = window._posResumeOnline(source);
             banner(false);
             cacheCatalog();
+            return restored;
         }).catch(function () {});
     }
     function sync() {
-        if (syncing || disconnected()) return Promise.resolve(0);
+        if (syncTask) return syncTask;
+        if (disconnected()) return Promise.resolve(0);
         syncing = true;
-        return recoverLegacy()
+        syncTask = recoverLegacy()
             .then(getQueue)
             .then(function (q) {
                 if (!q.length) return 0;
@@ -1651,15 +1687,17 @@ window._posOffline = (function () {
             })
             .then(function (count) {
                 return getQueue().then(function (remaining) {
-                    return currentSessionHasQueuedSale(remaining) ? count : syncHeldDrafts().then(function () { return count; });
+                    return syncHeldDrafts(remaining).then(function () { return count; });
                 });
             })
             .catch(function (error) { return transportFailure(error).then(function () { return 0; }); })
             .finally(function () {
                 syncing = false;
+                syncTask = null;
                 banner(active());
-                resumeOnline();
+                return resumeOnline();
             });
+        return syncTask;
     }
     function clearDraft() {
         if (!begin()) return;
@@ -1703,7 +1741,7 @@ window._posOffline = (function () {
                 holds.forEach(function (bill) { bill.draftId = bill.draftId || crypto.randomUUID(); });
                 if (!snapshot) snapshot = saved[1] || null;
                 storageReady = true;
-                if (draft || holds.length || disconnected()) begin();
+                if (draft || sessionHolds().length || disconnected()) begin();
                 connectionChanged();
             })
             .catch(function () {
@@ -1792,6 +1830,7 @@ window._posOffline = (function () {
                     if (begin()) recallDraft(b.dataset.recall);
                     return;
                 }
+                if (b.closest('#pos-held-wrap') && canUseOnlineHeldPicker()) return;
                 if (
                     b.matches(
                         '.pos-cart .aj-q,.pos-cart .aj-rm,#pos-held-wrap > button,#pos-held-wrap summary,#pos-pay-cash,#pos-pay-card,#pos-credit,#pos-pay-upi,#pos-split,#pos-discount,#pos-hold',
@@ -1873,7 +1912,7 @@ window._posOffline = (function () {
                     return;
                 }
                 if (!active()) return;
-                if (e.key === 'F9' && !document.getElementById('posOfflineDialog')) {
+                if (e.key === 'F9' && !canUseOnlineHeldPicker() && !document.getElementById('posOfflineDialog')) {
                     e.preventDefault();
                     e.stopImmediatePropagation();
                     if (begin()) heldDialog();
@@ -1906,6 +1945,13 @@ window._posOffline = (function () {
         add: add,
         scan: scan,
         sync: sync,
+        canUseOnlineHeldPicker: canUseOnlineHeldPicker,
+        async prepareOnlineRecall() {
+            if (!canUseOnlineHeldPicker()) return false;
+            if (cart.length && !canResumeOnline()) return holdDraft();
+            await resumeOnline();
+            return !active();
+        },
         hold: function () { if (begin()) holdDraft(); },
         clearDraft: clearDraft,
         render: render,
@@ -3918,6 +3964,13 @@ window.posToggleFullscreen = function() {
         }
         function recallHeldBill(hid) {
             if (!hid || cartClearing || modeSwitching) return;
+            if (window._posOffline?.active?.()) {
+                window._posOffline.prepareOnlineRecall().then(function (ready) {
+                    if (ready) recallHeldBill(hid);
+                    else showToast('Finish syncing the current cart before recalling this bill.', '#b45309');
+                });
+                return;
+            }
             if (window._posCommitEdits && !window._posCommitEdits()) return;
             cartClearing = true;
             OPT.whenIdle().then(function() {
@@ -4782,12 +4835,13 @@ window.posToggleFullscreen = function() {
                 count.dataset.day = sourceCount.dataset.day;
             }
         }
-        window._posResumeOnline = function () {
+        window._posResumeOnline = function (source) {
             if (!af.isConnected) return;
             if (smRoot) smRoot.removeAttribute('data-sig');
-            resetCompletedCart(true);
+            if (source) renderCart(source, true);
+            else resetCompletedCart(true);
             applyTaxMode(TO);
-            fetchScreen({}).then(function (doc) {
+            return fetchScreen({}, AbortSignal.timeout(12000)).then(function (doc) {
                 syncHeldWrap(doc);
                 syncIssuedBillHeader(doc);
             }).catch(function () {});
@@ -5763,7 +5817,7 @@ window.posToggleFullscreen = function() {
         // Refresh the server-rendered held-bills picker (#pos-held-wrap <details>) from a full
         // terminal render after an AJAX void.
         function syncHeldWrap(doc) {
-            if (window._posOffline?.active?.()) return;
+            if (window._posOffline && !window._posOffline.canUseOnlineHeldPicker()) return;
             var source = doc.querySelector('#pos-held-wrap'), target = document.getElementById('pos-held-wrap');
             if (!source || !target) return;
             var open = !!target.querySelector('details[open]');
@@ -5771,6 +5825,9 @@ window.posToggleFullscreen = function() {
             var picker = target.querySelector('details');
             if (picker) picker.open = open;
         }
+        window._posRefreshHeldPicker = function () {
+            return fetchScreen({}, AbortSignal.timeout(12000)).then(syncHeldWrap).catch(function () {});
+        };
         // Hold in place: a native navigation exits browser fullscreen.
         document.addEventListener('submit', function(e) {
             if (!af.isConnected) return;

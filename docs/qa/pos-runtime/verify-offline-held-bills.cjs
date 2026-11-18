@@ -18,7 +18,10 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
   const source = await invoke('cart', {sessionId:session.sessionId,reuseOpenCart:false});
   for (const productId of products.slice(0,5))
    await invoke('add', {transactionId:source.transactionId,productId,quantity:'1',taxOn:'N'});
-  const context = await a.c.browser().newContext({storageState:await a.c.storageState(),viewport:{width:1366,height:768}});
+  const context = await a.c.browser().newContext({viewport:{width:1366,height:768}});
+  const signedIn = await context.request.get(base + '/apps/zenith/pos/Dashboard',
+   {headers:{Authorization:'Basic ' + Buffer.from('pos.qa:moqui').toString('base64')}});
+  check(layout + ' test terminal has its own authenticated browser session',signedIn.ok() && !signedIn.url().includes('/Login'));
   const page = await context.newPage();
   await context.route('**/Terminal/syncOfflineHeldBills',route => route.abort('internetdisconnected'));
   const errors = [];
@@ -38,11 +41,24 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
   })));
   let firstAcknowledgement = true, sent;
   try {
-   await page.goto(base + '/apps/zenith/pos/Terminal?sessionId=' + session.sessionId + '&transactionId=' + source.transactionId + '&taxOn=N');
+   await page.goto(base + '/apps/zenith/pos/Terminal?sessionId=' + session.sessionId + '&transactionId=' + source.transactionId + '&taxOn=N', {waitUntil:'commit'});
    await page.waitForFunction(id => !!window._posOffline?.lookup(id),products[19]);
    await page.locator('.nb-modes__btn').click();
    await page.locator('[data-pos-layout="' + layout + '"]').click();
    await page.evaluate(() => window._posRefreshCart());
+   await context.setOffline(true);
+   await page.locator('#pos-offline-banner').waitFor();
+   await context.setOffline(false);
+   await page.waitForFunction(() => !window._posOffline.active());
+   await page.locator('#pos-held-wrap > button.is-empty').waitFor();
+   const nativeHold = page.waitForResponse(response => response.url().endsWith('/ajaxCart') &&
+    new URLSearchParams(response.request().postData() || '').get('action') === 'holdSale');
+   await page.locator('#pos-hold').click();
+   const nativeHeld = await (await nativeHold).json();
+   check(layout + ' reconnect with an untouched cart uses online Hold directly',nativeHeld.success && !(await held()).length);
+   await page.locator('#pos-held-wrap summary').click();
+   await page.locator('#pos-held-wrap form[action$="/recallSale"] button').click();
+   await page.waitForFunction(() => document.querySelectorAll('.aj-qi').length === 5);
    await context.setOffline(true);
    await page.locator('#pos-offline-banner').waitFor();
    await page.evaluate(ids => ids.forEach(id => window._posOffline.add(id)),products.slice(5));
@@ -92,6 +108,7 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
    await context.route('**/Terminal/syncOfflineHeldBills', async route => {
     sent = route.request().postDataJSON();
     const response = await route.fetch();
+    if (!response.ok()) { await route.fulfill({response}); return; }
     const body = await response.json();
     if (firstAcknowledgement && body.syncedIds?.length === 2) {
      firstAcknowledgement = false;
@@ -109,12 +126,14 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
     !q("SELECT transaction_number FROM pos_transaction WHERE transaction_id='" + source.transactionId + "'")[0].transaction_number &&
     q("SELECT payment_id FROM pos_payment WHERE transaction_id='" + source.transactionId + "'").length === 0);
    const acknowledged = page.waitForResponse(response => response.url().endsWith('/syncOfflineHeldBills') && response.ok());
-   await page.reload();
+   await page.reload({waitUntil:'commit'});
    await acknowledged;
    await page.waitForFunction(() => window._posOffline && !window._posOffline.active());
    await page.locator('#pos-held-wrap summary').waitFor();
    await page.locator('#pos-held-wrap summary').click();
-   await page.locator('#pos-held-wrap .nb-held__item').filter({hasText:'20 items'}).click();
+   const recovered = page.locator('#pos-held-wrap form[action$="/recallSale"] .nb-held__item').filter({hasText:'20 items'});
+   check(layout + ' a synced hold uses the original online row',!(await recovered.innerText()).includes('this device'));
+   await recovered.click();
    await page.waitForFunction(() => document.querySelectorAll('.aj-qi').length === 20);
    assert.deepEqual(await visible(),expected);
    check(layout + ' reload and online recall preserve every product quantity and custom rate',true);
@@ -126,7 +145,7 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
    check(layout + ' held-bill retry is accepted',replay.ok(),{status:replay.status()});
    const result = await replay.json();
    check(layout + ' retransmission acknowledges held bills without duplicating them',result.syncedIds.length === 2 &&
-    Number(q("SELECT count(*) AS n FROM pos_held_transaction WHERE session_id='" + session.sessionId + "'")[0].n) === 2);
+    Number(q("SELECT count(*) AS n FROM pos_held_transaction WHERE session_id='" + session.sessionId + "'")[0].n) === 3);
    const missingToken = await a.c.request.post(base + '/apps/zenith/pos/Terminal/syncOfflineHeldBills',{data:withoutToken});
    check(layout + ' held-bill synchronization requires CSRF',[401,403].includes(missingToken.status()));
    await page.locator('#pos-hold').click();
@@ -149,9 +168,21 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
     assert.deepEqual(q("SELECT product_id,quantity,unit_price FROM pos_transaction_item WHERE transaction_id='" + source.transactionId + "' ORDER BY item_seq_id"),original);
     check('a failed held-bill import leaves all twenty existing server lines intact',true);
    }
+   await context.setOffline(true);
+   await page.locator('#pos-offline-banner').waitFor();
+   await page.locator('.aj-qi').first().fill('4');
+   await context.setOffline(false);
+   const serverSmallBill = page.locator('#pos-held-wrap form[action$="/recallSale"] button').filter({hasText:'1 item'});
+   await page.locator('#pos-held-wrap summary').click();
+   await serverSmallBill.click();
+   await page.waitForFunction(() => document.querySelectorAll('.aj-qi').length === 1 && !window._posOffline.active());
+   check(layout + ' online recall automatically saves the modified offline cart with every line',
+    q("SELECT quantity FROM pos_transaction_item WHERE transaction_id='" + source.transactionId + "'").length === 20 &&
+    q("SELECT quantity FROM pos_transaction_item WHERE transaction_id='" + source.transactionId + "'").some(item => Number(item.quantity) === 4));
    await page.screenshot({path:path.join(out,'reconnected-held-' + layout + '.png')});
   } catch (error) {
-   console.error(JSON.stringify({layout,errors,visibleLines:(await visible()).length,savedLines:(await held()).map(bill => bill.items.length)}));
+   console.error(JSON.stringify({layout,errors,visibleLines:(await visible()).length,savedLines:(await held()).map(bill => bill.items.length),
+    connection:await page.locator('#pos-connection-status').textContent()}));
    await page.screenshot({path:path.join(out,'held-reconnect-failure-' + layout + '.png')});
    throw error;
   } finally {

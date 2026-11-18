@@ -163,7 +163,7 @@
                 if (sale.total==null || (sale.total as BigDecimal).compareTo(txn.payableAmount as BigDecimal)!=0 || sale.taxAmount==null || (sale.taxAmount as BigDecimal).compareTo(txn.totalTaxAmount as BigDecimal)!=0) fail('Offline tax or total differs from current rules. Sale retained for review, without changing its collected amount.')
                 if (holdOnly) {
                     def held=ec.service.sync().name('zenith.pos.PosServices.hold#Transaction')
-                        .parameters([transactionId:transactionId,heldId:key,holdReason:'Held on this device while offline']).call()
+                        .parameters([transactionId:transactionId,heldId:key]).call()
                     if (!ec.message.hasError() && held.heldId) {
                         def record=ec.entity.find('zenith.erp.pos.PosHeldTransaction').condition('heldId',held.heldId).one()
                         record.set('holdTime',issued).update()

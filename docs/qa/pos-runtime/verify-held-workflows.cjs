@@ -15,7 +15,6 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    const bill=await invoke('cart',{sessionId:session.sessionId});
    await invoke('add',{transactionId:bill.transactionId,productId:'POS_QA_A_P18',quantity:'1',salesModeId:saved,taxOn:'N'});
    check(saved+' bill stores the selected mode when its first item is added',tx(bill.transactionId).sales_mode_id===saved);
-   await page.goto(`${base}/apps/zenith/pos/Terminal?sessionId=${session.sessionId}&transactionId=${bill.transactionId}&salesModeId=${saved}&taxOn=N`,{waitUntil:'networkidle'});
    const held=await invoke('hold',{transactionId:bill.transactionId});
    if (foreign && saved==='RETAIL') {
     const denied=await post('Terminal','ajaxCart',{action:'recallSale',sessionId:session.sessionId,heldId:held.heldId},foreign);
@@ -27,7 +26,8 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    const amount=tx(other.transactionId).payable_amount;
    await invoke('pay',{transactionId:other.transactionId,paymentMethod:'Card',amount:String(amount)});
    await invoke('complete',{transactionId:other.transactionId});
-   await page.goto(`${base}/apps/zenith/pos/Terminal?sessionId=${session.sessionId}&salesModeId=${next}&taxOn=Y`,{waitUntil:'networkidle'});
+   await page.goto(`${base}/apps/zenith/pos/Terminal?sessionId=${session.sessionId}&salesModeId=${next}&taxOn=Y`,{waitUntil:'commit'});
+   await page.waitForFunction(()=>typeof window._posRefreshCart==='function');
    await page.locator('#pos-held-wrap summary').click();
    await page.locator(`form[action$="/recallSale"]:has(input[name=heldId][value="${held.heldId}"]) button`).click();
    await page.waitForFunction(id=>new URL(location.href).searchParams.get('transactionId')===id&&!!document.querySelector('.pos-cart .aj-qi'),bill.transactionId);
@@ -47,7 +47,6 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
   check('shop has no inherited minimum-order policy',q("SELECT * FROM pos_sales_mode_org_config WHERE organization_party_id='POS_QA_A' AND sales_mode_id='WHOLESALE'").length===0);
   const policyBill=await invoke('cart',{sessionId:session.sessionId});
   await invoke('add',{transactionId:policyBill.transactionId,productId:'POS_QA_A_P18',quantity:'1',salesModeId:'WHOLESALE',taxOn:'N'});
-  await page.goto(`${base}/apps/zenith/pos/Terminal?sessionId=${session.sessionId}&transactionId=${policyBill.transactionId}&salesModeId=WHOLESALE&taxOn=N`,{waitUntil:'networkidle'});
   await post('SalesMode','saveOrgRule',{salesModeId:'WHOLESALE',requireCustomer:'N',minOrderAmount:'10000'});
   const deniedMinimum=await post('PosQaAcceptance','invoke',{op:'pay',transactionId:policyBill.transactionId,paymentMethod:'Card',amount:'90'});
   check('explicit shop minimum still blocks an under-limit sale',(await deniedMinimum.json()).errors?.length>0&&Number(tx(policyBill.transactionId).paid_amount)===0);
@@ -69,7 +68,8 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    check('foreign close leaves held draft intact',tx(heldBill.transactionId).status_id==='PtHeld');
   }
   const completed=q(`SELECT transaction_id,paid_amount FROM pos_transaction WHERE session_id='${session.sessionId}' AND status_id='PtCompleted'`);
-  await page.goto(`${base}/apps/zenith/pos/Terminal?sessionId=${session.sessionId}&taxOn=N`,{waitUntil:'networkidle'});
+  await page.goto(`${base}/apps/zenith/pos/Terminal?sessionId=${session.sessionId}&taxOn=N`,{waitUntil:'commit'});
+  await page.waitForFunction(()=>typeof window._posRefreshCart==='function');
   await page.locator('.nb-power').click();
   await page.locator('.pos-close-confirm').waitFor();
   if(out)await page.screenshot({path:require('node:path').join(out,'close-with-held-bill.png'),fullPage:true});
@@ -80,7 +80,7 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
    closeResult={status:response.status(),body:await response.text()};
    await route.fulfill({response});
   });
-  await Promise.all([page.waitForURL(url=>url.pathname.endsWith('/Terminal')&&url.searchParams.get('sessionId')===session.sessionId,{waitUntil:'networkidle'}),page.locator('.pos-close-confirm').click()]);
+  await Promise.all([page.waitForURL(url=>url.pathname.endsWith('/Terminal')&&url.searchParams.get('sessionId')===session.sessionId,{waitUntil:'commit'}),page.locator('.pos-close-confirm').click()]);
   await page.locator('.pos-no-session').waitFor();
   const raw=closeResult.body;let result;try{result=JSON.parse(raw)}catch{}
   check('manual close returns JSON and closes a session containing unpaid held bills',result?.success&&q(`SELECT status_id FROM pos_session WHERE session_id='${session.sessionId}'`)[0].status_id==='PsClosed',{status:closeResult.status,body:raw.slice(0,300)});
