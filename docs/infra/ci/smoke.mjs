@@ -81,6 +81,11 @@ const ERR_SIG = /(java\.lang\.|groovy\.lang\.|org\.moqui\.\w+Exception|freemarke
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const CRM_SCREENS = ['Dashboard', 'Leads', 'Pipeline', 'Activities', 'Segments', 'Contacts', 'SourcesCampaigns', 'Reports', 'ImportLeads', 'CrmSettings'];
 const CRM_WIDTHS = [390, 768, 1024, 1280, 1440];
+// The Quasar SPA (/qapps) must download, parse and mount a large Vue/Quasar bundle before `.zcrm-page`
+// exists. On a CPU-contended CI runner that cold mount can exceed a tight 15s cap, so the SPA-boot
+// gate uses a generous, env-tunable timeout. Inner widget waits stay at 15s: once `.zcrm-page` is
+// mounted the rest of the CRM view renders in the same tick.
+const SPA_BOOT_TIMEOUT = Number(process.env.SMOKE_SPA_TIMEOUT) || 30000;
 
 const browser = await puppeteer.launch({
   headless: 'new',
@@ -100,7 +105,7 @@ try {
       status = resp ? resp.status() : 0;
       await sleep(3000); // let Vue/Quasar and any img-onload bootstraps paint
       if (path.includes('/Crm/')) {
-        await page.waitForSelector('.zcrm-page', { timeout: 15000 });
+        await page.waitForSelector('.zcrm-page', { timeout: SPA_BOOT_TIMEOUT });
         if (path.includes('/Crm/Dashboard') && await page.$('.zcrm-error')) {
           throw new Error('CRM dashboard returned its data-error state');
         }
@@ -226,7 +231,7 @@ try {
       const path = `/${surface}/zenith/Crm/${screen}`;
       try {
         await page.goto(BASE + path, { waitUntil: 'networkidle2', timeout: 60000 });
-        await page.waitForSelector('.zcrm-page', { timeout: 15000 });
+        await page.waitForSelector('.zcrm-page', { timeout: SPA_BOOT_TIMEOUT });
         for (const width of CRM_WIDTHS) {
           await page.setViewport({ width, height: 844 });
           const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2);

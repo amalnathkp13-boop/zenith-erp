@@ -3,6 +3,8 @@
   'use strict';
   if(window.KitchenPrint)return;
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+  const thermalFonts='"Nirmala UI","Noto Sans Tamil","Noto Sans Telugu","Noto Sans Malayalam","Noto Sans Devanagari","Noto Sans"';
+  const itemNameStyle='.item-name{white-space:pre-wrap;word-spacing:.16em;line-height:1.4;overflow-wrap:break-word;word-break:normal;text-align:left}';
   function kotHtml(record){
     const store=record.store||{}, options=record.options||{};
     const width=store.receiptWidth==='58mm'?58:80;
@@ -24,12 +26,12 @@
     header+=block(store.headerText,'header','font-weight:'+(options.headerBold?700:400));
     if(record.store&&options.showBillNumber!==false&&record.number)header+=block(numberLabel+' '+record.number,'information');
     if(record.store&&options.showDate!==false)header+=block(record.date,'information');
-    return '<!doctype html><html data-paper-width="'+width+'"><head><meta charset="utf-8"><title>KOT</title><style>@page{size:'+width+'mm auto;margin:0}'+
-      'body{font:13px monospace;color:#000;width:'+width+'mm;padding:3mm '+kpadR+'mm 3mm '+kpadL+'mm;margin:0;box-sizing:border-box;font-weight:'+weight+'}'+
+    return '<!doctype html><html data-paper-width="'+width+'" data-item-font-weight="'+weight+'"><head><meta charset="utf-8"><title>KOT</title><style>@page{size:'+width+'mm auto;margin:0}'+
+      'body{font:13px "Courier New",'+thermalFonts+',monospace;color:#000;width:'+width+'mm;padding:3mm '+kpadR+'mm 3mm '+kpadL+'mm;margin:0;box-sizing:border-box;font-weight:'+weight+'}'+
       '.block{white-space:pre-line;overflow-wrap:anywhere}img{display:block;margin:2px auto;max-width:90%;max-height:60px}'+
-      'table{width:100%;border-collapse:collapse;color:'+tone('products')+'}td{border-bottom:1px dashed #000;padding:4px 0;overflow-wrap:anywhere}.q{text-align:right}'+
-      '</style></head><body>'+header+'<table><tbody>'+
-      (record.items||[]).map(it=>'<tr><td>'+esc(it.name)+'</td><td class="q">'+esc(it.qty)+'</td></tr>').join('')+
+      'table{width:100%;border-collapse:collapse}td{border-bottom:1px dashed #000;padding:4px 0;overflow-wrap:anywhere}.q{text-align:right}'+
+      itemNameStyle+'</style></head><body>'+header+'<table style="color:'+tone('products')+'"><tbody>'+
+      (record.items||[]).map(it=>'<tr><td class="item-name" dir="auto">'+esc(it.name)+'</td><td class="q">'+esc(it.qty)+'</td></tr>').join('')+
       '</tbody></table>'+block(store.footerText,'footer','font-weight:'+(options.footerBold===false?400:700))+'</body></html>';
   }
   function salesHtml(report){
@@ -40,25 +42,26 @@
     const padR=width===58?8:9;
     const money=new Intl.NumberFormat('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
     const qty=new Intl.NumberFormat('en-IN',{maximumFractionDigits:6});
+    const weight={dark:700,standard:600,light:400}[options.density]||600;
     const tone=key=>({darkGrey:'#333',lightGrey:'#707070'}[options[key+'Tone']]||'#000');
     const block=(value,key)=>value?'<div class="block" style="color:'+tone(key)+';text-align:'+
       (['left','right','center'].includes(options[key+'Align'])?options[key+'Align']:'center')+
       ';font-weight:'+(options[key+'Bold']===false?400:700)+'">'+esc(value)+'</div>':'';
-    const row=(label,quantity,value)=>'<tr><td>'+esc(label)+'</td><td class="num">'+(quantity==null?'':qty.format(quantity))+
+    const row=(label,quantity,value)=>'<tr><td class="item-name" dir="auto">'+esc(label)+'</td><td class="num">'+(quantity==null?'':qty.format(quantity))+
       '</td><td class="num">'+money.format(value)+'</td></tr>';
     const logo=store.showLogo==='Y'&&/^(https:\/\/|\/(?!\/))/.test(store.logoUrl||'')
       ? '<img src="'+esc(store.logoUrl)+'" alt="Company logo">' : '';
     let adjustments=row('Products subtotal',report.qty,report.subtotal)+row('Additional fees',null,report.additionalFee||0)+
       row('Discounts (included)',null,report.discount||0)+row('Tax',null,report.tax||0)+row('Round off',null,report.roundOff||0);
     if(Number(report.adjustment))adjustments+=row('Other bill adjustments',null,report.adjustment);
-    return '<!doctype html><html data-paper-width="'+width+'"><head><meta charset="utf-8"><title>Daily sales summary</title>'+
+    return '<!doctype html><html data-paper-width="'+width+'" data-item-font-weight="'+weight+'"><head><meta charset="utf-8"><title>Daily sales summary</title>'+
       '<style>@page{size:'+width+'mm auto;margin:0}*{box-sizing:border-box}body{margin:0;padding:1mm '+padR+'mm 5mm 0;width:'+width+
-      'mm;color:#000;background:#fff;font:'+({dark:700,standard:600,light:400}[options.density]||600)+' 11px Arial,sans-serif}'+
+      'mm;color:#000;background:#fff;font:'+weight+' 11px Arial,'+thermalFonts+',sans-serif}'+
       '.block{white-space:pre-line;overflow-wrap:anywhere;text-align:center}h1{font-size:13px;text-align:center;margin:5px 0}'+
       'img{display:block;margin:auto;max-width:90%;max-height:45px}table{width:100%;border-collapse:collapse}th,td{padding:3px 1px;vertical-align:top}'+
       'td:first-child,th:first-child{text-align:left;overflow-wrap:anywhere}.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}'+
       'thead,.total{border-block:1px solid #000}.adjustments{border-top:1px dashed #000}tr{break-inside:avoid}'+
-      '</style></head><body>'+block(options.openingPreset!=='none'?options.openingMessage:'','greeting')+logo+block(store.name,'company')+block(store.headerText,'header')+'<h1>DAILY SALES SUMMARY</h1>'+
+      itemNameStyle+'</style></head><body>'+block(options.openingPreset!=='none'?options.openingMessage:'','greeting')+logo+block(store.name,'company')+block(store.headerText,'header')+'<h1>DAILY SALES SUMMARY</h1>'+
       block(report.date+' · '+report.terminal,'information')+'<div class="block">'+ (report.operatorOnly?'Cashier sales at this counter · ':'')+
       'Completed bills: '+esc(report.billCount)+(report.returnCount?' · Returns: '+esc(report.returnCount):'')+'</div>'+
       '<table><thead><tr><th>Product</th><th class="num">Qty</th><th class="num">Sales (₹)</th></tr></thead>'+

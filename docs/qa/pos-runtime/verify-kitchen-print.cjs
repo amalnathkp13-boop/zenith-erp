@@ -83,24 +83,49 @@ module.exports=async function({a,foreign,base,post,rows,count,check,out}){
  check('KOT Billing startup does not render order history',await page.locator('#kb-history-rows > *').count()===0);
  await page.locator('#kb-history-open').click();
  await page.locator('#kb-history-filter').click();await page.locator('#kb-history-status').selectOption('active');
- const card=page.locator(`#kb-history-rows [data-kot-group="active"][data-kot-id="${kot.kot_id}"]`);
- await card.waitFor();
- check('active order card has both independent print actions',await card.getByRole('button',{name:'KOT Print',exact:true}).count()===1&&await card.getByRole('button',{name:'Bill Print',exact:true}).count()===1);
+ const orderRow=page.locator(`#kb-history-rows [data-kot-group="active"][data-kot-id="${kot.kot_id}"]`);
+ await orderRow.waitFor();
+ const card=page.getByRole('dialog',{name:'Reprint',exact:true});
+ const reprint=orderRow.getByRole('button',{name:'Reprint',exact:true});
+ async function choosePrint(name){await reprint.click();await card.getByRole('button',{name,exact:true}).click();}
  const printCount=()=>Number(rows('kitchen_order_ticket',`kot_id='${kot.kot_id}'`)[0].print_count);
- await stubPrint(true);const pc=printCount();await card.getByRole('button',{name:'KOT Print',exact:true}).click();await page.locator('#kb-history-error').filter({hasText:'Synthetic printer unavailable'}).waitFor();
+ await stubPrint(true);const pc=printCount();
+ await reprint.press('Enter');
+ check('the row opens one Reprint chooser with focus on Bill Print',
+  await orderRow.locator('[data-kb-history-reprint]').count()===1&&
+  await card.getByRole('button',{name:'Bill Print',exact:true}).evaluate(button=>button===document.activeElement));
+ check('Reprint shows only the three print buttons',
+  (await card.getByRole('button').allTextContents()).map(label=>label.trim()).join('|')==='Bill Print|KOT Print|Print Both'&&
+  !/payment complete|change given/i.test(await card.innerText()));
+ await page.keyboard.press('ArrowLeft');
+ check('Left wraps from Bill Print to Print Both',
+  await card.getByRole('button',{name:'Print Both',exact:true}).evaluate(button=>button===document.activeElement));
+ await page.keyboard.press('ArrowRight');await page.keyboard.press('ArrowDown');
+ check('Down reaches KOT Print',await card.getByRole('button',{name:'KOT Print',exact:true}).evaluate(button=>button===document.activeElement));
+ await page.keyboard.press('Enter');
+ check('selecting a Reprint option closes the chooser',!await card.isVisible());
+ await page.locator('#kb-history-error').filter({hasText:'Synthetic printer unavailable'}).waitFor();
  check('failed KOT print does not increment its print count',printCount()===pc);
- await stubPrint();await card.getByRole('button',{name:'KOT Print',exact:true}).click();await page.locator('#kb-history-print-status').filter({hasText:'Print request opened.'}).waitFor();
+ await stubPrint();await choosePrint('KOT Print');await page.locator('#kb-history-print-status').filter({hasText:'Print request opened.'}).waitFor();
+ await reprint.click();
  check('accepted KOT print increments only its own count once',printCount()===pc+1);
- check('KOT template contains only product names and quantities',await page.evaluate(()=>{const html=window.__printHtml.join('');const body=html.split('<body>')[1];return body.includes('<td>Disposable POS A P18</td><td class="q">1</td>')&&body.includes('<td>Disposable POS A P5</td><td class="q">1</td>')&&!body.includes('Saved kitchen note')&&!body.includes('Table:')&&!body.includes('GRAND TOTAL')}));
+ check('KOT template contains only product names and quantities',await page.evaluate(()=>{
+  const slip=new DOMParser().parseFromString(window.__printHtml.join(''),'text/html');
+  const itemRows=Array.from(slip.querySelectorAll('table tbody tr'));
+  const expectedNames=['Disposable POS A P18','Disposable POS A P5'];
+  return itemRows.length===expectedNames.length&&expectedNames.every(name=>itemRows.some(({cells})=>
+   cells.length===2&&cells[0].textContent===name&&cells[1].textContent==='1'))&&
+   ['Saved kitchen note','Table:','GRAND TOTAL'].every(text=>!slip.body.textContent.includes(text));
+ }));
  await stubPrint();const state=readState();await card.getByRole('button',{name:'Bill Print',exact:true}).click();await page.waitForFunction(()=>window.__printCalls===1);
  check('order-card Bill Print reuses saved pricing without writing a sale',sameState(readState(),state)&&printCount()===pc+1&&await page.evaluate(()=>window.__printHtml.join('').includes('328.00')));
  await post('Kitchen/KitchenDisplay','updateStatus',{kotId:kot.kot_id,statusId:'KotCancelled'});
  await page.goto(base+'/apps/zenith/pos/Kitchen/KotBilling?sessionId='+kotSessionId);
  await page.locator('#kb-history-open').click();
  await page.locator('#kb-history-filter').click();await page.locator('#kb-history-status').selectOption('completed');
- const completedPrintActions=page.locator(`#kb-history-rows [data-kot-group="completed"][data-kot-id="${kot.kot_id}"] [data-kb-history-print]`);
- await completedPrintActions.first().waitFor();
- check('completed order cards retain both print actions',await completedPrintActions.count()===2);
+ const completedReprint=page.locator(`#kb-history-rows [data-kot-group="completed"][data-kot-id="${kot.kot_id}"] [data-kb-history-reprint]`);
+ await completedReprint.waitFor();
+ check('completed order cards have one Reprint action',await completedReprint.count()===1);
  async function invoke(op,params){const response=await post('PosQaAcceptance','invoke',{op,...params});const body=await response.json();if(body.errors?.length)throw Error(JSON.stringify(body));return body.result;}
  const terminalId='POS_QA_KITCHEN_PRINT_'+Date.now();
  await post('PosTerminals','createTerminal',{terminalId,terminalName:'Synthetic kitchen print terminal',facilityId:'POS_QA_A_FAC',stateCode:'33',isActive:'Y'});

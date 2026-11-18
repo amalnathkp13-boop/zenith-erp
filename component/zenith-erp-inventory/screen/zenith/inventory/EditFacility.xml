@@ -179,7 +179,7 @@
                 <container style="zenith-card q-pa-md bg-white shadow-1 border-radius-md q-mb-lg">
                     <label text="Stock at This Location" type="h5" style="text-primary text-weight-bold q-mb-md border-bottom q-pb-sm"/>
                     <form-list name="FacilityStockList" list="stockList" skip-form="true">
-                        <field name="pseudoId"><default-field title="Item Code"><label text="${pseudoId}" type="strong" style="text-indigo-8"/></default-field></field>
+                        <field name="pseudoId"><default-field title="Item Code"><link url="../EditProduct" text="${pseudoId ?: productId}" parameter-map="[productId:productId]" link-type="anchor" style="text-indigo-8 text-weight-bold"/></default-field></field>
                         <field name="productName"><default-field title="Product"><label text="${productName}" type="span" style="text-dark"/></default-field></field>
                         <field name="hsnCode"><default-field title="HSN"><label text="${hsnCode ?: '-'}" type="span" style="zenith-badge grey"/></default-field></field>
                         

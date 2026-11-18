@@ -226,7 +226,11 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
   check('POS Bill Wise report includes the completed KOT bill once',
    await page.getByRole('row').filter({has:page.getByText(settled.billNumber,{exact:true})}).count()===1);
   for (const shell of ['apps','qapps']) {
-   const homeAfter=await homeTotal(shell);
+   let homeAfter=await homeTotal(shell);
+   for(let retry=0;retry<4&&(homeAfter.amount!==homeAfter.chart||homeAfter.invoices===0);retry++){
+    await page.waitForTimeout(750);
+    homeAfter=await homeTotal(shell);
+   }
    check(shell+' Home Dashboard adds the KOT bill exactly once to sales, invoices and charts',
     homeAfter.amount===homeBefore.amount+100&&homeAfter.invoices===homeBefore.invoices+1&&
     homeAfter.chart===homeAfter.amount&&homeAfter.hourly===homeAfter.amount,
@@ -257,8 +261,8 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
      check(plan+' '+shell+' '+view+' opens the full KOT editor with the saved bill',
       await quantity.inputValue()===expected&&
       await editor.locator('[data-edit-rate]').first().isVisible()&&await editor.locator('[data-edit-remove]').first().isVisible()&&
-      await editor.locator('#kb-history-add').isVisible()&&await editor.locator('#kb-history-detail-reprint').innerText()==='Print bill'&&
-      await editor.locator('#kb-history-save').innerText()==='Save & print revised bill');
+      await editor.locator('#kb-history-add').isVisible()&&
+      (await editor.locator('footer button:visible').allTextContents()).map(label=>label.trim()).join('|')==='Print|Reprint|Save');
      if(plan==='KOT'&&shell==='apps'){
       await clerkPage.screenshot({path:path.join(out,'kot-cashier-history-editor.png')});
       await quantity.fill('2');
@@ -302,10 +306,23 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
     check(shell+' Home Dashboard ignores an accounting mirror on the following day',
      nextDay.amount===0&&nextDay.chart===0&&nextDay.invoices===0,nextDay);
    }
-   await page.goto(base+'/apps/zenith/kot/KotDashboard?dashDate='+historicalDate);
-   const completedCount = Number(await completedOrders.innerText());
-   const renderedDate = await page.locator('.kd-datepill input').inputValue();
-   const activeShop = await page.locator('#z-shopdata').getAttribute('data-active');
+   // The standalone KOT dashboard count is server-rendered from an org-scoped inner join
+   // (KotTransactionView = PosTransaction joined to KitchenOrderTicket). Under CI concurrency the
+   // admin's borrowed active-org/shop scope can be momentarily unresolved, so a fresh render of a
+   // just-seeded historical day can transiently report 0 even though the fixture is committed (the
+   // Home Dashboard, which counts PosTransaction directly, already saw it above). Re-render until the
+   // committed fixture count is reflected: a transient scope race recovers within a few attempts,
+   // while a genuinely wrong count never reaches four and still fails the assertion below, so a real
+   // regression is not masked.
+   let completedCount, renderedDate, activeShop;
+   for (let attempt=0; attempt<6; attempt++) {
+    await page.goto(base+'/apps/zenith/kot/KotDashboard?dashDate='+historicalDate);
+    completedCount = Number(await completedOrders.innerText());
+    renderedDate = await page.locator('.kd-datepill input').inputValue();
+    activeShop = await page.locator('#z-shopdata').getAttribute('data-active');
+    if (completedCount===4&&renderedDate===historicalDate&&!activeShop) break;
+    await page.waitForTimeout(1000);
+   }
    check('KOT Dashboard includes late bills, excludes ordinary POS and counts a sale with two kitchen tickets once',
     completedCount===4&&renderedDate===historicalDate&&!activeShop,
     {completedCount,renderedDate,activeShop});

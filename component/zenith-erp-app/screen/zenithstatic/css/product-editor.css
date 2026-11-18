@@ -17,6 +17,14 @@
 .pe-create label{display:block;margin:0;min-width:0;font-size:13px;font-weight:600}
 .pe-create label b{color:#b42318}
 .pe-create :is(input:not([type=hidden]),select,textarea){box-sizing:border-box;display:block;width:100%;max-width:100%;min-height:40px;margin-top:4px;padding:7px 9px;border:1px solid #d7ddea;border-radius:6px;background:#fff;color:#20243d;font:inherit}
+.pe-create .pe-tax-field>span{font-size:13px;font-weight:600}
+.pe-create .pe-tax-picker{padding:0;border:0;margin:4px 0 0}
+.pe-create .pe-tax-picker summary{display:flex;align-items:center;justify-content:space-between;min-height:40px;margin:0;padding:10px;border:1px solid #d7ddea;border-radius:6px;background:#fff;color:#20243d;font-size:13px;font-weight:400;list-style:none}
+.pe-create .pe-tax-picker summary::after{content:'▾';color:#677395}
+.pe-create .pe-tax-options{max-height:min(16rem,40dvh);overflow-y:auto;margin-top:4px;border:1px solid #d7ddea;border-radius:6px;background:#fff}
+.pe-create .pe-tax-options label{display:flex;align-items:center;gap:8px;padding:8px 10px;font-weight:400;cursor:pointer}
+.pe-create .pe-tax-options label:hover,.pe-create .pe-tax-options label:has(input:checked){background:#f3edff}
+.pe-create .pe-tax-options input[type=radio]{width:16px;min-height:16px;margin:0;padding:0;accent-color:#7437ff;flex:none}
 .pe-create .select2-container{width:100%!important;max-width:100%}
 body:has(.modal.in #CreateProductForm,.q-dialog #CreateProductForm) #ai-copilot-container{visibility:hidden}
 #productEditor .pe-barcode-dialog{width:min(510px,calc(100vw - 2rem));max-height:calc(100dvh - 2rem);margin:auto;color:var(--z-text-main,#172554);overflow:auto}

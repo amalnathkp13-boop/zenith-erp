@@ -17,9 +17,16 @@
             <label>Barcode<input value="Generated on save" readonly/></label>
             <label>Print Name<input id="CreateProductForm_printName" name="printName" maxlength="255"/>
                 <small>Defaults to Product Name. Used on printed bills.</small></label>
-            <label>Tax Rate<select id="CreateProductForm_gstSlabId" name="gstSlabId">
-                <option value="">Not set</option><#list gstSlabs as slab><option value="${slab.gstSlabId?html}">${slab.slabName?html} (${slab.gstRate?c}%)</option></#list>
-            </select></label>
+            <div class="pe-tax-field">
+                <span id="pe-create-tax-label">Tax Rate</span>
+                <details class="pe-tax-picker" data-pe-tax-picker>
+                    <summary aria-labelledby="pe-create-tax-label pe-create-tax-value"><span id="pe-create-tax-value" data-pe-tax-value>Not set</span></summary>
+                    <div class="pe-tax-options" role="group" aria-labelledby="pe-create-tax-label">
+                        <label><input type="radio" name="gstSlabId" value="" checked/>Not set</label>
+                        <#list gstSlabs as slab><label><input type="radio" name="gstSlabId" value="${slab.gstSlabId?html}"/>${slab.slabName?html} (${slab.gstRate?c}%)</label></#list>
+                    </div>
+                </details>
+            </div>
             <label>MRP (${catalogCurrencySymbol?html})<input id="CreateProductForm_mrpAmount" name="mrpAmount" type="number" min="0" step="0.01" inputmode="decimal"/>
                 <small>Default price for all sales modes. Leave blank to set prices by mode later.</small></label>
             <label>Opening Stock<input id="CreateProductForm_openingStock" name="openingStock" type="number" min="0" step="any" inputmode="decimal"/></label>
@@ -48,4 +55,4 @@
     </details>
     <footer><p role="status" data-pe-status></p><button type="submit" id="CreateProductForm_submitButton">Create Product</button></footer>
 </form>
-<img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" hidden onload="if(!document.getElementById('productEditorCss')){var l=document.createElement('link');l.id='productEditorCss';l.rel='stylesheet';l.href='/zenithstatic/css/product-editor.css?v=3';document.head.appendChild(l)}if(!window.initProductCreation){var j=document.createElement('script');j.src='/zenithstatic/js/product-editor.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/product-editor.js').getLastModified()?c}';document.head.appendChild(j)}else{window.initProductCreation()}"/>
+<img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" hidden onload="if(!document.getElementById('productEditorCss')){var l=document.createElement('link');l.id='productEditorCss';l.rel='stylesheet';l.href='/zenithstatic/css/product-editor.css?v=4';document.head.appendChild(l)}if(!window.initProductCreation){var j=document.createElement('script');j.src='/zenithstatic/js/product-editor.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/product-editor.js').getLastModified()?c}';document.head.appendChild(j)}else{window.initProductCreation()}"/>

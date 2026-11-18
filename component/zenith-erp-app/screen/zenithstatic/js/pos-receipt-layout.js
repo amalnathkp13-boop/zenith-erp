@@ -6,10 +6,12 @@
     function render(data, isTax, edited) {
         var d=data||{},s=d.store||{},b=d.bill||{},m=d.summary||{},o=d.options||{};
         var width=s.receiptWidth==='58mm'?58:80;
-        // This printer prints with a large hardware left-offset, so the content is flush to the page's
-        // left edge (padL=0) — the printer's own offset becomes the left margin. The right pad keeps the
-        // Total column inside the ~72mm printable window. Any residual left bias is the printer, not this. See #182/#189.
-        var padL=0;
+        var weight=o.density==='light'?400:o.density==='dark'?700:600;
+        // Left print margin is PER-TEMPLATE (printers differ: some have a large rightward hardware
+        // offset so content must sit flush-left [padL=0], others clip the left edge and need a margin).
+        // Default 6mm suits most printers; a template sets 0 for a big right-offset printer. See #182/#189.
+        var padL=(s.printLeftMargin==null||s.printLeftMargin==='')?6:Number(s.printLeftMargin);
+        if(isNaN(padL)||padL<0||padL>20)padL=6;
         var padR=width===58?8:9;
         function enabled(key) { return o[key]!==false; }
         function shown(key) { return s[key]!=='N'; }
@@ -19,10 +21,12 @@
         function block(value,section,extra) { return value?'<div class="block" style="color:'+tone(section)+';'+(extra||'')+'">'+text(value)+'</div>':''; }
         function row(label,value,section,strong) { return '<tr style="color:'+tone(section)+'"><td>'+text(label)+'</td><td class="r'+(strong?' b':'')+'">'+text(value)+'</td></tr>'; }
         var h='<!DOCTYPE html><html><head><meta charset="utf-8"><title>Receipt</title><style>'
-            +'@page{size:'+width+'mm auto;margin:0}html,body{margin:0;padding:0;width:'+width+'mm;color:#000;font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:'+(o.density==='light'?400:o.density==='dark'?700:600)+'}'
+            +'@page{size:'+width+'mm auto;margin:0}html,body{margin:0;padding:0;width:'+width+'mm;color:#000;font-family:Arial,Helvetica,"Nirmala UI","Noto Sans Tamil","Noto Sans Telugu","Noto Sans Malayalam","Noto Sans Devanagari","Noto Sans",sans-serif;font-size:12px;font-weight:'+weight+'}'
             +'.rcpt{width:100%;margin:0;padding:1mm '+padR+'mm 5mm '+padL+'mm;box-sizing:border-box;overflow-wrap:anywhere}'
             +'.block{white-space:pre-line;text-align:center}.c{text-align:center}.r{text-align:right}.b{font-weight:700}.sep{border-bottom:1px dashed #000;margin:4px 0}.sep2{border-bottom:2px solid #000;margin:4px 0}'
-            +'table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{padding:3px 2px;font-size:'+(width===58?10:11)+'px;vertical-align:top;overflow-wrap:anywhere}th{border-bottom:1px solid #000}.items th:first-child,.items td:first-child{text-align:left;white-space:nowrap;overflow-wrap:normal}.items td:nth-child(3),.items th:nth-child(3){text-align:center}.tot td{font-size:'+(width===58?14:16)+'px;font-weight:700}.meta td:first-child{width:30%;text-align:left}.meta td:last-child{text-align:left}.notice{border:1px dashed #000;padding:3px;text-align:center;font-weight:700}img{display:block;margin:2px auto;max-width:90%;max-height:60px}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body><div class="rcpt" data-paper-width="'+width+'">';
+            +'table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{padding:3px 2px;font-size:'+(width===58?10:11)+'px;vertical-align:top;overflow-wrap:anywhere}th{border-bottom:1px solid #000}.items th:first-child,.items td:first-child{text-align:left;white-space:nowrap;overflow-wrap:normal}.items td:nth-child(3),.items th:nth-child(3){text-align:center}.tot td{font-size:'+(width===58?14:16)+'px;font-weight:700}.meta td:first-child{width:30%;text-align:left}.meta td:last-child{text-align:left}.notice{border:1px dashed #000;padding:3px;text-align:center;font-weight:700}img{display:block;margin:2px auto;max-width:90%;max-height:60px}'
+            +'.item-name{white-space:pre-wrap;word-spacing:.16em;line-height:1.4;overflow-wrap:break-word;word-break:normal;text-align:left}'
+            +'@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body><div class="rcpt" data-paper-width="'+width+'" data-item-font-weight="'+weight+'">';
         if(o.openingPreset&&o.openingPreset!=='none'&&o.openingMessage)h+=block(o.openingMessage,'greeting','text-align:'+align('greetingAlign')+';font-weight:'+(o.greetingBold===false?400:700)+';font-size:'+(o.greetingSize==='small'?10:o.greetingSize==='large'?18:14)+'px');
         if(s.showLogo==='Y'&&s.logoUrl&&/^(https:\/\/|\/(?!\/))/.test(s.logoUrl))h+='<img src="'+text(s.logoUrl)+'" alt="Company logo"/>';
         h+=block(s.name||'Store','company','font-size:16px;font-weight:'+(o.companyBold===false?400:700));
@@ -49,7 +53,7 @@
         if(metadata)h+='<table class="meta">'+metadata+'</table>';
         h+='<div class="sep2"></div><table class="items"><colgroup><col style="width:8%"><col style="width:36%"><col style="width:18%"><col style="width:18%"><col style="width:20%"></colgroup><thead><tr><th>#</th><th style="text-align:left">Item</th><th>Qty</th><th class="r">Rate</th><th class="r">Total</th></tr></thead><tbody>';
         (d.items||[]).forEach(function(it,i){
-            h+='<tr><td style="color:'+tone('products')+'">'+(i+1)+'</td><td style="color:'+tone('products')+'">'+text(it.name)+(it.mode&&it.mode!=='Retail'?'<small> ['+text(it.mode)+']</small>':'')+'</td>'
+            h+='<tr><td style="color:'+tone('products')+'">'+(i+1)+'</td><td class="item-name" dir="auto" style="color:'+tone('products')+'">'+text(it.name)+(it.mode&&it.mode!=='Retail'?'<small> ['+text(it.mode)+']</small>':'')+'</td>'
                 +'<td class="c" style="color:'+tone('products')+'">'+text(it.qty)+(it.uom?' '+text(it.uom):'')+'</td><td class="r" style="color:'+tone('amounts')+'">'+number(it.rate)+'</td><td class="r" style="color:'+tone('amounts')+'">'+number(it.total)+'</td></tr>';
             if(shown('showDiscount')&&Number(it.discount)>0)h+='<tr><td colspan="5" style="color:'+tone('tax')+'">Discount included: '+number(it.discount)+'</td></tr>';
             if(s.showItemTax==='Y'&&isTax&&Number(it.tax)>0)h+='<tr><td colspan="5" style="color:'+tone('tax')+'">Tax: '+number(it.tax)+'</td></tr>';
