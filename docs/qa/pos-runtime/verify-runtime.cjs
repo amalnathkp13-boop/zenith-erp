@@ -84,6 +84,7 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  if(process.env.POS_QA_FOCUS==='billing-display'){await require('./verify-billing-display.cjs')({a,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='product-removal'){await require('./verify-product-removal.cjs')({a,foreign,base,check,q,invoke,post});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='normal-layout'){await require('./verify-normal-layout.cjs')({a,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
+ if(process.env.POS_QA_FOCUS==='credit-collection-drawers'){await require('./verify-credit-collection-drawers.cjs')({a,base,check,q,invoke,post,account});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='credit-terms'){await require('./verify-credit-terms.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='confirmation'){await require('./verify-checkout-confirmation.cjs')({a,base,check,q,invoke,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='rate-sync'){await require('./verify-rate-sync.cjs')({a,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
@@ -481,7 +482,7 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  await invoke('close',{sessionId:recoverySession.sessionId,closingCash:'100'},false,recovery);
  await invoke('close',{sessionId:foreignRecoverySession.sessionId,closingCash:'100'},false,foreign);
  await recovery.c.close();
- const oldShift=await open('POS_QA_A_TERM1'),later=await cart(oldShift);await item(later);await invoke('pay',{transactionId:later.transactionId,paymentMethod:'Cash',amount:'50'});await invoke('credit',{transactionId:later.transactionId,customerName:'Synthetic late collection',customerPhone:'0000000001'});await invoke('close',{sessionId:oldShift.sessionId,closingCash:'150'});await invoke('settle',{transactionId:later.transactionId,paymentMethod:'Cash',amount:'100'},true);const newShift=await open('POS_QA_A_TERM1');await invoke('settle',{transactionId:later.transactionId,paymentMethod:'Cash',amount:'100'});const latePayment=rows('pos_payment',`transaction_id='${later.transactionId}' AND collection_session_id='${newShift.sessionId}'`)[0];const preview=await post('Terminal','ajaxCart',{action:'sessionSummary',sessionId:newShift.sessionId});const ps=await preview.json();check('late credit cash belongs to collecting drawer and preview',latePayment.collection_session_id===newShift.sessionId&&Number(ps.expectedCash)===168&&Number(ps.cashReceived)===100&&Number(ps.changeGiven)===32,{payment:latePayment,preview:ps});await invoke('close',{sessionId:newShift.sessionId,closingCash:'168'});check('old closed drawer unchanged and new drawer reconciles',Number(rows('pos_session',`session_id='${oldShift.sessionId}'`)[0].expected_cash)===150&&Number(rows('pos_session',`session_id='${newShift.sessionId}'`)[0].cash_difference)===0);
+ await require('./verify-credit-collection-drawers.cjs')({a,base,check,q,invoke,post,account});
  }
  if(process.env.POS_QA_UI_ONLY!=='true'){
  // Independent payment-row and change reconciliation, through the actual CSV transition.
