@@ -44,7 +44,7 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
   await page.locator('#posOfflineDialog .ofl-cancel').click();
   await page.evaluate(()=>window._posAjax('POS_QA_A_P5',200,'Disposable POS A P5'));
   await page.locator('#pos-pay-card').click();
-  await page.locator('#oflConfirmPayment').click();
+  await page.locator('#posPayConfOk').click();
   await page.getByRole('dialog',{name:'Sale saved on this device'}).waitFor();
   await page.locator('#posOfflineDialog .ofl-cancel').click();
   const saved = (await stored()).queue;

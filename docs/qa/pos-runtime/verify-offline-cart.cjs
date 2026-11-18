@@ -8,6 +8,7 @@ const server=http.createServer(async(req,res)=>{
  if(url.pathname==='/offline-module.js'){res.setHeader('Content-Type','application/javascript');res.end(till+'\n'+source);return;}
  if(url.pathname.endsWith('/exportPosCatalog')){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({version:2,userId:'QA_USER',organizationPartyId:'QA_ORG',terminalId:'QA_TERM',canOverride:true,state:'33',modes:[{id:'RETAIL',name:'Retail'}],products:[{productId:'P1',productName:'Water Cup',printName:'தண்ணீர் கப்',listPrice:100,taxRate:18,taxRates:[9,9],interstateRates:[18],prices:{RETAIL:{price:100,disc:0}},uom:'Nos'}]}));return;}
  if(url.pathname.endsWith('/posAssetVersion')){res.setHeader('Content-Type','application/json');res.end('{"ver":1}');return;}
+ if(url.pathname.endsWith('/restoreOfflineDraft')){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({rejected:true,error:'The matching server cart is unavailable in this fixture.'}));return;}
  if(url.pathname.endsWith('/ajaxCart')){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({success:true,transactionId:'',items:[]}));return;}
  if(url.pathname.endsWith('/syncOfflineTransactions')){let body='';for await(const chunk of req)body+=chunk;const sales=JSON.parse(body).transactions.map(JSON.parse);calls++;res.statusCode=ackMode==='error'?503:200;res.setHeader('Content-Type','application/json');res.end(JSON.stringify(ackMode==='all'?{syncedIds:sales.map(s=>s.offlineId)}:ackMode==='partial'?{syncedIds:[sales[0].offlineId]}:{syncedCount:1,failures:[{index:0,error:'The original draft changed.'}]}));return;}
  res.setHeader('Content-Type','text/html');res.end(`<!doctype html><meta charset="utf-8"><title>Disposable offline storage regression</title><div id="pos-terminal-root" class="pos-checkout-reference"><form id="cartInlineAddForm"><input name="posOrganizationPartyId" value="QA_ORG"><input name="posTerminalId" value="QA_TERM"><input name="sessionId" value="QA_SESSION"><input name="salesModeId" value="RETAIL"><input name="transactionId" value="${url.searchParams.get('tx')==='NEW'?'NEW':''}"><input name="moquiSessionToken" value="qa"><input id="pos-offline-user" value="QA_USER"></form><div class="pos-cart" id="cartScroll"><table><tbody></tbody></table></div><div class="pos-summary"></div><input id="cartInlineSearch"></div><script>window._posCurrentTax=()=> 'Y';</script><script src="/offline-module.js"></script>`);
@@ -19,13 +20,19 @@ const server=http.createServer(async(req,res)=>{
   const page=await context.newPage();await page.goto(base+'/apps/zenith/pos/Terminal');await page.waitForFunction(()=>window._posOffline?.lookup('P1'));
   await context.setOffline(true);await page.waitForFunction(()=>document.querySelector('.pos-reference-payments'));
   await page.evaluate(()=>window._posOffline.add('P1'));await page.locator('.aj-p').waitFor();await page.locator('.aj-p').fill('80');
-  await context.setOffline(false);await page.reload();await page.locator('.aj-p').waitFor();assert.equal(await page.locator('.aj-p').inputValue(),'80','draft survives reload');
+  await context.setOffline(false);await page.reload();await page.locator('.aj-p').waitFor();assert.equal(await page.locator('.aj-p').inputValue(),'80','local draft survives reload even when server restoration is rejected');
   const second=await context.newPage();await second.goto(base+'/apps/zenith/pos/Terminal');await second.waitForFunction(()=>window._posOffline?.paused());assert.match(await second.locator('body').innerText(),/another tab/);await second.close();
   await context.setOffline(true);await page.locator('.aj-qi').fill('');await page.locator('#pos-pay-cash').click();assert.equal(await page.locator('#pos-cash-received').count(),0,'invalid visible quantity blocks payment');await page.locator('.aj-qi').fill('2');
   await page.locator('#cartInlineSearch').focus();await page.keyboard.press('Space');assert.equal(await page.locator('#pos-pay-cash').evaluate(el=>el===document.activeElement),true);
   await page.keyboard.press('Enter');await page.locator('.pos-cash-quick[data-amt="189"]').click();await page.locator('#pos-cash-received').press('Enter');await page.locator('#oflPrintReceipt').waitFor();
   assert.equal((await page.evaluate(()=>window._posOffline.getQueue())).length,1,'confirmed sale is durable');assert.equal(await page.locator('.aj-p').count(),0,'queued sale clears draft');await page.locator('.ofl-cancel').click();
-  await page.evaluate(()=>window._posOffline.add('P1'));await page.locator('#pos-pay-upi').click();await page.locator('#oflConfirmPayment').click();await page.locator('#oflPrintReceipt').waitFor();await page.locator('.ofl-cancel').click();assert.equal((await page.evaluate(()=>window._posOffline.getQueue())).length,2);
+  await page.evaluate(()=>window._posOffline.add('P1'));await page.locator('#pos-pay-upi').click();
+  assert.match(await page.getByRole('dialog',{name:'UPI Payment'}).innerText(),/cannot verify the payment provider while offline/);
+  await page.locator('#posPayConfCancel').click();assert.equal((await page.evaluate(()=>window._posOffline.getQueue())).length,1);
+  await page.locator('#pos-pay-upi').click();await page.locator('#posPayConfOk').click();
+  await page.getByRole('dialog',{name:'Save UPI bill'}).getByRole('button',{name:'Save',exact:true}).click();
+  await page.waitForFunction(async()=>((await window._posOffline.getQueue()).length===2)&&!document.getElementById('posOfflineDialog'));
+  assert.equal(await page.locator('#pos-offline-frame').count(),0,'Save queues UPI without printing');
   await context.setOffline(false);await page.waitForFunction(async()=>{const q=await window._posOffline.getQueue();return q.length&&window._posOffline.reviewReason(q[0].offlineId)});assert.equal((await page.evaluate(()=>window._posOffline.getQueue())).length,2,'missing acknowledgement never removes sales');
   await page.reload();await page.waitForFunction(async()=>{const q=await window._posOffline.getQueue();return q.length&&window._posOffline.reviewReason(q[0].offlineId)});
   assert.equal(await page.locator('#pos-offline-banner').count(),0,'pending status is kept in History instead of the billing row');
@@ -48,10 +55,13 @@ const server=http.createServer(async(req,res)=>{
   assert.equal(await fresh.locator('.aj-p').count(),0,'a fresh bill starts empty despite an older cached snapshot');
   await fresh.evaluate(()=>window._posOffline.add('P1'));assert.equal(await fresh.locator('.aj-p').count(),1);
   assert.doesNotMatch(await fresh.locator('body').innerText(),/PREVIOUS BILL ITEM/);
-  await context.setOffline(false);await staleSnapshot(fresh,'NEW');await fresh.close();
+  await context.setOffline(false);
+  await fresh.waitForFunction(()=>window._posOffline?.connectionState()==='Review cart');
+  await staleSnapshot(fresh,'NEW');await fresh.close();
   const matching=await context.newPage();await matching.route('**/exportPosCatalog',route=>route.abort());
   const matchingBoot=matching.waitForRequest('**/exportPosCatalog');await matching.goto(base+'/apps/zenith/pos/Terminal?tx=NEW');await matchingBoot;
-  await context.setOffline(true);await matching.locator('.aj-p').waitFor();
+  await context.setOffline(true);
+  await matching.waitForFunction(()=>document.querySelector('.aj-p')?.value==='99');
   assert.equal(await matching.evaluate(()=>window._posOffline.paused()),false,'the current bill remains editable using its matching snapshot');
   assert.equal(await matching.locator('.aj-p').inputValue(),'99');assert.match(await matching.locator('body').innerText(),/CURRENT BILL ITEM/);
   console.log('PASS offline draft reload, single-tab ownership, invalid input, keyboard cash, durable checkout, acknowledgements, retry and current/previous-bill snapshot isolation.');

@@ -83,6 +83,21 @@
                     state:terminal.stateCode ?: terminal.regionGeoId ?: ec.entity.find('zenith.erp.india.IndiaGstConfig').condition('organizationPartyId',org).limit(1).one()?.stateCode,
                     store:[name:template?.companyName ?: terminal.terminalName,taxReg:template?.taxRegistrationNumber ?: terminal.taxRegistrationNumber ?: '',
                         address:template ? [template.addressLine1,template.addressLine2,template.city,template.state,template.pincode].findAll { it }.join(', ') : '',phone:template?.phone ?: '']]
+                if (!kotWorkspace) {
+                    workspace.creditTimeZone=ec.user.timeZone.ID
+                    workspace.canOverrideCreditTerms=ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN')
+                    workspace.store += [email:template?.email ?: '',receiptWidth:template?.receiptWidth ?: '80mm',printLeftMargin:template?.printLeftMargin,
+                        showLogo:template?.showLogo ?: 'N',logoUrl:template?.logoUrl ?: '',showTaxBreakdown:template?.showTaxBreakdown ?: 'Y',
+                        showDiscount:template?.showDiscount ?: 'Y',showCustomerInfo:template?.showCustomerInfo ?: 'Y',
+                        showPaymentDetails:template?.showPaymentDetails ?: 'N',showItemTax:template?.showItemTax ?: 'N',
+                        headerText:template?.headerText ?: '',footerText:template?.footerText ?: '',termsText:template?.termsText ?: '']
+                    workspace.creditReceiptText=[headerText:template?.creditHeaderText ?: workspace.store.headerText,
+                        footerText:template?.creditFooterText ?: workspace.store.footerText,termsText:template?.creditTermsText ?: workspace.store.termsText]
+                    workspace.receiptOptions=['normal','credit'].collectEntries { design ->
+                        [(design):ec.service.sync().name('zenith.pos.ReceiptTemplateServices.resolve#ReceiptOptions')
+                            .parameters([storedJson:template?.receiptOptionsJson,receiptDesign:design]).call().options]
+                    }
+                }
             ]]></script>
         </actions>
     </service>
@@ -128,19 +143,23 @@
             <parameter name="terminalId" required="true"/>
             <parameter name="sale" type="Map" required="true"/>
             <parameter name="holdOnly" type="Boolean" default="false"/>
+            <parameter name="draftOnly" type="Boolean" default="false"/>
         </in-parameters>
-        <out-parameters><parameter name="offlineId"/></out-parameters>
+        <out-parameters><parameter name="offlineId"/><parameter name="restoredTransactionId"/><parameter name="restoreConflict" type="Boolean"/></out-parameters>
         <actions>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[terminalId:terminalId,sessionId:sale.sessionId,customerPartyId:sale.customer?.partyId]" out-map="access"/>
             <if condition="!access.allowed"><return/></if>
             <script><![CDATA[
                 def org=access.organizationPartyId
                 def fail={ String message -> throw new IllegalArgumentException(message) }
-                if (sale.version!=2 || !sale.offlineId || sale.offlineId.toString().size()>120 || sale.terminalId!=terminalId || sale.organizationPartyId!=org || sale.userId!=ec.user.userId || !(sale.items instanceof List) || !sale.items || sale.items.size()>1000 || !(sale.taxOn in ['Y','N'])) fail('Invalid offline sale identity or items.')
+                if (sale.version!=2 || !sale.offlineId || sale.offlineId.toString().size()>120 || sale.terminalId!=terminalId || sale.organizationPartyId!=org || sale.userId!=ec.user.userId || !(sale.items instanceof List) ||
+                    (!sale.items && !(draftOnly && sale.sourceTransactionId)) || sale.items.size()>1000 || !(sale.taxOn in ['Y','N'])) fail('Invalid offline sale identity or items.')
                 def issued=java.sql.Timestamp.from(java.time.Instant.parse(sale.ts as String))
                 if (issued.time>ec.user.nowTimestamp.time+300000L) fail('The terminal clock is ahead. Keep this sale for review.')
                 ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',terminalId).forUpdate(true).one()
-                def key=java.util.UUID.nameUUIDFromBytes((org+'\u0000'+(holdOnly ? 'held\u0000' : '')+sale.offlineId).getBytes('UTF-8')).toString()
+                def keyScope=draftOnly ? [org,'draft',terminalId,sale.sessionId,ec.user.userId].join('\u0000')+'\u0000' : org+'\u0000'+(holdOnly ? 'held\u0000' : '')
+                def key=java.util.UUID.nameUUIDFromBytes((keyScope+sale.offlineId).getBytes('UTF-8')).toString()
+                def draftHash=draftOnly ? java.security.MessageDigest.getInstance('SHA-256').digest(groovy.json.JsonOutput.toJson(sale).getBytes('UTF-8')).encodeHex().toString() : null
                 if (holdOnly) {
                     def held=ec.entity.find('zenith.erp.pos.PosHeldTransaction').condition('heldId',key).one()
                     if (held) {
@@ -149,10 +168,20 @@
                     }
                 }
                 def prior=ec.entity.find('zenith.erp.pos.PosOfflineTransaction').condition('offlineTransactionId',key).one()
+                if (draftOnly && prior) {
+                    def receipt=new groovy.json.JsonSlurper().parseText(prior.transactionDataJson ?: '{}')
+                    def restored=ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',prior.createdTransactionId).forUpdate(true).one()
+                    if (prior.statusId!='OtDraftRestored' || prior.terminalId!=terminalId || receipt.hash!=draftHash ||
+                        !restored || restored.sessionId!=sale.sessionId || restored.organizationPartyId!=org || restored.statusId!='PtCreated') { restoreConflict=true; return }
+                    def revision=ec.service.sync().name('zenith.pos.PosOfflineServices.get#DraftRevision').parameter('transactionId',restored.transactionId).call().revision
+                    if (receipt.revision!=revision) { restoreConflict=true; return }
+                    offlineId=sale.offlineId; restoredTransactionId=restored.transactionId; return
+                }
                 if (prior?.statusId=='OtSynced') { offlineId=sale.offlineId; return }
-                def recovery=ec.service.sync().name('zenith.pos.PosOfflineServices.prepare#OfflineSession').parameters([terminalId:terminalId,sessionId:sale.sessionId]).call()
+                def recovery=draftOnly ? [closedSession:false] : ec.service.sync().name('zenith.pos.PosOfflineServices.prepare#OfflineSession').parameters([terminalId:terminalId,sessionId:sale.sessionId]).call()
                 if (ec.message.hasError()) return
-                def session=ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',sale.sessionId).one()
+                def session=ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',sale.sessionId).forUpdate(draftOnly).one()
+                if (draftOnly && (!session || session.statusId!='PsOpen' || session.terminalId!=terminalId || session.organizationPartyId!=org)) fail('The original counter session is closed. The draft is still saved on this device.')
                 def transactionId
                 if (sale.sourceTransactionId) {
                     def source=ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',sale.sourceTransactionId).forUpdate(true).one()
@@ -176,22 +205,27 @@
                         fail('The original draft is unavailable. Keep this offline sale for review.')
                     }
                 }
-                if (!transactionId) transactionId=ec.service.sync().name('zenith.pos.PosServices.create#PosTransaction').parameters([sessionId:session.sessionId,reuseOpenCart:false]).call().transactionId
+                if (!transactionId) {
+                    if (draftOnly && ec.entity.find('zenith.erp.pos.PosTransaction').condition('sessionId',session.sessionId).condition('statusId','PtCreated').count())
+                        fail('There is already an open server cart. The device draft is still saved for review.')
+                    transactionId=ec.service.sync().name('zenith.pos.PosServices.create#PosTransaction').parameters([sessionId:session.sessionId,reuseOpenCart:false]).call().transactionId
+                }
                 if (ec.message.hasError()) return
                 if (!transactionId) fail('The saved bill could not be created. It remains on the device for retry.')
                 def txn=ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',transactionId).one()
                 def registration=sale.customer?.partyId ? ec.service.sync().name('zenith.tax.TaxServices.get#PartyTaxRegistration').parameter('partyId',sale.customer.partyId).call() : null
                 def canonical=sale.customer?.partyId ? ec.entity.find('mantle.party.PartyDetailAndRole').condition('partyId',sale.customer.partyId).limit(1).list() : []
                 def customerName=canonical ? (canonical[0].organizationName ?: [canonical[0].firstName,canonical[0].lastName].findAll { it }.join(' ')) : sale.customer?.name
-                txn.setAll([entryDate:issued,customerPartyId:sale.customer?.partyId,customerName:customerName,customerPhone:sale.customer?.phone,salesModeId:sale.mode ?: null,
+                txn.setAll([customerPartyId:sale.customer?.partyId,customerName:customerName,customerPhone:sale.customer?.phone,salesModeId:sale.mode ?: null,
                     customerTaxRegNumber:registration?.registrationNumber,destinationRegionGeoId:registration?.regionGeoId ?: txn.originRegionGeoId])
+                if (!draftOnly) txn.set('entryDate',issued)
                 txn.update()
                 def priceAccess=ec.service.sync().name('zenith.pos.PosPriceServices.get#PriceOverrideAccess').call()
                 def discountSetting=ec.entity.find('moqui.security.UserPreference').condition('userId',org).condition('preferenceKey','POS_DISC_LIMIT').one()?.preferenceValue
                 def discountLimit=discountSetting?.trim() ? new BigDecimal(discountSetting) : null
                 sale.items.each { item ->
                     if (!(item instanceof Map) || item.qty==null || item.price==null || (item.qty as BigDecimal)<=0 ||
-                        (holdOnly ? (item.price as BigDecimal)<0 : (item.price as BigDecimal)<=0)) fail('Positive prices and quantities are required offline; free items need online manager approval.')
+                        ((holdOnly || draftOnly) ? (item.price as BigDecimal)<0 : (item.price as BigDecimal)<=0)) fail('Positive prices and quantities are required offline; free items need online manager approval.')
                     ec.service.sync().name('zenith.pos.PosModeServices.assert#TerminalMode').parameters([terminalId:terminalId,salesModeId:item.mode]).call()
                     def resolved=ec.service.sync().name('zenith.pos.PosServices.resolve#PosModePrice').parameters([productId:item.productId,salesModeId:item.mode]).call()
                     if (!priceAccess.canOverride && (resolved.blocked || (resolved.unitPrice as BigDecimal).compareTo(item.price as BigDecimal)!=0)) fail('POS write permission is required for this offline price override.')
@@ -211,6 +245,14 @@
                 ec.service.sync().name('zenith.pos.PosServices.refresh#PosTransactionTax').parameters([transactionId:transactionId,taxOn:sale.taxOn]).call()
                 txn=ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',transactionId).one()
                 if (sale.total==null || (sale.total as BigDecimal).compareTo(txn.payableAmount as BigDecimal)!=0 || sale.taxAmount==null || (sale.taxAmount as BigDecimal).compareTo(txn.totalTaxAmount as BigDecimal)!=0) fail('Offline tax or total differs from current rules. Sale retained for review, without changing its collected amount.')
+                if (draftOnly) {
+                    def revision=ec.service.sync().name('zenith.pos.PosOfflineServices.get#DraftRevision').parameter('transactionId',transactionId).call().revision
+                    ec.service.sync().name('create#zenith.erp.pos.PosOfflineTransaction').parameters([offlineTransactionId:key,terminalId:terminalId,
+                        offlineTimestamp:issued,syncedTimestamp:ec.user.nowTimestamp,statusId:'OtDraftRestored',createdTransactionId:transactionId,
+                        transactionDataJson:groovy.json.JsonOutput.toJson([hash:draftHash,revision:revision])]).call()
+                    if (!ec.message.hasError()) { offlineId=sale.offlineId; restoredTransactionId=transactionId }
+                    return
+                }
                 if (holdOnly) {
                     def held=ec.service.sync().name('zenith.pos.PosServices.hold#Transaction')
                         .parameters([transactionId:transactionId,heldId:key]).call()
@@ -223,10 +265,22 @@
                 }
                 if (sale.paymentMethod=='Credit') {
                     if (!sale.customer?.name || !sale.customer?.phone) fail('Credit requires a customer name and phone.')
-                    ec.service.sync().name('zenith.pos.PosServices.complete#PosTransactionCredit').parameters([transactionId:transactionId,customerPartyId:sale.customer.partyId,customerName:sale.customer.name,customerPhone:sale.customer.phone,creditDays:sale.customer.creditDays]).call()
+                    def payments=sale.payments == null ? [] : sale.payments
+                    if (!(payments instanceof List) || payments.size()>1 || ((sale.change ?: 0) as BigDecimal)!=0) fail('Enter a valid upfront credit payment.')
+                    def upfront=payments ? payments[0] : null
+                    if (payments && (!(upfront instanceof Map) || upfront.amount==null || (upfront.amount as BigDecimal)<=0 ||
+                        (upfront.amount as BigDecimal).scale()>2 || !(upfront.method in ['Cash','Card','UPI']))) fail('Enter a valid upfront credit payment.')
+                    ec.service.sync().name('zenith.pos.PosServices.complete#PosTransactionCredit').parameters([
+                        transactionId:transactionId,customerPartyId:sale.customer.partyId,customerName:sale.customer.name,
+                        customerPhone:sale.customer.phone,creditDays:sale.customer.creditDays,termsReason:sale.customer.termsReason,
+                        upfrontAmount:upfront?.amount,upfrontMethod:upfront?.method,attachMissingCustomerPhone:true]).call()
                     if (!ec.message.hasError()) {
                         def credit=ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',transactionId).one()
                         if (credit.creditDays!=null) {credit.creditDueDate=java.sql.Date.valueOf(issued.toInstant().atZone(ec.user.timeZone.toZoneId()).toLocalDate().plusDays(credit.creditDays as long));credit.update()}
+                        if (upfront) ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId',transactionId).list().each { payment ->
+                            ec.service.sync().name('update#zenith.erp.pos.PosPayment').parameters([paymentId:payment.paymentId,
+                                paymentDate:issued,referenceNumber:'OFFLINE:'+sale.offlineId]).call()
+                        }
                     }
                 } else {
                     if (!(sale.payments instanceof List) || !sale.payments || sale.payments.size()>3) fail('Enter a valid payment breakdown.')
@@ -239,7 +293,8 @@
                     if (change<0 || (paid-change).compareTo(txn.payableAmount as BigDecimal)!=0 ||
                         (change>0 && (sale.paymentMethod!='Cash' || sale.payments.size()!=1 || sale.payments[0].method!='Cash'))) fail('Payment breakdown or change does not match the sale.')
                     sale.payments.each { payment ->
-                        def received=ec.service.sync().name('zenith.pos.PosServices.process#PosPayment').parameters([transactionId:transactionId,paymentMethod:payment.method,amount:payment.amount,referenceNumber:'OFFLINE:'+sale.offlineId]).call()
+                        def reference=(payment.reference ?: '').toString().trim().take(80)
+                        def received=ec.service.sync().name('zenith.pos.PosServices.process#PosPayment').parameters([transactionId:transactionId,paymentMethod:payment.method,amount:payment.amount,referenceNumber:'OFFLINE:'+sale.offlineId+(reference ? ':'+reference : '')]).call()
                         if (!ec.message.hasError() && received?.paymentId) ec.service.sync().name('update#zenith.erp.pos.PosPayment').parameters([paymentId:received.paymentId,paymentDate:issued]).call()
                     }
                     if (ec.message.hasError()) return

@@ -1016,6 +1016,7 @@
             <moqui.basic.StatusItem statusId="OtSyncing" statusTypeId="OfflineTransaction" description="Syncing" sequenceNum="2"/>
             <moqui.basic.StatusItem statusId="OtSynced" statusTypeId="OfflineTransaction" description="Synced" sequenceNum="3"/>
             <moqui.basic.StatusItem statusId="OtFailed" statusTypeId="OfflineTransaction" description="Sync Failed" sequenceNum="4"/>
+            <moqui.basic.StatusItem statusId="OtDraftRestored" statusTypeId="OfflineTransaction" description="Draft Restored" sequenceNum="5"/>
             <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="OtPending" toStatusId="OtSyncing" transitionName="Start Sync"/>
             <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="OtSyncing" toStatusId="OtSynced" transitionName="Synced"/>
             <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="OtSyncing" toStatusId="OtFailed" transitionName="Failed"/>

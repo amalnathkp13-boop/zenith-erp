@@ -26,15 +26,24 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
   await context.route('**/Terminal/syncOfflineHeldBills',route => route.abort('internetdisconnected'));
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
-  const state = () => page.evaluate(() => new Promise((resolve,reject) => {
+  const readState = waitForDraft => new Promise((resolve,reject) => {
    const request = indexedDB.open('ZenithPosOffline-POS_QA_A');
    request.onerror = () => reject(request.error);
    request.onsuccess = () => {
     const read = request.result.transaction('state').objectStore('state').getAll();
-    read.onsuccess = () => { request.result.close(); resolve(read.result); };
+    read.onsuccess = () => {
+     request.result.close();
+     resolve(waitForDraft ? read.result.some(row => row.key.startsWith('draft:') && row.value?.items) : read.result);
+    };
     read.onerror = () => reject(read.error);
    };
-  }));
+  });
+  const state = () => page.evaluate(readState);
+  const goOffline = async () => {
+   await context.setOffline(true);
+   await page.locator('#pos-connection-status').filter({hasText:/^Offline$/}).waitFor();
+   await page.waitForFunction(readState,true);
+  };
   const held = async () => (await state()).find(row => row.key.startsWith('holds:'))?.value || [];
   const visible = () => page.locator('.pos-cart tbody tr:has(.aj-qi)').evaluateAll(rows => rows.map(row => ({
    name:row.children[1].querySelector('div').textContent,qty:Number(row.querySelector('.aj-qi').value),price:Number(row.querySelector('.aj-p').value)
@@ -46,8 +55,7 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
    await page.locator('.nb-modes__btn').click();
    await page.locator('[data-pos-layout="' + layout + '"]').click();
    await page.evaluate(() => window._posRefreshCart());
-   await context.setOffline(true);
-   await page.locator('#pos-offline-banner').waitFor();
+   await goOffline();
    await context.setOffline(false);
    await page.waitForFunction(() => !window._posOffline.active());
    await page.locator('#pos-held-wrap > button.is-empty').waitFor();
@@ -59,8 +67,7 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
    await page.locator('#pos-held-wrap summary').click();
    await page.locator('#pos-held-wrap form[action$="/recallSale"] button').click();
    await page.waitForFunction(() => document.querySelectorAll('.aj-qi').length === 5);
-   await context.setOffline(true);
-   await page.locator('#pos-offline-banner').waitFor();
+   await goOffline();
    await page.evaluate(ids => ids.forEach(id => window._posOffline.add(id)),products.slice(5));
    await page.locator('.aj-qi').last().waitFor();
    await page.locator('.aj-qi').first().fill('3');
@@ -68,12 +75,10 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
    const expected = await visible();
    check(layout + ' offline cart contains five server lines plus fifteen new lines before Hold',expected.length === 20);
    // Enter/form submission and the Hold button must use the same full device snapshot.
-   await context.setOffline(false);
    await page.locator('#pos-hold').evaluate(button => button.form.requestSubmit());
    await page.waitForFunction(() => !document.querySelector('.aj-qi'));
    const firstHeld = (await held())[0];
-   check(layout + ' Hold after reconnection saves all twenty lines in device storage',firstHeld.items.length === 20);
-   await context.setOffline(true);
+   check(layout + ' offline Hold form saves all twenty lines in device storage',firstHeld.items.length === 20);
    await page.evaluate(id => window._posOffline.add(id),products[0]);
    await page.locator('.aj-qi').fill('2');
    await page.locator('#pos-held-wrap summary').click();
@@ -168,10 +173,10 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
     assert.deepEqual(q("SELECT product_id,quantity,unit_price FROM pos_transaction_item WHERE transaction_id='" + source.transactionId + "' ORDER BY item_seq_id"),original);
     check('a failed held-bill import leaves all twenty existing server lines intact',true);
    }
-   await context.setOffline(true);
-   await page.locator('#pos-offline-banner').waitFor();
+   await goOffline();
    await page.locator('.aj-qi').first().fill('4');
    await context.setOffline(false);
+   await page.waitForFunction(() => !window._posOffline.active());
    const serverSmallBill = page.locator('#pos-held-wrap form[action$="/recallSale"] button').filter({hasText:'1 item'});
    await page.locator('#pos-held-wrap summary').click();
    await serverSmallBill.click();

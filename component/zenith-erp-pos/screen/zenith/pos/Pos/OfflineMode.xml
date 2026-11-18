@@ -21,7 +21,7 @@
     <transition name="syncOfflineTransaction">
         <actions>
             <entity-find-one entity-name="zenith.erp.pos.PosOfflineTransaction" value-field="offlineTxn"/>
-            <if condition="offlineTxn">
+            <if condition="offlineTxn?.statusId == 'OtPending'">
                 <set field="offlineTxn.statusId" value="OtSynced"/>
                 <set field="offlineTxn.syncedTimestamp" from="ec.user.nowTimestamp"/>
                 <entity-update value-field="offlineTxn"/>
@@ -33,7 +33,7 @@
     <transition name="retrySync">
         <actions>
             <entity-find-one entity-name="zenith.erp.pos.PosOfflineTransaction" value-field="offlineTxn"/>
-            <if condition="offlineTxn">
+            <if condition="offlineTxn?.statusId == 'OtFailed'">
                 <set field="offlineTxn.statusId" value="OtPending"/>
                 <set field="offlineTxn.syncAttempts" from="(offlineTxn.syncAttempts ?: 0) + 1"/>
                 <entity-update value-field="offlineTxn"/>
