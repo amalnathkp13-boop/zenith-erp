@@ -78,19 +78,6 @@
                 + '<button type="button" id="posPaySavePrint" style="flex:1;padding:14px;border:0;background:' + accent + ';color:#fff;border-radius:10px;font-weight:800">Save and print</button></div>';
     }
 
-    function receiptPrintMarkup(title, message, offline = false) {
-        const button = (id, label, primary) => '<button type="button" ' + id
-            + ' style="padding:10px 14px;border:1px solid #7C3AED;border-radius:8px;background:' + (primary ? '#7C3AED;color:#fff' : '#fff;color:#5b21b6')
-            + ';font-size:14px;font-weight:700;cursor:pointer">' + label + '</button>';
-        return '<div style="background:#fff;color:#111;padding:24px;border-radius:12px;max-width:440px;max-height:85vh;overflow:auto;overflow-wrap:anywhere">'
-            + '<h2 style="margin:0 0 12px;font-size:20px">' + esc(title) + '</h2>'
-            + '<p class="pos-print-status" role="status" style="margin:0 0 18px;white-space:pre-line">' + esc(message) + '</p>'
-            + '<div style="display:flex;flex-wrap:wrap;gap:10px">'
-            + (offline ? button('id="oflPrintReceipt"', 'Print receipt', true) : button('class="pos-print-retry"', 'Retry QZ', true)
-                + button('class="pos-print-browser"', 'Print using browser', false))
-            + button('class="pos-print-cancel ofl-cancel"', 'Close', false) + '</div></div>';
-    }
-
     function splitMarkup(total, formOpen = '', formClose = '') {
         const methods = [
             ['Cash', 'cash', '&#128176;'], ['UPI', 'upi', '&#128241;'], ['Card', 'card', '&#128179;']
@@ -297,6 +284,5 @@
         dialog.showModal();
     }
 
-    window.PosTillDialogs = {cashMarkup, updateCash, digitalMarkup, upiReceiptMarkup, receiptPrintMarkup,
-        splitMarkup, updateSplit, bindSplit, creditMarkup, openClose, showHandoff};
+    window.PosTillDialogs = {cashMarkup, updateCash, digitalMarkup, upiReceiptMarkup, splitMarkup, updateSplit, bindSplit, creditMarkup, openClose, showHandoff};
 })();

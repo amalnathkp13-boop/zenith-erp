@@ -87,6 +87,7 @@
                     workspace.creditTimeZone=ec.user.timeZone.ID
                     workspace.canOverrideCreditTerms=ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN')
                     workspace.store += [email:template?.email ?: '',receiptWidth:template?.receiptWidth ?: '80mm',printLeftMargin:template?.printLeftMargin,
+                        printTopMargin:template?.printTopMargin,
                         showLogo:template?.showLogo ?: 'N',logoUrl:template?.logoUrl ?: '',showTaxBreakdown:template?.showTaxBreakdown ?: 'Y',
                         showDiscount:template?.showDiscount ?: 'Y',showCustomerInfo:template?.showCustomerInfo ?: 'Y',
                         showPaymentDetails:template?.showPaymentDetails ?: 'N',showItemTax:template?.showItemTax ?: 'N',

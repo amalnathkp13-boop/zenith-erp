@@ -212,6 +212,19 @@ window._posSetCustomerChip = function(name, phone) {
     }, true);
 })();
 
+function posReceiptPrintMarkup(title, message, offline = false) {
+    const button = (id, label, primary) => '<button type="button" ' + id
+        + ' style="padding:10px 14px;border:1px solid #7C3AED;border-radius:8px;background:' + (primary ? '#7C3AED;color:#fff' : '#fff;color:#5b21b6')
+        + ';font-size:14px;font-weight:700;cursor:pointer">' + label + '</button>';
+    return '<div style="background:#fff;color:#111;padding:24px;border-radius:12px;max-width:440px;max-height:85vh;overflow:auto;overflow-wrap:anywhere">'
+        + '<h2 style="margin:0 0 12px;font-size:20px">' + window._posReceiptTextData(title) + '</h2>'
+        + '<p class="pos-print-status" role="status" style="margin:0 0 18px;white-space:pre-line">' + window._posReceiptTextData(message) + '</p>'
+        + '<div style="display:flex;flex-wrap:wrap;gap:10px">'
+        + (offline ? button('id="oflPrintReceipt"', 'Print receipt', true) : button('class="pos-print-retry"', 'Retry QZ', true)
+            + button('class="pos-print-browser"', 'Print using browser', false))
+        + button('class="pos-print-cancel ofl-cancel"', 'Close', false) + '</div></div>';
+}
+
 /* === POS offline workspace: cached catalog, editable cart and durable checkout queue. === */
 window._posOffline = (function () {
     var afScope = document.getElementById('cartInlineAddForm');
@@ -1684,7 +1697,7 @@ window._posOffline = (function () {
         var title = 'Sale saved on this device';
         var message = '₹' + f2(sale.total) + ' · ' + sale.paymentMethod + '\nReference: ' + sale.offlineId
             + '\nBill queued to sync.' + (sale.change ? ' Change given: ₹' + f2(sale.change) + '.' : '');
-        var ov = modal(title, window.PosTillDialogs.receiptPrintMarkup(title, message, true), 440);
+        var ov = modal(title, posReceiptPrintMarkup(title, message, true), 440);
         ov.querySelector('#oflPrintReceipt').onclick = function () {
             printReceipt(sale);
         };
@@ -4665,7 +4678,7 @@ window.posToggleFullscreen = function() {
             panel.setAttribute('role', 'dialog');
             panel.setAttribute('aria-label', 'Receipt printing');
             panel.style.cssText = 'position:fixed;inset:0;z-index:999999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box';
-            panel.innerHTML = PosTillDialogs.receiptPrintMarkup('Receipt printing',
+            panel.innerHTML = posReceiptPrintMarkup('Receipt printing',
                 'QZ Tray did not confirm printing. Check the printer before retrying. Browser printing may exit fullscreen.');
             document.body.appendChild(panel);
             if (qzErr) { try { panel.querySelector('.pos-print-status').textContent = 'QZ Tray did not print. Reason: ' + qzErr + '. Retry, or print via browser.'; } catch(e) {} }
