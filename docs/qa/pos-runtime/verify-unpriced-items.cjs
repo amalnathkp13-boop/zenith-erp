@@ -114,7 +114,7 @@ module.exports = async function ({a, base, check, q, invoke, post}) {
   window._posOffline?.lookup(id), productId);
  try {
   await a.c.setOffline(true);
-  await pos.locator('#pos-offline-banner').waitFor();
+  await pos.waitForFunction(() => window._posOffline?.active() && !window._posOffline.paused());
   check('POS starts the offline test with an empty editable cart',
    await pos.locator('.aj-p').count() === 0 && !await pos.evaluate(() => window._posOffline.paused()));
   await search.fill(name);
