@@ -200,6 +200,8 @@
                 }
             }
             readyGrnCount = incomingGrns.size()
+            canReviewGrn = !preparingGrns.isEmpty() && navShow?.purchase &&
+                    ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess').parameter('moduleId', 'purchase').call().canWrite
             incomingGrns.addAll(preparingGrns)
         ]]></script>
     </actions>
@@ -267,7 +269,16 @@
                     <field name="locationName"><default-field title="Receiving location"><label text="${grnLocation?.facilityName ?: facilityId ?: 'Unassigned'}"/></default-field></field>
                     <field name="incomingQuantity"><default-field title="Qty due"><label text="${readyForReceipt ? ec.l10n.format(incomingQuantity, '#,##0.######') : '—'}" type="strong" style="receiving-reference"/></default-field></field>
                     <field name="deliveryStatus"><default-field title="Status"><label text="${[GrnPending:'Awaiting receipt',GrnPartial:'Partially received',GrnDraft:'Draft'][statusId] ?: 'Needs review'}" type="span" style="receiving-status ${readyForReceipt ? (statusId == 'GrnPartial' ? 'partial' : 'approved') : 'open'}"/></default-field></field>
-                    <field name="receiveGrn"><conditional-field condition="!readyForReceipt" title="Action"><label text="Awaiting Purchase submission"/></conditional-field><default-field title="Action"><link url="../ReceiveInventory" link-type="anchor" parameter-map="[orderId:purchaseOrderId,grnId:grnId]" text="Receive delivery" condition="invCanWrite" style="receiving-receive-link"/></default-field></field>
+                    <field name="receiveGrn">
+                        <conditional-field condition="!readyForReceipt" title="Action">
+                            <link url="../../Purchase/GoodsReceiptDetail" link-type="anchor" parameter-map="[grnId:grnId]" text="Review GRN" condition="canReviewGrn" style="receiving-receive-link"/>
+                            <label text="Awaiting Purchase submission" condition="!canReviewGrn"/>
+                        </conditional-field>
+                        <default-field title="Action">
+                            <link url="../ReceiveInventory" link-type="anchor" parameter-map="[orderId:purchaseOrderId,grnId:grnId]" text="Review delivery" condition="invCanWrite" style="receiving-receive-link"/>
+                            <label text="View only" condition="!invCanWrite"/>
+                        </default-field>
+                    </field>
                 </form-list>
             </container>
             </widgets></section>

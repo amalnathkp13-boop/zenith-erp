@@ -23,7 +23,7 @@
             <!-- ZE-INV-IV-06A: block shipping another tenant's transfer (would move their stock) -->
             <service-call name="zenith.inventory.InventoryServices.assert#StockTransferAccess" in-map="[stockTransferId:stockTransferId]" out-map="_acc"/>
             <if condition="!_acc.allowed"><return error="true" message="You do not have access to this stock transfer."/></if>
-            <service-call name="zenith.inventory.InventoryServices.ship#StockTransfer" in-map="[stockTransferId:stockTransferId]"/>
+            <service-call name="zenith.inventory.InventoryServices.ship#StockTransfer" in-map="[stockTransferId:stockTransferId, ewayBillNumber:ewayBillNumber, vehicleNumber:vehicleNumber, transporterGstin:transporterGstin]"/>
         </actions>
         <default-response url="."><parameter name="stockTransferId"/></default-response>
     </transition>
@@ -128,6 +128,9 @@
             }
         ]]></script>
         <set field="isDraft" from="stx?.statusId == 'StxDraft'"/>
+        <if condition="isDraft">
+            <service-call name="zenith.inventory.InventoryServices.calculate#StockTransferDispatch" in-map="[items:itemList, fromGstin:fromFac?.facilityGstin, toGstin:toFac?.facilityGstin]" out-map="dispatch"/>
+        </if>
         <set field="isTransit" from="stx?.statusId == 'StxInTransit'"/>
         <set field="isReceived" from="stx?.statusId == 'StxReceived'"/>
         <set field="isCancelled" from="stx?.statusId == 'StxCancelled'"/>
@@ -167,16 +170,40 @@
                 <container style="column">
                     <!-- stock-transfer-edit §5: title carries the transfer number. -->
                     <label text="Stock Transfer #${stx?.transferNumber ?: stockTransferId}" type="h5" style="text-primary text-weight-bold q-my-none"/>
-                    <label text="Move stock from one store/warehouse to another. Add the products, ship them out (stock leaves the sender), then receive them (stock arrives at the receiver)." type="p" style="text-grey-6 text-caption q-mb-none"/>
+                    <label text="Add products, dispatch from the sender, then confirm arrival at the receiving warehouse." type="p" style="text-grey-6 text-caption q-mb-none"/>
                 </container>
                 <label text="${statusNice}" type="span" style="zenith-badge ${isReceived ? 'success' : (isTransit ? 'info' : 'warning')}"/>
             </container>
             <container style="row q-gutter-xl q-mt-sm">
                 <container style="column"><label text="From (sender)" type="p" style="text-grey-6 text-caption q-mb-none"/><label text="${fromFac?.facilityName ?: stx?.fromFacilityId ?: '—'}" type="p" style="text-dark text-weight-bold q-my-none"/></container>
                 <container style="column"><label text="To (receiver)" type="p" style="text-grey-6 text-caption q-mb-none"/><label text="${toFac?.facilityName ?: stx?.toFacilityId ?: '—'}" type="p" style="text-dark text-weight-bold q-my-none"/></container>
-                <container style="column"><label text="E-Way Bill" type="p" style="text-grey-6 text-caption q-mb-none"/><label text="${stx?.ewayBillRequired == 'Y' ? 'Required' : 'Not needed'}" type="p" style="text-dark q-my-none"/></container>
+                <container style="column"><label text="Transfer value" type="p" style="text-grey-6 text-caption q-mb-none"/><label text="${!isDraft &amp;&amp; stx.totalValue == null ? '—' : '₹' + zinr.inr(ec.l10n.format(isDraft ? dispatch.totalValue : stx.totalValue, '#,##0.00'))}" type="p" style="text-dark q-my-none"/></container>
+                <container style="column"><label text="E-way bill" type="p" style="text-grey-6 text-caption q-mb-none"/><label text="${isDraft ? (dispatch.ewayBillRequired == 'Y' ? 'Required at dispatch' : 'Not required') : (stx.ewayBillNumber ?: (stx.ewayBillRequired == 'Y' ? 'Number not recorded' : 'Not required'))}" type="p" style="text-dark q-my-none"/></container>
             </container>
         </container>
+
+        <section name="DispatchWithBill" condition="isDraft &amp;&amp; itemList &amp;&amp; invCanWrite &amp;&amp; dispatch.ewayBillRequired == 'Y'"><widgets>
+            <container id="transfer-dispatch" style="zenith-card bg-white shadow-1 border-radius-md q-pa-md q-mb-md">
+                <label text="Prepare dispatch" type="h5" style="text-dark text-weight-bold q-mt-none q-mb-xs"/>
+                <container style="q-mb-md">
+                    <label text="${dispatch.requirementReason} Generate the bill on the GST portal, then enter its 12-digit number here." type="p" style="q-mb-xs"/>
+                    <render-mode><text type="html,qvt,vuet"><![CDATA[<a href="https://ewaybillgst.gov.in/" target="_blank" rel="noopener noreferrer">Open GST e-way bill portal ↗</a>]]></text></render-mode>
+                </container>
+                <form-single name="TransferDispatchForm" transition="shipTransfer" map="stx">
+                    <field name="stockTransferId"><default-field><hidden/></default-field></field>
+                    <field name="ewayBillNumber"><default-field title="Issued e-way bill number"><text-line size="18"/></default-field></field>
+                    <field name="vehicleNumber"><default-field title="Vehicle number"><text-line size="18"/></default-field></field>
+                    <field name="transporterGstin"><default-field title="Transporter GSTIN"><text-line size="18"/></default-field></field>
+                    <field name="dispatchButton"><default-field title=""><submit text="Confirm dispatch" confirmation="Dispatch these goods and deduct them from the sending warehouse?"/></default-field></field>
+                    <field-layout>
+                        <field-ref name="stockTransferId"/>
+                        <field-ref name="ewayBillNumber"/>
+                        <field-row><field-ref name="vehicleNumber"/><field-ref name="transporterGstin"/></field-row>
+                        <field-ref name="dispatchButton"/>
+                    </field-layout>
+                </form-single>
+            </container>
+        </widgets></section>
 
         <!-- XF-004: edit / delete the transfer RECORD (draft only). Once shipped/received the header is
              locked (stock has moved) and we show the reversal rule instead. -->
@@ -332,13 +359,14 @@
 
         <!-- ZE-INV-010: Ship out is a write action — hidden for view-only users -->
         <section name="ShipRow">
-            <condition><expression>isDraft &amp;&amp; itemList &amp;&amp; invCanWrite</expression></condition>
+            <condition><expression>isDraft &amp;&amp; itemList &amp;&amp; invCanWrite &amp;&amp; dispatch.ewayBillRequired != 'Y'</expression></condition>
             <widgets>
-                <container style="row items-center justify-between bg-orange-1 q-pa-md border-radius-md">
-                    <label text="Shipping will remove this stock from the sender (${fromFac?.facilityName ?: 'source'})." type="p" style="text-grey-8 q-mb-none"/>
+                <container style="zenith-card bg-white shadow-1 border-radius-md q-pa-md q-mb-md">
+                    <label text="Dispatch" type="h5" style="text-dark text-weight-bold q-mt-none q-mb-xs"/>
+                    <label text="Shipping moves these goods out of ${fromFac?.facilityName ?: 'the sending warehouse'}." type="p" style="text-grey-8 q-mb-sm"/>
                     <link url="shipTransfer" text="Ship out" parameter-map="[stockTransferId:stockTransferId]"
                           confirmation="Ship this transfer? Stock will leave the sender."
-                          style="q-btn bg-orange-8 text-white text-weight-bold q-px-lg border-radius-sm"/>
+                          style="q-btn bg-primary text-white text-weight-bold q-px-lg border-radius-sm"/>
                 </container>
             </widgets>
         </section>

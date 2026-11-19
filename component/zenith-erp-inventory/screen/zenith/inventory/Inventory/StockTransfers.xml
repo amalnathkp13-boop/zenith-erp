@@ -172,6 +172,7 @@
                             def actions = statusId == 'StxDraft' ? [[name:'shipTransfer', label:'Ship', confirm:'Ship this transfer? Stock will leave the sender.'],[name:'deleteTransfer',label:'Delete draft',confirm:'Delete this draft transfer and its product lines?']] :
                                 (statusId == 'StxInTransit' ? [[name:'receiveTransfer',label:'Receive',confirm:'Receive this transfer? The actual quantities will be added to the receiver.']] : [])
                             for (action in actions) {
+                                if (action.name == 'shipTransfer' && ewayBillRequired == 'Y') continue // Use the dispatch form in the E-way bill column.
                                 transferActionsHtml += "<form method='post' class='st-action-form' action='" + pagePath + '/' + action.name + "' data-confirm='" + esc(action.confirm) + "'><input type='hidden' name='moquiSessionToken' value='" + esc(ec.web.sessionToken) + "'><input type='hidden' name='stockTransferId' value='" + esc(stockTransferId) + "'>"
                                 for (key in ['quickSearch','pageSize','fromFacilityId','toFacilityId','transferNumber','transferNumber_op','transferDate_from','transferDate_thru','orderByField']) {
                                     def value = ec.web.requestParameters[key]
@@ -203,10 +204,13 @@
                 </field>
                 <field name="totalValue">
                     <header-field title="Value" show-order-by="true"/>
-                    <default-field><display text="${totalValue != null ? ec.l10n.format(totalValue, '#,##0.00') : '—'}"/></default-field>
+                    <default-field><display text="${totalValue != null ? '₹' + zinr.inr(ec.l10n.format(totalValue, '#,##0.00')) : '—'}"/></default-field>
                 </field>
                 <field name="ewayBillRequired">
-                    <default-field title="E-Way"><display/></default-field>
+                    <conditional-field condition="invCanWrite &amp;&amp; statusId == 'StxDraft' &amp;&amp; ewayBillRequired == 'Y'" title="E-way bill">
+                        <link url="../EditStockTransfer" parameter-map="[stockTransferId:stockTransferId]" link-type="anchor" text="Prepare dispatch" style="stk-idpill"/>
+                    </conditional-field>
+                    <default-field title="E-way bill"><label text="${ewayBillNumber ?: (ewayBillRequired == 'Y' ? 'Required' : 'Not required')}"/></default-field>
                 </field>
                 <field name="statusId">
                     <header-field title="Status">

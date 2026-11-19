@@ -135,7 +135,20 @@ try {
  sql("update facility set facility_gstin='29-LOCAL-TEST',gst_state_code='29' where facility_id='STFIX_A'; update facility set facility_gstin='33-LOCAL-TEST',gst_state_code='33' where facility_id='STFIX_B';");
  const interstate=await create();await add(interstate,'0.5');await ship(interstate);
  check('Derived E-Way requirement blocks shipping without logistics',()=>{assert.equal(transfer(interstate).eway_bill_required,'Y');assert.equal(transfer(interstate).status_id,'StxDraft');assert.equal(balance('STFIX_P','STFIX_A'),3.5);});
- await writer.post('StockTransfers','updateTransfer',{stockTransferId:interstate,transporterGstin:'LOCAL-TEST-ONLY',vehicleNumber:'LOCAL-TEST-VAN'});await ship(interstate);
+ const dispatchDetails={stockTransferId:interstate,transporterGstin:'LOCAL-TEST-ONLY',vehicleNumber:'LOCAL-TEST-VAN'};
+ await writer.post('StockTransfers','updateTransfer',dispatchDetails);
+ await ship(interstate);
+ await writer.post('EditStockTransfer','shipTransfer',{...dispatchDetails,ewayBillNumber:'not-an-ebn'});
+ check('Logistics alone or a malformed EBN cannot dispatch stock',()=>{assert.equal(transfer(interstate).status_id,'StxDraft');assert.equal(transfer(interstate).eway_bill_number,null);assert.equal(balance('STFIX_P','STFIX_A'),3.5);});
+ for(const [shell,suffix] of [['apps',''],['qapps','.qvt']]) {
+  const page=await writer.request('/'+shell+'/zenith/Inventory/EditStockTransfer'+suffix+'?stockTransferId='+interstate);
+  assert(page.text.includes('https://ewaybillgst.gov.in/') && page.text.includes('Confirm dispatch') && page.text.includes('LOCAL-TEST-VAN'));
+ }
+ // Local format-only fixture. No bill is issued or sent to a government service.
+ const testEbn=String(created.indexOf(interstate)+1).padStart(12,'0');
+ await writer.post('EditStockTransfer','shipTransfer',{stockTransferId:interstate,ewayBillNumber:testEbn});
+ await ship(interstate);
+ check('Dispatch records the supplied EBN and moves the goods once',()=>{assert.equal(transfer(interstate).eway_bill_number,testEbn);assert.equal(balance('STFIX_P','STFIX_A'),3);});
  check('Inter-state invoice remains scoped and unissued',()=>{const t=transfer(interstate);assert.equal(t.status_id,'StxInTransit');assert(t.igst_invoice_id);const invoice=row('invoice',`invoice_id=${quote(t.igst_invoice_id)}`);assert.equal(invoice.from_party_id,'STFIX_ORG');assert.equal(invoice.to_party_id,'STFIX_ORG');assert.equal(invoice.status_id,'InvoiceInProcess');assert.equal(count('invoice_item',`invoice_id=${quote(t.igst_invoice_id)}`),1);});
  const protectedDraft=await create();sql("insert into invoice (invoice_id,invoice_type_enum_id,status_id,from_party_id,to_party_id,invoice_date) values ('STFIX_ISSUED','InvoiceSales','InvoiceSent','STFIX_ORG','STFIX_ORG',CURRENT_TIMESTAMP);");
  sql(`update stock_transfer set igst_invoice_id='STFIX_ISSUED' where stock_transfer_id=${quote(protectedDraft)}`);

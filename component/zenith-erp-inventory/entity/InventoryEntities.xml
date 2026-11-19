@@ -60,6 +60,7 @@
         <field name="remarks" type="text-medium"/>
         <field name="totalValue" type="currency-amount"/>
         <field name="ewayBillRequired" type="text-indicator"/>
+        <field name="ewayBillNumber" type="text-short"/>
         <field name="lrNumber" type="text-short"/>
         <field name="vehicleNumber" type="text-short"/>
         <field name="igstInvoiceId" type="id"/>
@@ -529,6 +530,7 @@
         <alias entity-alias="STX" name="statusId"/>
         <alias entity-alias="STX" name="totalValue"/>
         <alias entity-alias="STX" name="ewayBillRequired"/>
+        <alias entity-alias="STX" name="ewayBillNumber"/>
         <alias entity-alias="STX" name="remarks"/>
         <alias entity-alias="STX" name="lrNumber"/>
         <alias entity-alias="STX" name="vehicleNumber"/>

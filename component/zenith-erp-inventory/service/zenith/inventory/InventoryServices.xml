@@ -240,11 +240,17 @@
         <actions><service-call name="zenith.inventory.StockTransferServices.add#StockTransferItem" in-map="context"/></actions>
     </service>
 
-    <!-- ZE-INV-IV-077: recompute total_value (Σ qty × unitAmount over the lines) and ewayBillRequired
-         (> ₹50,000 → 'Y') from the CURRENT line items. Must run whenever items change (add / delete):
-         create#StockTransfer set both once at creation, before any items existed (so total_value was 0 and
-         ewayBillRequired always 'N' — the reported bug). The E-Way Bill threshold is value-based and applies to
-         both intra-state and inter-state consignments, so no state check here. -->
+    <!-- The form and the locked shipping service must agree even when a warehouse's registration changes after drafting. -->
+    <service verb="calculate" noun="StockTransferDispatch">
+        <in-parameters><parameter name="items" type="List"/><parameter name="fromGstin"/><parameter name="toGstin"/></in-parameters>
+        <out-parameters><parameter name="totalValue" type="BigDecimal"/><parameter name="ewayBillRequired"/><parameter name="requirementReason"/></out-parameters>
+        <actions><script><![CDATA[
+            totalValue = items?.sum { (it.quantity ?: 0G) * (it.unitAmount ?: 0G) } ?: 0G
+            if (fromGstin && toGstin && fromGstin.take(2) != toGstin.take(2)) requirementReason = 'The warehouses have different GST state codes.'
+            else if (totalValue > 50000G) requirementReason = 'The transfer value exceeds ₹50,000.'
+            ewayBillRequired = requirementReason ? 'Y' : 'N'
+        ]]></script></actions>
+    </service>
     <service verb="recalc" noun="StockTransferTotals">
         <in-parameters><parameter name="stockTransferId" required="true"/></in-parameters>
         <out-parameters><parameter name="totalValue" type="BigDecimal"/><parameter name="ewayBillRequired"/></out-parameters>
@@ -253,25 +259,9 @@
             <entity-find entity-name="zenith.erp.inventory.StockTransferItem" list="_stiList">
                 <econdition field-name="stockTransferId"/>
             </entity-find>
-            <script><![CDATA[
-                def _tot = java.math.BigDecimal.ZERO
-                for (it in _stiList) {
-                    def q = (it.quantity ?: 0) as java.math.BigDecimal
-                    def u = (it.unitAmount ?: 0) as java.math.BigDecimal
-                    _tot = _tot.add(q.multiply(u))
-                }
-                // ZE-INV-IV-075: E-Way is also required for an inter-state move (source & destination facilities
-                // under DIFFERENT GSTINs), not only for value > ₹50,000.
-                boolean _inter = false
-                def _stx = ec.entity.find("zenith.erp.inventory.StockTransfer").condition("stockTransferId", stockTransferId).one()
-                if (_stx?.fromFacilityId && _stx?.toFacilityId) {
-                    def _ff = ec.entity.find("mantle.facility.Facility").condition("facilityId", _stx.fromFacilityId).one()
-                    def _tf = ec.entity.find("mantle.facility.Facility").condition("facilityId", _stx.toFacilityId).one()
-                    _inter = (_ff?.facilityGstin && _tf?.facilityGstin && _ff.facilityGstin.take(2) != _tf.facilityGstin.take(2))
-                }
-                totalValue = _tot
-                ewayBillRequired = ((_tot.compareTo(new java.math.BigDecimal("50000")) > 0) || _inter) ? "Y" : "N"
-            ]]></script>
+            <entity-find-one entity-name="mantle.facility.Facility" value-field="sender"><field-map field-name="facilityId" from="guard.transfer.fromFacilityId"/></entity-find-one>
+            <entity-find-one entity-name="mantle.facility.Facility" value-field="receiver"><field-map field-name="facilityId" from="guard.transfer.toFacilityId"/></entity-find-one>
+            <service-call name="zenith.inventory.InventoryServices.calculate#StockTransferDispatch" in-map="[items:_stiList, fromGstin:sender?.facilityGstin, toGstin:receiver?.facilityGstin]" out-map="context"/>
             <service-call name="update#zenith.erp.inventory.StockTransfer"
                 in-map="[stockTransferId:stockTransferId, totalValue:totalValue, ewayBillRequired:ewayBillRequired]"/>
         </actions>
@@ -280,6 +270,9 @@
     <service verb="ship" noun="StockTransfer" no-tx-cache="true">
         <in-parameters>
             <parameter name="stockTransferId" required="true"/>
+            <parameter name="ewayBillNumber"/>
+            <parameter name="vehicleNumber"/>
+            <parameter name="transporterGstin"/>
         </in-parameters>
 
         <actions><service-call name="zenith.inventory.StockTransferServices.ship#StockTransfer" in-map="context"/></actions>

@@ -72,8 +72,8 @@
                     <field name="transferDate"><default-field title="Date"><date-time type="date"/></default-field></field>
                     <!-- E-Way Bill is DERIVED (value &gt; ₹50,000 OR an inter-state route), not a user choice — show a
                          read-only note in the mockup's slot rather than a fake editable select. -->
-                    <field name="ewayInfo"><default-field title="E-Way Bill (optional)">
-                        <label text="Set automatically from the transfer's value and route." type="span" style="text-grey-6 text-caption"/>
+                    <field name="ewayInfo"><default-field title="E-way bill">
+                        <label text="Checked from the route and value. If required, add the issued number at dispatch." type="span" style="text-grey-6 text-caption"/>
                     </default-field></field>
                     <field name="remarks"><default-field title="Remarks (optional)">
                         <text-area rows="3" cols="60"/>

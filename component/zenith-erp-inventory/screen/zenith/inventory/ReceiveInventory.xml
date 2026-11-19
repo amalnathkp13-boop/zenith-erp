@@ -140,7 +140,7 @@
                     <!-- ZE-INV-010 (IV-110): the receive form only for users with full Inventory write access; the
                          "Fully Received" status stays visible to everyone (read-only). Form name/transition untouched. -->
                     <conditional-field name="receive_write" condition="invCanWrite" title="Receive">
-                        <container-dialog id="ReceiveDialog_${orderItemSeqId}" button-text="Receive item" width="560" condition="canReceiveLine">
+                        <container-dialog id="ReceiveDialog_${orderItemSeqId}" button-text="${grn ? 'Review goods' : 'Receive item'}" width="560" condition="canReceiveLine">
                             <label text="${itemDescription ?: product?.productName ?: productId}" type="p" style="receiving-dialog-product"/>
                             <label condition="grn != null" text="Receiving location · ${grnDestination}" type="p" style="receiving-fixed-location"/>
                             <!-- ZE-INV-001 f/u: form-single name must be a STATIC identifier — Moqui does NOT
@@ -198,7 +198,7 @@
                                     </default-field>
                                 </field>
                                 
-                                <field name="submitButton"><default-field title="Confirm Receipt"><submit/></default-field></field>
+                                <field name="submitButton"><default-field title="${grn ? 'Verify and receive' : 'Confirm Receipt'}"><submit/></default-field></field>
                                 <field-layout>
                                     <field-ref name="orderId"/><field-ref name="orderItemSeqId"/>
                                     <field-ref name="grnId"/><field-ref name="grnReceivedBefore"/>
@@ -217,6 +217,7 @@
                         <label text="${grn || !(pendingGrns.reservedByItem[orderItemSeqId] ?: 0G) ? 'Fully Received' : 'Queued on GRN'}" type="span" style="zenith-badge success" condition="qtyRemaining &lt;= 0"/>
                     </conditional-field>
                     <default-field title="Receive">
+                        <label text="View only" condition="grn &amp;&amp; qtyRemaining &gt; 0"/>
                         <label text="${grn || !(pendingGrns.reservedByItem[orderItemSeqId] ?: 0G) ? 'Fully Received' : 'Queued on GRN'}" type="span" style="zenith-badge success" condition="qtyRemaining &lt;= 0"/>
                     </default-field>
                 </field>
