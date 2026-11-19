@@ -204,6 +204,7 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
   let modeRows=[];for(let i=0;i<30;i++){modeRows=q("SELECT i.sales_mode_id FROM pos_transaction_item i JOIN pos_offline_transaction o ON o.created_transaction_id=i.transaction_id WHERE o.transaction_data_json LIKE '%"+separateModes.offlineId+"%'");if(modeRows.length===2)break;await new Promise(r=>setTimeout(r,200));}
   check('replay keeps separate line modes instead of merging equal-price items',modeRows.length===2&&new Set(modeRows.map(r=>r.sales_mode_id)).size===2,modeRows);
   await require('./verify-offline-held-bills.cjs')({a,base,check,q,invoke,post,out});
+  await require('./verify-held-mode-parity.cjs')({a,base,check,q,invoke,post,out});
   await page.screenshot({path:path.join(out,'offline-workspace.png')});
  } finally {
   await context.setOffline(false);

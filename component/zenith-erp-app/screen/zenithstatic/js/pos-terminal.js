@@ -817,6 +817,10 @@ window._posOffline = (function () {
     function remember(data) {
         if (localEditing || !data || !data.success) return;
         snapshot = copy(data);
+        if (data.transactionId && holds.some(function (bill) { return bill.serverHeldId && bill.sourceTransactionId === data.transactionId; })) {
+            holds = holds.filter(function (bill) { return !bill.serverHeldId || bill.sourceTransactionId !== data.transactionId; });
+            writeTail = writeTail.then(function () { return stateWrite('holds:' + scope, copy(holds)); });
+        }
         if (db) stateWrite('snapshot:' + scope, snapshot).catch(function () {});
     }
     function setDraftSource(bill) {
@@ -1274,7 +1278,41 @@ window._posOffline = (function () {
         });
     }
     function canUseOnlineHeldPicker() {
-        return !disconnected() && !serverDraftPaused && !sessionHolds().length;
+        return !disconnected() && !serverDraftPaused && !sessionHolds().some(function (bill) { return !bill.serverHeldId; });
+    }
+    var heldCacheTask, heldCacheVersion = 0;
+    // Keep server holds on the device too; only unacknowledged local holds need uploading.
+    function cacheHeldBills(changed) {
+        if (changed === true) heldCacheVersion++;
+        if (!storageReady || disconnected() || localClose || !tCtx().sessionId) return Promise.resolve();
+        if (heldCacheTask) return heldCacheTask;
+        var context = tCtx(), version = heldCacheVersion;
+        heldCacheTask = fetch('Terminal/ajaxCart', {method:'POST',credentials:'same-origin',signal:AbortSignal.timeout(12000),
+            body:new URLSearchParams({action:'listHeld',sessionId:context.sessionId,
+                moquiSessionToken:(document.querySelector('[name=moquiSessionToken]') || {}).value || ''})})
+            .then(function (response) { if (!response.ok) throw Error('Held bills unavailable.'); return response.json(); })
+            .then(function (result) {
+                if (!result.success || !Array.isArray(result.held)) return;
+                return getQueue().then(function (sales) {
+                    writeTail = writeTail.then(async function () {
+                        if (context.sessionId !== tCtx().sessionId || payPending || version !== heldCacheVersion) return;
+                        var pending = holds.filter(function (bill) { return !bill.serverHeldId; });
+                        var consumed = new Set(pending.concat(sales, draft ? [draft] : []).map(function (bill) { return bill.sourceHeldId; }).filter(Boolean));
+                        var mirrored = result.held.map(function (bill) { return bill.workspace; }).filter(function (bill) {
+                            return bill && bill.sessionId === context.sessionId && bill.terminalId === context.terminalId && !consumed.has(bill.serverHeldId) && bill.sourceTransactionId !== snapshot?.transactionId;
+                        });
+                        var next = holds.filter(function (bill) { return bill.sessionId !== context.sessionId && bill.serverHeldId; }).concat(pending, mirrored);
+                        await stateWrite('holds:' + scope, copy(next));
+                        holds = next;
+                        renderHeldPicker();
+                    });
+                    return writeTail;
+                });
+            }).catch(function () {}).finally(function () {
+                heldCacheTask = null;
+                if (version !== heldCacheVersion) return cacheHeldBills();
+            });
+        return heldCacheTask;
     }
     function renderHeldPicker() {
         var wrap = document.getElementById('pos-held-wrap');
@@ -1322,6 +1360,7 @@ window._posOffline = (function () {
         if (!held) return;
         payPending = true;
         var next = copy(held), rest = holds.filter(function (bill) { return bill.draftId !== id; });
+        delete next.serverHeldId;
         if (cart.length) {
             var current = copy(draft);
             delete current.onlineBaseline;
@@ -1347,6 +1386,7 @@ window._posOffline = (function () {
         if (!leaseReady || serverDraftPaused || heldSyncing || payPending || disconnected()) return Promise.resolve();
         var activeSource = draft && draft.sourceTransactionId;
         var ready = sessionHolds().filter(function (bill) {
+            if (bill.serverHeldId) return false;
             if (!bill.sourceTransactionId) return true;
             return bill.sourceTransactionId !== activeSource && !sales.some(function (sale) {
                 return sale.sourceTransactionId === bill.sourceTransactionId;
@@ -1370,7 +1410,11 @@ window._posOffline = (function () {
         }).then(function (result) {
             var ids = new Set((result.syncedIds || []).filter(function (id) { return saved.some(function (bill) { return bill.offlineId === id; }); }));
             if (!ids.size) return;
-            var rest = holds.filter(function (bill) { return !ids.has(bill.draftId); });
+            var rest = holds.flatMap(function (bill) {
+                if (!ids.has(bill.draftId)) return [bill];
+                var source = (result.heldSources || {})[bill.draftId];
+                return source ? [Object.assign(copy(bill), source)] : [];
+            });
             writeTail = writeTail.then(function () { return stateWrite('holds:' + scope, copy(rest)); }).then(function () {
                 holds = rest;
                 renderHeldPicker();
@@ -1873,7 +1917,7 @@ window._posOffline = (function () {
                 syncTask = null;
                 banner(active());
                 cacheSummary();
-                return resumeOnline();
+                return resumeOnline().then(cacheHeldBills);
             });
         return syncTask;
     }
@@ -2013,7 +2057,7 @@ window._posOffline = (function () {
                 holds.forEach(function (bill) { bill.draftId = bill.draftId || crypto.randomUUID(); });
                 if (!snapshot) snapshot = saved[1] || null;
                 storageReady = true;
-                if (draft || sessionHolds().length || disconnected()) begin();
+                if (draft || sessionHolds().some(function (bill) { return !bill.serverHeldId; }) || disconnected()) begin();
                 connectionChanged();
             })
             .catch(function () {
@@ -2216,6 +2260,7 @@ window._posOffline = (function () {
         scan: scan,
         sync: sync,
         canUseOnlineHeldPicker: canUseOnlineHeldPicker,
+        cacheHeldBills: cacheHeldBills,
         async prepareOnlineRecall() {
             if (!canUseOnlineHeldPicker()) return false;
             await resumeOnline();
@@ -6143,6 +6188,7 @@ window.posToggleFullscreen = function() {
         // Refresh the server-rendered held-bills picker (#pos-held-wrap <details>) from a full
         // terminal render after an AJAX void.
         function syncHeldWrap(doc) {
+            window._posOffline?.cacheHeldBills(true);
             if (window._posOffline && !window._posOffline.canUseOnlineHeldPicker()) return;
             var source = doc.querySelector('#pos-held-wrap'), target = document.getElementById('pos-held-wrap');
             if (!source || !target) return;

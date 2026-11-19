@@ -146,7 +146,7 @@
             <parameter name="holdOnly" type="Boolean" default="false"/>
             <parameter name="draftOnly" type="Boolean" default="false"/>
         </in-parameters>
-        <out-parameters><parameter name="offlineId"/><parameter name="restoredTransactionId"/><parameter name="restoreConflict" type="Boolean"/></out-parameters>
+        <out-parameters><parameter name="offlineId"/><parameter name="restoredTransactionId"/><parameter name="restoreConflict" type="Boolean"/><parameter name="heldSource" type="Map"/></out-parameters>
         <actions>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" in-map="[terminalId:terminalId,sessionId:sale.sessionId,customerPartyId:sale.customer?.partyId]" out-map="access"/>
             <if condition="!access.allowed"><return/></if>
@@ -165,6 +165,12 @@
                     def held=ec.entity.find('zenith.erp.pos.PosHeldTransaction').condition('heldId',key).one()
                     if (held) {
                         if (held.sessionId!=sale.sessionId) fail('The held bill belongs to a different session.')
+                        if (held.statusId=='PhHeld') {
+                            def items=new groovy.json.JsonSlurper().parseText(held.itemsJson ?: '[]')
+                            def id=items ? items[0].sourceTransactionId : null
+                            heldSource=[serverHeldId:key,sourceHeldId:key,sourceTransactionId:id,
+                                sourceRevision:id ? ec.service.sync().name('zenith.pos.PosOfflineServices.get#DraftRevision').parameter('transactionId',id).call().revision : null]
+                        }
                         offlineId=sale.offlineId; return
                     }
                 }
@@ -184,6 +190,14 @@
                 def session=ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',sale.sessionId).forUpdate(draftOnly).one()
                 if (draftOnly && (!session || session.statusId!='PsOpen' || session.terminalId!=terminalId || session.organizationPartyId!=org)) fail('The original counter session is closed. The draft is still saved on this device.')
                 def transactionId
+                def sourceHeld
+                if (sale.sourceHeldId) {
+                    sourceHeld=ec.entity.find('zenith.erp.pos.PosHeldTransaction').condition('heldId',sale.sourceHeldId).forUpdate(true).one()
+                    def heldItems=sourceHeld ? new groovy.json.JsonSlurper().parseText(sourceHeld.itemsJson ?: '[]') : []
+                    if (!sourceHeld || sourceHeld.sessionId!=sale.sessionId || sourceHeld.statusId!='PhHeld' ||
+                        !sale.sourceTransactionId || !heldItems || heldItems[0].sourceTransactionId!=sale.sourceTransactionId)
+                        fail('This held bill was already recalled or changed. The device copy remains saved for review.')
+                }
                 if (sale.sourceTransactionId) {
                     def source=ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',sale.sourceTransactionId).forUpdate(true).one()
                     if (source) {
@@ -196,8 +210,9 @@
                         // recover the complete local snapshot into a new bill, retaining its source in the ledger.
                         if (!(recovery.closedSession && source.statusId=='PtVoided')) {
                             def revision=ec.service.sync().name('zenith.pos.PosOfflineServices.get#DraftRevision').parameter('transactionId',source.transactionId).call().revision
-                            if (source.statusId!='PtCreated' || !sale.sourceRevision || sale.sourceRevision!=revision) fail('The original draft changed. Keep this offline sale for review; its saved draft was not overwritten.')
+                            if (source.statusId!=(sourceHeld ? 'PtHeld' : 'PtCreated') || !sale.sourceRevision || sale.sourceRevision!=revision) fail('The original draft changed. Keep this offline sale for review; its saved draft was not overwritten.')
                             transactionId=source.transactionId
+                            if (sourceHeld) { source.statusId='PtCreated'; source.update() }
                             ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId',transactionId).list().each { item ->
                                 ec.service.sync().name('zenith.pos.PosServices.remove#PosTransactionItem').parameters([transactionId:transactionId,itemSeqId:item.itemSeqId]).call()
                             }
@@ -246,6 +261,7 @@
                 ec.service.sync().name('zenith.pos.PosServices.refresh#PosTransactionTax').parameters([transactionId:transactionId,taxOn:sale.taxOn]).call()
                 txn=ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',transactionId).one()
                 if (sale.total==null || (sale.total as BigDecimal).compareTo(txn.payableAmount as BigDecimal)!=0 || sale.taxAmount==null || (sale.taxAmount as BigDecimal).compareTo(txn.totalTaxAmount as BigDecimal)!=0) fail('Offline tax or total differs from current rules. Sale retained for review, without changing its collected amount.')
+                if (sourceHeld) { sourceHeld.statusId='PhRecalled'; sourceHeld.recallTime=ec.user.nowTimestamp; sourceHeld.update() }
                 if (draftOnly) {
                     def revision=ec.service.sync().name('zenith.pos.PosOfflineServices.get#DraftRevision').parameter('transactionId',transactionId).call().revision
                     ec.service.sync().name('create#zenith.erp.pos.PosOfflineTransaction').parameters([offlineTransactionId:key,terminalId:terminalId,
@@ -260,6 +276,8 @@
                     if (!ec.message.hasError() && held.heldId) {
                         def record=ec.entity.find('zenith.erp.pos.PosHeldTransaction').condition('heldId',held.heldId).one()
                         record.set('holdTime',issued).update()
+                        heldSource=[serverHeldId:key,sourceHeldId:key,sourceTransactionId:transactionId,
+                            sourceRevision:ec.service.sync().name('zenith.pos.PosOfflineServices.get#DraftRevision').parameter('transactionId',transactionId).call().revision]
                         offlineId=sale.offlineId
                     }
                     return

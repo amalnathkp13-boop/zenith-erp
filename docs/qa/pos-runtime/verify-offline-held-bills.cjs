@@ -63,7 +63,7 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
     new URLSearchParams(response.request().postData() || '').get('action') === 'holdSale');
    await page.locator('#pos-hold').click();
    const nativeHeld = await (await nativeHold).json();
-   check(layout + ' reconnect with an untouched cart uses online Hold directly',nativeHeld.success && !(await held()).length);
+   check(layout + ' reconnect with an untouched cart uses online Hold directly',nativeHeld.success && !(await held()).some(bill => !bill.serverHeldId));
    await page.locator('#pos-held-wrap summary').click();
    await page.locator('#pos-held-wrap form[action$="/recallSale"] button').click();
    await page.waitForFunction(() => document.querySelectorAll('.aj-qi').length === 5);
