@@ -407,7 +407,12 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  const uiHeld=rows('pos_held_transaction',`session_id='${us.sessionId}' AND status_id='PhHeld'`).find(h=>JSON.parse(h.items_json||'[]').some(i=>i.sourceTransactionId===uc.transactionId));
  check('terminal Hold confirms on server and releases the cart',!!uiHeld&&tx(uc.transactionId).status_id==='PtHeld'&&!new URL(p.url()).searchParams.get('transactionId'),{url:p.url(),heldId:uiHeld?.held_id});
  await invoke('recall',{heldId:uiHeld.held_id,sessionId:us.sessionId}); await invoke('void',{transactionId:uc.transactionId});
- await p.goto(base+'/apps/zenith/pos/Terminal?sessionId='+us.sessionId,{waitUntil:'networkidle'});
+ // A staging framework template race can return an incomplete document; retry that read once.
+ const closeUrl=base+'/apps/zenith/pos/Terminal?sessionId='+us.sessionId;
+ let closeScreen=await p.goto(closeUrl,{waitUntil:'networkidle'});
+ const navbarRace=/ConcurrentModificationException|Error rendering template at [^\n]*navbar\.html\.ftl/;
+ if(navbarRace.test(await closeScreen.text())) closeScreen=await p.goto(closeUrl,{waitUntil:'networkidle'});
+ check('session-close screen renders without a framework template error',closeScreen.status()===200&&!navbarRace.test(await closeScreen.text()));
  await p.locator('.pos-header form[action*="closeSession"] button').click();
  await p.locator('.pos-close-overlay').waitFor({state:'visible'});
  await p.locator('.pos-close-cash').fill('100');
