@@ -12,7 +12,14 @@
         </if>
         <script><![CDATA[
             // Only forward list searches, operators and sort order into a download URL.
-            def fields = 'period view ownership cohort ownerId searchText orderByField leadId firstName lastName companyName email mobile sourceName campaignName assignedToUserId score estimatedAmount statusId createdDate leadSourceId campaignId sourceId firstTouchSourceId latestTouchSourceId utmSource utmMedium utmCampaign utmContent utmTerm salesOpportunityId opportunityName accountName estimatedCloseDate opportunityStageId stageName activityId activityDate activityType subject dueDate priority contactPartyId outcome nextFollowUpDate partyId organizationName emailAddress phoneNumber partyTypeEnumId segmentName segmentTypeEnumId description isActive medium startDate endDate'.tokenize() as Set
+            def fields = ('''period view ownership cohort ownerId searchText orderByField
+                leadId firstName lastName companyName email mobile sourceName campaignName assignedToUserId
+                score estimatedAmount statusId createdDate leadSourceId campaignId sourceId firstTouchSourceId
+                latestTouchSourceId utmSource utmMedium utmCampaign utmContent utmTerm salesOpportunityId
+                opportunityName accountName estimatedCloseDate opportunityStageId stageName activityId activityDate
+                activityType subject dueDate priority contactPartyId outcome nextFollowUpDate partyId
+                organizationName emailAddress phoneNumber partyTypeEnumId segmentName segmentTypeEnumId
+                description isActive medium startDate endDate''').tokenize() as Set
             crmExportFilters = (ec.web?.requestParameters ?: [:]).findAll { key, value ->
                 fields.contains(key.replaceFirst(/_(op|not|ic|from|thru|period|poffset|pdate)$/, ''))
             }

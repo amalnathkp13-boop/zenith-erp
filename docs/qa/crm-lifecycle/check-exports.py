@@ -50,7 +50,9 @@ def main(container):
         for shell in ("apps", "qapps"):
             route = base + "/" + shell + "/zenith/Crm/Leads"
             view = route + (".qvt" if shell == "qapps" else "")
-            assert b"Export CSV" in admin.open(view).read(), shell + " missing authorized control"
+            filtered = admin.open(view + "?" + urllib.parse.urlencode({"companyName": prefix, "period": "all"})).read().decode()
+            links = re.findall(r'href="([^"]*exportList[^"]*)"', filtered)
+            assert any("companyName=" + prefix in link and "period=all" in link for link in links), shell + " dropped search parameters"
             assert b"Export CSV" not in rep.open(view).read(), shell + " exposed export control"
             for fmt in ("csv", "xlsx"):
                 query = urllib.parse.urlencode(dict(dataset="leadList", format=fmt, companyName=prefix, companyName_op="equals",

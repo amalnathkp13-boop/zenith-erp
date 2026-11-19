@@ -19,6 +19,7 @@ Use the repository's disposable Moqui runtime, PostgreSQL staging configuration,
 | Scenario | Check |
 | --- | --- |
 | Owner templates, rule timing, private seller assignment, manual override, retries, pause, tenant scope and manual SMS logging | `CRM_QA_DB_CONTAINER=<disposable-postgres-container> python3 docs/qa/crm-lifecycle/check-owner-automation.py` |
+| Filtered CSV/XLSX exports, default group access, explicit custom grants and tenant scope | `python3 docs/qa/crm-lifecycle/check-exports.py <disposable-postgres-container>` |
 | Native ERP inbox delivery, preferences, repeat runs and rescheduling | `python3 docs/qa/crm-lifecycle/check-reminders.py <disposable-postgres-container>` |
 | Dashboard links and their underlying records by period and user time zone | `python3 docs/qa/crm-lifecycle/check-drilldowns.py <disposable-postgres-container>` |
 | Existing people linked to accounts, primary-contact updates, preferred channel and repeat saves | `python3 docs/qa/all-modules/verify-crm-account-contacts.py` |
