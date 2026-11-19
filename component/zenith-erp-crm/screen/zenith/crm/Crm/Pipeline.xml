@@ -57,18 +57,6 @@
             <order-by field-name="filterName"/>
         </entity-find>
 
-        <!-- Pipeline summary by stage -->
-        <set field="stageSummary" from="[:]"/>
-        <iterate list="stages" entry="stg">
-            <set field="stageSummary[stg.opportunityStageId]" from="[name:stg.description, count:0, value:0]"/>
-        </iterate>
-        <iterate list="summaryOppList" entry="opp">
-            <if condition="opp.opportunityStageId &amp;&amp; stageSummary.containsKey(opp.opportunityStageId)">
-                <set field="s" from="stageSummary[opp.opportunityStageId]"/>
-                <set field="s.count" from="s.count + 1"/>
-                <set field="s.value" from="s.value + (opp.estimatedAmount ?: 0)"/>
-            </if>
-        </iterate>
         <script><![CDATA[
             def rows = summaryOppList ?: []
             def ownerIds = rows*.assignedToUserId.findAll { it }.unique().sort()
@@ -88,16 +76,23 @@
             def nextMonth = java.sql.Date.valueOf(today.withDayOfMonth(1).plusMonths(1))
             def inPeriod = { date -> period == 'all' || (date && date >= monthStart && date < nextMonth) }
             def openRows = boardRows.findAll { !['SoClosedWon', 'SoClosedLost'].contains(it.opportunityStageId) }
+            def totalsByCurrency = { deals, amount ->
+                if (!deals) return '0'
+                deals.groupBy { it.currencyUomId ?: 'Unspecified currency' }.sort().collect { currency, group ->
+                    currency + ' ' + ec.l10n.format(group.sum(amount), '#,##0.00')
+                }.join(' · ')
+            }
+            def amount = { it.estimatedAmount ?: 0G }
             openCount = openRows.size()
-            openValue = openRows.sum { it.estimatedAmount ?: 0G } ?: 0G
-            weightedValue = openRows.sum { it.expectedRevenue ?: ((it.estimatedAmount ?: 0G) * (it.estimatedProbability ?: 0G)) } ?: 0G
+            openValue = totalsByCurrency(openRows, amount)
+            weightedValue = totalsByCurrency(openRows) { it.expectedRevenue != null ? it.expectedRevenue : (it.estimatedAmount ?: 0G) * (it.estimatedProbability ?: 0G) }
             closingRows = openRows.findAll { inPeriod(it.estimatedCloseDate) }
-            closingValue = closingRows.sum { it.estimatedAmount ?: 0G } ?: 0G
+            closingValue = totalsByCurrency(closingRows, amount)
             wonRows = boardRows.findAll { it.opportunityStageId == 'SoClosedWon' && inPeriod(it.wonDate) }
-            wonValue = wonRows.sum { it.estimatedAmount ?: 0G } ?: 0G
+            wonValue = totalsByCurrency(wonRows, amount)
             boardStages = stages.findAll { !['SoClosedWon', 'SoClosedLost'].contains(it.opportunityStageId) }.collect { stage ->
                 def deals = openRows.findAll { it.opportunityStageId == stage.opportunityStageId }
-                [id:stage.opportunityStageId, name:stage.description, deals:deals, count:deals.size(), value:(deals.sum { it.estimatedAmount ?: 0G } ?: 0G)]
+                [id:stage.opportunityStageId, name:stage.description, deals:deals, count:deals.size(), value:totalsByCurrency(deals, amount)]
             }
             nextActivityByOpportunity = [:]
             opportunityActivities.each { activity ->
@@ -117,6 +112,7 @@
                         <field name="accountPartyId"><default-field title="Account"><drop-down>
                             <dynamic-options transition="searchPartyList" server-search="true" min-length="2"/>
                         </drop-down></default-field></field>
+                        <field name="nextStep"><default-field title="Next step"><text-line size="40"/></default-field></field>
                         <field name="estimatedAmount"><default-field title="Amount (${currSymbol})"><text-line size="12"/></default-field></field>
                         <field name="estimatedCloseDate"><default-field title="Expected Close"><date-time type="date"/></default-field></field>
                         <field name="opportunityStageId"><default-field title="Stage"><drop-down>
@@ -153,21 +149,21 @@
             </form-single></widgets></section>
         </container>
         <container style="zcrm-metrics zcrm-reference-metrics">
-            <container style="zcrm-metric"><label text="Open Pipeline" type="span"/><label text="${currSymbol}${zinr.inr(ec.l10n.format(openValue, '#,##,##0'))}" type="h4"/><label text="${openCount} deals" type="span" style="zcrm-muted"/></container>
-            <container style="zcrm-metric"><label text="Weighted Value" type="span"/><label text="${currSymbol}${zinr.inr(ec.l10n.format(weightedValue, '#,##,##0'))}" type="h4"/><label text="Expected revenue" type="span" style="zcrm-muted"/></container>
-            <container style="zcrm-metric"><label text="Closing ${period == 'month' ? 'This Month' : 'All Time'}" type="span"/><label text="${currSymbol}${zinr.inr(ec.l10n.format(closingValue, '#,##,##0'))}" type="h4"/><label text="${closingRows.size()} deals" type="span" style="zcrm-muted"/></container>
-            <container style="zcrm-metric"><label text="Won ${period == 'month' ? 'This Month' : 'All Time'}" type="span"/><label text="${currSymbol}${zinr.inr(ec.l10n.format(wonValue, '#,##,##0'))}" type="h4"/><label text="${wonRows.size()} deals" type="span" style="zcrm-muted"/></container>
+            <container style="zcrm-metric"><label text="Open Pipeline" type="span"/><label text="${openValue}" type="h4"/><label text="${openCount} deals" type="span" style="zcrm-muted"/></container>
+            <container style="zcrm-metric"><label text="Weighted Value" type="span"/><label text="${weightedValue}" type="h4"/><label text="Expected revenue" type="span" style="zcrm-muted"/></container>
+            <container style="zcrm-metric"><label text="Closing ${period == 'month' ? 'This Month' : 'All Time'}" type="span"/><label text="${closingValue}" type="h4"/><label text="${closingRows.size()} deals" type="span" style="zcrm-muted"/></container>
+            <container style="zcrm-metric"><label text="Won ${period == 'month' ? 'This Month' : 'All Time'}" type="span"/><label text="${wonValue}" type="h4"/><label text="${wonRows.size()} deals" type="span" style="zcrm-muted"/></container>
         </container>
         <container style="zcrm-board" id="pipeline-board">
             <section-iterate name="crmPipelineStages" list="boardStages" entry="column"><widgets>
                 <container style="zcrm-board-column" id="crm-stage-${column.id}">
-                    <container style="zcrm-board-stage-head"><label text="${column.name}" type="h4"/><label text="${column.count} deals · ${currSymbol}${zinr.inr(ec.l10n.format(column.value, '#,##,##0'))}" type="span"/></container>
+                    <container style="zcrm-board-stage-head"><label text="${column.name}" type="h4"/><label text="${column.count} deals · ${column.value}" type="span"/></container>
                     <section name="EmptyStage" condition="column.deals.isEmpty()"><widgets><label text="No opportunities in this stage" type="p" style="zcrm-board-empty"/></widgets></section>
                     <section-iterate name="crmStageDeals" list="column.deals" entry="deal"><widgets>
                         <container style="zcrm-deal-card" id="crm-deal-${deal.salesOpportunityId}">
                             <link url="../EditOpportunity" text="${deal.opportunityName}" parameter-map="[salesOpportunityId:deal.salesOpportunityId]"/>
                             <label text="${deal.accountName ?: 'No account'}" type="span" style="zcrm-muted"/>
-                            <label text="${currSymbol}${zinr.inr(ec.l10n.format(deal.estimatedAmount ?: 0, '#,##,##0'))}" type="strong" style="zcrm-deal-amount"/>
+                            <label text="${deal.currencyUomId ?: 'Unspecified currency'} ${ec.l10n.format(deal.estimatedAmount ?: 0, '#,##0.00')}" type="strong" style="zcrm-deal-amount"/>
                             <label text="${deal.estimatedCloseDate ? ec.l10n.format(deal.estimatedCloseDate, 'dd MMM yyyy') : 'No close date'}" type="span" style="zcrm-muted"/>
                             <label text="Source: ${deal.leadSourceId ?: 'Unknown'}" type="span" style="zcrm-muted"/>
                             <label text="Next activity: ${nextActivityByOpportunity[deal.salesOpportunityId] ? ec.l10n.format(nextActivityByOpportunity[deal.salesOpportunityId], 'dd MMM yyyy') : 'None scheduled'}" type="span" style="zcrm-muted"/>
@@ -204,14 +200,14 @@
                 </field>
                 <field name="estimatedAmount">
                     <header-field title="Amount" show-order-by="true"/>
-                    <default-field><display format="#,##,##0"/></default-field>
+                    <default-field><display text="${currencyUomId ?: 'Unspecified currency'} ${ec.l10n.format(estimatedAmount ?: 0, '#,##0.00')}"/></default-field>
                 </field>
                 <field name="estimatedProbability">
                     <default-field title="Prob%"><display format="0%"/></default-field>
                 </field>
                 <field name="expectedRevenue">
                     <header-field title="Weighted" show-order-by="true"/>
-                    <default-field><display format="#,##,##0"/></default-field>
+                    <default-field><display text="${currencyUomId ?: 'Unspecified currency'} ${ec.l10n.format(expectedRevenue ?: 0, '#,##0.00')}"/></default-field>
                 </field>
                 <field name="stageName">
                     <header-field title="Stage">

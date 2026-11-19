@@ -10,6 +10,7 @@
     <mantle.party.PartyRole partyId="AUDIT_QA_B" roleTypeId="OrgInternal"/>
     <mantle.party.PartyIdentification partyId="AUDIT_QA_B" partyIdTypeEnumId="PtidOrgCode" idValue="AUDITQAB"/>
     <zenith.erp.base.CompanySettings organizationPartyId="AUDIT_QA_A" settingKey="CURRENCY_UOM_ID" settingValue="INR"/>
+    <zenith.erp.base.SystemSequence organizationPartyId="AUDIT_QA_A" sequenceType="INVOICE" prefix="QA-INVOICE/" nextValue="1" padLength="5" includeFinancialYear="Y"/>
     <zenith.erp.base.CompanySettings organizationPartyId="AUDIT_QA_A" settingKey="COUNTRY_GEO_ID" settingValue="IND"/>
     <zenith.erp.base.CompanySettings organizationPartyId="AUDIT_QA_B" settingKey="CURRENCY_UOM_ID" settingValue="INR"/>
     <mantle.party.Party partyId="AUDIT_QA_USER_A" partyTypeEnumId="PtyPerson"/>
@@ -19,6 +20,10 @@
     <moqui.security.UserGroupMember userId="AUDIT_QA_USER_A" userGroupId="ZENITH_ALL" fromDate="2020-01-01 00:00:00"/>
     <mantle.party.PartyRelationship partyRelationshipId="AUDIT_QA_REL_A" fromPartyId="AUDIT_QA_USER_A" toPartyId="AUDIT_QA_A" relationshipTypeEnumId="PrtAgent" toRoleTypeId="OrgInternal" fromDate="2020-01-01 00:00:00"/>
     <moqui.security.UserPreference userId="AUDIT_QA_USER_A" preferenceKey="ACTIVE_ORGANIZATION" preferenceValue="AUDIT_QA_A"/>
+    <mantle.party.Party partyId="AUDIT_QA_REP_A" partyTypeEnumId="PtyPerson"/>
+    <mantle.party.Person partyId="AUDIT_QA_REP_A" firstName="Disposable" lastName="Representative"/>
+    <moqui.security.UserAccount userId="AUDIT_QA_REP_A" username="audit.rep.qa" userFullName="Disposable representative" partyId="AUDIT_QA_REP_A" disabled="N"/>
+    <mantle.party.PartyRelationship partyRelationshipId="AUDIT_QA_REL_REP_A" fromPartyId="AUDIT_QA_REP_A" toPartyId="AUDIT_QA_A" relationshipTypeEnumId="PrtAgent" toRoleTypeId="OrgInternal" fromDate="2020-01-01 00:00:00"/>
     <mantle.party.Party partyId="AUDIT_QA_USER_B" partyTypeEnumId="PtyPerson"/>
     <mantle.party.Person partyId="AUDIT_QA_USER_B" firstName="Disposable" lastName="Workflow B"/>
     <moqui.security.UserAccount userId="AUDIT_QA_USER_B" username="audit.b.qa" userFullName="Disposable workflow manager B" partyId="AUDIT_QA_USER_B" timeZone="Asia/Kolkata" disabled="Y" requirePasswordChange="N"/>

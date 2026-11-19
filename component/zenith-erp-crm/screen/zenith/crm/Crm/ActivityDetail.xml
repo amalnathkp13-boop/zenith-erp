@@ -7,12 +7,19 @@
         <default-response url="."/><error-response url="."/></transition>
     <transition name="rescheduleActivity"><service-call name="zenith.crm.CrmServices.reschedule#Activity"/>
         <default-response url="."/><error-response url="."/></transition>
+    <transition name="cancelActivity"><service-call name="zenith.crm.CrmServices.cancel#Activity"/>
+        <default-response url="."/><error-response url="."/></transition>
+    <transition name="reassignActivity"><service-call name="zenith.crm.CrmServices.reassign#Activity"/>
+        <default-response url="."/><error-response url="."/></transition>
     <actions>
         <entity-find-one entity-name="zenith.erp.crm.CrmActivity" value-field="activity"/>
         <set field="activeOrg" from="(crmOrganization.activeOrgId ?: '_NA_')"/>
         <if condition="!activity || !activeOrg || activeOrg == '_NA_' || activity.organizationPartyId != activeOrg">
             <return error="true" message="Activity not found for your organization."/>
         </if>
+        <set field="mayAssign" from="modCanWrite &amp;&amp; activity.statusId == 'Scheduled' &amp;&amp; ['ADMIN','ZENITH_ADMIN','ZENITH_SALES_MGR'].any { ec.user.isInGroup(it) }"/>
+        <set field="mayEdit" from="mayAssign || (modCanWrite &amp;&amp; activity.statusId == 'Scheduled' &amp;&amp; activity.assignedToUserId == ec.user.userId)"/>
+        <if condition="mayAssign"><service-call name="zenith.crm.CrmServices.get#AssignmentCandidates" out-map="available"/></if>
         <entity-find entity-name="zenith.erp.crm.CrmAuditEvent" list="auditEvents"><econdition field-name="organizationPartyId" from="activeOrg"/><econdition field-name="recordType" value="Activity"/><econdition field-name="recordId" from="activityId"/><order-by field-name="-eventDate"/></entity-find>
     </actions>
     <widgets>
@@ -27,7 +34,7 @@
             <label text="${activity.description ?: 'No notes'}" type="p"/>
             <label text="Outcome: ${activity.outcome ?: 'Pending'}" type="p"/>
         </box-body></container-box>
-        <section name="ActivityActions" condition="modCanWrite &amp;&amp; activity.statusId != 'Completed'"><widgets>
+        <section name="ActivityActions" condition="mayEdit"><widgets>
             <container-row><row-col lg="6"><container-box><box-header title="Complete activity"/><box-body>
                 <form-single name="CompleteActivityForm" transition="completeActivity">
                     <field name="activityId"><default-field><hidden default-value="${activityId}"/></default-field></field>
@@ -46,13 +53,35 @@
                     <field name="submitButton"><default-field title="Reschedule"><submit/></default-field></field>
                 </form-single>
             </box-body></container-box></row-col></container-row>
+            <container-row>
+                <row-col lg="6"><section name="AssignActivity" condition="mayAssign &amp;&amp; available.candidates"><widgets>
+                    <container-box><box-header title="Assign follow-up"/><box-body>
+                        <form-single name="ReassignActivityForm" transition="reassignActivity">
+                            <field name="activityId"><default-field><hidden default-value="${activityId}"/></default-field></field>
+                            <field name="assignedToUserId"><default-field title="Team member"><drop-down allow-empty="true" current="selected">
+                                <list-options list="available.candidates" key="${userId}" text="${userFullName ?: username}"/>
+                            </drop-down></default-field></field>
+                            <field name="submitButton"><default-field title="Assign"><submit/></default-field></field>
+                        </form-single>
+                    </box-body></container-box>
+                </widgets></section></row-col>
+                <row-col lg="6"><container-dialog id="CancelActivityDialog" button-text="Cancel follow-up">
+                    <form-single name="CancelActivityForm" transition="cancelActivity">
+                        <field name="activityId"><default-field><hidden default-value="${activityId}"/></default-field></field>
+                        <field name="note"><default-field title="Reason for cancellation"><text-area rows="2" cols="40"/></default-field></field>
+                        <field name="submitButton"><default-field title="Confirm cancellation"><submit/></default-field></field>
+                    </form-single>
+                </container-dialog></row-col>
+            </container-row>
         </widgets></section>
         <container-box><box-header title="Change history"/><box-body>
-            <section name="NoChanges" condition="auditEvents.isEmpty()"><widgets><label text="No reschedules recorded." type="p"/></widgets></section>
+            <section name="NoChanges" condition="auditEvents.isEmpty()"><widgets><label text="No changes recorded." type="p"/></widgets></section>
             <form-list name="ActivityAudit" list="auditEvents" skip-form="true">
                 <field name="eventDate"><default-field title="When"><display format="dd MMM yyyy HH:mm"/></default-field></field>
-                <field name="previousValue"><default-field title="Previous due"><display/></default-field></field>
-                <field name="newValue"><default-field title="New due"><display/></default-field></field>
+                <field name="action"><default-field title="Change"><display/></default-field></field>
+                <field name="actorUserId"><default-field title="Changed by"><display/></default-field></field>
+                <field name="previousValue"><default-field title="Previous value"><display/></default-field></field>
+                <field name="newValue"><default-field title="New value"><display/></default-field></field>
                 <field name="note"><default-field><display/></default-field></field>
             </form-list>
         </box-body></container-box>

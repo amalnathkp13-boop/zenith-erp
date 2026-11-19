@@ -18,6 +18,26 @@
         </actions>
     </service>
 
+    <service verb="get" noun="AssignmentCandidates" authenticate="true">
+        <out-parameters><parameter name="candidates" type="List"/></out-parameters>
+        <actions>
+            <service-call name="zenith.crm.CrmServices.assert#CrmWrite" out-map="crmWrite"/>
+            <script><![CDATA[
+                candidates = []
+                if (!crmWrite.allowed || !['ADMIN','ZENITH_ADMIN','ZENITH_SALES_MGR'].any { ec.user.isInGroup(it) }) return
+                def members = ec.entity.find('mantle.party.PartyRelationship')
+                        .condition('toPartyId', crmWrite.activeOrg).condition('toRoleTypeId', 'OrgInternal')
+                        .condition('relationshipTypeEnumId', 'in', ['PrtEmployee','PrtAgent','PrtMember'])
+                        .conditionDate('fromDate','thruDate',ec.user.nowTimestamp)
+                        .selectField('fromPartyId').distinct(true).disableAuthz().list()*.fromPartyId
+                if (members) candidates = ec.entity.find('moqui.security.UserAccount').condition('partyId','in',members)
+                        .selectField('userId').selectField('userFullName').selectField('username').selectField('disabled')
+                        .orderBy('userFullName').disableAuthz().list().findAll { it.disabled != 'Y' }
+                        .collect { [userId:it.userId, userFullName:it.userFullName, username:it.username] }
+            ]]></script>
+        </actions>
+    </service>
+
     <service verb="assert" noun="CrmRecord" authenticate="true">
         <description>Check a record against the selected CRM organization, including for platform admins.</description>
         <in-parameters>
@@ -83,6 +103,8 @@
             <parameter name="allowDuplicate" default-value="N"/>
             <parameter name="rating"/>
             <parameter name="assignedToUserId"/>
+            <parameter name="followUpSubject"/>
+            <parameter name="followUpDue" type="Timestamp"/>
             <parameter name="estimatedAmount" type="BigDecimal"/>
             <parameter name="estimatedCloseDate" type="Date"/>
             <parameter name="description"/>
@@ -131,21 +153,40 @@
                     if (!campaign || campaign.organizationPartyId != organizationPartyId || campaign.isActive != 'Y')
                         ec.message.addError('Choose an active campaign for your organization.')
                 }
-                def existing = ec.entity.find('zenith.erp.crm.Lead').condition('organizationPartyId', organizationPartyId).list()
-                def duplicate = existing.find { row -> (email && row.email?.equalsIgnoreCase(email)) ||
-                    (mobile && row.mobile?.replaceAll(/\D/, '') == mobile.replaceAll(/\D/, '')) }
-                if (duplicate && allowDuplicate != 'Y') ec.message.addError('Possible duplicate lead ' + duplicate.leadId +
-                    '. Review it before creating another; select Allow duplicate to confirm.')
-                def contacts = ec.entity.find('zenith.erp.contacts.ContactListView')
-                    .condition('ownerPartyId', organizationPartyId).list()
-                def matchingContact = contacts.find { row -> (email && row.emailAddress?.equalsIgnoreCase(email)) ||
-                    (mobile && row.phoneNumber?.replaceAll(/\D/, '') == mobile.replaceAll(/\D/, '')) }
-                if (matchingContact && allowDuplicate != 'Y') ec.message.addError('Matching contact ' + matchingContact.partyId +
-                    ' already exists. Review it before creating a separate lead.')
+                if (allowDuplicate != 'Y') {
+                    def cf = ec.entity.conditionFactory
+                    def EC = org.moqui.entity.EntityCondition
+                    def phones = [phone,mobile].findAll().collect { it.replaceAll(/\D/,'') }.findAll().unique()
+                    def leadConditions = [], contactConditions = []
+                    if (email) {
+                        leadConditions << cf.makeCondition('email', EC.EQUALS, email).ignoreCase()
+                        contactConditions << cf.makeCondition('emailAddress', EC.EQUALS, email).ignoreCase()
+                    }
+                    for (digits in phones) {
+                        // Older records may store punctuation. Narrow in SQL, then compare digits exactly.
+                        def pattern = '%' + digits.toList().join('%') + '%'
+                        leadConditions << cf.makeCondition('mobile', EC.LIKE, pattern)
+                        leadConditions << cf.makeCondition('phone', EC.LIKE, pattern)
+                        contactConditions << cf.makeCondition('phoneNumber', EC.LIKE, pattern)
+                    }
+                    def hasPhone = { value -> value && phones.contains(value.replaceAll(/\D/,'')) }
+                    def duplicate = leadConditions ? ec.entity.find('zenith.erp.crm.Lead').condition('organizationPartyId', organizationPartyId)
+                        .condition(cf.makeCondition(leadConditions, EC.OR)).selectFields(['leadId','phone','mobile','email']).list()
+                        .find { (email && it.email?.equalsIgnoreCase(email)) || hasPhone(it.mobile) || hasPhone(it.phone) } : null
+                    if (duplicate) ec.message.addError('Possible duplicate lead ' + duplicate.leadId +
+                        '. Review it before creating a separate lead.')
+                    def contact = contactConditions ? ec.entity.find('zenith.erp.contacts.ContactListView').condition('ownerPartyId', organizationPartyId)
+                        .condition(cf.makeCondition(contactConditions, EC.OR)).selectFields(['partyId','emailAddress','phoneNumber']).list()
+                        .find { (email && it.emailAddress?.equalsIgnoreCase(email)) || hasPhone(it.phoneNumber) } : null
+                    if (contact) ec.message.addError('Matching contact ' + contact.partyId + '. Review it before creating a separate lead.')
+                }
             ]]></script>
             <if condition="ec.message.hasError()"><return/></if>
             <if condition="!firstName"><return error="true" message="First name is required."/></if>
-            <if condition="!email &amp;&amp; !mobile &amp;&amp; !phone &amp;&amp; !companyName"><return error="true" message="Enter an email, phone or company."/></if>
+            <if condition="!email &amp;&amp; !mobile &amp;&amp; !phone"><return error="true" message="Enter an email address or a phone number."/></if>
+            <if condition="(followUpSubject?.trim() ? true : false) != (followUpDue != null)">
+                <return error="true" message="Enter both the first follow-up and its due date, or leave both blank."/>
+            </if>
             <if condition="email &amp;&amp; !(email ==~ /[^\s@]+@[^\s@]+\.[^\s@]+/)"><return error="true" message="Enter a valid email address."/></if>
             <if condition="(mobile &amp;&amp; !(mobile ==~ /\+?[0-9]{6,15}/)) || (phone &amp;&amp; !(phone ==~ /\+?[0-9]{6,15}/))"><return error="true" message="Enter a valid phone number."/></if>
             <if condition="estimatedAmount != null &amp;&amp; estimatedAmount &lt; 0"><return error="true" message="Estimated value cannot be negative."/></if>
@@ -170,6 +211,18 @@
                                    estimatedAmount:estimatedAmount, estimatedCloseDate:estimatedCloseDate,
                                    description:description, createdDate:ec.user.nowTimestamp]"/>
             <set field="leadId" from="ldOut.leadId"/>
+            <service-call name="create#zenith.erp.crm.CrmAuditEvent" in-map="[organizationPartyId:organizationPartyId,recordType:'Lead',recordId:leadId,
+                    action:'Captured',newValue:leadSourceId,actorUserId:ec.user.userId,eventDate:ec.user.nowTimestamp]"/>
+            <if condition="assignedToUserId &amp;&amp; assignedToUserId != ec.user.userId">
+                <service-call name="zenith.crm.CrmServices.assign#Lead" in-map="[leadId:leadId,ownerUserId:assignedToUserId]"/>
+            </if>
+            <if condition="followUpDue">
+                <service-call name="zenith.crm.CrmServices.schedule#Activity" out-map="firstFollowUp"
+                              in-map="[leadId:leadId, activityType:'FollowUp', subject:followUpSubject, dueDate:followUpDue]"/>
+                <if condition="assignedToUserId &amp;&amp; assignedToUserId != '_UNASSIGNED_' &amp;&amp; assignedToUserId != ec.user.userId">
+                    <service-call name="zenith.crm.CrmServices.reassign#Activity" in-map="[activityId:firstFollowUp.activityId,assignedToUserId:assignedToUserId]"/>
+                </if>
+            </if>
             <if condition="externalSubmissionId">
                 <service-call name="create#zenith.erp.crm.LeadSubmission"
                               in-map="[organizationPartyId:organizationPartyId, externalSubmissionId:externalSubmissionId, leadId:leadId]"/>
@@ -209,16 +262,13 @@
         <actions>
             <service-call name="zenith.crm.CrmServices.assert#CrmWrite" out-map="crmWrite"/>
             <if condition="!crmWrite.allowed"><return error="true" message="CRM write access and an active organization are required."/></if>
-            <service-call name="zenith.crm.CrmServices.assert#CrmRecord" out-map="leadAccess"
-                          in-map="[entityName:'zenith.erp.crm.Lead', idField:'leadId', idValue:leadId, orgField:'organizationPartyId']"/>
-            <if condition="!leadAccess.allowed"><return error="true" message="Lead not found for your organization."/></if>
-            <entity-find-one entity-name="zenith.erp.crm.Lead" value-field="lead"/>
-            <if condition="!lead"><return error="true" message="Lead not found."/></if>
+            <entity-find-one entity-name="zenith.erp.crm.Lead" value-field="lead" for-update="true"/>
+            <if condition="!lead || lead.organizationPartyId != crmWrite.activeOrg"><return error="true" message="Lead not found for your organization."/></if>
             <if condition="statusId &amp;&amp; !['LeadNew','LeadContacted','LeadQualified','LeadConverted','LeadLost'].contains(statusId)">
                 <return error="true" message="Choose a valid lead status."/>
             </if>
             <if condition="statusId == 'LeadConverted' &amp;&amp; lead.statusId != 'LeadConverted'">
-                <return error="true" message="Use Convert to Contact to convert a lead."/>
+                <return error="true" message="Use Convert to customer to convert a qualified lead."/>
             </if>
             <if condition="lead.statusId == 'LeadConverted' &amp;&amp; statusId &amp;&amp; statusId != 'LeadConverted'">
                 <return error="true" message="A converted lead cannot be reopened."/>
@@ -239,8 +289,16 @@
                 editable.each { key -> if (context.containsKey(key)) leadUpdate[key] = context[key] }
                 if (leadUpdate.containsKey('firstName')) leadUpdate.firstName = leadUpdate.firstName?.trim()
                 if (leadUpdate.containsKey('email')) leadUpdate.email = leadUpdate.email?.trim()?.toLowerCase(java.util.Locale.ROOT)
-                if (leadUpdate.containsKey('mobile')) leadUpdate.mobile = leadUpdate.mobile?.trim()
+                for (field in ['mobile','phone']) {
+                    if (!leadUpdate.containsKey(field)) continue
+                    leadUpdate[field] = leadUpdate[field]?.trim()?.replaceAll(/[\s().-]/, '')
+                    if (leadUpdate[field] && !(leadUpdate[field] ==~ /\+?[0-9]{6,15}/)) ec.message.addError('Enter a valid phone number.')
+                }
+                if (['email','phone','mobile'].any { leadUpdate.containsKey(it) } &&
+                        !['email','phone','mobile'].any { leadUpdate.containsKey(it) ? leadUpdate[it] : lead[it] })
+                    ec.message.addError('Keep an email address or a phone number on the lead.')
             ]]></script>
+            <if condition="ec.message.hasError()"><return/></if>
             <if condition="!leadUpdate.firstName &amp;&amp; leadUpdate.containsKey('firstName')"><return error="true" message="First name is required."/></if>
             <if condition="leadUpdate.email &amp;&amp; !(leadUpdate.email ==~ /[^\s@]+@[^\s@]+\.[^\s@]+/)"><return error="true" message="Enter a valid email address."/></if>
             <if condition="leadSourceId &amp;&amp; leadSourceId != lead.leadSourceId">
@@ -260,8 +318,34 @@
                     <return error="true" message="Campaign not found for your organization."/>
                 </if>
             </if>
+            <if condition="statusId &amp;&amp; statusId != lead.statusId">
+                <service-call name="create#zenith.erp.crm.CrmAuditEvent" in-map="[organizationPartyId:lead.organizationPartyId, recordType:'Lead', recordId:leadId,
+                        action:'StatusChange', previousValue:lead.statusId, newValue:statusId, actorUserId:ec.user.userId, eventDate:ec.user.nowTimestamp]"/>
+            </if>
             <service-call name="update#zenith.erp.crm.Lead" in-map="leadUpdate"/>
             <service-call name="zenith.crm.CrmServices.score#Lead" in-map="[leadId:leadId]"/>
+        </actions>
+    </service>
+
+    <service verb="assign" noun="Lead" authenticate="true">
+        <in-parameters><parameter name="leadId" required="true"/><parameter name="ownerUserId" required="true"/></in-parameters>
+        <actions>
+            <service-call name="zenith.crm.CrmServices.assert#CrmWrite" out-map="crmWrite"/>
+            <if condition="!crmWrite.allowed || !['ADMIN','ZENITH_ADMIN','ZENITH_SALES_MGR'].any { ec.user.isInGroup(it) }">
+                <return error="true" message="A CRM manager in your organization must assign the lead."/>
+            </if>
+            <entity-find-one entity-name="zenith.erp.crm.Lead" value-field="lead" for-update="true"/>
+            <if condition="!lead || lead.organizationPartyId != crmWrite.activeOrg"><return error="true" message="Lead not found for your organization."/></if>
+            <set field="newOwner" from="ownerUserId == '_UNASSIGNED_' ? null : ownerUserId"/>
+            <if condition="newOwner == lead.assignedToUserId"><return/></if>
+            <if condition="newOwner">
+                <service-call name="zenith.crm.CrmServices.get#AssignmentCandidates" out-map="assignment"/>
+                <if condition="!assignment.candidates.any { it.userId == newOwner }"><return error="true" message="Choose an active member of your organization."/></if>
+            </if>
+            <service-call name="create#zenith.erp.crm.CrmAuditEvent" in-map="[organizationPartyId:crmWrite.activeOrg,recordType:'Lead',recordId:leadId,
+                    action:'OwnerChange',previousValue:lead.assignedToUserId,newValue:newOwner,actorUserId:ec.user.userId,eventDate:ec.user.nowTimestamp]"/>
+            <set field="lead.assignedToUserId" from="newOwner"/>
+            <entity-update value-field="lead"/>
         </actions>
     </service>
 
@@ -355,6 +439,50 @@
         </actions>
     </service>
 
+    <service verb="get" noun="LeadCustomerMatches" authenticate="true">
+        <in-parameters><parameter name="leadId" required="true"/></in-parameters>
+        <out-parameters><parameter name="matches" type="List"/></out-parameters>
+        <actions>
+            <service-call name="zenith.crm.CrmServices.assert#CrmWrite" out-map="crmWrite"/>
+            <if condition="!crmWrite.allowed"><return error="true" message="CRM write access is required."/></if>
+            <entity-find-one entity-name="zenith.erp.crm.Lead" value-field="matchLead"/>
+            <if condition="!matchLead || matchLead.organizationPartyId != crmWrite.activeOrg"><return error="true" message="Lead not found for your organization."/></if>
+            <script><![CDATA[
+                def cf = ec.entity.conditionFactory
+                def EC = org.moqui.entity.EntityCondition
+                def terms = []
+                if (matchLead.email) terms << cf.makeCondition('emailAddress', EC.EQUALS, matchLead.email.trim()).ignoreCase()
+                def phones = [matchLead.phone, matchLead.mobile].findAll().collect { it.replaceAll(/\D/, '') }.findAll().unique()
+                phones.each { terms << cf.makeCondition('phoneNumber', EC.LIKE, '%' + it.toList().join('%') + '%') }
+                def norm = { v -> v?.trim()?.replaceAll(/\s+/, ' ')?.toLowerCase(java.util.Locale.ROOT) }
+                def business = norm(matchLead.companyName)
+                if (business) terms << cf.makeCondition('organizationName', EC.LIKE, '%' + business.replace(' ', '%') + '%').ignoreCase()
+                def tax = norm(matchLead.taxRegistrationNumber)
+                def gstinPartyIds = []
+                if (tax) {
+                    terms << cf.makeCondition('taxRegistrationNumber', EC.EQUALS, tax).ignoreCase()
+                    gstinPartyIds = ec.entity.find('zenith.erp.india.IndiaGstin').condition('gstin', tax.toUpperCase(java.util.Locale.ROOT))
+                        .condition('isActive','Y').selectField('partyId').distinct(true).list()*.partyId
+                    if (gstinPartyIds) terms << cf.makeCondition('partyId', EC.IN, gstinPartyIds)
+                }
+                def candidates = terms ? ec.entity.find('zenith.erp.contacts.ContactListView').condition('ownerPartyId', crmWrite.activeOrg)
+                    .condition(cf.makeCondition(terms, EC.OR))
+                    .selectFields(['partyId','disabled','organizationName','firstName','lastName','emailAddress','phoneNumber','taxRegistrationNumber'])
+                    .list().findAll { row -> row.disabled != 'Y' && (
+                        (matchLead.email && norm(row.emailAddress) == norm(matchLead.email)) ||
+                        (row.phoneNumber && phones.contains(row.phoneNumber.replaceAll(/\D/, ''))) ||
+                        (business && norm(row.organizationName) == business) || (tax && norm(row.taxRegistrationNumber) == tax) || gstinPartyIds.contains(row.partyId)) }
+                    .unique { it.partyId } : []
+                def customers = candidates ? ec.entity.find('mantle.party.PartyRole').condition('partyId','in',candidates*.partyId)
+                    .condition('roleTypeId','Customer').list()*.partyId.toSet() : []
+                matches = candidates.findAll { customers.contains(it.partyId) }.collect { row ->
+                    def name = row.organizationName ?: [row.firstName,row.lastName].findAll().join(' ')
+                    [partyId:row.partyId, label:[name,row.emailAddress ?: row.phoneNumber,row.partyId].findAll().join(' · ')]
+                }
+            ]]></script>
+        </actions>
+    </service>
+
     <service verb="convert" noun="Lead" authenticate="true">
         <description>Convert a qualified lead into a Contact (Party) and optionally a Sales Opportunity</description>
         <in-parameters>
@@ -369,12 +497,14 @@
         <actions>
             <service-call name="zenith.crm.CrmServices.assert#CrmWrite" out-map="crmWrite"/>
             <if condition="!crmWrite.allowed"><return error="true" message="CRM write access and an active organization are required."/></if>
-            <service-call name="zenith.crm.CrmServices.assert#CrmRecord" out-map="leadAccess"
-                          in-map="[entityName:'zenith.erp.crm.Lead', idField:'leadId', idValue:leadId, orgField:'organizationPartyId']"/>
-            <if condition="!leadAccess.allowed"><return error="true" message="Lead not found for your organization."/></if>
-            <entity-find-one entity-name="zenith.erp.crm.Lead" value-field="lead"/>
-            <if condition="!lead || ['LeadConverted','LeadLost'].contains(lead.statusId)">
-                <return error="true" message="Only an open lead can be converted."/></if>
+            <entity-find-one entity-name="zenith.erp.crm.Lead" value-field="lead" for-update="true"/>
+            <if condition="!lead || lead.organizationPartyId != crmWrite.activeOrg"><return error="true" message="Lead not found for your organization."/></if>
+            <if condition="lead.statusId == 'LeadConverted' &amp;&amp; lead.convertedPartyId">
+                <set field="partyId" from="lead.convertedPartyId"/>
+                <set field="salesOpportunityId" from="lead.convertedOpportunityId"/>
+                <return/>
+            </if>
+            <if condition="lead.statusId != 'LeadQualified'"><return error="true" message="Qualify the lead before converting it."/></if>
 
             <!-- Get organization's currency -->
             <entity-find-one entity-name="zenith.erp.base.CompanySettings" value-field="currSetting">
@@ -395,33 +525,39 @@
                     .sort { settings[it.opportunityStageId]?.sequenceNum ?: it.sequenceNum ?: 0 }
                 firstStageId = active ? active[0].opportunityStageId : null
                 firstStageProbability = active ?
-                    (settings[firstStageId]?.defaultProbability != null ? settings[firstStageId].defaultProbability : active[0].defaultProbability) : null
+                    (settings[firstStageId]?.defaultProbability != null ? settings[firstStageId].defaultProbability : (active[0].defaultProbability ?: 0G)) : null
             ]]></script>
             <if condition="createOpportunity == 'Y' &amp;&amp; !firstStageId">
                 <return error="true" message="Configure at least one active pipeline stage before converting this lead."/>
             </if>
 
-            <script><![CDATA[
-                def orgContacts = ec.entity.find('zenith.erp.contacts.ContactListView')
-                    .condition('ownerPartyId', lead.organizationPartyId).list()
-                def match = orgContacts.find { row ->
-                    (lead.email && row.emailAddress?.equalsIgnoreCase(lead.email)) ||
-                    ((lead.mobile ?: lead.phone) && row.phoneNumber?.replaceAll(/\D/, '') ==
-                        (lead.mobile ?: lead.phone).replaceAll(/\D/, '')) }
-                if (reusePartyId && !orgContacts.any { it.partyId == reusePartyId })
-                    ec.message.addError('The selected contact is not in your organization.')
-                if (!reusePartyId && match)
-                    ec.message.addError('Matching contact ' + match.partyId + ' exists. Enter its ID to link it instead of creating a duplicate.')
-            ]]></script>
-            <if condition="ec.message.hasError()"><return/></if>
+            <service-call name="zenith.crm.CrmServices.get#LeadCustomerMatches" in-map="[leadId:leadId]" out-map="review"/>
+            <set field="createSeparateCustomer" from="reusePartyId == '_CREATE_NEW_'"/>
+            <if condition="createSeparateCustomer">
+                <if condition="!ec.user.isInGroup('ADMIN') &amp;&amp; !ec.user.isInGroup('ZENITH_ADMIN')"><return error="true" message="An administrator must confirm a separate customer."/></if>
+                <set field="reusePartyId" from="null"/>
+            </if>
+            <if condition="!reusePartyId &amp;&amp; review.matches &amp;&amp; !createSeparateCustomer">
+                <return error="true" message="Select the matching ERP customer before confirming conversion."/>
+            </if>
+            <if condition="reusePartyId">
+                <entity-find-one entity-name="mantle.party.Party" value-field="customer"><field-map field-name="partyId" from="reusePartyId"/></entity-find-one>
+                <entity-find-one entity-name="mantle.party.PartyRole" value-field="customerRole"><field-map field-name="partyId" from="reusePartyId"/><field-map field-name="roleTypeId" value="Customer"/></entity-find-one>
+                <if condition="!customer || customer.disabled == 'Y' || customer.ownerPartyId != crmWrite.activeOrg || !customerRole">
+                    <return error="true" message="Select an active customer in your organization."/>
+                </if>
+            </if>
             <set field="partyId" from="reusePartyId"/>
             <if condition="!partyId">
+                <set field="customerGstin" from="lead.taxRegistrationNumber?.trim()?.toUpperCase(java.util.Locale.ROOT)"/>
+                <set field="isGstin" from="customerGstin != null &amp;&amp; customerGstin ==~ /[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]/"/>
                 <service-call name="zenith.contacts.ContactServices.create#Contact" out-map="contactResult"
                               in-map="[partyTypeEnumId:(lead.companyName ? 'PtyOrganization' : 'PtyPerson'),
                                        organizationName:lead.companyName, firstName:(lead.companyName ? null : lead.firstName),
                                        lastName:(lead.companyName ? null : lead.lastName), emailAddress:lead.email,
-                                       contactNumber:lead.mobile ?: lead.phone,
-                                       taxRegistrationNumber:lead.taxRegistrationNumber,
+                                       contactNumber:(lead.mobile ?: lead.phone)?.replaceFirst(/^\+/, ''),
+                                       taxRegistrationNumber:(isGstin ? null : lead.taxRegistrationNumber), gstin:(isGstin ? customerGstin : null),
+                                       panNumber:lead.taxIdNumber, allowDuplicate:(createSeparateCustomer ? 'Y' : 'N'),
                                        countryGeoId:lead.countryGeoId, regionGeoId:lead.regionCode]"/>
                 <set field="partyId" from="contactResult?.partyId"/>
                 <if condition="!partyId"><return error="true" message="The lead contact could not be created."/></if>
@@ -445,6 +581,8 @@
                 <set field="salesOpportunityId" from="oppOut.salesOpportunityId"/>
             </if>
 
+            <service-call name="create#zenith.erp.crm.CrmAuditEvent" in-map="[organizationPartyId:lead.organizationPartyId, recordType:'Lead', recordId:leadId,
+                    action:(createSeparateCustomer ? 'ConversionOverride' : 'Conversion'), previousValue:lead.statusId, newValue:partyId, actorUserId:ec.user.userId, eventDate:ec.user.nowTimestamp]"/>
             <service-call name="update#zenith.erp.crm.Lead"
                           in-map="[leadId:leadId, statusId:'LeadConverted', convertedDate:ec.user.nowTimestamp,
                                    convertedPartyId:partyId, convertedOpportunityId:salesOpportunityId]"/>
@@ -574,24 +712,37 @@
         </actions>
     </service>
 
+    <service verb="get" noun="EditableActivity" authenticate="true">
+        <description>Lock the active follow-up so simultaneous state changes use its current status and assignee.</description>
+        <in-parameters><parameter name="activityId" required="true"/></in-parameters>
+        <out-parameters><parameter name="activity" type="org.moqui.entity.EntityValue"/></out-parameters>
+        <actions>
+            <service-call name="zenith.crm.CrmServices.assert#CrmWrite" out-map="crmWrite"/>
+            <if condition="!crmWrite.allowed"><return error="true" message="CRM write access is required."/></if>
+            <set field="activity" from="ec.entity.find('zenith.erp.crm.CrmActivity').condition('activityId',activityId).condition('organizationPartyId',crmWrite.activeOrg).forUpdate(true).one()"/>
+            <if condition="!activity"><return error="true" message="Activity not found for your organization."/></if>
+            <if condition="activity.statusId != 'Scheduled'"><return error="true" message="Only scheduled activities can be changed."/></if>
+            <if condition="activity.assignedToUserId != ec.user.userId &amp;&amp; !['ADMIN','ZENITH_ADMIN','ZENITH_SALES_MGR'].any { ec.user.isInGroup(it) }">
+                <return error="true" message="Only the assignee or a sales manager can change this follow-up."/>
+            </if>
+        </actions>
+    </service>
+
     <service verb="complete" noun="Activity" authenticate="true">
         <in-parameters><parameter name="activityId" required="true"/><parameter name="outcome" required="true"/>
             <parameter name="description"/><parameter name="durationMinutes" type="Integer"/>
             <parameter name="nextFollowUpDate" type="Timestamp"/></in-parameters>
         <actions>
-            <service-call name="zenith.crm.CrmServices.assert#CrmWrite" out-map="crmWrite"/>
-            <if condition="!crmWrite.allowed"><return error="true" message="CRM write access is required."/></if>
-            <service-call name="zenith.crm.CrmServices.assert#CrmRecord" out-map="activityAccess"
-                          in-map="[entityName:'zenith.erp.crm.CrmActivity', idField:'activityId', idValue:activityId, orgField:'organizationPartyId']"/>
-            <if condition="!activityAccess.allowed"><return error="true" message="Activity not found for your organization."/></if>
-            <entity-find-one entity-name="zenith.erp.crm.CrmActivity" value-field="activity"/>
-            <if condition="activity.statusId == 'Completed'"><return error="true" message="Activity already completed."/></if>
+            <service-call name="zenith.crm.CrmServices.get#EditableActivity" in-map="[activityId:activityId]" out-map="editable"/>
+            <set field="activity" from="editable.activity"/>
             <if condition="!outcome?.trim() || (durationMinutes != null &amp;&amp; durationMinutes &lt; 0)"><return error="true" message="Outcome is required; duration cannot be negative."/></if>
             <service-call name="update#zenith.erp.crm.CrmActivity"
                           in-map="[activityId:activityId, statusId:'Completed', completedDate:ec.user.nowTimestamp,
                                    outcome:outcome.trim(), description:description ?: activity.description,
                                    durationMinutes:durationMinutes, nextFollowUpDate:nextFollowUpDate,
                                    performedByUserId:ec.user.userId]"/>
+            <service-call name="create#zenith.erp.crm.CrmAuditEvent" in-map="[organizationPartyId:activity.organizationPartyId, recordType:'Activity', recordId:activityId,
+                          action:'Completed', previousValue:'Scheduled', newValue:'Completed', note:outcome.trim(), actorUserId:ec.user.userId, eventDate:ec.user.nowTimestamp]"/>
             <if condition="nextFollowUpDate">
                 <service-call name="zenith.crm.CrmServices.schedule#Activity"
                               in-map="[activityType:'FollowUp', subject:'Follow up: ' + activity.subject,
@@ -607,13 +758,8 @@
         <in-parameters><parameter name="activityId" required="true"/><parameter name="dueDate" type="Timestamp" required="true"/>
             <parameter name="note"/></in-parameters>
         <actions>
-            <service-call name="zenith.crm.CrmServices.assert#CrmWrite" out-map="crmWrite"/>
-            <if condition="!crmWrite.allowed"><return error="true" message="CRM write access is required."/></if>
-            <service-call name="zenith.crm.CrmServices.assert#CrmRecord" out-map="activityAccess"
-                          in-map="[entityName:'zenith.erp.crm.CrmActivity', idField:'activityId', idValue:activityId, orgField:'organizationPartyId']"/>
-            <if condition="!activityAccess.allowed"><return error="true" message="Activity not found for your organization."/></if>
-            <entity-find-one entity-name="zenith.erp.crm.CrmActivity" value-field="activity"/>
-            <if condition="activity.statusId == 'Completed'"><return error="true" message="Completed activities cannot be rescheduled."/></if>
+            <service-call name="zenith.crm.CrmServices.get#EditableActivity" in-map="[activityId:activityId]" out-map="editable"/>
+            <set field="activity" from="editable.activity"/>
             <service-call name="update#zenith.erp.crm.CrmActivity" in-map="[activityId:activityId, dueDate:dueDate]"/>
             <service-call name="create#zenith.erp.crm.CrmAuditEvent"
                           in-map="[organizationPartyId:activity.organizationPartyId, recordType:'Activity',
@@ -623,12 +769,39 @@
         </actions>
     </service>
 
+    <service verb="cancel" noun="Activity" authenticate="true">
+        <in-parameters><parameter name="activityId" required="true"/><parameter name="note" required="true"/></in-parameters>
+        <actions>
+            <service-call name="zenith.crm.CrmServices.get#EditableActivity" in-map="[activityId:activityId]" out-map="editable"/>
+            <if condition="!note?.trim()"><return error="true" message="Enter the reason for cancellation."/></if>
+            <service-call name="update#zenith.erp.crm.CrmActivity" in-map="[activityId:activityId, statusId:'Cancelled']"/>
+            <service-call name="create#zenith.erp.crm.CrmAuditEvent" in-map="[organizationPartyId:editable.activity.organizationPartyId, recordType:'Activity',
+                          recordId:activityId, action:'Cancelled', previousValue:'Scheduled', newValue:'Cancelled', note:note.trim(), actorUserId:ec.user.userId, eventDate:ec.user.nowTimestamp]"/>
+        </actions>
+    </service>
+
+    <service verb="reassign" noun="Activity" authenticate="true">
+        <in-parameters><parameter name="activityId" required="true"/><parameter name="assignedToUserId" required="true"/></in-parameters>
+        <actions>
+            <service-call name="zenith.crm.CrmServices.get#EditableActivity" in-map="[activityId:activityId]" out-map="editable"/>
+            <service-call name="zenith.crm.CrmServices.get#AssignmentCandidates" out-map="available"/>
+            <if condition="!available.candidates.any { it.userId == assignedToUserId }"><return error="true" message="Choose an active team member from this organization."/></if>
+            <set field="previousOwner" from="editable.activity.assignedToUserId"/>
+            <if condition="previousOwner == assignedToUserId"><return/></if>
+            <service-call name="update#zenith.erp.crm.CrmActivity" in-map="[activityId:activityId, assignedToUserId:assignedToUserId]"/>
+            <service-call name="create#zenith.erp.crm.CrmAuditEvent" in-map="[organizationPartyId:editable.activity.organizationPartyId, recordType:'Activity',
+                          recordId:activityId, action:'Reassigned', previousValue:previousOwner, newValue:assignedToUserId, actorUserId:ec.user.userId, eventDate:ec.user.nowTimestamp]"/>
+        </actions>
+    </service>
+
     <!-- ========== Opportunity Services ========== -->
 
     <service verb="save" noun="StageSetting" authenticate="true">
         <in-parameters><parameter name="opportunityStageId" required="true"/>
             <parameter name="displayName" required="true"/>
             <parameter name="defaultProbability" type="BigDecimal" required="true"/>
+            <parameter name="staleAfterDays" type="Integer"/>
+            <parameter name="forecastCategory"/>
             <parameter name="sequenceNum" type="Integer" required="true"/>
             <parameter name="isActive" default-value="Y"/></in-parameters>
         <actions>
@@ -640,6 +813,12 @@
             <if condition="!displayName || displayName.length() &gt; 80 || defaultProbability &lt; 0 || defaultProbability &gt; 1 || sequenceNum &lt; 1 || !['Y','N'].contains(isActive)">
                 <return error="true" message="Enter a stage name, order, active state and probability from 0 to 1."/>
             </if>
+            <if condition="forecastCategory &amp;&amp; !(forecastCategory in ['Pipeline','Best Case','Commit','Omitted'])">
+                <return error="true" message="Choose a forecast category for an open stage."/>
+            </if>
+            <if condition="staleAfterDays != null &amp;&amp; (staleAfterDays &lt; 0 || staleAfterDays &gt; 3650)">
+                <return error="true" message="Enter inactivity days from 0 to 3650. Zero turns alerts off."/>
+            </if>
             <entity-find-one entity-name="mantle.sales.opportunity.SalesOpportunityStage" value-field="stage"/>
             <if condition="!stage || ['SoClosedWon','SoClosedLost'].contains(opportunityStageId)">
                 <return error="true" message="Only open pipeline stages can be configured here."/>
@@ -647,7 +826,8 @@
             <service-call name="store#zenith.erp.crm.CrmStageSetting"
                           in-map="[organizationPartyId:crmWrite.activeOrg, opportunityStageId:opportunityStageId,
                                    displayName:displayName, defaultProbability:defaultProbability,
-                                   sequenceNum:sequenceNum, isActive:isActive]"/>
+                                   sequenceNum:sequenceNum, isActive:isActive] + (staleAfterDays == null ? [:] : [staleAfterDays:staleAfterDays])
+                                   + (forecastCategory ? [forecastCategory:forecastCategory] : [:])"/>
         </actions>
     </service>
 
@@ -679,7 +859,7 @@
 
     <service verb="create" noun="Opportunity" authenticate="true">
         <in-parameters>
-            <parameter name="opportunityName" required="true"/>
+            <parameter name="opportunityName" required="true"/><parameter name="nextStep"/>
             <parameter name="accountPartyId"/>
             <parameter name="estimatedAmount" type="BigDecimal"/>
             <parameter name="estimatedCloseDate" type="Date"/>
@@ -689,14 +869,14 @@
         <actions>
             <service-call name="zenith.crm.CrmServices.assert#CrmWrite" out-map="crmWrite"/>
             <if condition="!crmWrite.allowed"><return error="true" message="CRM write access and an active organization are required."/></if>
-            <set field="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
+            <set field="organizationPartyId" from="crmWrite.activeOrg"/>
             <set field="opportunityName" from="opportunityName?.trim()"/>
             <if condition="!opportunityName"><return error="true" message="Opportunity name is required."/></if>
             <if condition="estimatedAmount != null &amp;&amp; estimatedAmount &lt; 0"><return error="true" message="Amount cannot be negative."/></if>
             <entity-find-one entity-name="mantle.sales.opportunity.SalesOpportunityStage" value-field="stage">
                 <field-map field-name="opportunityStageId"/>
             </entity-find-one>
-            <if condition="!stage"><return error="true" message="Choose a valid opportunity stage."/></if>
+            <if condition="!stage || opportunityStageId in ['SoClosedWon','SoClosedLost']"><return error="true" message="Create the opportunity in an open stage, then confirm its outcome."/></if>
             <entity-find-one entity-name="zenith.erp.crm.CrmStageSetting" value-field="stageSetting">
                 <field-map field-name="organizationPartyId"/><field-map field-name="opportunityStageId"/>
             </entity-find-one>
@@ -714,7 +894,7 @@
             <set field="currencyUomId" from="currSetting?.settingValue ?: 'USD'"/>
             <service-call name="create#mantle.sales.opportunity.SalesOpportunity" out-map="opportunityCreated"
                           in-map="[organizationPartyId:organizationPartyId, opportunityName:opportunityName,
-                                   accountPartyId:accountPartyId, estimatedAmount:estimatedAmount,
+                                   accountPartyId:accountPartyId, nextStep:nextStep?.trim(), estimatedAmount:estimatedAmount,
                                    estimatedCloseDate:estimatedCloseDate, opportunityStageId:opportunityStageId,
                                    estimatedProbability:stageProbability,
                                    expectedRevenue:(estimatedAmount ?: 0) * (stageProbability ?: 0),
@@ -726,7 +906,7 @@
 
     <service verb="update" noun="Opportunity" authenticate="true">
         <in-parameters><parameter name="salesOpportunityId" required="true"/>
-            <parameter name="opportunityName" required="true"/><parameter name="estimatedAmount" type="BigDecimal"/>
+            <parameter name="opportunityName" required="true"/><parameter name="nextStep"/><parameter name="updateNextStep"/><parameter name="accountPartyId"/><parameter name="estimatedAmount" type="BigDecimal"/>
             <parameter name="estimatedCloseDate" type="Date"/><parameter name="estimatedProbability" type="BigDecimal"/></in-parameters>
         <actions>
             <service-call name="zenith.crm.CrmServices.assert#CrmWrite" out-map="crmWrite"/>
@@ -738,14 +918,22 @@
             <if condition="!opportunityName || (estimatedAmount != null &amp;&amp; estimatedAmount &lt; 0) || (estimatedProbability != null &amp;&amp; (estimatedProbability &lt; 0 || estimatedProbability &gt; 1))">
                 <return error="true" message="Enter a name, non-negative amount and probability between 0 and 1."/>
             </if>
-            <entity-find-one entity-name="mantle.sales.opportunity.SalesOpportunity" value-field="opp"/>
+            <entity-find-one entity-name="mantle.sales.opportunity.SalesOpportunity" value-field="opp" for-update="true"/>
             <if condition="['SoClosedWon','SoClosedLost'].contains(opp.opportunityStageId)">
                 <return error="true" message="Reopen this opportunity before editing its forecast."/>
+            </if>
+            <if condition="accountPartyId &amp;&amp; accountPartyId != opp.accountPartyId">
+                <service-call name="zenith.crm.CrmServices.assert#CrmRecord" out-map="accountAccess"
+                              in-map="[entityName:'mantle.party.Party', idField:'partyId', idValue:accountPartyId, orgField:'ownerPartyId']"/>
+                <if condition="!accountAccess.allowed"><return error="true" message="Choose an account in this organization."/></if>
+                <entity-find-count entity-name="mantle.sales.opportunity.SalesOpportunityOrder" count-field="linkedOrders"><econdition field-name="salesOpportunityId"/></entity-find-count>
+                <if condition="linkedOrders"><return error="true" message="The customer is fixed once a sales document is linked."/></if>
             </if>
             <service-call name="update#mantle.sales.opportunity.SalesOpportunity"
                           in-map="[salesOpportunityId:salesOpportunityId, opportunityName:opportunityName,
                                    estimatedAmount:estimatedAmount, estimatedCloseDate:estimatedCloseDate,
-                                   estimatedProbability:estimatedProbability,
+                                   accountPartyId:(accountPartyId ?: opp.accountPartyId),
+                                   nextStep:(nextStep != null || updateNextStep == 'Y' ? nextStep?.trim() : opp.nextStep), estimatedProbability:estimatedProbability,
                                    expectedRevenue:(estimatedAmount ?: 0) * (estimatedProbability ?: 0)]"/>
         </actions>
     </service>
@@ -783,23 +971,20 @@
             <if condition="!opp || opp.organizationPartyId != organizationPartyId">
                 <return error="true" message="Opportunity not found for your organization."/>
             </if>
-            <if condition="['SoClosedWon','SoClosedLost'].contains(opp.opportunityStageId) &amp;&amp; opp.opportunityStageId != opportunityStageId &amp;&amp; !ec.user.isInGroup('ADMIN') &amp;&amp; !ec.user.isInGroup('ZENITH_ADMIN')">
+            <if condition="opp.opportunityStageId == opportunityStageId"><return/></if>
+            <if condition="['SoClosedWon','SoClosedLost'].contains(opp.opportunityStageId) &amp;&amp; !ec.user.isInGroup('ADMIN') &amp;&amp; !ec.user.isInGroup('ZENITH_ADMIN')">
                 <return error="true" message="Only a CRM administrator may reopen a closed opportunity."/>
             </if>
             <if condition="['SoClosedWon','SoClosedLost'].contains(opportunityStageId) &amp;&amp; confirmOutcome != 'Y'">
                 <return error="true" message="Confirm the outcome before closing this opportunity."/>
             </if>
-            <if condition="opportunityStageId == 'SoClosedLost' &amp;&amp; !(lostReason?.trim() ?: opp.lostReason)">
+            <if condition="opportunityStageId == 'SoClosedLost' &amp;&amp; !lostReason?.trim()">
                 <return error="true" message="A lost reason is required."/>
             </if>
             <set field="updateMap.expectedRevenue" from="(opp.estimatedAmount ?: 0) * (stageProbability ?: 0)"/>
-            <if condition="opportunityStageId == 'SoClosedWon' &amp;&amp; opp.opportunityStageId != 'SoClosedWon'">
-                <set field="updateMap.wonDate" from="ec.user.nowTimestamp"/>
-            </if>
-            <if condition="opportunityStageId == 'SoClosedLost' &amp;&amp; opp.opportunityStageId != 'SoClosedLost'">
-                <set field="updateMap.lostDate" from="ec.user.nowTimestamp"/>
-                <set field="updateMap.lostReason" from="lostReason?.trim()"/>
-            </if>
+            <set field="updateMap.wonDate" from="opportunityStageId == 'SoClosedWon' ? ec.user.nowTimestamp : null"/>
+            <set field="updateMap.lostDate" from="opportunityStageId == 'SoClosedLost' ? ec.user.nowTimestamp : null"/>
+            <set field="updateMap.lostReason" from="opportunityStageId == 'SoClosedLost' ? lostReason.trim() : null"/>
 
             <service-call name="update#mantle.sales.opportunity.SalesOpportunity" in-map="updateMap"/>
             <if condition="opp.opportunityStageId != opportunityStageId">
@@ -827,11 +1012,68 @@
         </actions>
     </service>
 
+    <service verb="get" noun="CrmSalesAccess" authenticate="true">
+        <description>Sales actions available from CRM under the current tenant plan and role.</description>
+        <out-parameters><parameter name="routes" type="List"/><parameter name="canCreateQuote" type="Boolean"/></out-parameters>
+        <actions>
+            <service-call name="zenith.contacts.ContactServices.get#AuthorizedActiveOrganization" out-map="organization"/>
+            <script><![CDATA[
+                routes = []
+                canCreateQuote = false
+                if (!organization.activeOrgId || !ec.entity.isEntityDefined('zenith.erp.sales.InvoiceSalesSummaryView')) return
+                def tenant = ec.entity.isEntityDefined('zenith.erp.saas.SaasTenant') ?
+                    ec.entity.find('zenith.erp.saas.SaasTenant').condition('organizationPartyId',organization.activeOrgId)
+                        .condition('statusId','SaasTenantActive').disableAuthz().useCache(true).list().find() : null
+                def plan = tenant ? ec.entity.find('zenith.erp.saas.SaasPlanModule').condition('planId',tenant.planId)
+                    .disableAuthz().useCache(true).list()*.moduleId.collect { it.toLowerCase() } : null
+                def nav = ec.service.sync().name('zenith.base.SecurityServices.get#ModuleNavigation')
+                    .parameter('planModules',plan).disableAuthz().call()
+                if (nav.moduleIds != null && !(nav.moduleIds.containsAll(['crm','sales']))) return
+                def scope = nav.roleScope
+                def hasRoute = { module, route, write ->
+                    !scope?.restricted || (write ? scope.legacyWriteModules : scope.legacyModules)?.contains(module) ||
+                        scope.selections[module]?.contains(route)
+                }
+                routes = ['FindQuotation','FindOrder','FindInvoice','EditQuotation','EditOrder','EditInvoice'].findAll {
+                    hasRoute('sales','/sales/' + it,false)
+                }
+                if (!hasRoute('sales','/sales/CreateQuotation',true) || !hasRoute('sales','/sales/EditQuotation',true)) return
+                def access = ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess')
+                    .parameter('moduleId','sales').call()
+                canCreateQuote = access?.canWrite == true
+            ]]></script>
+        </actions>
+    </service>
+
+    <service verb="prepare" noun="OpportunityQuotation" authenticate="true">
+        <description>Lock and validate the opportunity before the native Sales form creates its first quotation.</description>
+        <in-parameters><parameter name="salesOpportunityId" required="true"/><parameter name="customerPartyId" required="true"/></in-parameters>
+        <actions>
+            <service-call name="zenith.crm.CrmServices.assert#CrmWrite" out-map="crmWrite"/>
+            <service-call name="zenith.crm.CrmServices.get#CrmSalesAccess" out-map="salesAccess"/>
+            <service-call name="zenith.base.RoleAccessServices.get#AssignedRoleScope" out-map="roleScope"/>
+            <if condition="!crmWrite.allowed || !salesAccess.canCreateQuote || (roleScope.restricted &amp;&amp; !roleScope.legacyWriteModules.contains('crm') &amp;&amp; !roleScope.selections.crm?.contains('/Crm/EditOpportunity'))">
+                <return error="true" message="Creating a quotation requires opportunity and Sales quotation access."/>
+            </if>
+            <entity-find-one entity-name="mantle.sales.opportunity.SalesOpportunity" value-field="opp" for-update="true"/>
+            <if condition="!opp || opp.organizationPartyId != crmWrite.activeOrg || opp.accountPartyId != customerPartyId || opp.opportunityStageId == 'SoClosedLost'">
+                <return error="true" message="Select this opportunity’s customer. Lost opportunities must be reopened first."/>
+            </if>
+            <entity-find-one entity-name="mantle.party.Party" value-field="customer"><field-map field-name="partyId" from="customerPartyId"/></entity-find-one>
+            <entity-find-one entity-name="mantle.party.PartyRole" value-field="customerRole"><field-map field-name="partyId" from="customerPartyId"/><field-map field-name="roleTypeId" value="Customer"/></entity-find-one>
+            <if condition="!customerRole || customer?.ownerPartyId != crmWrite.activeOrg || customer.disabled == 'Y'">
+                <return error="true" message="Link an active ERP customer belonging to this organization."/>
+            </if>
+            <entity-find-count entity-name="mantle.sales.opportunity.SalesOpportunityOrder" count-field="existingQuotes"><econdition field-name="salesOpportunityId"/></entity-find-count>
+            <if condition="existingQuotes"><return error="true" message="This opportunity already has a sales document. Open it from the opportunity to continue or create a revision."/></if>
+        </actions>
+    </service>
+
     <!-- ========== Source and Campaign Services ========== -->
     <service verb="save" noun="CrmFilter" authenticate="true">
         <in-parameters><parameter name="screenName" required="true"/><parameter name="filterName" required="true"/>
             <parameter name="period"/><parameter name="ownerId"/><parameter name="searchText"/>
-            <parameter name="view"/><parameter name="leadSourceId"/><parameter name="firstTouchSourceId"/>
+            <parameter name="view"/><parameter name="ownership"/><parameter name="leadSourceId"/><parameter name="firstTouchSourceId"/>
             <parameter name="latestTouchSourceId"/><parameter name="campaignId"/>
             <parameter name="statusId"/><parameter name="assignedToUserId"/><parameter name="sourceId"/></in-parameters>
         <out-parameters><parameter name="filterId"/></out-parameters>
@@ -841,7 +1083,7 @@
             <service-call name="zenith.contacts.ContactServices.get#AuthorizedActiveOrganization" out-map="crmOrg"/>
             <if condition="!crmOrg.activeOrgId || crmOrg.activeOrgId == '_NA_'"><return error="true" message="Select an organization before saving a CRM view."/></if>
             <script><![CDATA[
-                def allowed = [Leads:['period','leadSourceId','firstTouchSourceId','latestTouchSourceId','campaignId','statusId','assignedToUserId'],
+                def allowed = [Leads:['period','ownership','leadSourceId','firstTouchSourceId','latestTouchSourceId','campaignId','statusId','assignedToUserId'],
                     Pipeline:['period','ownerId','searchText'], Activities:['period','view'],
                     Reports:['period','sourceId','campaignId']]
                 filterName = filterName?.trim()

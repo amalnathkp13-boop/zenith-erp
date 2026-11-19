@@ -22,31 +22,35 @@
         <script><![CDATA[
             import org.moqui.entity.EntityCondition
             period = period == 'all' ? 'all' : 'month'
-            view = ['today','overdue','upcoming','mine','completed','agenda','tasks','notes'].contains(view) ? view : 'all'
-            def today = java.time.LocalDate.parse(new java.text.SimpleDateFormat('yyyy-MM-dd').format(ec.user.nowTimestamp))
-            periodStart = view == 'all' && period == 'month' ? java.sql.Timestamp.valueOf(today.withDayOfMonth(1).atStartOfDay()) : null
-            periodEnd = view == 'all' && period == 'month' ? java.sql.Timestamp.valueOf(today.withDayOfMonth(1).plusMonths(1).atStartOfDay()) : null
-            todayStart = java.sql.Timestamp.valueOf(today.atStartOfDay())
-            tomorrowStart = java.sql.Timestamp.valueOf(today.plusDays(1).atStartOfDay())
+            view = ['today','overdue','upcoming','mine','mywork','completed','cancelled','agenda','tasks','notes'].contains(view) ? view : 'all'
+            def zone = ec.user.timeZone.toZoneId()
+            def today = ec.user.nowTimestamp.toInstant().atZone(zone).toLocalDate()
+            def midnight = { day -> java.sql.Timestamp.from(day.atStartOfDay(zone).toInstant()) }
+            periodStart = view == 'all' && period == 'month' ? midnight(today.withDayOfMonth(1)) : null
+            periodEnd = view == 'all' && period == 'month' ? midnight(today.withDayOfMonth(1).plusMonths(1)) : null
+            todayStart = midnight(today)
+            tomorrowStart = midnight(today.plusDays(1))
             dueStart = view in ['today','upcoming'] ? (view == 'today' ? todayStart : tomorrowStart) : null
-            dueEnd = view == 'today' ? tomorrowStart : (view == 'overdue' ? ec.user.nowTimestamp : null)
-            statusFilter = view == 'completed' ? 'Completed' : (view in ['today','upcoming','overdue','agenda','tasks'] ? 'Scheduled' : null)
+            dueEnd = view in ['today','mywork'] ? tomorrowStart : (view == 'overdue' ? ec.user.nowTimestamp : null)
+            statusFilter = [completed:'Completed', cancelled:'Cancelled'][view] ?: (view in ['today','upcoming','overdue','agenda','tasks','mywork'] ? 'Scheduled' : null)
             activityTypeFilter = [tasks:'Task',notes:'Note'][view]
-            ownerFilter = view == 'mine' ? ec.user.userId : null
+            ownerFilter = view in ['mine','mywork'] ? ec.user.userId : null
             def orgId = (crmOrganization.activeOrgId ?: '_NA_') ?: '__NO_ORGANIZATION__'
-            def find = ec.entity.find('zenith.erp.crm.CrmActivity').condition('organizationPartyId', orgId)
-            if (periodStart) find.condition('activityDate', EntityCondition.GREATER_THAN_EQUAL_TO, periodStart)
-            if (periodEnd) find.condition('activityDate', EntityCondition.LESS_THAN, periodEnd)
-            def activityRows = find.list()
-            activityCount = activityRows.size()
-            callCount = activityRows.count { it.activityType == 'Call' }
-            meetingCount = activityRows.count { it.activityType == 'Meeting' }
+            def counts = { type ->
+                def find = ec.entity.find('zenith.erp.crm.CrmActivity').condition('organizationPartyId', orgId)
+                if (periodStart) find.condition('activityDate', EntityCondition.GREATER_THAN_EQUAL_TO, periodStart)
+                if (periodEnd) find.condition('activityDate', EntityCondition.LESS_THAN, periodEnd)
+                if (type) find.condition('activityType', type)
+                find.count()
+            }
+            activityCount = counts(null)
+            callCount = counts('Call')
+            meetingCount = counts('Meeting')
             overdueCount = ec.entity.find('zenith.erp.crm.CrmActivity').condition('organizationPartyId', orgId)
-                    .condition('dueDate', EntityCondition.LESS_THAN, ec.user.nowTimestamp)
-                    .list().count { it.statusId == 'Scheduled' }
+                    .condition('statusId','Scheduled').condition('dueDate', EntityCondition.LESS_THAN, ec.user.nowTimestamp).count()
         ]]></script>
         <entity-find entity-name="zenith.erp.crm.CrmActivity" list="activityList">
-            <search-form-inputs default-order-by="-activityDate" skip-fields="organizationPartyId"/>
+            <search-form-inputs default-order-by="${statusFilter == 'Scheduled' ? 'dueDate,activityId' : '-activityDate'}" skip-fields="organizationPartyId"/>
             <econdition field-name="organizationPartyId" from="(crmOrganization.activeOrgId ?: '_NA_') ?: '__NO_ORGANIZATION__'"/>
             <econdition field-name="activityDate" operator="greater-equals" from="periodStart" ignore-if-empty="true"/>
             <econdition field-name="activityDate" operator="less" from="periodEnd" ignore-if-empty="true"/>
@@ -121,14 +125,16 @@
             <link url="." text="Today" parameter-map="[view:'today']" style="${view == 'today' ? 'zcrm-period-active' : ''}"/>
             <link url="." text="Overdue" parameter-map="[view:'overdue']" style="${view == 'overdue' ? 'zcrm-period-active' : ''}"/>
             <link url="." text="Upcoming" parameter-map="[view:'upcoming']" style="${view == 'upcoming' ? 'zcrm-period-active' : ''}"/>
+            <link url="." text="My follow-ups due" parameter-map="[view:'mywork']" style="${view == 'mywork' ? 'zcrm-period-active' : ''}"/>
             <link url="." text="Mine" parameter-map="[view:'mine']" style="${view == 'mine' ? 'zcrm-period-active' : ''}"/>
             <link url="." text="Open tasks" parameter-map="[view:'tasks']" style="${view == 'tasks' ? 'zcrm-period-active' : ''}"/>
             <link url="." text="Notes" parameter-map="[view:'notes']" style="${view == 'notes' ? 'zcrm-period-active' : ''}"/>
             <link url="." text="Completed" parameter-map="[view:'completed']" style="${view == 'completed' ? 'zcrm-period-active' : ''}"/>
+            <link url="." text="Cancelled" parameter-map="[view:'cancelled']" style="${view == 'cancelled' ? 'zcrm-period-active' : ''}"/>
             <link url="." text="Agenda" parameter-map="[view:'agenda']" style="${view == 'agenda' ? 'zcrm-period-active' : ''}"/>
         </container>
         <container style="zcrm-metrics zcrm-reference-metrics">
-            <container style="zcrm-metric"><label text="Total activities" type="span"/><label text="${activityCount}" type="h4"/><label text="${period == 'month' ? 'This month' : 'All time'}" type="span" style="zcrm-muted"/></container>
+            <container style="zcrm-metric"><label text="Total activities" type="span"/><label text="${activityCount}" type="h4"/><label text="${periodStart ? 'This month' : 'All time'}" type="span" style="zcrm-muted"/></container>
             <container style="zcrm-metric"><label text="Calls" type="span"/><label text="${callCount}" type="h4"/><label text="Recorded calls" type="span" style="zcrm-muted"/></container>
             <container style="zcrm-metric"><label text="Meetings" type="span"/><label text="${meetingCount}" type="h4"/><label text="Recorded meetings" type="span" style="zcrm-muted"/></container>
             <container style="zcrm-metric"><label text="Overdue follow-ups" type="span"/><label text="${overdueCount}" type="h4"/><label text="All outstanding dates" type="span" style="zcrm-muted"/></container>
@@ -180,7 +186,7 @@
                     <default-field title="Lead"><display/></default-field>
                 </field>
                 <field name="outcome"><header-field><text-find size="15" hide-options="true"/></header-field><default-field><display/></default-field></field>
-                <field name="performedByUserId"><header-field title="Owner"><text-find size="15" hide-options="true"/></header-field><default-field title="Owner"><display/></default-field></field>
+                <field name="assignedToUserId"><header-field title="Assignee"><text-find size="15" hide-options="true"/></header-field><default-field title="Assignee"><display/></default-field></field>
                 <field name="durationMinutes"><default-field title="Dur(m)"><display/></default-field></field>
                 <field name="nextFollowUpDate">
                     <default-field title="Follow-up"><display format="dd/MM/yyyy"/></default-field>

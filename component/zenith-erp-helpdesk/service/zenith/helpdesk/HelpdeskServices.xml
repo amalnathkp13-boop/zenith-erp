@@ -4,6 +4,26 @@
 
     <!-- ========== Ticket Management ========== -->
 
+    <service verb="get" noun="TicketCustomer">
+        <in-parameters><parameter name="customerPartyId" required="true"/></in-parameters>
+        <out-parameters><parameter name="customerName"/><parameter name="organizationPartyId"/></out-parameters>
+        <actions>
+            <service-call name="zenith.contacts.ContactServices.get#AuthorizedActiveOrganization" out-map="ticketOrg"/>
+            <set field="organizationPartyId" from="ticketOrg.activeOrgId"/>
+            <if condition="!organizationPartyId"><return error="true" message="Choose an organization to open customer cases."/></if>
+            <entity-find-one entity-name="mantle.party.Party" value-field="customer"><field-map field-name="partyId" from="customerPartyId"/></entity-find-one>
+            <entity-find-one entity-name="mantle.party.PartyRole" value-field="customerRole">
+                <field-map field-name="partyId" from="customerPartyId"/><field-map field-name="roleTypeId" value="Customer"/>
+            </entity-find-one>
+            <if condition="customer?.ownerPartyId != organizationPartyId || !customerRole">
+                <return error="true" message="Customer not found in this organization."/>
+            </if>
+            <entity-find-one entity-name="mantle.party.Organization" value-field="company"><field-map field-name="partyId" from="customerPartyId"/></entity-find-one>
+            <entity-find-one entity-name="mantle.party.Person" value-field="person"><field-map field-name="partyId" from="customerPartyId"/></entity-find-one>
+            <set field="customerName" from="company?.organizationName ?: [person?.firstName, person?.lastName].findAll { it }.join(' ') ?: customerPartyId"/>
+        </actions>
+    </service>
+
     <service verb="create" noun="Ticket">
         <in-parameters>
             <parameter name="categoryId"/>
@@ -20,11 +40,10 @@
         </in-parameters>
         <out-parameters><parameter name="ticketId"/><parameter name="ticketNumber"/></out-parameters>
         <actions>
-            <!-- ZE-SB-013 (Tier 3): if a customer is linked to the ticket, it must belong to this org. -->
             <if condition="customerPartyId">
-                <service-call name="zenith.base.SecurityServices.assert#RecordOrgAccess" out-map="_ca"
-                              in-map="[entityName:'mantle.party.Party', idField:'partyId', idValue:customerPartyId, orgField:'ownerPartyId']"/>
-                <if condition="!_ca.allowed"><return error="true" message="That customer isn't part of your organization."/></if>
+                <service-call name="zenith.helpdesk.HelpdeskServices.get#TicketCustomer" in-map="[customerPartyId:customerPartyId]" out-map="ticketCustomer"/>
+                <if condition="!ticketCustomer?.organizationPartyId"><return error="true" message="Customer not found in this organization."/></if>
+                <set field="customerName" from="ticketCustomer.customerName"/>
             </if>
             <!-- ZE-SB-013 (Tier 5): a ticket assignee must be a member of this org. -->
             <if condition="assignedToPartyId">
@@ -61,8 +80,8 @@
 
             <!-- Calculate SLA deadlines -->
             <script><![CDATA[
-                def slaResponseDeadline = null
-                def slaResolutionDeadline = null
+                slaResponseDeadline = null
+                slaResolutionDeadline = null
 
                 // Look up SLA policy by category or priority
                 def slaQuery = ec.entity.find("zenith.erp.helpdesk.SlaPolicy")
@@ -101,7 +120,7 @@
                          customerEmail:customerEmail, customerPhone:customerPhone,
                          subject:subject, description:description, priority:priority,
                          channel:channel, statusId:'TkNew', entryDate:ec.user.nowTimestamp,
-                         organizationPartyId:ec.user.getPreference('ACTIVE_ORGANIZATION'),
+                         organizationPartyId:customerPartyId ? ticketCustomer.organizationPartyId : ec.user.getPreference('ACTIVE_ORGANIZATION'),
                          slaResponseDeadline:slaResponseDeadline,
                          slaResolutionDeadline:slaResolutionDeadline, slaBreached:'N']"/>
         </actions>

@@ -45,23 +45,30 @@
                     }
 
                     stageRows = ec.entity.find('mantle.sales.opportunity.SalesOpportunityStage').orderBy('sequenceNum').list()
-                    stageRows.each { stage -> stageSummary[stage.opportunityStageId] = [name:stage.description, count:0, value:0G] }
                     def allOpps = ec.entity.find('zenith.erp.crm.OpportunityListView').condition('organizationPartyId', org).list()
                     opportunityRows = allOpps.findAll { row -> !fromDate || (row.estimatedCloseDate && row.estimatedCloseDate >= fromDate && row.estimatedCloseDate < endDate) }
-                    opportunityRows.each { row ->
-                        def bucket = stageSummary[row.opportunityStageId]
-                        if (bucket) { bucket.count++; bucket.value += (row.estimatedAmount ?: 0G) }
-                        if (!['SoClosedWon','SoClosedLost'].contains(row.opportunityStageId)) {
-                            openOpportunityCount++
-                            pipelineValue += (row.estimatedAmount ?: 0G)
-                            weightedValue += (row.expectedRevenue ?: 0G)
-                        }
+                    def totals = { rows, weighted = false ->
+                        rows.groupBy { it.currencyUomId ?: 'Unspecified' }.sort().collect { code, deals ->
+                            def amount = deals.sum { (it.estimatedAmount ?: 0G) * (weighted ? (it.estimatedProbability ?: 0G) : 1G) }
+                            code + ' ' + ec.l10n.format(amount, '#,##0.00')
+                        }.join(' / ') ?: '—'
                     }
-                    wonValue = allOpps.findAll { it.opportunityStageId == 'SoClosedWon' && (!fromTime || (it.wonDate && it.wonDate >= fromTime && it.wonDate < endTime)) }
-                        .sum { it.estimatedAmount ?: 0G } ?: 0G
+                    def byStage = opportunityRows.groupBy { it.opportunityStageId }
+                    stageRows.each { stage ->
+                        def deals = byStage[stage.opportunityStageId] ?: []
+                        stageSummary[stage.opportunityStageId] = [count:deals.size(), value:totals(deals)]
+                    }
+                    def open = opportunityRows.findAll { !(it.opportunityStageId in ['SoClosedWon','SoClosedLost']) }
+                    openOpportunityCount = open.size()
+                    pipelineValue = totals(open)
+                    weightedValue = totals(open, true)
+                    wonValue = totals(allOpps.findAll { it.opportunityStageId == 'SoClosedWon' && (!fromTime || (it.wonDate && it.wonDate >= fromTime && it.wonDate < endTime)) })
                     closingSoon = allOpps.count { !['SoClosedWon','SoClosedLost'].contains(it.opportunityStageId) &&
                         it.estimatedCloseDate && it.estimatedCloseDate >= todayDate && it.estimatedCloseDate <= java.sql.Date.valueOf(today.plusDays(7)) }
 
+                    myWork = ec.entity.find('zenith.erp.crm.CrmActivity').condition('organizationPartyId',org)
+                        .condition('assignedToUserId',ec.user.userId).condition('statusId','Scheduled')
+                        .condition('dueDate',EntityCondition.LESS_THAN,endTime).orderBy('dueDate,activityId').limit(5).list()
                     def activityFind = ec.entity.find('zenith.erp.crm.CrmActivity').condition('organizationPartyId', org)
                     if (fromTime) activityFind.condition('activityDate', EntityCondition.GREATER_THAN_EQUAL_TO, fromTime)
                     if (fromTime) activityFind.condition('activityDate', EntityCondition.LESS_THAN, endTime)
@@ -78,7 +85,7 @@
                 } catch (Exception e) {
                     dashboardError = 'CRM data could not be loaded. Please retry or contact support.'
                     leadRows = []; opportunityRows = []; activityRows = []; followupRows = []
-                    stageSummary = [:]; sourceSummary = [:]
+                    stageRows = []; stageSummary = [:]; sourceSummary = [:]
                     leadCount = 0; activeLeadCount = 0; qualifiedRate = 0; openOpportunityCount = 0
                     pipelineValue = 0G; weightedValue = 0G; wonValue = 0G
                     activityCount = 0; followupDueCount = 0; unassignedLeads = 0; unattendedLeads = 0; closingSoon = 0; overdueRows = []
@@ -128,10 +135,25 @@
             <container style="zcrm-metrics zcrm-dashboard-metrics">
                 <container style="zcrm-metric zcrm-tone-purple"><label text="New leads" type="span"/><label text="${leadCount}" type="h4"/><label text="Created in ${periodLabel.toLowerCase()}" type="span" style="zcrm-muted"/><link url="../Leads" text="View leads"/></container>
                 <container style="zcrm-metric zcrm-tone-green"><label text="Qualified rate" type="span"/><label text="${qualifiedRate}%" type="h4"/><label text="Qualified or converted / new leads" type="span" style="zcrm-muted"/><link url="../Leads" text="View leads"/></container>
-                <container style="zcrm-metric zcrm-tone-orange"><label text="Weighted pipeline" type="span"/><label text="${currSymbol}${zinr.inr(ec.l10n.format(weightedValue, '#,##,##0'))}" type="h4"/><label text="Open deals closing in range" type="span" style="zcrm-muted"/><link url="../Pipeline" text="View pipeline"/></container>
-                <container style="zcrm-metric zcrm-tone-blue"><label text="Open pipeline value" type="span"/><label text="${currSymbol}${zinr.inr(ec.l10n.format(pipelineValue, '#,##,##0'))}" type="h4"/><label text="Estimated, not booked revenue" type="span" style="zcrm-muted"/><link url="../Pipeline" text="View pipeline"/></container>
+                <container style="zcrm-metric zcrm-tone-orange"><label text="Weighted pipeline" type="span"/><label text="${weightedValue}" type="h4"/><label text="Open deals closing in range" type="span" style="zcrm-muted"/><link url="../Pipeline" text="View pipeline"/></container>
+                <container style="zcrm-metric zcrm-tone-blue"><label text="Open pipeline value" type="span"/><label text="${pipelineValue}" type="h4"/><label text="Estimated, not booked revenue" type="span" style="zcrm-muted"/><link url="../Pipeline" text="View pipeline"/></container>
                 <container style="zcrm-metric zcrm-tone-orange"><label text="Overdue activities" type="span"/><label text="${followupDueCount}" type="h4"/><label text="Scheduled past due time" type="span" style="zcrm-muted"/><link url="../Activities" text="View activities" parameter-map="[view:'overdue']"/></container>
-                <container style="zcrm-metric zcrm-tone-green"><label text="Won revenue" type="span"/><label text="${currSymbol}${zinr.inr(ec.l10n.format(wonValue, '#,##,##0'))}" type="h4"/><label text="Closed won in range" type="span" style="zcrm-muted"/><link url="../Reports" text="View reports"/></container>
+                <container style="zcrm-metric zcrm-tone-green"><label text="Closed-won deal value" type="span"/><label text="${wonValue}" type="h4"/><label text="Closed won in range" type="span" style="zcrm-muted"/><link url="../Reports" text="View reports"/></container>
+            </container>
+            <container style="zcrm-panel"><container style="zcrm-panel-head">
+                <label text="My follow-ups due" type="h5"/>
+                <link url="../Activities" text="Open queue" parameter-map="[view:'mywork']"/>
+            </container>
+                <section name="NoWorkDue" condition="myWork.isEmpty()"><widgets>
+                    <label text="You have no outstanding follow-ups due through today." type="p" style="zcrm-empty"/>
+                </widgets></section>
+                <section-iterate name="MyDueWork" list="myWork" entry="task"><widgets>
+                    <container style="zcrm-breakdown-row">
+                        <link url="../ActivityDetail" text="${task.subject}" parameter-map="[activityId:task.activityId]"/>
+                        <label text="${task.activityType} · ${task.priority ?: 'Normal'}" type="span"/>
+                        <label text="${task.dueDate &lt; ec.user.nowTimestamp ? 'Overdue' : 'Due today'} · ${ec.l10n.format(task.dueDate,'dd MMM HH:mm')}" type="span"/>
+                    </container>
+                </widgets></section-iterate>
             </container>
             <container style="zcrm-grid">
                 <container style="zcrm-panel zcrm-chart-panel"><container style="zcrm-panel-head"><label text="Pipeline by stage" type="h5"/><link url="../Pipeline" text="View pipeline"/></container>
@@ -141,7 +163,7 @@
                             <section-iterate name="crmStages" list="stageRows" entry="stage"><widgets>
                                 <container style="zcrm-chart-column"><label text="${stageSummary[stage.opportunityStageId].count}" type="strong"/>
                                     <container style="zcrm-chart-track"><container style="zcrm-chart-bar zcrm-level-${stageSummary[stage.opportunityStageId].barLevel}"/></container>
-                                    <label text="${stage.description}" type="span"/><label text="${currSymbol}${zinr.inr(ec.l10n.format(stageSummary[stage.opportunityStageId].value, '#,##,##0'))}" type="span" style="zcrm-muted"/>
+                                    <label text="${stage.description}" type="span"/><label text="${stageSummary[stage.opportunityStageId].value}" type="span" style="zcrm-muted"/>
                                 </container>
                             </widgets></section-iterate>
                         </container>
@@ -159,7 +181,7 @@
                 <container style="zcrm-panel"><container style="zcrm-panel-head"><label text="Activities &amp; follow-ups" type="h5"/><link url="../Activities" text="View activities"/></container>
                     <container style="zcrm-breakdown-row"><label text="Activities logged" type="span"/><label text="${activityCount}" type="strong"/></container>
                     <container style="zcrm-breakdown-row"><label text="Overdue scheduled activities" type="span"/><label text="${followupDueCount}" type="strong"/></container>
-                    <container style="zcrm-breakdown-row"><label text="Unassigned leads" type="span"/><label text="${unassignedLeads}" type="strong"/></container>
+                    <container style="zcrm-breakdown-row"><link url="../Leads" text="Unassigned leads" parameter-map="[ownership:'unassigned',period:'all']"/><label text="${unassignedLeads}" type="strong"/></container>
                     <container style="zcrm-breakdown-row"><label text="Leads without a scheduled activity" type="span"/><label text="${unattendedLeads}" type="strong"/></container>
                     <container style="zcrm-breakdown-row"><label text="Opportunities closing in 7 days" type="span"/><label text="${closingSoon}" type="strong"/></container>
                     <section-iterate name="crmOverdueActions" list="overdueRows" entry="overdue"><widgets><container style="zcrm-breakdown-row"><link url="../ActivityDetail" text="${overdue.subject}" parameter-map="[activityId:overdue.activityId]"/><label text="${ec.l10n.format(overdue.dueDate, 'dd MMM yyyy')}" type="span"/></container></widgets></section-iterate>

@@ -17,6 +17,25 @@
         <if condition="!contact || !activeOrg || activeOrg == '_NA_' || contact.ownerPartyId != activeOrg">
             <return error="true" message="Contact not found for your organization."/>
         </if>
+        <service-call name="zenith.crm.CrmServices.get#CrmSalesAccess" out-map="salesAccess"/>
+        <entity-find-one entity-name="mantle.party.PartyRole" value-field="customerRole"><field-map field-name="partyId"/><field-map field-name="roleTypeId" value="Customer"/></entity-find-one>
+        <entity-find-count entity-name="mantle.party.PartyRole" count-field="customerRoleCount">
+            <econdition field-name="partyId"/><econdition field-name="roleTypeId" value="Customer"/>
+        </entity-find-count>
+        <set field="canViewCases" from="customerRoleCount &gt; 0 &amp;&amp; (!navRestricted || saasVisibleModules?.contains('helpdesk')) &amp;&amp; (!customRoleNavigation || roleNavSections?.any { section -> section.screens?.any { it.id == '/helpdesk/Tickets' } })"/>
+        <script><![CDATA[
+            receivables = []
+            if (customerRole && salesAccess.routes.contains('EditInvoice')) {
+                def balances = ec.entity.find('mantle.account.invoice.Invoice')
+                balances.makeEntityDynamicView().addMemberEntity('INV','mantle.account.invoice.Invoice',null,null,null)
+                    .addAlias('INV','fromPartyId').addAlias('INV','toPartyId').addAlias('INV','invoiceTypeEnumId')
+                    .addAlias('INV','statusId').addAlias('INV','currencyUomId').addAlias('INV','balance','unpaidTotal','sum')
+                receivables = balances.condition('fromPartyId',activeOrg).condition('toPartyId',partyId)
+                    .condition('invoiceTypeEnumId','InvoiceSales')
+                    .condition('statusId','in',['InvoiceFinalized','InvoiceApproved','InvoiceSent','InvoiceAcked','InvoicePmtRecvd'])
+                    .selectFields(['currencyUomId','balance']).orderBy('currencyUomId').list()
+            }
+        ]]></script>
         <entity-find entity-name="zenith.erp.contacts.ContactListView" list="contactRows"><econdition field-name="partyId"/></entity-find>
         <set field="contactRow" from="contactRows ? contactRows[0] : null"/>
         <entity-find entity-name="zenith.erp.crm.Lead" list="linkedLeads">
@@ -44,8 +63,20 @@
         </container>
         <container-box><box-header title="Contact details"/><box-body>
             <label text="Email: ${contactRow?.emailAddress ?: '—'}" type="p"/>
+            <link url="../../helpdesk/Tickets" text="Support cases" parameter-map="[customerPartyId:partyId]" condition="canViewCases"/>
             <label text="Phone: ${contactRow?.phoneNumber ?: '—'}" type="p"/>
         </box-body></container-box>
+        <section name="CustomerSales" condition="customerRole &amp;&amp; (salesAccess.routes || salesAccess.canCreateQuote)"><widgets>
+            <container-box><box-header title="Sales documents"/><box-body>
+                <section-iterate name="CustomerBalances" list="receivables" entry="total"><widgets>
+                    <label text="Outstanding · ${total.currencyUomId ?: 'Unspecified currency'} ${ec.l10n.format(total.balance ?: 0, '#,##0.00')}" type="p"/>
+                </widgets></section-iterate>
+                <section name="CustomerNewQuote" condition="salesAccess.canCreateQuote &amp;&amp; contact.disabled != 'Y'"><widgets><link url="../../sales/CreateQuotation" text="Create quotation" parameter-map="[customerPartyId:partyId]"/></widgets></section>
+                <section name="CustomerQuotes" condition="salesAccess.routes.contains('FindQuotation')"><widgets><link url="../../sales/FindQuotation" text="Quotations" parameter-map="[customerPartyId:partyId]"/></widgets></section>
+                <section name="CustomerOrders" condition="salesAccess.routes.contains('FindOrder')"><widgets><link url="../../sales/FindOrder" text="Sales orders" parameter-map="[customerPartyId:partyId]"/></widgets></section>
+                <section name="CustomerInvoices" condition="salesAccess.routes.contains('FindInvoice')"><widgets><link url="../../sales/FindInvoice" text="Invoices and payments" parameter-map="[toPartyId:partyId]"/></widgets></section>
+            </box-body></container-box>
+        </widgets></section>
         <container-box><box-header title="Leads"/><box-body>
             <section name="NoLinkedLeads" condition="linkedLeads.isEmpty()"><widgets><label text="No converted leads linked to this contact." type="p"/></widgets></section>
             <form-list name="ContactLeads" list="linkedLeads" skip-form="true">
@@ -58,7 +89,7 @@
             <section name="NoLinkedOpps" condition="linkedOpportunities.isEmpty()"><widgets><label text="No opportunities linked to this contact." type="p"/></widgets></section>
             <form-list name="ContactOpps" list="linkedOpportunities" skip-form="true">
                 <field name="salesOpportunityId"><default-field title="Opportunity"><link url="../EditOpportunity" text="${opportunityName}" parameter-map="[salesOpportunityId:salesOpportunityId]"/></default-field></field>
-                <field name="estimatedAmount"><default-field title="Amount"><display format="#,##,##0"/></default-field></field>
+                <field name="estimatedAmount"><default-field title="Amount"><display text="${currencyUomId ?: 'Unspecified'} ${ec.l10n.format(estimatedAmount ?: 0, '#,##0.00')}"/></default-field></field>
                 <field name="stageName"><default-field title="Stage"><display/></default-field></field>
             </form-list>
         </box-body></container-box>

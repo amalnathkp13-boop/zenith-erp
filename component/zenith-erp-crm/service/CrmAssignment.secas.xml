@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<secas xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-eca-3.xsd">
+    <seca id="CrmAssignmentInbox" service="create#zenith.erp.crm.CrmAuditEvent" when="tx-commit">
+        <condition><expression>newValue &amp;&amp; newValue != previousValue &amp;&amp; ((recordType == 'Lead' &amp;&amp; action == 'OwnerChange') || (recordType == 'Activity' &amp;&amp; action == 'Reassigned'))</expression></condition>
+        <actions><script><![CDATA[
+            def lead = recordType == 'Lead'
+            def entity = lead ? 'zenith.erp.crm.Lead' : 'zenith.erp.crm.CrmActivity'
+            def field = lead ? 'leadId' : 'activityId'
+            def assigned = ec.entity.find(entity).condition(field, recordId).condition('organizationPartyId', organizationPartyId)
+                .condition('assignedToUserId', newValue).disableAuthz().count()
+            if (!assigned) return
+
+            def topic = 'CrmAssignment'
+            def preference = ec.entity.find('moqui.security.user.NotificationTopicUser').condition('topic',topic)
+                .condition('userId',newValue).disableAuthz().one()
+            def defaults = ec.entity.find('moqui.security.user.NotificationTopic').condition('topic',topic).disableAuthz().one()
+            if ((preference?.receiveNotifications ?: defaults?.receiveNotifications) == 'N') return
+
+            // A CRM assignment is private. Topic broadcasting also targets users subscribed to all messages.
+            def route = lead ? 'EditLead' : 'ActivityDetail'
+            def link = '/apps/zenith/Crm/' + route + '?' + field + '=' + java.net.URLEncoder.encode(recordId, 'UTF-8')
+            def title = lead ? 'A CRM lead was assigned to you' : 'A CRM follow-up was assigned to you'
+            def message = ec.service.sync().name('create#moqui.security.user.NotificationMessage')
+                .parameters([topic:topic, subTopic:organizationPartyId, sentDate:eventDate, titleText:title, linkText:link,
+                    messageJson:groovy.json.JsonOutput.toJson([recordType:recordType,recordId:recordId]), typeString:'info'])
+                .disableAuthz().call()
+            if (message?.notificationMessageId) ec.service.sync().name('create#moqui.security.user.NotificationMessageUser')
+                .parameters([notificationMessageId:message.notificationMessageId,userId:newValue,sentDate:eventDate]).disableAuthz().call()
+        ]]></script></actions>
+    </seca>
+</secas>

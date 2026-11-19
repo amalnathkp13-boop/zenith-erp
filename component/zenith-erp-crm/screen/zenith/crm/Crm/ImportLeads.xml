@@ -56,12 +56,22 @@
                     if (indices.firstName < 0 || indices.leadSourceId < 0) {
                         ec.message.addError('Map FirstName and Source to existing CSV headers.'); return
                     }
-                    def orgId = ec.user.getPreference('ACTIVE_ORGANIZATION')
+                    def orgId = crmWrite.activeOrg
                     def availableSources = ec.entity.find('zenith.erp.crm.LeadSource').condition('isActive','Y').list()
                         .findAll { !it.organizationPartyId || it.organizationPartyId == orgId }
-                    def knownCampaigns = ec.entity.find('zenith.erp.crm.CrmCampaign').condition('organizationPartyId',orgId).list()
-                    def existing = ec.entity.find('zenith.erp.crm.Lead').condition('organizationPartyId',orgId).list()
-                    def contacts = ec.entity.find('zenith.erp.contacts.ContactListView').condition('ownerPartyId',orgId).list()
+                    def knownCampaigns = ec.entity.find('zenith.erp.crm.CrmCampaign').condition('organizationPartyId',orgId).condition('isActive','Y').list()
+                    def leadEmails = [:], leadPhones = [:], contactEmails = [:], contactPhones = [:]
+                    def digits = { phone -> phone?.replaceAll(/\D/,'') }
+                    ec.entity.find('zenith.erp.crm.Lead').condition('organizationPartyId',orgId)
+                        .selectFields(['leadId','email','mobile','phone']).list().each { row ->
+                            if (row.email) leadEmails[row.email.trim().toLowerCase(java.util.Locale.ROOT)] = row.leadId
+                            [row.mobile,row.phone].findAll().each { leadPhones[digits(it)] = row.leadId }
+                        }
+                    ec.entity.find('zenith.erp.contacts.ContactListView').condition('ownerPartyId',orgId)
+                        .selectFields(['partyId','emailAddress','phoneNumber']).list().each { row ->
+                            if (row.emailAddress) contactEmails[row.emailAddress.trim().toLowerCase(java.util.Locale.ROOT)] = row.partyId
+                            if (row.phoneNumber) contactPhones[digits(row.phoneNumber)] = row.partyId
+                        }
                     def parsed = []
                     def seenEmails = [:], seenMobiles = [:]
                     records.drop(1).eachWithIndex { cells, index ->
@@ -70,7 +80,7 @@
                         values.email = values.email?.toLowerCase(java.util.Locale.ROOT)
                         values.mobile = values.mobile?.replaceAll(/[\s().-]/, '')
                         if (!values.firstName) errors.add('FirstName required')
-                        if (!values.email && !values.mobile && !values.companyName) errors.add('Email, Mobile or CompanyName required')
+                        if (!values.email && !values.mobile) errors.add('Email or Mobile required')
                         if (values.email && !(values.email ==~ /[^\s@]+@[^\s@]+\.[^\s@]+/)) errors.add('Invalid email')
                         if (values.mobile && !(values.mobile ==~ /\+?[0-9]{6,15}/)) errors.add('Invalid mobile')
                         ['sourceDetail','utmSource','utmMedium','utmCampaign','utmContent','utmTerm',
@@ -85,17 +95,14 @@
                         else values.leadSourceId = source.leadSourceId
                         if (values.campaignId && !knownCampaigns.any { it.campaignId == values.campaignId }) errors.add('Campaign ID not found')
                         if (values.email && seenEmails[values.email]) errors.add('Duplicate email in CSV row ' + seenEmails[values.email])
-                        if (values.mobile && seenMobiles[values.mobile]) errors.add('Duplicate mobile in CSV row ' + seenMobiles[values.mobile])
-                        def duplicate = existing.find { item -> (values.email && item.email?.equalsIgnoreCase(values.email)) ||
-                            (values.mobile && item.mobile?.replaceAll(/\D/,'') == values.mobile.replaceAll(/\D/,'')) }
-                        if (duplicate) errors.add('Possible duplicate lead ' + duplicate.leadId)
-                        def matchingContact = contacts.find { item ->
-                            (values.email && item.emailAddress?.equalsIgnoreCase(values.email)) ||
-                            (values.mobile && item.phoneNumber?.replaceAll(/\D/,'') == values.mobile.replaceAll(/\D/,'')) }
-                        if (matchingContact) errors.add('Matching contact ' + matchingContact.partyId)
+                        if (values.mobile && seenMobiles[digits(values.mobile)]) errors.add('Duplicate mobile in CSV row ' + seenMobiles[digits(values.mobile)])
+                        def duplicate = leadEmails[values.email] ?: leadPhones[digits(values.mobile)]
+                        if (duplicate) errors.add('Possible duplicate lead ' + duplicate)
+                        def matchedContact = contactEmails[values.email] ?: contactPhones[digits(values.mobile)]
+                        if (matchedContact) errors.add('Matching contact ' + matchedContact)
                         if (!errors) {
                             if (values.email) seenEmails[values.email] = index + 2
-                            if (values.mobile) seenMobiles[values.mobile] = index + 2
+                            if (values.mobile) seenMobiles[digits(values.mobile)] = index + 2
                         }
                         parsed.add([rowNumber:index+2, firstName:values.firstName, email:values.email,
                             mobile:values.mobile, sourceName:values.leadSourceId, error:errors.join('; '), values:values])
@@ -122,7 +129,7 @@
             <if condition="!crmWrite.allowed"><return error="true" message="CRM write access is required."/></if>
             <script><![CDATA[
                 def plan = ec.web.sessionAttributes.get('crmLeadImport')
-                def orgId = ec.user.getPreference('ACTIVE_ORGANIZATION')
+                def orgId = crmWrite.activeOrg
                 if (!plan || plan.userId != ec.user.userId || plan.organizationPartyId != orgId || plan.digest != confirmationDigest) {
                     ec.message.addError('Preview the same CSV in this organization before importing.'); return
                 }
@@ -138,13 +145,16 @@
                         ec.message.clearErrors(); skipped++
                     } else if (result?.leadId) imported++
                 }
-                ec.web.sessionAttributes.put('crmLeadImportResult', [imported:imported, skipped:skipped, errors:errors.take(100)])
+                ec.web.sessionAttributes.put('crmLeadImportResult', [userId:ec.user.userId, organizationPartyId:orgId, imported:imported, skipped:skipped, errors:errors.take(100)])
             ]]></script>
         </actions><default-response url="."/><error-response url="."/>
     </transition>
     <actions>
         <set field="preview" from="ec.web.sessionAttributes.get('crmLeadImport')"/>
         <set field="importResult" from="ec.web.sessionAttributes.get('crmLeadImportResult')"/>
+        <if condition="importResult &amp;&amp; (importResult.userId != ec.user.userId || importResult.organizationPartyId != crmOrganization.activeOrgId)">
+            <set field="importResult" from="null"/>
+        </if>
         <if condition="preview &amp;&amp; (preview.userId != ec.user.userId || preview.organizationPartyId != crmOrganization.activeOrgId)">
             <set field="preview" from="null"/>
         </if>
@@ -153,7 +163,7 @@
         <container style="zcrm-intro"><label text="Import Leads" type="h3"/><label text="Map CSV columns, preview every row, then import valid leads into this organization." type="p"/><link url="../Leads" text="Back to leads"/></container>
         <section name="ImportWrite" condition="modCanWrite"><widgets>
             <container-box><box-header title="1. Upload and map"/><box-body>
-                <label text="Required CSV headers: FirstName and Source. Add Email, Mobile or CompanyName, and optional UTM columns. Choose Unknown explicitly when the source is not known." type="p"/>
+                <label text="Required CSV headers: FirstName and Source. Include Email or Mobile, and optional UTM columns. Choose Unknown explicitly when the source is not known." type="p"/>
                 <form-single name="PreviewLeadCsv" transition="previewImport" upload="true">
                     <field name="csvFile"><default-field title="CSV file (up to 1 MB)"><file accept=".csv,text/csv"/></default-field></field>
                     <field name="csvText"><default-field title="Or paste CSV"><text-area rows="5" cols="80"/></default-field></field>

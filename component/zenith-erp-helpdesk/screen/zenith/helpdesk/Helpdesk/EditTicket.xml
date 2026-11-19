@@ -16,7 +16,8 @@
                 <service-call name="zenith.base.SecurityServices.assert#PartyOrgMembership" out-map="_aa" in-map="[partyId:assignedToPartyId]"/>
                 <if condition="!_aa.allowed"><return error="true" message="That assignee isn't part of your organization."/></if>
             </if>
-            <service-call name="update#zenith.erp.helpdesk.Ticket" in-map="context"/>
+            <service-call name="update#zenith.erp.helpdesk.Ticket"
+                          in-map="[ticketId:ticketId, subject:subject, description:description, categoryId:categoryId, priority:priority]"/>
         </actions>
         <default-response url="."/>
     </transition>

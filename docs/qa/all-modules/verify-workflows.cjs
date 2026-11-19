@@ -95,10 +95,44 @@ async function scenario(name,fn){try{await fn();}catch(error){check(name,false,{
   });
   let leadId;
   await scenario('CRM lead lifecycle',async()=>{
-   const r=await a.invoke('lead.create',{organizationPartyId:'AUDIT_QA_B',firstName:'Disposable lead A',email:'LEAD.A@EXAMPLE.COM',estimatedAmount:'100',rating:'Warm',leadSourceId:'Instagram',sourceDetail:'Disposable campaign link',utmSource:'instagram',utmMedium:'social',externalSubmissionId:'audit-lead-a'});leadId=r.result?.leadId;
+   const invalid=await a.invoke('lead.create',{firstName:'Unreachable lead',companyName:'Disposable business',leadSourceId:'Website'});
+   check('CRM: company name alone is insufficient to contact a lead',
+    invalid.errors?.length>0&&count('lead',"organization_party_id='AUDIT_QA_A' AND first_name='Unreachable lead'")===0);
+   const followUpDue=new Date(Date.now()+86400000).toISOString();
+   const r=await a.invoke('lead.create',{organizationPartyId:'AUDIT_QA_B',firstName:'Disposable lead A',email:'LEAD.A@EXAMPLE.COM',estimatedAmount:'100',rating:'Warm',leadSourceId:'Instagram',sourceDetail:'Disposable campaign link',utmSource:'instagram',utmMedium:'social',externalSubmissionId:'audit-lead-a',followUpSubject:'Disposable intake call',followUpDue});leadId=r.result?.leadId;
    const row=leadId?q(`SELECT * FROM lead WHERE lead_id=${quote(leadId)}`)[0]:null;
    check('CRM: create ignores foreign owner input and normalizes email',row?.organization_party_id==='AUDIT_QA_A'&&row?.email==='lead.a@example.com',{errors:r.errors,httpStatus:r.httpStatus});
    if(!leadId)return;
+   check('CRM: intake schedules its first follow-up for this lead and owner',
+    count('crm_activity',`lead_id=${quote(leadId)} AND organization_party_id='AUDIT_QA_A' AND subject='Disposable intake call' AND status_id='Scheduled' AND assigned_to_user_id='AUDIT_QA_USER_A'`)===1);
+   const premature=await a.invoke('lead.convert',{leadId});
+   check('CRM: conversion requires qualification',premature.errors?.length>0&&row.status_id==='LeadNew');
+   await a.post('Crm/EditLead/assignLead',{leadId,ownerUserId:'AUDIT_QA_USER_B'});
+   check('CRM: foreign lead owner rejected',q(`SELECT assigned_to_user_id FROM lead WHERE lead_id=${quote(leadId)}`)[0]?.assigned_to_user_id==='AUDIT_QA_USER_A');
+   await a.post('Crm/EditLead/assignLead',{leadId,ownerUserId:'_UNASSIGNED_'});
+   await a.post('Crm/EditLead/assignLead',{leadId,ownerUserId:'AUDIT_QA_USER_A'});
+   await a.post('Crm/EditLead/assignLead',{leadId,ownerUserId:'AUDIT_QA_USER_A'});
+   async function checkAssignmentNotice(label, path, recipient) {
+    const sql = `SELECT u.user_id FROM notification_message m JOIN notification_message_user u USING(notification_message_id)
+      WHERE m.topic='CrmAssignment' AND m.link_text=${quote('/apps/zenith/Crm/'+path)}`;
+    let notices=[];
+    for(let attempt=0;attempt<20;attempt++) {
+     notices=q(sql);
+     if(notices.length)break;
+     await new Promise(resolve=>setTimeout(resolve,100));
+    }
+    check(label,notices.length===1&&notices[0].user_id===recipient);
+   }
+   await checkAssignmentNotice('CRM: repeated assignment delivers one private lead notification','EditLead?leadId='+leadId,'AUDIT_QA_USER_A');
+   const intake=q(`SELECT activity_id FROM crm_activity WHERE lead_id=${quote(leadId)} AND subject='Disposable intake call'`)[0];
+   if(intake) {
+    const input={activityId:intake.activity_id,assignedToUserId:'AUDIT_QA_REP_A'};
+    await a.post('Crm/ActivityDetail/reassignActivity',input);
+    await a.post('Crm/ActivityDetail/reassignActivity',input);
+    await checkAssignmentNotice('CRM: repeated reassignment delivers one private follow-up notification','ActivityDetail?activityId='+intake.activity_id,'AUDIT_QA_REP_A');
+   }
+   check('CRM: unassigning and assigning a lead leave an audit trail',
+    count('crm_audit_event',`record_id=${quote(leadId)} AND organization_party_id='AUDIT_QA_A' AND action='OwnerChange'`)===2);
    check('CRM: original source and UTM are stored',row.lead_source_id==='Instagram'&&row.first_touch_source_id==='Instagram'&&row.utm_source==='instagram'&&row.utm_medium==='social');
    const retry=await a.invoke('lead.create',{firstName:'Disposable lead A',leadSourceId:'Instagram',externalSubmissionId:'audit-lead-a'});
    check('CRM: intake retry returns the original lead',retry.result?.leadId===leadId&&count('lead_submission',"organization_party_id='AUDIT_QA_A' AND external_submission_id='audit-lead-a'")===1);
@@ -121,10 +155,26 @@ async function scenario(name,fn){try{await fn();}catch(error){check(name,false,{
     check('CRM: completed activity keeps outcome and timestamp',!completed.errors?.length&&q(`SELECT status_id,outcome,completed_date FROM crm_activity WHERE activity_id=${quote(activityId)}`)[0]?.status_id==='Completed'&&!!q(`SELECT completed_date FROM crm_activity WHERE activity_id=${quote(activityId)}`)[0]?.completed_date,{errors:completed.errors});
    }
    await a.invoke('lead.update',{leadId,statusId:'LeadQualified'});
+   const crossOrg=await a.invoke('lead.convert',{leadId,reusePartyId:'AUDIT_QA_CUST_B'});
+   check('CRM: a lead cannot convert into a foreign customer',crossOrg.errors?.length>0&&
+    q(`SELECT status_id FROM lead WHERE lead_id=${quote(leadId)}`)[0]?.status_id==='LeadQualified');
    const converted=await a.invoke('lead.convert',{leadId,createOpportunity:'Y'});
    check('CRM: qualified lead converts to one owned contact and opportunity',!!converted.result?.partyId&&!!converted.result?.salesOpportunityId&&q(`SELECT status_id FROM lead WHERE lead_id=${quote(leadId)}`)[0]?.status_id==='LeadConverted',{errors:converted.errors,httpStatus:converted.httpStatus});
-   const contacts=count('party',"owner_party_id='AUDIT_QA_A'");await a.invoke('lead.convert',{leadId,createOpportunity:'Y'});
-   check('CRM: repeated conversion creates no duplicate contact',count('party',"owner_party_id='AUDIT_QA_A'")===contacts);
+   if(!converted.result?.partyId)return;
+   const contacts=count('party',"owner_party_id='AUDIT_QA_A'");
+   const repeat=await a.invoke('lead.convert',{leadId,createOpportunity:'Y'});
+   check('CRM: retry returns the original customer and deal',repeat.result?.partyId===converted.result.partyId&&
+    repeat.result?.salesOpportunityId===converted.result.salesOpportunityId&&count('party',"owner_party_id='AUDIT_QA_A'")===contacts);
+   const another=await a.invoke('lead.create',{firstName:'Another inquiry',email:'lead.a@example.com',leadSourceId:'Email',allowDuplicate:'Y'});
+   const anotherId=another.result?.leadId;
+   if(anotherId){
+    await a.invoke('lead.update',{leadId:anotherId,statusId:'LeadContacted'});
+    await a.invoke('lead.update',{leadId:anotherId,statusId:'LeadQualified'});
+    const duplicate=await a.invoke('lead.convert',{leadId:anotherId,createOpportunity:'N'});
+    const link=await a.invoke('lead.convert',{leadId:anotherId,createOpportunity:'N',reusePartyId:converted.result.partyId});
+    check('CRM: a matching customer requires review and can be linked without a second account or deal',
+     duplicate.errors?.length>0&&link.result?.partyId===converted.result.partyId&&!link.result.salesOpportunityId&&count('party',"owner_party_id='AUDIT_QA_A'")===contacts);
+   } else check('CRM: reviewed duplicate lead may be recorded',false,{errors:another.errors});
   });
   for(const [name,input]of [['unknown activity type',{activityType:'NotARealActivity',subject:'Disposable invalid type'}],['negative duration',{activityType:'Call',subject:'Disposable negative duration',durationMinutes:'-1'}],['blank subject',{activityType:'Call',subject:'   '}]]){
    const before=count('crm_activity',"organization_party_id='AUDIT_QA_A'");const r=await a.invoke('activity.log',input);

@@ -3,7 +3,7 @@
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         default-menu-title="Leads" default-menu-index="2">
     <parameter name="leadSourceId"/><parameter name="firstTouchSourceId"/><parameter name="latestTouchSourceId"/>
-    <parameter name="campaignId"/><parameter name="statusId"/><parameter name="assignedToUserId"/><parameter name="period"/>
+    <parameter name="campaignId"/><parameter name="statusId"/><parameter name="assignedToUserId"/><parameter name="period"/><parameter name="ownership"/>
 
     <transition name="createLead">
         <service-call name="zenith.crm.CrmServices.create#Lead"/>
@@ -49,11 +49,14 @@
         <entity-find entity-name="zenith.erp.crm.LeadListView" list="leadList">
             <search-form-inputs default-order-by="-createdDate" skip-fields="organizationPartyId"/>
             <econdition field-name="organizationPartyId" from="(crmOrganization.activeOrgId ?: '_NA_') ?: '__NO_ORGANIZATION__'"/>
+            <econdition field-name="assignedToUserId" from="ec.user.userId" ignore="ownership != 'mine'"/>
+            <econdition field-name="assignedToUserId" from="null" ignore="ownership != 'unassigned'"/>
             <econdition field-name="firstTouchSourceId" ignore-if-empty="true"/>
             <econdition field-name="latestTouchSourceId" ignore-if-empty="true"/>
             <econdition field-name="createdDate" operator="greater-equals" from="periodStart" ignore-if-empty="true"/>
             <econdition field-name="createdDate" operator="less" from="periodEnd" ignore-if-empty="true"/>
         </entity-find>
+        <service-call name="zenith.crm.CrmServices.get#AssignmentCandidates" out-map="assignment"/>
         <service-call name="zenith.base.SecurityServices.get#ActiveOrgList" out-map="context"/>
         <set field="_ao" from="(crmOrganization.activeOrgId ?: '_NA_')"/>
         <set field="_hasActiveOrg" from="(_ao != null &amp;&amp; _ao != '_NA_')"/>
@@ -80,7 +83,11 @@
     <widgets>
         <container style="zcrm-intro zcrm-leads-head"><label text="Leads" type="h3"/><label text="Track and manage potential customers." type="p"/></container>
         <container style="zcrm-period"><link url="." text="All time" parameter-map="[period:'all']" style="${period == 'all' ? 'zcrm-period-active' : ''}"/><link url="." text="This month" parameter-map="[period:'month']" style="${period == 'month' ? 'zcrm-period-active' : ''}"/></container>
-        <container style="zcrm-pipeline-actions"><link url="../ImportLeads" text="Import CSV" condition="modCanWrite"/></container>
+        <container style="zcrm-pipeline-actions">
+            <link url="." text="All leads" parameter-map="[ownership:'all',period:period]"/>
+            <link url="." text="My leads" parameter-map="[ownership:'mine',period:period]"/>
+            <link url="." text="Unassigned" parameter-map="[ownership:'unassigned',period:period]"/>
+            <link url="../ImportLeads" text="Import CSV" condition="modCanWrite"/></container>
         <container style="zcrm-period zcrm-saved-views">
             <section-iterate name="LeadSavedViews" list="savedFilters" entry="saved"><widgets>
                 <link url="." text="${saved.filterName}" parameter-map="new groovy.json.JsonSlurper().parseText(saved.filterJson)"/>
@@ -95,6 +102,7 @@
                 <field name="campaignId"><default-field><hidden default-value="${campaignId ?: ''}"/></default-field></field>
                 <field name="statusId"><default-field><hidden default-value="${statusId ?: ''}"/></default-field></field>
                 <field name="assignedToUserId"><default-field><hidden default-value="${assignedToUserId ?: ''}"/></default-field></field>
+                <field name="ownership"><default-field><hidden default-value="${ownership ?: ''}"/></default-field></field>
                 <field name="filterName"><default-field title="Save current filters as"><text-line size="20"/></default-field></field>
                 <field name="submitButton"><default-field title="Save view"><submit/></default-field></field>
             </form-single></widgets></section>
@@ -142,6 +150,17 @@
                     </default-field></field>
                     <field name="estimatedAmount"><default-field title="Est. Deal Value (${currSymbol})"><text-line size="12"/></default-field></field>
                     <field name="description"><default-field title="Notes"><text-area rows="3" cols="50"/></default-field></field>
+                    <field name="assignedToUserId">
+                        <conditional-field name="selectLeadOwner" condition="assignment.candidates" title="Owner">
+                            <drop-down no-current-selected-key="${ec.user.userId}">
+                                <option key="_UNASSIGNED_" text="Unassigned"/>
+                                <list-options list="assignment.candidates" key="${userId}" text="${userFullName ?: username}"/>
+                            </drop-down>
+                        </conditional-field>
+                        <default-field><hidden default-value="${ec.user.userId}"/></default-field>
+                    </field>
+                    <field name="followUpSubject"><default-field title="First follow-up (optional)"><text-line size="32"/></default-field></field>
+                    <field name="followUpDue"><default-field title="Follow-up due"><date-time type="date-time"/></default-field></field>
                     <field name="submitButton"><default-field title="Create Lead"><submit/></default-field></field>
                 </form-single>
             </container-dialog>

@@ -143,6 +143,16 @@
         <service-call name="zenith.sales.SalesAccessServices.assert#RecordOrgAccess" in-map="[entityName:'mantle.order.OrderPart', idField:'orderId', idValue:orderId, orgField:'vendorPartyId']" out-map="_acc"/>
         <if condition="!_acc.allowed"><return error="true" message="You do not have access to this record."/></if>
         <service-call name="mantle.order.OrderServices.clone#Order" in-map="[baseOrderId:orderId]" out-map="cloneOut"/>
+        <!-- A revision remains part of the same CRM deal. Only carry relationships owned by this vendor. -->
+        <if condition="ec.entity.isEntityDefined('zenith.erp.crm.Lead')">
+            <entity-find entity-name="mantle.sales.opportunity.SalesOpportunityOrder" list="opportunityLinks"><econdition field-name="orderId"/></entity-find>
+            <iterate list="opportunityLinks" entry="link">
+                <entity-find-one entity-name="mantle.sales.opportunity.SalesOpportunity" value-field="opportunity"><field-map field-name="salesOpportunityId" from="link.salesOpportunityId"/></entity-find-one>
+                <if condition="opportunity?.organizationPartyId == _salesOrgId">
+                    <service-call name="store#mantle.sales.opportunity.SalesOpportunityOrder" in-map="[salesOpportunityId:link.salesOpportunityId, orderId:cloneOut.orderId]"/>
+                </if>
+            </iterate>
+        </if>
         <script>
             // Set cloned order to OrderProposed, increment revision name
             def oldHeader = ec.entity.find("mantle.order.OrderHeader").condition("orderId", orderId).one()

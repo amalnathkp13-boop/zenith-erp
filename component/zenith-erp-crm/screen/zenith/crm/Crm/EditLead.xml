@@ -5,6 +5,7 @@
 
     <parameter name="leadId" required="true"/>
 
+    <transition name="assignLead"><service-call name="zenith.crm.CrmServices.assign#Lead"/><default-response url="."/><error-response url="."/></transition>
     <transition name="updateLead">
         <actions>
             <service-call name="zenith.crm.CrmServices.update#Lead" in-map="context"/>
@@ -38,48 +39,93 @@
             <econdition field-name="isActive" value="Y"/><order-by field-name="description"/></entity-find>
         <set field="leadSources" from="leadSources.findAll { !it.organizationPartyId || it.organizationPartyId == activeOrg }"/>
         <entity-find entity-name="zenith.erp.crm.CrmCampaign" list="campaigns"><econdition field-name="organizationPartyId" from="activeOrg"/><econdition field-name="isActive" value="Y"/></entity-find>
-        <script><![CDATA[
-            def contacts = ec.entity.find('zenith.erp.contacts.ContactListView').condition('ownerPartyId', activeOrg).list()
-            possibleDuplicates = contacts.findAll { row ->
-                (lead.email && row.emailAddress?.equalsIgnoreCase(lead.email)) ||
-                ((lead.mobile ?: lead.phone) && row.phoneNumber?.replaceAll(/\D/, '') == (lead.mobile ?: lead.phone).replaceAll(/\D/, ''))
-            }.collect { it.partyId }.unique()
-        ]]></script>
+        <service-call name="zenith.crm.CrmServices.assert#CrmWrite" out-map="leadWrite"/>
+        <if condition="leadWrite.allowed">
+            <service-call name="zenith.crm.CrmServices.get#AssignmentCandidates" out-map="assignment"/>
+            <if condition="lead.statusId == 'LeadQualified'">
+                <service-call name="zenith.crm.CrmServices.get#LeadCustomerMatches" out-map="review" in-map="[leadId:leadId]"/>
+                <set field="conversionOptions" from="review.matches"/>
+                <if condition="review.matches &amp;&amp; (ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN'))">
+                    <set field="conversionOptions" from="review.matches + [[partyId:'_CREATE_NEW_', label:'Reviewed matches · create a separate customer']]"/>
+                </if>
+            </if>
+        </if>
         <entity-find entity-name="zenith.erp.india.IndiaState" list="stateList">
             <order-by field-name="stateName"/></entity-find>
         <entity-find entity-name="zenith.erp.crm.CrmActivity" list="activities">
-            <econdition field-name="leadId"/>
+            <econdition field-name="leadId"/><econdition field-name="organizationPartyId" from="activeOrg"/>
             <order-by field-name="-activityDate"/>
         </entity-find>
         <entity-find entity-name="zenith.erp.crm.LeadTouch" list="touches"><econdition field-name="leadId"/><econdition field-name="organizationPartyId" from="activeOrg"/><order-by field-name="-touchDate"/></entity-find>
         <entity-find entity-name="zenith.erp.crm.CrmAuditEvent" list="sourceAudit"><econdition field-name="organizationPartyId" from="activeOrg"/><econdition field-name="recordType" value="Lead"/><econdition field-name="recordId" from="leadId"/><order-by field-name="-eventDate"/></entity-find>
+        <entity-find entity-name="moqui.basic.StatusFlowTransition" list="leadTransitions">
+            <econdition field-name="statusFlowId" value="Default"/><econdition field-name="statusId" from="lead.statusId"/>
+        </entity-find>
+        <entity-find entity-name="moqui.basic.StatusItem" list="statusChoices">
+            <econdition field-name="statusTypeId" value="CrmLead"/>
+            <econdition field-name="statusId" operator="in" from="[lead.statusId] + leadTransitions.collect { it.toStatusId }.findAll { it != 'LeadConverted' }"/>
+            <order-by field-name="sequenceNum"/>
+        </entity-find>
+        <script><![CDATA[
+            def openActions = activities.findAll { it.statusId == 'Scheduled' && it.dueDate }.sort { it.dueDate }
+            nextAction = openActions ? openActions[0] : null
+            timeline = activities.collect {
+                [when:it.completedDate ?: it.activityDate, kind:it.activityType, detail:it.subject,
+                    note:[it.description,it.outcome].findAll().join(' · ')]
+            } + touches.collect {
+                [when:it.touchDate, kind:'Source touch', detail:it.leadSourceId, note:it.utmCampaign]
+            } + sourceAudit.collect {
+                [when:it.eventDate, kind:it.action, detail:[it.previousValue ?: '—',it.newValue ?: '—'].join(' → '), note:it.actorUserId]
+            }
+            timeline.sort { left, right -> right.when <=> left.when }
+        ]]></script>
     </actions>
 
     <widgets>
-        <container style="zcrm-intro"><label text="Lead details" type="h3"/><label text="Update qualification, contact details and the activity history." type="p"/><link url="../Leads" text="Back to leads"/></container>
+        <container style="zcrm-intro">
+            <label text="${[lead.firstName,lead.lastName].findAll().join(' ')}" type="h3"/>
+            <label text="${[lead.companyName,lead.email,lead.mobile ?: lead.phone].findAll().join(' · ')}" type="p"/>
+            <label text="Next follow-up · ${nextAction?.subject} · ${ec.l10n.format(nextAction?.dueDate, 'dd MMM yyyy HH:mm')}" type="p" condition="nextAction"/>
+            <link url="../Leads" text="Back to leads"/>
+        </container>
         <container-row>
             <row-col lg="7">
                 <container-box><box-header title="Lead Details"/><box-toolbar>
-                    <section name="ConvertLeadAction" condition="lead.statusId != 'LeadConverted' &amp;&amp; lead.statusId != 'LeadLost' &amp;&amp; modCanWrite"><widgets>
-                        <container-dialog id="ConvertLeadDialog" button-text="Convert to Opportunity">
+                    <section name="ConvertLeadAction" condition="lead.statusId == 'LeadQualified' &amp;&amp; leadWrite.allowed"><widgets>
+                        <container-dialog id="ConvertLeadDialog" button-text="Convert to customer">
+                            <label text="Review the matching customers before confirming conversion." condition="review?.matches" type="p"/>
+                            <label text="This will create a customer. If you know the existing customer ID, you can link it here." condition="!review?.matches" type="p"/>
                             <form-single name="ConvertLeadForm" transition="convertLead">
                                 <field name="leadId"><default-field><hidden default-value="${leadId}"/></default-field></field>
-                                <field name="reusePartyId"><default-field title="Existing contact ID (if matched)"><text-line size="24"/></default-field></field>
-                                <field name="createOpportunity"><default-field title="Create opportunity"><drop-down><option key="Y" text="Yes"/><option key="N" text="No, contact only"/></drop-down></default-field></field>
+                                <field name="reusePartyId">
+                                    <conditional-field name="existingMatches" condition="review?.matches" title="Matching customers">
+                                        <drop-down allow-empty="true"><list-options list="conversionOptions" key="${partyId}" text="${label}"/></drop-down>
+                                    </conditional-field>
+                                    <default-field title="Existing customer ID (optional)"><text-line size="24"/></default-field>
+                                </field>
+                                <field name="createOpportunity"><default-field title="Create opportunity"><drop-down><option key="Y" text="Yes"/><option key="N" text="No, customer only"/></drop-down></default-field></field>
                                 <field name="submitButton"><default-field title="Confirm conversion"><submit/></default-field></field>
                             </form-single>
                         </container-dialog>
                     </widgets></section>
                 </box-toolbar><box-body>
+                    <section name="LeadAssignment" condition="assignment?.candidates"><widgets>
+                        <form-single name="AssignLeadOwner" transition="assignLead">
+                            <field name="leadId"><default-field><hidden default-value="${leadId}"/></default-field></field>
+                            <field name="ownerUserId"><default-field title="Lead owner">
+                                <drop-down no-current-selected-key="${lead.assignedToUserId ?: '_UNASSIGNED_'}">
+                                    <option key="_UNASSIGNED_" text="Unassigned"/>
+                                    <list-options list="assignment.candidates" key="${userId}" text="${userFullName ?: username}"/>
+                                </drop-down>
+                            </default-field></field>
+                            <field name="submitButton"><default-field title="Update owner"><submit/></default-field></field>
+                        </form-single>
+                    </widgets></section>
                     <form-single name="EditLeadForm" map="lead" transition="updateLead">
                         <field name="leadId"><default-field><hidden/></default-field></field>
                         <field name="statusId"><default-field title="Status">
-                            <drop-down>
-                                <option key="LeadNew" text="New"/>
-                                <option key="LeadContacted" text="Contacted"/>
-                                <option key="LeadQualified" text="Qualified"/>
-                                <option key="LeadConverted" text="Converted (use Convert to Contact)"/>
-                                <option key="LeadLost" text="Lost"/>
+                            <drop-down allow-empty="false">
+                                <list-options list="statusChoices" key="${statusId}" text="${description}"/>
                             </drop-down>
                         </default-field></field>
                         <field name="firstName"><default-field><text-line size="20"/></default-field></field>
@@ -115,15 +161,17 @@
                         <field name="description"><default-field title="Notes"><text-area rows="3" cols="50"/></default-field></field>
                         <field name="lostReason"><default-field title="Disqualification reason"><text-line size="40"/></default-field></field>
                         <field name="submitButton">
-                            <conditional-field name="save_write" condition="modCanWrite" title="Update"><submit/></conditional-field>
+                            <conditional-field name="save_write" condition="leadWrite.allowed" title="Update"><submit/></conditional-field>
                             <default-field title="Update"><label text="You have view-only access — changes are disabled." type="span" style="text-grey-7"/></default-field>
                         </field>
                     </form-single>
                     <label text="Score: ${lead.score ?: 0}/100" type="div" style="text-info"/>
                     <label text="First touch: ${lead.firstTouchSourceId ?: lead.leadSourceId ?: 'Unknown'} · Latest touch: ${lead.latestTouchSourceId ?: lead.leadSourceId ?: 'Unknown'}" type="p"/>
                     <label text="UTM: ${lead.utmSource ?: '—'} / ${lead.utmMedium ?: '—'} / ${lead.utmCampaign ?: '—'}" type="p"/>
-                    <label text="Possible matching contacts: ${possibleDuplicates.join(', ')}" type="p" condition="possibleDuplicates"/>
-                    <section name="LeadTouchWrite" condition="modCanWrite"><widgets><container-dialog id="RecordTouchDialog" button-text="Record new touch">
+                    <section-iterate name="MatchedCustomers" list="review?.matches ?: []" entry="candidate"><widgets>
+                        <link url="../ContactDetail" text="Review customer · ${candidate.label}" parameter-map="[partyId:candidate.partyId]"/>
+                    </widgets></section-iterate>
+                    <section name="LeadTouchWrite" condition="leadWrite.allowed"><widgets><container-dialog id="RecordTouchDialog" button-text="Record new touch">
                         <form-single name="RecordTouchForm" transition="recordTouch">
                             <field name="leadId"><default-field><hidden default-value="${leadId}"/></default-field></field>
                             <field name="leadSourceId"><default-field title="Latest source"><drop-down><list-options list="leadSources" key="${leadSourceId}" text="${description}"/></drop-down></default-field></field>
@@ -133,23 +181,13 @@
                             <field name="submitButton"><default-field title="Record touch"><submit/></default-field></field>
                         </form-single>
                     </container-dialog></widgets></section>
-                    <form-list name="TouchHistory" list="touches" skip-form="true">
-                        <field name="touchDate"><default-field title="Touch"><display format="dd MMM yyyy HH:mm"/></default-field></field>
-                        <field name="leadSourceId"><default-field title="Source"><display/></default-field></field>
-                        <field name="utmCampaign"><default-field title="Campaign"><display/></default-field></field>
-                    </form-list>
-                    <form-list name="LeadAttributionAudit" list="sourceAudit" skip-form="true">
-                        <field name="eventDate"><default-field title="Change date"><display format="dd MMM yyyy HH:mm"/></default-field></field>
-                        <field name="action"><default-field><display/></default-field></field>
-                        <field name="previousValue"><default-field title="Previous"><display/></default-field></field>
-                        <field name="newValue"><default-field title="Current"><display/></default-field></field>
-                    </form-list>
-                    <label text="Converted to Party: ${lead.convertedPartyId}" type="div" style="text-success" condition="lead.convertedPartyId"/>
+                    <link url="../ContactDetail" text="View converted customer" parameter-map="[partyId:lead.convertedPartyId]" condition="lead.convertedPartyId"/>
+                    <link url="../EditOpportunity" text="View opportunity" parameter-map="[salesOpportunityId:lead.convertedOpportunityId]" condition="lead.convertedOpportunityId"/>
                 </box-body></container-box>
             </row-col>
             <row-col lg="5">
-                <container-box><box-header title="Activities"/><box-toolbar>
-                    <section name="LeadLogActivity_write"><condition><expression>modCanWrite</expression></condition><widgets>
+                <container-box><box-header title="Activity timeline"/><box-toolbar>
+                    <section name="LeadLogActivity_write"><condition><expression>leadWrite.allowed</expression></condition><widgets>
                     <container-dialog id="LogActivityDialog" button-text="Log Activity">
                         <form-single name="LogActivityForm" transition="logActivity">
                             <field name="leadId"><default-field><hidden/></default-field></field>
@@ -182,11 +220,12 @@
                     </container-dialog>
                     </widgets></section>
                 </box-toolbar><box-body>
-                    <form-list name="ActivityListForm" list="activities" skip-form="true">
-                        <field name="activityDate"><default-field title="Date"><display format="dd/MM/yy HH:mm"/></default-field></field>
-                        <field name="activityType"><default-field title="Type"><display/></default-field></field>
-                        <field name="subject"><default-field><display/></default-field></field>
-                        <field name="outcome"><default-field><display/></default-field></field>
+                    <label text="No activity recorded yet." type="p" condition="!timeline"/>
+                    <form-list name="LeadTimeline" list="timeline" skip-form="true">
+                        <field name="when"><default-field title="Date"><display format="dd MMM yyyy HH:mm"/></default-field></field>
+                        <field name="kind"><default-field title="Event"><display/></default-field></field>
+                        <field name="detail"><default-field title="Details"><display/></default-field></field>
+                        <field name="note"><default-field title="Notes"><display/></default-field></field>
                     </form-list>
                 </box-body></container-box>
             </row-col>

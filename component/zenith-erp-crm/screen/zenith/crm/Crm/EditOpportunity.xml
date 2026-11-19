@@ -23,6 +23,7 @@
         <service-call name="zenith.crm.CrmServices.schedule#Activity"/>
         <default-response url="."/><error-response url="."/>
     </transition>
+    <transition-include name="searchPartyList" location="component://zenith-erp-base/screen/include/PartyPicker.xml"/>
     <actions>
         <entity-find-one entity-name="mantle.sales.opportunity.SalesOpportunity" value-field="opp"/>
         <set field="activeOrg" from="(crmOrganization.activeOrgId ?: '_NA_')"/>
@@ -30,13 +31,60 @@
             <return error="true" message="Opportunity not found for your organization."/>
         </if>
         <entity-find entity-name="mantle.sales.opportunity.SalesOpportunityStage" list="stages"><order-by field-name="sequenceNum"/></entity-find>
+        <entity-find entity-name="zenith.erp.crm.CrmStageSetting" list="stageSettings"><econdition field-name="organizationPartyId" from="activeOrg"/></entity-find>
+        <service-call name="zenith.crm.CrmServices.get#CrmSalesAccess" out-map="salesAccess"/>
+        <script><![CDATA[
+            def settings = stageSettings.collectEntries { [(it.opportunityStageId):it] }
+            stages = stages.findAll { settings[it.opportunityStageId]?.isActive != 'N' }.collect {
+                def setting = settings[it.opportunityStageId]
+                [opportunityStageId:it.opportunityStageId, description:setting?.displayName ?: it.description,
+                 sequenceNum:setting?.sequenceNum ?: it.sequenceNum]
+            }.sort { it.sequenceNum ?: 0 }
+            documents = []
+            hasLinkedDocument = false
+            if (salesAccess.routes || salesAccess.canCreateQuote) {
+                def orderIds = ec.entity.find('mantle.sales.opportunity.SalesOpportunityOrder')
+                    .condition('salesOpportunityId',salesOpportunityId).list()*.orderId
+                hasLinkedDocument = !orderIds.isEmpty()
+                if (orderIds) {
+                    // Check every part before exposing the number or status of a linked document.
+                    def parts = ec.entity.find('mantle.order.OrderPart').condition('orderId','in',orderIds)
+                        .selectFields(['orderId','orderPartSeqId','vendorPartyId','customerPartyId']).disableAuthz().list().groupBy { it.orderId }
+                    def ownIds = parts.findAll { id, rows -> rows.every { it.vendorPartyId == activeOrg && it.customerPartyId == opp.accountPartyId } }.keySet() as List
+                    if (ownIds) {
+                        ec.entity.find('mantle.order.OrderHeader').condition('orderId','in',ownIds).orderBy('-entryDate').list().each { header ->
+                            def isOrder = header.documentType == 'SALES_ORDER' || header.statusId in ['OrderPlaced','OrderApproved','OrderCompleted']
+                            def route = isOrder ? 'EditOrder' : 'EditQuotation'
+                            if (salesAccess.routes.contains(route)) {
+                                def status = ec.entity.find('moqui.basic.StatusItem').condition('statusId',header.statusId).useCache(true).one()
+                                documents << [params:[orderId:header.orderId], label:header.displayId ?: header.orderId, type:isOrder ? 'Sales order' : 'Quotation',
+                                              route:route, status:status?.description ?: header.statusId]
+                            }
+                        }
+                        if (salesAccess.routes.contains('EditInvoice')) {
+                            def billed = ec.entity.find('mantle.order.OrderItemBilling').condition('orderId','in',ownIds)
+                                .selectField('invoiceId').distinct(true).list()*.invoiceId
+                            if (billed) {
+                                ec.entity.find('mantle.account.invoice.Invoice').condition('invoiceId','in',billed)
+                                    .condition('fromPartyId',activeOrg).condition('toPartyId',opp.accountPartyId)
+                                    .condition('invoiceTypeEnumId','InvoiceSales').orderBy('-invoiceDate').list().each { invoice ->
+                                        def status = ec.entity.find('moqui.basic.StatusItem').condition('statusId',invoice.statusId).useCache(true).one()
+                                        documents << [params:[invoiceId:invoice.invoiceId], label:invoice.gstInvoiceNumber ?: invoice.invoiceId,
+                                                      type:'Invoice', route:'EditInvoice', status:status?.description ?: invoice.statusId]
+                                    }
+                            }
+                        }
+                    }
+                }
+            }
+        ]]></script>
         <entity-find entity-name="zenith.erp.crm.CrmActivity" list="activities"><econdition field-name="organizationPartyId" from="activeOrg"/><econdition field-name="salesOpportunityId"/><order-by field-name="-activityDate"/></entity-find>
         <entity-find entity-name="zenith.erp.crm.CrmAuditEvent" list="auditEvents"><econdition field-name="organizationPartyId" from="activeOrg"/><econdition field-name="recordType" value="Opportunity"/><econdition field-name="recordId" from="salesOpportunityId"/><order-by field-name="-eventDate"/></entity-find>
     </actions>
     <widgets>
         <container style="zcrm-intro"><label text="${opp.opportunityName}" type="h3"/><label text="Opportunity details, stage and history." type="p"/><link url="../Pipeline" text="Back to pipeline"/></container>
         <container style="zcrm-metrics zcrm-reference-metrics">
-            <container style="zcrm-metric"><label text="Amount" type="span"/><label text="${currSymbol}${zinr.inr(ec.l10n.format(opp.estimatedAmount ?: 0, '#,##,##0'))}" type="h4"/></container>
+            <container style="zcrm-metric"><label text="Amount" type="span"/><label text="${opp.currencyUomId ?: 'Unspecified currency'} ${ec.l10n.format(opp.estimatedAmount ?: 0, '#,##0.00')}" type="h4"/></container>
             <container style="zcrm-metric"><label text="Original source" type="span"/><label text="${opp.leadSourceId ?: 'Unknown'}" type="h4"/></container>
             <container style="zcrm-metric"><label text="Expected close" type="span"/><label text="${opp.estimatedCloseDate ? ec.l10n.format(opp.estimatedCloseDate, 'dd MMM yyyy') : 'Not set'}" type="h4"/></container>
         </container>
@@ -45,6 +93,9 @@
                 <field name="salesOpportunityId"><default-field><hidden/></default-field></field>
                 <field name="opportunityName"><default-field title="Opportunity"><text-line size="36"/></default-field></field>
                 <field name="estimatedAmount"><default-field title="Amount"><text-line size="16"/></default-field></field>
+                <field name="accountPartyId"><default-field title="Customer account"><drop-down allow-empty="true"><dynamic-options transition="searchPartyList" server-search="true" min-length="2"/></drop-down></default-field></field>
+                <field name="updateNextStep"><default-field><hidden default-value="Y"/></default-field></field>
+                <field name="nextStep"><default-field title="Next step"><text-area rows="2" cols="36"/></default-field></field>
                 <field name="estimatedProbability"><default-field title="Probability (0–1)"><text-line size="8"/></default-field></field>
                 <field name="estimatedCloseDate"><default-field title="Expected close"><date-time type="date"/></default-field></field>
                 <field name="submitButton"><conditional-field name="edit_write" condition="modCanWrite" title="Save forecast"><submit/></conditional-field><default-field><label text="View only" type="span"/></default-field></field>
@@ -53,7 +104,7 @@
             <label text="UTM: ${opp.utmSource ?: '—'} / ${opp.utmMedium ?: '—'} / ${opp.utmCampaign ?: '—'}" type="p"/>
         </box-body></container-box></row-col>
         <row-col lg="6"><container-box><box-header title="Stage and outcome"/><box-body>
-            <form-single name="OpportunityStageForm" transition="advanceStage">
+            <form-single name="OpportunityStageForm" map="opp" transition="advanceStage">
                 <field name="salesOpportunityId"><default-field><hidden default-value="${salesOpportunityId}"/></default-field></field>
                 <field name="opportunityStageId"><default-field title="Move to stage"><drop-down><list-options list="stages" key="${opportunityStageId}" text="${description}"/></drop-down></default-field></field>
                 <field name="lostReason"><default-field title="Lost reason (required when lost)"><text-line size="36"/></default-field></field>
@@ -62,6 +113,17 @@
             </form-single>
             <label text="Closing an opportunity requires confirmation. Lost opportunities require a reason." type="p"/>
         </box-body></container-box></row-col></container-row>
+        <section name="OpportunitySales" condition="salesAccess.canCreateQuote || documents"><widgets>
+            <container-box><box-header title="Sales documents"/><box-body>
+                <section-iterate name="OpportunitySalesDocuments" list="documents" entry="doc"><widgets>
+                    <link url="../../sales/${doc.route}" text="${doc.type} ${doc.label} · ${doc.status}" parameter-map="doc.params"/>
+                </widgets></section-iterate>
+                <section name="StartSalesQuotation" condition="modCanWrite &amp;&amp; salesAccess.canCreateQuote &amp;&amp; !hasLinkedDocument &amp;&amp; opp.accountPartyId &amp;&amp; opp.opportunityStageId != 'SoClosedLost'"><widgets>
+                    <link url="../../sales/CreateQuotation" text="Create quotation" parameter-map="[salesOpportunityId:salesOpportunityId, customerPartyId:opp.accountPartyId]"/>
+                </widgets></section>
+                <section name="NoSalesCustomer" condition="!opp.accountPartyId"><widgets><label text="A linked ERP customer is required to create a quotation." type="p"/></widgets></section>
+            </box-body></container-box>
+        </widgets></section>
         <container-box><box-header title="Activities"/><box-toolbar>
             <section name="ScheduleWrite" condition="modCanWrite"><widgets>
                 <container-dialog id="OppActivityDialog" button-text="Schedule Activity">
@@ -100,6 +162,7 @@
                 <field name="eventDate"><default-field title="When"><display format="dd MMM yyyy HH:mm"/></default-field></field>
                 <field name="previousValue"><default-field title="From"><display/></default-field></field>
                 <field name="newValue"><default-field title="To"><display/></default-field></field>
+                <field name="note"><default-field title="Reason"><display/></default-field></field>
                 <field name="actorUserId"><default-field title="By"><display/></default-field></field>
             </form-list>
         </box-body></container-box>

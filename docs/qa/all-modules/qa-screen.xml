@@ -58,6 +58,8 @@
             'activity.log':'zenith.crm.CrmServices.log#Activity',
             'activity.schedule':'zenith.crm.CrmServices.schedule#Activity',
             'activity.complete':'zenith.crm.CrmServices.complete#Activity',
+            'activity.cancel':'zenith.crm.CrmServices.cancel#Activity',
+            'activity.reassign':'zenith.crm.CrmServices.reassign#Activity',
             'activity.reschedule':'zenith.crm.CrmServices.reschedule#Activity',
             'opportunity.create':'zenith.crm.CrmServices.create#Opportunity','opportunity.advance':'zenith.crm.CrmServices.advance#OpportunityStage',
             'stage.save':'zenith.crm.CrmServices.save#StageSetting',

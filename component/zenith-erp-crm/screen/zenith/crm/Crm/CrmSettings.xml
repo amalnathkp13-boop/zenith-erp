@@ -16,9 +16,9 @@
                 .collect { base ->
                     def own = byId[base.opportunityStageId]
                     [opportunityStageId:base.opportunityStageId, displayName:own?.displayName ?: base.description,
-                     sequenceNum:own?.sequenceNum ?: base.sequenceNum,
+                     sequenceNum:own?.sequenceNum ?: base.sequenceNum, forecastCategory:own?.forecastCategory ?: 'Pipeline',
                      probability:own?.defaultProbability != null ? own.defaultProbability : base.defaultProbability,
-                     active:own?.isActive ?: 'Y']
+                     staleAfterDays:own?.staleAfterDays != null ? own.staleAfterDays : 14, active:own?.isActive ?: 'Y']
                 }.sort { it.sequenceNum ?: 0 }
         ]]></script>
     </actions>
@@ -28,11 +28,13 @@
             <link url="../Dashboard" text="Back to CRM"/></container>
         <section name="AdminOnly" condition="isCrmAdmin"><widgets>
             <container-box><box-header title="Pipeline stages"/><box-body>
-                <label text="Changes here apply to new opportunities and future stage moves. Existing opportunity probabilities are kept until their stage changes." type="p"/>
+                <label text="Forecast categories and inactivity thresholds apply to all opportunities in the stage. A new default probability applies when an opportunity enters the stage." type="p"/>
                 <form-list name="StageSettingList" list="stageRows" skip-form="true">
                     <field name="displayName"><default-field title="Stage"><display/></default-field></field>
                     <field name="sequenceNum"><default-field title="Order"><display/></default-field></field>
                     <field name="probability"><default-field title="Default probability"><display format="0%"/></default-field></field>
+                    <field name="forecastCategory"><default-field title="Forecast category"><display/></default-field></field>
+                    <field name="staleAfterDays"><default-field title="Inactivity days"><display/></default-field></field>
                     <field name="active"><default-field title="Active"><display/></default-field></field>
                 </form-list>
                 <form-single name="SaveStageSetting" transition="saveStage">
@@ -42,6 +44,10 @@
                     <field name="displayName"><default-field title="Display name"><text-line size="28"/></default-field></field>
                     <field name="sequenceNum"><default-field title="Display order"><text-line size="8"/></default-field></field>
                     <field name="defaultProbability"><default-field title="Default probability (0–1)"><text-line size="8"/></default-field></field>
+                    <field name="forecastCategory"><default-field title="Forecast category"><drop-down allow-empty="true">
+                        <option key="Pipeline"/><option key="Best Case"/><option key="Commit"/><option key="Omitted"/>
+                    </drop-down></default-field></field>
+                    <field name="staleAfterDays"><default-field title="Inactivity days (0 disables)"><text-line size="8"/></default-field></field>
                     <field name="isActive"><default-field title="Active"><drop-down><option key="Y" text="Yes"/><option key="N" text="No"/></drop-down></default-field></field>
                     <field name="submitButton"><default-field title="Save stage"><submit/></default-field></field>
                 </form-single>

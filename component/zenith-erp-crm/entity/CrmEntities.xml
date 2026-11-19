@@ -57,6 +57,8 @@
         <relationship type="one" title="AssignedTo" related="moqui.security.UserAccount">
             <key-map field-name="assignedToUserId" related="userId"/></relationship>
         <seed-data>
+            <moqui.security.user.NotificationTopic topic="CrmAssignment" description="CRM assignment inbox"
+                receiveNotifications="Y" isPrivate="Y" emailNotifications="N" persistOnSend="Y"/>
             <moqui.basic.StatusType statusTypeId="CrmLead" description="CRM Lead"/>
             <moqui.basic.StatusItem statusId="LeadNew" statusTypeId="CrmLead" description="New" sequenceNum="1"/>
             <moqui.basic.StatusItem statusId="LeadContacted" statusTypeId="CrmLead" description="Contacted" sequenceNum="2"/>
@@ -166,6 +168,8 @@
         <field name="opportunityStageId" type="id" is-pk="true"/>
         <field name="displayName" type="text-medium"/>
         <field name="defaultProbability" type="number-decimal"/>
+        <field name="staleAfterDays" type="number-integer"/>
+        <field name="forecastCategory" type="text-short"/>
         <field name="sequenceNum" type="number-integer"/>
         <field name="isActive" type="text-indicator" default="'Y'"/>
     </entity>
@@ -399,6 +403,7 @@
         <alias entity-alias="OPP" name="opportunityName"/>
         <alias entity-alias="OPP" name="accountPartyId"/>
         <alias entity-alias="OPP" name="estimatedAmount"/>
+        <alias entity-alias="OPP" name="currencyUomId"/>
         <alias entity-alias="OPP" name="estimatedProbability"/>
         <alias entity-alias="OPP" name="estimatedCloseDate"/>
         <alias entity-alias="OPP" name="opportunityStageId"/>

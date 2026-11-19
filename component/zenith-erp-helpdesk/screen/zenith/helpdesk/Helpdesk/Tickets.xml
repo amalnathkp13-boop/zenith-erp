@@ -3,6 +3,8 @@
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         default-menu-title="Tickets" default-menu-index="1">
 
+    <parameter name="customerPartyId"/>
+
     <transition name="createTicket" begin-transaction="true">
         <service-call name="zenith.helpdesk.HelpdeskServices.create#Ticket"/>
         <default-response url="../EditTicket"/>
@@ -10,11 +12,16 @@
     <transition name="editTicket"><default-response url="../EditTicket"/></transition>
 
     <actions>
+        <if condition="customerPartyId">
+            <service-call name="zenith.helpdesk.HelpdeskServices.get#TicketCustomer" in-map="[customerPartyId:customerPartyId]" out-map="ticketCustomer"/>
+            <if condition="!ticketCustomer?.organizationPartyId"><return error="true" message="Customer not found in this organization."/></if>
+        </if>
         <entity-find entity-name="zenith.erp.helpdesk.TicketView" list="ticketList">
-            <search-form-inputs default-order-by="-entryDate"/>
+            <search-form-inputs default-order-by="-entryDate" skip-fields="organizationPartyId,customerPartyId"/>
+            <econdition field-name="customerPartyId" ignore-if-empty="true"/>
             <!-- ZE-SALES-014 f/u: org-isolate the support desk — a tenant sees only its own tickets (org set on
                  create from the raising user's active org); super-admin/vendor sees all (ignore-if-empty). -->
-            <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+            <econdition field-name="organizationPartyId" from="customerPartyId ? ticketCustomer.organizationPartyId : ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
         </entity-find>
     </actions>
 
@@ -30,7 +37,7 @@
         </container>
 
         <container-box>
-            <box-header title="Support Tickets"/>
+            <box-header title="${customerPartyId ? 'Support tickets for ' + ticketCustomer.customerName : 'Support Tickets'}"/>
             <box-toolbar>
                 <section name="hd_CreateTicket_write"><condition><expression>modCanWrite</expression></condition><widgets>
                 <container-dialog id="CreateTicketDialog" button-text="New Ticket">
@@ -56,7 +63,11 @@
                                 <option key="Portal"/><option key="Email"/><option key="Phone"/>
                                 <option key="WhatsApp"/><option key="Chat"/>
                             </drop-down></default-field></field>
-                        <field name="customerName"><default-field title="Customer Name"><text-line size="30"/></default-field></field>
+                        <field name="customerPartyId"><default-field><hidden default-value="${customerPartyId ?: ''}"/></default-field></field>
+                        <field name="customerName">
+                            <conditional-field name="linkedTicketCustomer" condition="customerPartyId" title="Customer"><display text="${ticketCustomer?.customerName}"/></conditional-field>
+                            <default-field title="Customer Name"><text-line size="30"/></default-field>
+                        </field>
                         <field name="customerEmail"><default-field title="Customer Email"><text-line size="30"/></default-field></field>
                         <field name="customerPhone"><default-field title="Customer Phone"><text-line size="15"/></default-field></field>
                         <field name="submitButton"><default-field title="Create Ticket"><submit/></default-field></field>
