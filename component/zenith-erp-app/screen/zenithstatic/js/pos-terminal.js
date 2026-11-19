@@ -1845,6 +1845,7 @@ window._posOffline = (function () {
             localEditing = false;
             draft = null;
             restoreError = null;
+            announceConnection();
             var restored = window._posResumeOnline(source, unchanged ? null : bill);
             cacheCatalog();
             return restored;

@@ -44,6 +44,19 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
     await page.locator('#pos-held-wrap summary').click();
     check(layout+' both cached bills are resumable offline',await page.locator('#pos-held-wrap [data-recall]').count()===2);
     await page.locator('#pos-held-wrap summary').click();
+    if (round===0) {
+     let releaseRefresh, refreshed;
+     const refreshGate=new Promise(resolve => {releaseRefresh=resolve;});
+     const refreshDone=new Promise(resolve => {refreshed=resolve;});
+     const delayedRefresh=async route => {const response=await route.fetch();await refreshGate;await route.fulfill({response});refreshed();};
+     await context.route('**/Terminal.qvt?**',delayedRefresh);
+     try {
+      await context.setOffline(false);
+      await page.waitForFunction(() => !window._posOffline.active());
+      check(layout+' connection badge updates before a slow post-reconnect screen refresh',
+       await page.locator('#pos-connection-status').textContent()==='Online');
+     } finally {releaseRefresh();await refreshDone;await context.unroute('**/Terminal.qvt?**',delayedRefresh);}
+    }
     await online();
     check(layout+' reconnect preserves the same online count',await count()==='2');
    }
