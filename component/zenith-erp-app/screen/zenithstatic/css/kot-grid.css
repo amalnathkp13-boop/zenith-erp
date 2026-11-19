@@ -34,14 +34,15 @@ body:has(#kb-wrap) :is(#top,#footer,#z-sidebar,#z-side-burger,#z-subnav,#pos-mod
 #kb-wrap.kb-wrap.kg-grid .nb-hrow{grid-row:1}
 #kb-wrap.kb-wrap.kg-grid .nb-actionbar{grid-row:2}
 #kb-wrap.kb-wrap .nb-actionbar .kb-toolbar-end{display:flex;align-items:center;gap:inherit;margin-inline-start:auto}
-#kb-wrap.kb-wrap .nb-actionbar .kb-fld{display:block;min-width:0;max-width:100%;margin:0}
 #kb-wrap.kb-wrap .nb-actionbar .kb-otbtn{gap:10px;line-height:inherit}
-#kb-wrap.kb-wrap .nb-actionbar #kb-waiter{appearance:none;field-sizing:content;min-height:48px;width:auto;max-width:100%;padding:0 12px;color:var(--pos-ink);background:#f1f4fa;border-color:transparent;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer}
+#kb-wrap.kb-wrap .nb-actionbar #kb-waiter-menu{min-width:0;max-width:100%}
+#kb-wrap.kb-wrap .nb-actionbar #kb-waiter-trigger{min-height:48px;min-width:0;max-width:100%;padding:0 12px;color:var(--pos-ink);background:#f1f4fa;white-space:normal;overflow-wrap:anywhere}
+#kb-wrap #kb-waiter option{padding:6px 8px}
 #kb-wrap.kb-wrap .nb-actionbar .kb-otype{display:flex;flex-wrap:wrap;gap:8px}
 #kb-wrap.kb-wrap .nb-actionbar .kb-otbtn.is-active{background:#f1eaff;color:#791bff;border-color:transparent}
-#kb-wrap.kb-wrap .nb-actionbar .kg-modes{position:relative}
-#kb-wrap.kb-wrap .nb-actionbar .kg-modes summary{list-style:none;cursor:pointer}
-#kb-wrap.kb-wrap .nb-actionbar .kg-modes summary::-webkit-details-marker{display:none}
+#kb-wrap.kb-wrap .nb-actionbar :is(.kg-modes,#kb-waiter-menu){position:relative}
+#kb-wrap.kb-wrap .nb-actionbar :is(.kg-modes,#kb-waiter-menu) summary{list-style:none;cursor:pointer}
+#kb-wrap.kb-wrap .nb-actionbar :is(.kg-modes,#kb-waiter-menu) summary::-webkit-details-marker{display:none}
 #kb-wrap.kb-wrap #kb-fullscreen[aria-pressed="true"] .kb-enter-fullscreen,
 #kb-wrap.kb-wrap #kb-fullscreen[aria-pressed="false"] .kb-exit-fullscreen{display:none}
 @media(max-width:1650px){
@@ -53,7 +54,7 @@ body:has(#kb-wrap) :is(#top,#footer,#z-sidebar,#z-side-burger,#z-subnav,#pos-mod
   #kb-wrap.kb-wrap .nb-hrow{gap:12px}
   #kb-wrap.kb-wrap .nb-hrow .nb-brand img{width:125px;margin-inline-end:-36px}
   #kb-wrap.kb-wrap .nb-actionbar{gap:6px}
-  #kb-wrap.kb-wrap .nb-actionbar :is(.nb-pill,.nb-abtn:not(.nb-abtn--icon),.nb-back,.nb-tax,.nb-power,#kb-waiter){font-size:14px;padding-inline:8px}
+  #kb-wrap.kb-wrap .nb-actionbar :is(.nb-pill,.nb-abtn:not(.nb-abtn--icon),.nb-back,.nb-tax,.nb-power,#kb-waiter-trigger){font-size:14px;padding-inline:8px}
 }
 @media(max-width:1320px){
   #kb-wrap.kb-wrap .nb-actionbar :is(.nb-pill,.nb-abtn,.nb-back,.nb-tax,.nb-power){gap:6px}
@@ -61,7 +62,7 @@ body:has(#kb-wrap) :is(#top,#footer,#z-sidebar,#z-side-burger,#z-subnav,#pos-mod
 @media(max-height:800px) and (min-width:901px){
   #kb-wrap.kb-wrap .nb-hrow{min-height:58px;font-size:12px}
   #kb-wrap.kb-wrap:not(.kg-grid) .nb-hrow{min-height:52px}
-  #kb-wrap.kb-wrap .nb-actionbar :is(.nb-pill,.nb-abtn,.nb-back,.nb-tax,.nb-power,#kb-waiter){min-height:42px}
+  #kb-wrap.kb-wrap .nb-actionbar :is(.nb-pill,.nb-abtn,.nb-back,.nb-tax,.nb-power,#kb-waiter-trigger){min-height:42px}
 }
 @media(max-width:800px){
   #kb-wrap.kb-wrap :is(.nb-hrow,.nb-actionbar){margin:0;padding:8px 0;gap:8px}

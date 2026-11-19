@@ -93,7 +93,7 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
    await page.locator('#pos-held-wrap summary').click();
    check(layout + ' device held list uses the existing menu and newest-first order',
     (await page.locator('#pos-held-wrap .nb-held__item').first().innerText()).includes('20 items') &&
-    await page.locator('#posOfflineDialog').count() === 0 && await page.locator('.pos-reference-payments button').count() === 7);
+    await page.locator('#posOfflineDialog').count() === 0 && await page.locator('.pos-reference-payments button').count() === 6);
    if (layout === 'normal') {
     const config = (await state()).find(row => row.key.startsWith('config:')).value;
     await page.evaluate(({bill,userId,terminalId}) => new Promise((resolve,reject) => {

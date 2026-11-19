@@ -13,10 +13,6 @@
     }
     window._posCheckoutNotice = notice;
     window.posShowNoHeld = function () { notice('No held bills in this session. Use Hold (F7) to save the current cart.'); };
-    window.posCheckoutCopilot = function () {
-        var button = document.getElementById('ai-copilot-toggle');
-        if (button) button.click(); else notice('The assistant is not available in this workspace.');
-    };
     function connection() {
         var el = document.getElementById('pos-connection-status');
         var state = window._posOffline?.connectionState?.() || (navigator.onLine ? 'Online' : 'Offline');

@@ -4002,9 +4002,9 @@ body.zq-nav.q-body--prevent-scroll:has(#zq-subnav.show[data-mod="sales"]):has(.q
 
 /* Bootstrap's header stays in document flow and sticks above all ERP module content. */
 /* The framework's 100% body height otherwise ends its sticky boundary at one viewport. */
-body:has(> #z-sidebar):not(.z-side-off){height:auto;min-height:100vh}
-body:has(> #z-sidebar):not(.z-side-off) #top{position:sticky;top:0;z-index:1000}
-@media(max-width:900px){body:has(> #z-sidebar):not(.z-side-off) #top{z-index:1100}}
+body:has(> #z-sidebar):not(:has(#pos-terminal-root,.pos-receipt-card)){height:auto;min-height:100vh}
+body:has(> #z-sidebar):not(:has(#pos-terminal-root,.pos-receipt-card)) #top{position:sticky;top:0;z-index:1000}
+@media(max-width:900px){body:has(> #z-sidebar):not(:has(#pos-terminal-root,.pos-receipt-card)) #top{z-index:1100}}
 /* Contacts keeps the existing ERP controls while reserving their measured height. */
 @media (max-width:1200px){
   body.zq-nav:has(#zq-subnav.show[data-mod="Contacts"]) .q-header .q-toolbar{display:grid!important;grid-template-columns:44px minmax(0,1fr) auto;gap:6px;padding:6px}

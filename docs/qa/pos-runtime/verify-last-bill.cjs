@@ -18,9 +18,8 @@ module.exports=async function({a,base,check,q,invoke,post,out}) {
   await page.locator('#posCashConfirm').click();check('cashier checkout returns a completed bill',(await (await response).json()).success===true);
   for(let i=0;i<100&&record(cart.transactionId).status_id!=='PtCompleted';i++)await page.waitForTimeout(100);
   const saved=record(cart.transactionId);check('last-bill fixture really completed in the ledger',saved.status_id==='PtCompleted'&&Number(saved.payable_amount)===amount&&Number(saved.paid_amount)===amount);
-  await page.waitForFunction(number=>document.getElementById('pos-bill-badge')?.textContent.includes(number),saved.transaction_number);
-  check('AJAX checkout refreshes Last bill number and amount',await page.locator('#pos-last-completed').innerText()===`Last amount: ${amount.toFixed(2)}`);
-  check('header also shows the most recently completed bill',await page.locator('#pos-bill-badge').innerText()===saved.transaction_number);
+  await page.waitForFunction(value=>document.getElementById('pos-last-completed')?.textContent.trim()===value,'Last amount: '+amount.toFixed(2));
+  check('AJAX checkout refreshes Last amount',await page.locator('#pos-last-completed').innerText()===`Last amount: ${amount.toFixed(2)}`);
   check('completed checkout removes the old cart ID from the refresh URL',!new URL(page.url()).searchParams.has('transactionId'));
   return saved;
  }

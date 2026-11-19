@@ -48,7 +48,7 @@ async function box(page, selector) {
     page.on('pageerror', e => report.pageErrors.push(e.message));
     await page.goto(base + '/apps/zenith/pos/Terminal', { waitUntil: 'networkidle' });
     const invoiceBefore = count('invoice'), paymentBefore = count('pos_payment');
-    const openSession = page.getByRole('button', { name: /Open Session/ });
+    const openSession = page.getByRole('button', { name: /Open \/ Resume Session/ });
     if (await openSession.count()) await openSession.click();
     await page.locator('#pos-terminal-root').waitFor();
     await page.waitForLoadState('networkidle');
@@ -74,9 +74,9 @@ async function box(page, selector) {
     await page.screenshot({ path: path.join(out, 'terminal-normal-empty-1280.png') });
     await page.locator('.nb-modes summary').click();
     check('Layout choices live inside Modes',
-      await page.getByRole('button', { name: 'Normal billing', exact: true }).isVisible() &&
-      await page.getByRole('button', { name: /Advanced billing/ }).isVisible());
-    await page.getByRole('button', { name: /Advanced billing/ }).click();
+      await page.getByRole('button', { name: 'List View', exact: true }).isVisible() &&
+      await page.getByRole('button', { name: /Grid View/ }).isVisible());
+    await page.getByRole('button', { name: /Grid View/ }).click();
     check('Advanced catalog is visible',
       await page.locator('body.pos-mode-advanced .pos-product-grid').isVisible());
     check('Layout switch returns the terminal header to the top',
@@ -101,7 +101,7 @@ async function box(page, selector) {
     }
     check('Grid click adds exactly one unit to the unpaid cart', lines.length === 1 && Number(lines[0].quantity) === 1, lines);
     await page.locator('.nb-modes summary').click();
-    await page.getByRole('button', { name: 'Normal billing', exact: true }).click();
+    await page.getByRole('button', { name: 'List View', exact: true }).click();
     check('Switching back preserves the cart and reveals search',
       await page.locator('body.pos-mode-normal .pos-cart tbody tr').filter({ hasText: 'Disposable POS UI item' }).count() === 1 &&
       (await box(page, '#cartInlineSearch')).bottom <= 720);

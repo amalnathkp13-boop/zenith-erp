@@ -3171,7 +3171,6 @@
                 gridHasMore=page.gridHasMore ?: false; gridNextOffset=page.gridNextOffset ?: 0
                 gridOffset=page.gridOffset ?: 0
             }
-            lastBillNo = '-'
             lastBillAmt = '0'
             if (sessionId) {
                 // A recalled older cart may finish after a newer cart. Use completion
@@ -3186,12 +3185,11 @@
                     .condition('sessionId', sessionId).condition('statusId', 'PtCompleted')
                     .useCache(false).orderBy('-entryDate,-lastUpdatedStamp').limit(1).list()[0]
                 if (lastBill) {
-                    lastBillNo = lastBill.transactionNumber ?: lastBill.transactionId
                     lastBillAmt = zinr.inr(ec.l10n.format(lastBill.payableAmount ?: 0, '#,##0.00'))
                 }
             }
-            // Count completed bills by completion time, including legacy FY-numbered bills issued
-            // earlier on the migration day. India business time is shared by every cashier.
+            // Count completed retail bills across counters in this terminal's shop only.
+            // India business time is shared by every cashier.
             def _billDay = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone('Asia/Kolkata'))
             _billDay.setTime(ec.user.nowTimestamp)
             def _billDayFmt = new java.text.SimpleDateFormat('yyyyMMdd')
@@ -3205,15 +3203,11 @@
             _billDay.add(java.util.Calendar.DATE, 1)
             def _billEnd = new java.sql.Timestamp(_billDay.getTimeInMillis())
             def _billDayQuery = ec.entity.find('zenith.erp.pos.RetailPosTransactionView')
-                .condition('organizationPartyId', posOrg).condition('statusId', 'PtCompleted')
+                .condition('organizationPartyId', posOrg ?: '__NO_ORGANIZATION__').condition('statusId', 'PtCompleted')
+                .condition('facilityId', terminal?.facilityId ?: '__NO_SHOP__')
                 .condition('completedDate', org.moqui.entity.EntityCondition.GREATER_THAN_EQUAL_TO, _billStart)
                 .condition('completedDate', org.moqui.entity.EntityCondition.LESS_THAN, _billEnd)
             todayBillCount = _billDayQuery.count()
-            latestIssuedBillNo = ec.entity.find('zenith.erp.pos.RetailPosTransactionView')
-                .condition('organizationPartyId', posOrg).condition('statusId', 'PtCompleted')
-                .condition('completedDate', org.moqui.entity.EntityCondition.GREATER_THAN_EQUAL_TO, _billStart)
-                .condition('completedDate', org.moqui.entity.EntityCondition.LESS_THAN, _billEnd)
-                .useCache(false).orderBy('-completedDate,-lastUpdatedStamp').limit(1).list()[0]?.transactionNumber ?: ''
 
 
 
@@ -3687,11 +3681,12 @@
 
 
 
-                body.body--dark .pos-no-session { background: #1a1a2e !important; }
+                body.body--dark #pos-terminal-entry { background: #1a1a2e; color: #e0e0e0; }
+                body.body--dark #pos-terminal-entry p { color: #c1b9d2; }
 
 
 
-                body.body--dark .pos-no-session input { background: #1e1e2e !important; color: #e0e0e0 !important; }
+                body.body--dark #pos-terminal-entry :is(input,select) { background: #1e1e2e; border-color: #524763; }
 
 
 
@@ -3793,120 +3788,63 @@
 
 
         <section name="NoSessionSection" condition="!session">
-
-
-
             <widgets>
-
-
-
-                <container style="q-pa-xl">
-
-
-
-                    <container style="pos-no-session zenith-card bg-white shadow-2 border-radius-lg q-pa-xl" style-sm="max-width:500px; margin:80px auto;">
-
-                        <!-- The no-session screen hides app chrome; return directly to the POS dashboard. -->
-                        <render-mode><text type="html" template="true"><![CDATA[<style>body.Terminal .navbar{display:none!important}body.Terminal #pos-tabs-menu{display:none!important}body.Terminal #pos-module-nav{display:none!important}</style>
-<div style="margin-bottom:14px"><a href="${(posBillingBack!'/apps/zenith/pos/Dashboard')?html}" style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;background:#37474f;color:#fff;text-decoration:none;font-size:13px;font-weight:700">&#8592; Back to POS</a></div>]]></text></render-mode>
-
-                        <container style="text-center q-mb-lg">
-
-
-
-                            <render-mode><text type="html"><![CDATA[<q-icon name="point_of_sale" class="text-h1 text-primary q-mb-md"/>]]></text></render-mode>
-
-
-
-                            <label text="POS Billing Terminal" type="h4" style="text-weight-bold q-my-none"/>
-
-
-
-                            <label text="Open a session to start billing" type="p" style="text-grey-7 q-mt-sm"/>
-
-
-
-                        </container>
-
-
-
-                        <section name="NoAssignedTerminal" condition="posTerminalRestricted &amp;&amp; !terminalList"><widgets><label text="No active terminal is assigned to this login. Ask your administrator to assign a terminal under POS → Terminals." type="p" style="pos-terminal-assignment-empty"/></widgets></section>
-                        <section name="AssignedTerminalAvailable" condition="terminalList"><widgets><form-single name="OpenSessionForm" transition="openSession">
-
-
-
-                            <field name="terminalId"><conditional-field name="locked_terminal" condition="posTerminalRestricted" title="Assigned Terminal"><hidden default-value="${defaultTerminalId}"/><label text="${defaultTerminalName}"/></conditional-field><default-field title="Select Terminal">
-
-
-
-                                <drop-down no-current-selected-key="${defaultTerminalId ?: ''}">
-
-
-
-                                    <list-options list="terminalList" key="${terminalId}" text="${terminalName ?: terminalId}"/>
-
-
-
-                                </drop-down>
-
-
-
-                            </default-field></field>
-
-
-
-                            <field name="openingCash"><default-field title="Opening Cash">
-
-
-
-                                <text-line size="15" default-value="0" input-type="number"/>
-
-
-
-                            </default-field></field>
-
-
-
-                            <field name="submitBtn"><default-field title="">
-
-
-
-                                <submit text="Open Session" type="success" icon="fa fa-play"/>
-
-
-
-                            </default-field></field>
-
-
-
-                        </form-single>
-                        </widgets></section>
-                        <render-mode><text type="html,qvt,vuet" template="true"><![CDATA[
-                          <#if (showPosSessionReview!true) && busySessionLinks?has_content>
-                          <div class="pos-busy-session-note" style="margin-top:18px;padding:14px;border:1px solid #f3d99c;border-radius:8px;background:#fffbeb;color:#664d03;font-size:13px;line-height:1.5">
-                            <strong>Terminal in use</strong> Opening a terminal used by another cashier closes their session once any unfinished payment is resolved.
-                            <#list busySessionLinks as busy>
-                              <div style="margin-top:7px"><a href="/qapps/zenith/pos/EditSession?sessionId=${busy.sessionId?url('UTF-8')}" style="color:#5b3ac6;font-weight:700">Review ${busy.terminalName?html} session</a></div>
-                            </#list>
-                          </div>
-                          </#if>
-                        ]]></text></render-mode>
-                        <render-mode><text type="html,qvt" template="true"><![CDATA[<img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="try{if(location.pathname.indexOf('/qapps/')===0){location.replace(location.href.replace('/qapps/','/apps/'));}}catch(e){}"/><div style="text-align:center;margin-top:18px"><button id="pos-history-btn-ns" type="button" onclick="window.posOpenHistory&amp;&amp;window.posOpenHistory()" style="padding:10px 24px;border-radius:8px;font-size:14px;font-weight:bold;cursor:pointer;background:#7C3AED;color:#fff;border:1px solid #A78BFA">&#128196; View Bill History<span style="margin-left:7px;padding:1px 6px;border:1px solid rgba(255,255,255,0.7);border-radius:4px;font-size:11px;font-weight:700;opacity:0.9">F9</span></button></div><script src="/zenithstatic/js/pos-receipt-layout.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-receipt-layout.js').getLastModified()?c}"></script><script src="/zenithstatic/js/pos-till-dialogs.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-till-dialogs.js').getLastModified()?c}"></script><script src="/zenithstatic/js/pos-terminal.js?perf=1&amp;v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-terminal.js').getLastModified()?c}"></script>]]></text></render-mode>
-
-
-
-                    </container>
-
-
-
-                </container>
-
-
-
+                <render-mode><text type="html,qvt,vuet" template="true"><![CDATA[
+<div class="pos-no-session">
+  <section id="pos-terminal-entry" aria-labelledby="pos-entry-title">
+    <h1 id="pos-entry-title">POS Billing Terminal</h1>
+    <p>Select your terminal to open or resume billing.</p>
+    <#if terminalList?has_content>
+    <form id="OpenSessionForm" name="OpenSessionForm" method="post" action="${sri.buildUrl('openSession').url?html}">
+      <input type="hidden" name="moquiSessionToken" value="${ec.web.sessionToken?html}"/>
+      <#if posTerminalRestricted!false>
+      <input type="hidden" name="terminalId" value="${defaultTerminalId?html}"/>
+      <label>Assigned Terminal<input type="text" value="${(defaultTerminalName!defaultTerminalId)?html}" readonly/></label>
+      <#else>
+      <label>Select Terminal
+        <select name="terminalId" required>
+          <#list terminalList as terminalOption>
+          <option value="${terminalOption.terminalId?html}"<#if terminalOption.terminalId == (defaultTerminalId!'')> selected</#if>>${(terminalOption.terminalName!terminalOption.terminalId)?html}</option>
+          </#list>
+        </select>
+      </label>
+      </#if>
+      <label>Opening Cash<input name="openingCash" type="number" min="0" step="0.01" inputmode="decimal"/></label>
+      <button type="submit">Open / Resume Session</button>
+    </form>
+    <#elseif posTerminalRestricted!false>
+    <p class="pos-terminal-assignment-empty">No active terminal is assigned to this login. Ask your administrator to assign a terminal under POS → Terminals.</p>
+    <#else>
+    <p>No active terminals are available. Set up a terminal under POS → Terminals to start billing.</p>
+    </#if>
+  </section>
+  <div class="pos-entry-actions">
+    <a href="${(posBillingBack!'/apps/zenith/pos/Dashboard')?html}">Back to POS</a>
+    <button id="pos-history-btn-ns" type="button" aria-keyshortcuts="F9">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+      View Bill History <kbd aria-hidden="true">F9</kbd>
+    </button>
+  </div>
+</div>
+<template id="pos-entry-footer">
+  <p>© 2024-2026 ZetaERP · Cloud ERP Platform</p>
+  <p><a href="mailto:support@zetaclantech.com">Support</a></p>
+</template>
+<script>(function () {
+  function setEntryFooter() {
+    var content = document.getElementById("apps-footer-content");
+    var template = document.getElementById("pos-entry-footer");
+    if (content && template) content.replaceChildren(template.content.cloneNode(true));
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", setEntryFooter, {once:true});
+  else setEntryFooter();
+})();</script>
+<img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="try{if(location.pathname.indexOf('/qapps/')===0){location.replace(location.href.replace('/qapps/','/apps/'));}}catch(e){}"/>
+<script src="/zenithstatic/js/pos-receipt-layout.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-receipt-layout.js').getLastModified()?c}"></script>
+<script src="/zenithstatic/js/pos-till-dialogs.js?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-till-dialogs.js').getLastModified()?c}"></script>
+<script src="/zenithstatic/js/pos-terminal.js?perf=1&amp;v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-terminal.js').getLastModified()?c}"></script>
+                ]]></text></render-mode>
             </widgets>
-
-
-
         </section>
 
 
@@ -4602,7 +4540,7 @@ window.sendWhatsAppWithPdf=function() {
 
 
 <link rel="stylesheet" href="/zenithstatic/css/pos-checkout.css?perf=2&amp;v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/pos-checkout.css').getLastModified()?c}"/>
-<div id="pos-terminal-root" class="pos-checkout-reference">
+<div id="pos-terminal-root" class="pos-checkout-reference" data-last-completed-amount="${lastBillAmt?html}">
 <script>(function(){try{var m=localStorage.getItem('posLayoutMode');document.body.classList.add(m==='advanced'?'pos-mode-advanced':'pos-mode-normal');}catch(e){try{document.body.classList.add('pos-mode-normal');}catch(_){}}})();</script>
 <#if (modeSwitchError!'')?has_content>
 <div id="posModeSwitchErr" style="position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:9999;background:#c62828;color:#fff;padding:10px 18px;border-radius:8px;font-size:14px;font-weight:600;box-shadow:0 3px 12px rgba(0,0,0,0.3);max-width:90%">${modeSwitchError?html}<span onclick="this.parentNode.remove()" style="margin-left:12px;cursor:pointer;font-weight:800">&#10006;</span></div>
@@ -4627,18 +4565,14 @@ window.sendWhatsAppWithPdf=function() {
     <span class="nb-status" role="status"><span class="nb-dot"></span><span id="pos-connection-status">Online</span></span>
     <span class="nb-meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg><span id="nb-date">${dispDate!''}</span></span>
     <span class="nb-meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><span id="nb-clock" data-server-epoch="${ec.user.nowTimestamp.time?c}" data-time-zone="${ec.user.timeZone.ID?html}">${dispTime!''}</span></span>
-    <span class="nb-billno"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/></svg><span class="nb-billno__lbl">Last bill</span><span id="pos-bill-badge" class="nb-billno__val<#if !(latestIssuedBillNo!'')?has_content> nb-billno__new</#if>" data-last-bill="${(latestIssuedBillNo!'')?html}" data-session-last-bill="${lastBillNo?html}" data-session-last-amount="${lastBillAmt?html}" title="POS bill number is assigned on completed payment; invoice numbering is separate">${((latestIssuedBillNo!'')?has_content)?then(latestIssuedBillNo, '—')}</span></span>
     <span class="nb-meta nb-today-bills" title="Completed POS bills today across this shop (India time)">Today: <strong id="pos-today-bills" data-day="${billDayKey}" data-time-zone="Asia/Kolkata">${todayBillCount!0}</strong> bills</span>
-
-    <span class="nb-hspace"></span>
-
     <button type="button" class="nb-pill nb-customer-picker" onclick="window.posOpenCustomer&amp;&amp;window.posOpenCustomer()" title="Choose a customer for this bill, including a tax bill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="13" cy="7" r="4"/></svg><span id="pos-header-customer-name">${((txn.customerName)!'Walk-in Customer')?html}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
 
   </div>
 <div class="nb-actionbar">
   <a href="${(posBillingBack!'/apps/zenith/pos/Dashboard')?html}" class="nb-back" title="Back to POS"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m12 19-7-7 7-7M19 12H5"/></svg><span>Back</span></a>
     <details class="nb-modes">
-      <summary class="nb-pill nb-modes__btn"><span>Modes</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <summary class="nb-pill nb-modes__btn"><span>Modes</span></summary>
       <div class="nb-modes__menu">
         <#if salesModesList?? && (salesModesList?size > 1)>
         <div class="nb-modes__section" style="margin-top:0;border-top:0">Sales mode</div>
@@ -4648,8 +4582,8 @@ window.sendWhatsAppWithPdf=function() {
         <span class="nb-modes__item is-active" aria-current="true">${salesMode!'Retail'}</span>
         </#if>
         <div class="nb-modes__section">Billing layout</div>
-        <button type="button" class="nb-modes__item" data-pos-layout="normal" onclick="posSetLayout('normal')">Normal billing</button>
-        <button type="button" class="nb-modes__item" data-pos-layout="advanced" onclick="posSetLayout('advanced')">Advanced billing · product grid</button>
+        <button type="button" class="nb-modes__item" data-pos-layout="normal" onclick="posSetLayout('normal')">List View</button>
+        <button type="button" class="nb-modes__item" data-pos-layout="advanced" onclick="posSetLayout('advanced')">Grid View</button>
       </div>
     </details>
 
@@ -5520,7 +5454,6 @@ window.sendWhatsAppWithPdf=function() {
                 <input type="hidden" name="taxOn" value="${taxOn!'N'}"/><input type="hidden" name="salesModeId" value="${salesModeId!''}"/><input type="hidden" name="moquiSessionToken" value="${ec.web.sessionToken}"/>
                 <button id="pos-hold" type="submit" <#if _empty>disabled</#if>>Hold<kbd>F7</kbd></button>
               </form>
-              <button id="pos-copilot" type="button" onclick="posCheckoutCopilot()">AI Copilot</button>
             </div>
 
 
@@ -6614,11 +6547,6 @@ window.numpadQty=function() { /* qty override for next add */ };
 
 
 
-        var bn=document.getElementById('pos-bill-badge');
-
-
-
-        if(bn){ if(d.txnNum) bn.dataset.lastBill=d.txnNum; bn.textContent=bn.dataset.lastBill||'—'; bn.classList.toggle('nb-billno__new',!bn.dataset.lastBill); }
 
 
 
