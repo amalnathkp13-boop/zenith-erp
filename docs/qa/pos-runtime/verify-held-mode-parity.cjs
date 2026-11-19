@@ -51,6 +51,33 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
    await page.locator('.aj-qi').waitFor();await page.locator('.aj-qi').fill('3');await page.locator('.aj-p').fill('55');
    const expected = await page.locator('#posSumTotal').innerText();
    await page.locator('#pos-hold').click();await page.waitForFunction(() => !document.querySelector('.aj-qi'));
+   // A response captured before Hold sync must not overwrite its later acknowledgement.
+   let captured, releaseOld, staleDone;
+   const oldCaptured=new Promise(resolve => {captured=resolve;});
+   const oldReleased=new Promise(resolve => {releaseOld=resolve;});
+   const staleFinished=new Promise(resolve => {staleDone=resolve;});
+   let firstList=true;
+   const delayList=async route => {
+    const params=new URLSearchParams(route.request().postData()||'');
+    if (params.get('action')!=='listHeld'||!firstList) return route.continue();
+    firstList=false;
+    const response=await route.fetch();captured();await oldReleased;
+    await route.fulfill({response});staleDone();
+   };
+   await context.route('**/Terminal/ajaxCart',delayList);
+   await context.route('**/Terminal/syncOfflineHeldBills',async route => {await oldCaptured;await route.continue();});
+   try {
+    await context.setOffline(false);
+    const oldCacheDone=page.evaluate(() => window._posOffline.cacheHeldBills());
+    await page.waitForFunction(() => !window._posOffline.active());
+    await offline();releaseOld();await staleFinished;await oldCacheDone;
+    check(layout+' a delayed server list cannot erase an acknowledged offline hold',
+     (await held()).some(bill => bill.serverHeldId&&bill.items.some(item => Number(item.price)===55))&&await count()==='2');
+   } finally {
+    releaseOld();
+    await context.unroute('**/Terminal/ajaxCart',delayList);
+    await context.unroute('**/Terminal/syncOfflineHeldBills');
+   }
    await online();await waitCache(2);
    check(layout+' reholding an online bill offline replaces the original hold without duplication',
     Number(q("SELECT count(*) AS n FROM pos_held_transaction WHERE session_id='"+session.sessionId+"' AND status_id='PhHeld'")[0].n)===2);

@@ -1247,6 +1247,7 @@ window._posOffline = (function () {
             return Promise.resolve(false);
         }
         payPending = true;
+        heldCacheVersion++;
         var saved = copy(draft);
         delete saved.onlineBaseline;
         saved.draftId = crypto.randomUUID();
@@ -1295,7 +1296,7 @@ window._posOffline = (function () {
                 if (!result.success || !Array.isArray(result.held)) return;
                 return getQueue().then(function (sales) {
                     writeTail = writeTail.then(async function () {
-                        if (context.sessionId !== tCtx().sessionId || payPending || version !== heldCacheVersion) return;
+                        if (context.sessionId !== tCtx().sessionId || payPending || heldSyncing || version !== heldCacheVersion) return;
                         var pending = holds.filter(function (bill) { return !bill.serverHeldId; });
                         var consumed = new Set(pending.concat(sales, draft ? [draft] : []).map(function (bill) { return bill.sourceHeldId; }).filter(Boolean));
                         var mirrored = result.held.map(function (bill) { return bill.workspace; }).filter(function (bill) {
@@ -1359,6 +1360,7 @@ window._posOffline = (function () {
         var held = sessionHolds().find(function (bill) { return bill.draftId === id; });
         if (!held) return;
         payPending = true;
+        heldCacheVersion++;
         var next = copy(held), rest = holds.filter(function (bill) { return bill.draftId !== id; });
         delete next.serverHeldId;
         if (cart.length) {
@@ -1394,6 +1396,7 @@ window._posOffline = (function () {
         });
         if (!ready.length) return Promise.resolve();
         heldSyncing = true;
+        heldCacheVersion++;
         var saved = ready.slice(0,100).map(function (bill) {
             var amounts = totals(bill);
             return Object.assign(copy(bill), {version:2,offlineId:bill.draftId,userId:settings.userId,
@@ -1410,12 +1413,14 @@ window._posOffline = (function () {
         }).then(function (result) {
             var ids = new Set((result.syncedIds || []).filter(function (id) { return saved.some(function (bill) { return bill.offlineId === id; }); }));
             if (!ids.size) return;
-            var rest = holds.flatMap(function (bill) {
-                if (!ids.has(bill.draftId)) return [bill];
-                var source = (result.heldSources || {})[bill.draftId];
-                return source ? [Object.assign(copy(bill), source)] : [];
-            });
-            writeTail = writeTail.then(function () { return stateWrite('holds:' + scope, copy(rest)); }).then(function () {
+            heldCacheVersion++;
+            writeTail = writeTail.then(async function () {
+                var rest = holds.flatMap(function (bill) {
+                    if (!ids.has(bill.draftId)) return [bill];
+                    var source = (result.heldSources || {})[bill.draftId];
+                    return source ? [Object.assign(copy(bill), source)] : [];
+                });
+                await stateWrite('holds:' + scope, copy(rest));
                 holds = rest;
                 renderHeldPicker();
                 if ((!localEditing || cart.length) && canUseOnlineHeldPicker()) window._posRefreshHeldPicker?.();
