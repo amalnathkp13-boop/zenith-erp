@@ -143,7 +143,7 @@ try {
             throw new Error('CRM activity or segment list did not render');
           }
           if (path.includes('period=all')) {
-            const expected = path.includes('/Crm/Pipeline') ? 'Closing All Time' : 'All time';
+            const expected = path.includes('/Crm/Pipeline') ? 'Closing · All time' : 'All time';
             const text = await page.$eval('.zcrm-reference-metrics', element => element.innerText);
             if (!text.includes(expected)) throw new Error(`CRM period filter did not show ${expected}`);
           }
