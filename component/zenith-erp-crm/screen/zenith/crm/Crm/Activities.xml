@@ -18,6 +18,8 @@
     <!-- ZE-SEC-JSON f/u: org-scoped party picker (stock SimpleScreens searchPartyList leaks cross-tenant). -->
     <transition-include name="searchPartyList" location="component://zenith-erp-base/screen/include/PartyPicker.xml"/>
 
+    <transition-include name="exportList" location="component://zenith-erp-crm/screen/include/CrmExport.xml"/>
+
     <actions>
         <script><![CDATA[
             import org.moqui.entity.EntityCondition
@@ -89,7 +91,7 @@
                     <form-single name="LogActivityForm" transition="logActivity">
                         <field name="activityType"><default-field title="Type"><drop-down>
                             <option key="Call" text="Phone Call"/><option key="Email" text="Email"/>
-                            <option key="Meeting" text="Meeting"/><option key="WhatsApp" text="WhatsApp"/>
+                            <option key="Meeting" text="Meeting"/><option key="WhatsApp" text="WhatsApp"/><option key="SMS" text="SMS"/>
                             <option key="Note" text="Note"/><option key="Task" text="Task"/>
                             <option key="SiteVisit" text="Site Visit"/>
                         </drop-down></default-field></field>
@@ -154,8 +156,12 @@
                 </widgets></section-iterate>
             </widgets></section>
             <section name="ActivityTable" condition="view != 'agenda'"><widgets>
+            <link url="exportList" condition="crmCanExport" text="Export CSV" link-type="anchor" target-window="_blank"
+                  parameter-map="crmExportFilters + [dataset:'activityList', format:'csv']"/>
+            <link url="exportList" condition="crmCanExport" text="Export XLSX" link-type="anchor" target-window="_blank"
+                  parameter-map="crmExportFilters + [dataset:'activityList', format:'xlsx']"/>
             <form-list name="ActivityListForm" list="activityList" skip-form="true" header-dialog="true"
-                       show-csv-button="true" show-page-size="true">
+                       show-page-size="true">
                 <field name="period"><header-field><hidden default-value="${period}"/></header-field><default-field><hidden/></default-field></field>
                 <field name="view"><header-field><hidden default-value="${view}"/></header-field><default-field><hidden/></default-field></field>
                 <field name="activityId"><default-field title="Activity"><link url="../ActivityDetail" text="Open" parameter-map="[activityId:activityId]"/></default-field></field>
@@ -167,7 +173,7 @@
                     <header-field title="Type">
                         <drop-down allow-empty="true">
                             <option key="Call"/><option key="Email"/><option key="Meeting"/>
-                            <option key="WhatsApp"/><option key="Note"/><option key="Task"/><option key="SiteVisit"/>
+                            <option key="WhatsApp"/><option key="SMS"/><option key="Note"/><option key="Task"/><option key="SiteVisit"/>
                         </drop-down>
                     </header-field>
                     <default-field><display/></default-field>

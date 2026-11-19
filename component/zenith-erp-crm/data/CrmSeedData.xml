@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <entity-facade-xml type="seed">
+    <moqui.security.UserPermission userPermissionId="ZENITH_CRM_EXPORT" description="Download CRM lists and reports"/>
+    <moqui.security.UserGroupPermission userGroupId="ADMIN" userPermissionId="ZENITH_CRM_EXPORT" fromDate="2020-01-01 00:00:00"/>
+    <moqui.security.UserGroupPermission userGroupId="ZENITH_ADMIN" userPermissionId="ZENITH_CRM_EXPORT" fromDate="2020-01-01 00:00:00"/>
+    <moqui.security.UserGroupPermission userGroupId="ZENITH_SALES_MGR" userPermissionId="ZENITH_CRM_EXPORT" fromDate="2020-01-01 00:00:00"/>
 
     <moqui.basic.StatusItem statusId="Cancelled" statusTypeId="CrmActivity" description="Cancelled"/>
     <moqui.basic.StatusFlowTransition statusFlowId="Default" statusId="Scheduled" toStatusId="Cancelled" transitionName="Cancel"/>

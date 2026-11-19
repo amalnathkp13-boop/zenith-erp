@@ -114,10 +114,11 @@ try {
           const count = await page.$$eval('.zcrm-dashboard-metrics .zcrm-metric', cards => cards.length);
           if (count !== 6) throw new Error(`CRM dashboard rendered ${count} metric cards instead of six`);
         }
-        if (path.includes('/Crm/Dashboard') || path.includes('/Crm/Reports')) {
-          const heading = path.includes('/Crm/Dashboard') ? 'My follow-ups due' : 'Forecast by category';
+        const crmHeadings = { Dashboard: 'My follow-ups due', Reports: 'Forecast by category', Workflows: 'Your follow-up rules' };
+        const screenName = path.split('/Crm/')[1].split('?')[0];
+        if (crmHeadings[screenName]) {
           const content = await page.$eval('.zcrm-page', element => element.innerText);
-          if (!content.includes(heading)) throw new Error(`Missing CRM section: ${heading}`);
+          if (!content.includes(crmHeadings[screenName])) throw new Error(`Missing CRM section: ${crmHeadings[screenName]}`);
         }
         if (path.includes('/Crm/Leads')) {
           await page.waitForSelector('.zcrm-lead-metrics', { timeout: 15000 });

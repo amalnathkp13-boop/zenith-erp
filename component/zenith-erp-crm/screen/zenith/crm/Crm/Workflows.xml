@@ -2,17 +2,17 @@
 <screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         default-menu-title="Workflows" default-menu-index="9">
-    <parameter name="editStageId"/>
+    <parameter name="editStageId"/><parameter name="suggestion"/>
     <transition name="saveWorkflow">
         <actions>
             <if condition="ec.web.request.method != 'POST'"><return error="true" message="Submit the workflow form to save changes."/></if>
-            <service-call name="zenith.crm.CrmServices.save#StageWorkflow"
-                          in-map="[opportunityStageId:opportunityStageId, taskSubject:taskSubject, daysUntilDue:daysUntilDue, isActive:isActive]"/>
+            <service-call name="zenith.crm.CrmServices.save#CrmFollowUpRule"
+                          in-map="[triggerId:triggerId ?: opportunityStageId, taskSubject:taskSubject, daysUntilDue:daysUntilDue, isActive:isActive]"/>
         </actions>
         <default-response url="."/><error-response url="."/>
     </transition>
     <actions>
-        <set field="canManageWorkflows" from="modCanWrite &amp;&amp; crmOrganization.activeOrgId &amp;&amp; (ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN'))"/>
+        <set field="canManageWorkflows" from="modCanWrite &amp;&amp; crmOrganization.activeOrgId &amp;&amp; crmOrganization.activeOrgId != '_NA_' &amp;&amp; (ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN'))"/>
         <entity-find entity-name="mantle.sales.opportunity.SalesOpportunityStage" list="stages">
             <econdition field-name="opportunityStageId" operator="not-in" from="['SoClosedWon','SoClosedLost']"/>
             <order-by field-name="sequenceNum"/>
@@ -22,54 +22,89 @@
         </entity-find>
         <set field="workflowRules" from="crmOrganization.activeOrgId ?
             ec.entity.find('zenith.erp.crm.CrmStageWorkflow').condition('organizationPartyId',crmOrganization.activeOrgId).disableAuthz().list() : []"/>
+        <entity-find-one entity-name="zenith.erp.crm.CrmLeadFollowUpRule" value-field="intakeRule" disable-authz="true">
+            <field-map field-name="organizationPartyId" from="crmOrganization.activeOrgId ?: '__NO_ORGANIZATION__'"/>
+        </entity-find-one>
         <script><![CDATA[
             def settings = stageSettings.collectEntries { [(it.opportunityStageId): it] }
             stageOptions = stages.collect { stage ->
                 [id:stage.opportunityStageId, label:settings[stage.opportunityStageId]?.displayName ?: stage.description]
             }
             def labels = stageOptions.collectEntries { [(it.id):it.label] }
-            workflowRows = workflowRules.collect { rule ->
-                [stageId:rule.opportunityStageId, stageLabel:labels[rule.opportunityStageId] ?: rule.opportunityStageId, taskSubject:rule.taskSubject,
-                 daysUntilDue:rule.daysUntilDue, ruleStatus:rule.isActive == 'Y' ? 'Enabled' : 'Paused']
-            }.sort { it.stageLabel }
-            selectedRule = workflowRules.find { it.opportunityStageId == editStageId } ?: [daysUntilDue:1, isActive:'Y']
+            triggerOptions = [[id:'lead-created', label:'A new lead is created']] + stageOptions.collect { [id:it.id, label:'Deal enters ' + it.label] }
+            def rules = workflowRules.collect { [triggerId:it.opportunityStageId, taskSubject:it.taskSubject, daysUntilDue:it.daysUntilDue, isActive:it.isActive] }
+            if (intakeRule) rules.add([triggerId:'lead-created',taskSubject:intakeRule.taskSubject,daysUntilDue:intakeRule.daysUntilDue,isActive:intakeRule.isActive])
+            workflowRows = rules.collect { rule -> rule + [
+                triggerLabel:rule.triggerId == 'lead-created' ? 'New lead created' : 'Deal enters ' + (labels[rule.triggerId] ?: rule.triggerId),
+                timing:rule.daysUntilDue == 0 ? 'Same day' : rule.daysUntilDue + (rule.daysUntilDue == 1 ? ' day later' : ' days later'),
+                ruleStatus:rule.isActive == 'Y' ? 'Enabled' : 'Paused'
+            ] }.sort { it.triggerLabel }
+            suggestions = [
+                [triggerId:'lead-created',taskSubject:'Contact the new lead',daysUntilDue:1],
+                [triggerId:'SoProposal',taskSubject:'Follow up on the proposal',daysUntilDue:2]
+            ].findAll { recipe -> triggerOptions.any { it.id == recipe.triggerId } && !rules.any { it.triggerId == recipe.triggerId } }
+            selectedRule = rules.find { it.triggerId == editStageId } ?: suggestions.find { it.triggerId == suggestion } ?: [:]
+            selectedRule = [daysUntilDue:1,isActive:'Y'] + selectedRule
+            recentTasks = []
+            if (canManageWorkflows) {
+                def cf = ec.entity.conditionFactory
+                def generated = ['stage:%','lead-intake:%'].collect { cf.makeCondition('externalSubmissionId', org.moqui.entity.EntityCondition.LIKE, it) }
+                recentTasks = ec.entity.find('zenith.erp.crm.CrmActivity').condition('organizationPartyId',crmOrganization.activeOrgId)
+                    .condition(cf.makeCondition(generated, org.moqui.entity.EntityCondition.OR)).orderBy('-activityDate,-activityId').limit(10).list()
+            }
         ]]></script>
     </actions>
     <widgets>
         <container style="zcrm-intro">
             <label text="Workflows" type="h3"/>
-            <label text="Schedule a follow-up when an opportunity moves into a stage." type="p"/>
+            <label text="Choose when CRM creates a follow-up for your team." type="p"/>
         </container>
-        <container-box><box-header title="Stage follow-up rules"/><box-body>
+        <container-box><box-header title="Your follow-up rules"/><box-body>
             <section name="NoStageWorkflows" condition="workflowRows.isEmpty()"><widgets>
-                <container style="zcrm-empty"><label text="No stage follow-up rules configured." type="p"/></container>
+                <container style="zcrm-empty"><label text="No rules yet. Choose a starting point below or create your own rule." type="p"/></container>
             </widgets></section>
             <section name="StageWorkflows" condition="!workflowRows.isEmpty()"><widgets>
                 <form-list name="StageWorkflowList" list="workflowRows" skip-form="true">
-                    <field name="stageLabel"><default-field title="Stage"><display/></default-field></field>
+                    <field name="triggerLabel"><default-field title="When"><display/></default-field></field>
                     <field name="taskSubject"><default-field title="Task"><display/></default-field></field>
-                    <field name="daysUntilDue"><default-field title="Days until due"><display/></default-field></field>
+                    <field name="timing"><default-field title="Due"><display/></default-field></field>
                     <field name="ruleStatus"><default-field title="Status"><display/></default-field></field>
                     <field name="editRule" hide="!canManageWorkflows"><default-field title="Actions">
-                        <link url="." text="Edit rule" parameter-map="[editStageId:stageId]"/>
+                        <link url="." text="Edit rule" parameter-map="[editStageId:triggerId]"/>
                     </default-field></field>
                 </form-list>
             </widgets></section>
         </box-body></container-box>
         <section name="ManageStageWorkflows" condition="canManageWorkflows"><widgets>
-            <container-box><box-header title="Configure a stage rule"/><box-body>
-                <label text="Each stage has one rule. A deal gets one task per stage, assigned to the user who moves it." type="p"/>
+            <container-box><box-header title="Set up a follow-up"/><box-body>
+                <container style="zcrm-workflow-templates"><section-iterate name="WorkflowSuggestions" list="suggestions" entry="recipe"><widgets>
+                    <link url="." text="Use template: ${recipe.taskSubject}" parameter-map="[suggestion:recipe.triggerId]"/>
+                </widgets></section-iterate></container>
                 <form-single name="SaveStageWorkflow" map="selectedRule" transition="saveWorkflow">
-                    <field name="opportunityStageId"><default-field title="Stage"><drop-down>
-                        <list-options list="stageOptions" key="${id}" text="${label}"/>
+                    <field name="triggerId"><default-field title="When this happens"><drop-down>
+                        <list-options list="triggerOptions" key="${id}" text="${label}"/>
                     </drop-down></default-field></field>
-                    <field name="taskSubject"><default-field title="Task title"><text-line maxlength="100" size="38"/></default-field></field>
-                    <field name="daysUntilDue"><default-field title="Days until due (0–90)"><text-line size="8"/></default-field></field>
+                    <field name="taskSubject"><default-field title="Create this task"><text-line maxlength="100" size="38"/></default-field></field>
+                    <field name="daysUntilDue"><default-field title="Days until due (0 = today)"><text-line size="8"/></default-field></field>
                     <field name="isActive"><default-field title="Status"><drop-down>
                         <option key="Y" text="Enabled"/><option key="N" text="Paused"/>
                     </drop-down></default-field></field>
                     <field name="submitButton"><default-field title="Save rule"><submit/></default-field></field>
                 </form-single>
+                <label text="A new lead’s first task goes to its owner when they can access Activities, otherwise to the person who entered it. A manually scheduled first follow-up takes priority." type="p"/>
+                <label text="A deal-stage task goes to the person moving the deal. Returning to the same stage keeps the original task. Pausing a rule stops future tasks." type="p"/>
+            </box-body></container-box>
+            <container-box><box-header title="Recent tasks created by rules"/><box-body>
+                <label condition="!recentTasks" text="New tasks will appear here after a rule runs." type="p"/>
+                <section name="HasRuleRuns" condition="recentTasks"><widgets>
+                    <form-list name="RecentRuleTasks" list="recentTasks" skip-form="true">
+                        <field name="subject"><default-field title="Task"><link url="../ActivityDetail" text="${subject}" parameter-map="[activityId:activityId]"/></default-field></field>
+                        <field name="externalSubmissionId"><default-field title="Trigger"><display text="${leadId ? 'New lead' : 'Deal stage'}"/></default-field></field>
+                        <field name="assignedToUserId"><default-field title="Assigned to"><display-entity entity-name="moqui.security.UserAccount" key-field-name="userId" text="${userFullName ?: username}"/></default-field></field>
+                        <field name="dueDate"><default-field title="Due"><display format="dd MMM, HH:mm"/></default-field></field>
+                        <field name="statusId"><default-field title="Status"><display/></default-field></field>
+                    </form-list>
+                </widgets></section>
             </box-body></container-box>
         </widgets></section>
     </widgets>

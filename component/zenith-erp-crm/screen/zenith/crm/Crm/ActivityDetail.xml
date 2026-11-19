@@ -19,13 +19,22 @@
         </if>
         <set field="mayAssign" from="modCanWrite &amp;&amp; activity.statusId == 'Scheduled' &amp;&amp; ['ADMIN','ZENITH_ADMIN','ZENITH_SALES_MGR'].any { ec.user.isInGroup(it) }"/>
         <set field="mayEdit" from="mayAssign || (modCanWrite &amp;&amp; activity.statusId == 'Scheduled' &amp;&amp; activity.assignedToUserId == ec.user.userId)"/>
+        <set field="inboxStatus" from="null"/>
+        <if condition="activity.dueDate &amp;&amp; activity.assignedToUserId &amp;&amp; (activity.assignedToUserId == ec.user.userId || ['ADMIN','ZENITH_ADMIN','ZENITH_SALES_MGR'].any { ec.user.isInGroup(it) })">
+            <entity-find-one entity-name="zenith.erp.crm.CrmFollowUpReminder" value-field="reminder" disable-authz="true">
+                <field-map field-name="activityId"/><field-map field-name="assignedToUserId" from="activity.assignedToUserId"/>
+                <field-map field-name="dueDate" from="activity.dueDate"/>
+            </entity-find-one>
+            <set field="inboxStatus" from="reminder?.notificationMessageId ? ('Delivered to the assignee’s ERP inbox on ' + ec.l10n.format(reminder.processedAt,'dd MMM yyyy HH:mm')) :
+                (reminder ? 'No inbox reminder was sent for this due time.' : (activity.statusId == 'Scheduled' ? 'Awaiting the due-time reminder.' : null))"/>
+        </if>
         <if condition="mayAssign"><service-call name="zenith.crm.CrmServices.get#AssignmentCandidates" in-map="[recordType:'Activity']" out-map="available"/></if>
         <entity-find entity-name="zenith.erp.crm.CrmAuditEvent" list="auditEvents"><econdition field-name="organizationPartyId" from="activeOrg"/><econdition field-name="recordType" value="Activity"/><econdition field-name="recordId" from="activityId"/><order-by field-name="-eventDate"/></entity-find>
     </actions>
     <widgets>
         <container style="zcrm-intro"><label text="${activity.subject}" type="h3"/><label text="${activity.activityType} · ${activity.statusId ?: 'Completed'}" type="p"/><link url="../Activities" text="Back to activities"/></container>
         <container style="zcrm-metrics zcrm-reference-metrics">
-            <container style="zcrm-metric"><label text="Due" type="span"/><label text="${activity.dueDate ? ec.l10n.format(activity.dueDate, 'dd MMM yyyy HH:mm') : 'Not scheduled'}" type="h4"/></container>
+            <container style="zcrm-metric"><label text="Due" type="span"/><label text="${activity.dueDate ? ec.l10n.format(activity.dueDate, 'dd MMM yyyy HH:mm') : 'Not scheduled'}" type="h4"/><label condition="inboxStatus" text="${inboxStatus}" type="span"/></container>
             <container style="zcrm-metric"><label text="Owner" type="span"/><label text="${activity.assignedToUserId ?: activity.performedByUserId ?: 'Unassigned'}" type="h4"/></container>
             <container style="zcrm-metric"><label text="Priority" type="span"/><label text="${activity.priority ?: 'Normal'}" type="h4"/></container>
         </container>

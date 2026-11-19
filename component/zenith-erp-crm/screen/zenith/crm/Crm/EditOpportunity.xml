@@ -15,6 +15,14 @@
         <actions><service-call name="zenith.crm.CrmServices.assign#CrmOwner" in-map="[salesOpportunityId:salesOpportunityId,ownerUserId:ownerUserId]"/></actions>
         <default-response url="."/><error-response url="."/>
     </transition>
+    <transition name="addCompetitor" method="post">
+        <actions><service-call name="zenith.crm.CrmServices.set#OpportunityCompetitor" in-map="[salesOpportunityId:salesOpportunityId, competitorPartyId:competitorPartyId]"/></actions>
+        <default-response url="."/><error-response url="."/>
+    </transition>
+    <transition name="removeCompetitor" method="post">
+        <actions><service-call name="zenith.crm.CrmServices.set#OpportunityCompetitor" in-map="[salesOpportunityId:salesOpportunityId, competitorPartyId:competitorPartyId, remove:true]"/></actions>
+        <default-response url="."/><error-response url="."/>
+    </transition>
     <transition name="updateOpportunity">
         <service-call name="zenith.crm.CrmServices.update#Opportunity"/>
         <default-response url="."/><error-response url="."/>
@@ -38,6 +46,15 @@
         <entity-find entity-name="zenith.erp.crm.CrmStageSetting" list="stageSettings"><econdition field-name="organizationPartyId" from="activeOrg"/></entity-find>
         <if condition="!(opp.opportunityStageId in ['SoClosedWon','SoClosedLost'])">
             <service-call name="zenith.crm.CrmServices.get#AssignmentCandidates" in-map="[recordType:'Opportunity']" out-map="assignment"/>
+        </if>
+        <entity-find entity-name="mantle.sales.opportunity.SalesOpportunityCompetitor" list="competitorLinks"><econdition field-name="salesOpportunityId"/></entity-find>
+        <set field="competitors" from="[]"/>
+        <if condition="competitorLinks">
+            <entity-find entity-name="mantle.party.PartyDetail" list="competitors">
+                <econdition field-name="partyId" operator="in" from="competitorLinks*.competitorPartyId"/>
+                <econdition field-name="ownerPartyId" from="activeOrg"/>
+                <order-by field-name="organizationName,firstName,lastName"/>
+            </entity-find>
         </if>
         <service-call name="zenith.crm.CrmServices.get#CrmSalesAccess" out-map="salesAccess"/>
         <script><![CDATA[
@@ -91,7 +108,7 @@
     <widgets>
         <container style="zcrm-intro"><label text="${opp.opportunityName}" type="h3"/><label text="Opportunity details, stage and history." type="p"/><link url="../Pipeline" text="Back to pipeline"/></container>
         <container style="zcrm-metrics zcrm-reference-metrics">
-            <container style="zcrm-metric"><label text="Amount" type="span"/><label text="${opp.currencyUomId ?: 'Unspecified currency'} ${ec.l10n.format(opp.estimatedAmount ?: 0, '#,##0.00')}" type="h4"/></container>
+            <container style="zcrm-metric"><label text="Estimated deal value" type="span"/><label text="${opp.currencyUomId ?: 'Unspecified currency'} ${ec.l10n.format(opp.estimatedAmount ?: 0, '#,##0.00')}" type="h4"/></container>
             <container style="zcrm-metric"><label text="Original source" type="span"/><label text="${opp.leadSourceId ?: 'Unknown'}" type="h4"/></container>
             <container style="zcrm-metric"><label text="Expected close" type="span"/><label text="${opp.estimatedCloseDate ? ec.l10n.format(opp.estimatedCloseDate, 'dd MMM yyyy') : 'Not set'}" type="h4"/></container>
         </container>
@@ -119,6 +136,21 @@
                 <field name="estimatedCloseDate"><default-field title="Expected close"><date-time type="date"/></default-field></field>
                 <field name="submitButton"><conditional-field name="edit_write" condition="modCanWrite" title="Save forecast"><submit/></conditional-field><default-field><label text="View only" type="span"/></default-field></field>
             </form-single>
+            <section name="OpportunityCompetitorList" condition="competitors"><widgets>
+                <form-list name="TrackedCompetitors" list="competitors" transition="removeCompetitor">
+                    <field name="salesOpportunityId"><default-field><hidden default-value="${opp.salesOpportunityId}"/></default-field></field>
+                    <field name="competitorPartyId" from="partyId"><default-field><hidden/></default-field></field>
+                    <field name="competitorName"><default-field title="Competitor"><display text="${organizationName ?: ((firstName ?: '') + ' ' + (lastName ?: '')).trim() ?: partyId}"/></default-field></field>
+                    <field name="submitButton"><conditional-field name="remove_competitor" condition="modCanWrite &amp;&amp; !(opp.opportunityStageId in ['SoClosedWon','SoClosedLost'])" title=""><submit text="Remove"/></conditional-field><default-field><label text=""/></default-field></field>
+                </form-list>
+            </widgets></section>
+            <section name="AddOpportunityCompetitor" condition="modCanWrite &amp;&amp; !(opp.opportunityStageId in ['SoClosedWon','SoClosedLost'])"><widgets>
+                <form-single name="NewCompetitor" transition="addCompetitor">
+                    <field name="salesOpportunityId"><default-field><hidden default-value="${opp.salesOpportunityId}"/></default-field></field>
+                    <field name="competitorPartyId"><default-field title="Competitor"><drop-down allow-empty="true"><dynamic-options transition="searchPartyList" server-search="true" min-length="2"/></drop-down></default-field></field>
+                    <field name="submitButton"><default-field title=""><submit text="Add competitor"/></default-field></field>
+                </form-single>
+            </widgets></section>
             <label text="Lead: ${opp.leadId ?: 'Not linked'} · Campaign: ${opp.campaignId ?: 'None'}" type="p"/>
             <label text="UTM: ${opp.utmSource ?: '—'} / ${opp.utmMedium ?: '—'} / ${opp.utmCampaign ?: '—'}" type="p"/>
         </box-body></container-box></row-col>

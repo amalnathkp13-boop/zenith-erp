@@ -64,10 +64,21 @@ create = dict(opportunityName=name, accountPartyId=customer, estimatedAmount="45
 submit("Crm/Pipeline/createOpportunity", **(create | {"opportunityStageId": "SoClosedLost"}))
 assert sql(f"select count(*) from sales_opportunity where opportunity_name='{name}'") == "0"
 
-submit("Crm/Pipeline/createOpportunity", **create)
+submit("Crm/Pipeline/createOpportunity", **create, competitorPartyId="AUDIT_QA_COMPETITOR")
 opportunity = sql(f"select sales_opportunity_id from sales_opportunity where opportunity_name='{name}' and organization_party_id='AUDIT_QA_A'")
 assert opportunity, "Opportunity must persist under the signed-in organization"
 assert sql(f"select next_step from sales_opportunity where sales_opportunity_id='{opportunity}'") == create["nextStep"]
+competitor = dict(salesOpportunityId=opportunity, competitorPartyId="AUDIT_QA_COMPETITOR")
+competitor_count = f"select count(*) from sales_opportunity_competitor where sales_opportunity_id='{opportunity}' and competitor_party_id='AUDIT_QA_COMPETITOR'"
+assert sql(competitor_count) == "1"
+submit("Crm/EditOpportunity/addCompetitor", **competitor)
+submit("Crm/EditOpportunity/updateOpportunity", salesOpportunityId=opportunity, opportunityName=name,
+       estimatedProbability="0.6", estimatedAmount="4500")
+assert sql(competitor_count) == "1", "Retry and unrelated forecast edits must preserve the competitor"
+assert "Disposable competitor" in page("Crm/EditOpportunity", {"salesOpportunityId": opportunity})
+submit("Crm/EditOpportunity/removeCompetitor", **competitor)
+assert sql(competitor_count) == "0"
+print("Optional competitor, idempotent add, forecast edit, rendered name and removal passed.", flush=True)
 stage = dict(salesOpportunityId=opportunity, opportunityStageId="SoClosedLost", confirmOutcome="Y")
 submit("Crm/EditOpportunity/advanceStage", **stage)
 assert sql(f"select opportunity_stage_id from sales_opportunity where sales_opportunity_id='{opportunity}'") == "SoProspecting"

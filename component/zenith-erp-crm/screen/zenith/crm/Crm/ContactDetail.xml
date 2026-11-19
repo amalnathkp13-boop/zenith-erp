@@ -3,6 +3,32 @@
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         default-menu-title="Contact Detail" default-menu-include="false">
     <parameter name="partyId" required="true"/>
+    <parameter name="editPersonId"/>
+    <transition name="saveContact">
+        <actions>
+            <if condition="ec.web.request.method != 'POST'"><return error="true" message="Submit the contact form to save changes."/></if>
+            <service-call name="zenith.crm.CrmServices.save#AccountContact" in-map="[accountPartyId:partyId,personPartyId:personPartyId,
+                designation:designation,preferredChannel:preferredChannel,primaryContact:primaryContact]"/>
+        </actions>
+        <default-response url="."/><error-response url="."/>
+    </transition>
+    <transition name="findAccountPerson" read-only="true">
+        <parameter name="term"/>
+        <actions>
+            <set field="query" from="term?.trim()"/>
+            <if condition="!query || !crmOrganization.activeOrgId || crmOrganization.activeOrgId == '_NA_'"><script>ec.web.sendJsonResponse([])</script><return/></if>
+            <entity-find entity-name="mantle.party.PartyDetail" list="people" limit="25">
+                <econdition field-name="ownerPartyId" from="crmOrganization.activeOrgId"/><econdition field-name="partyTypeEnumId" value="PtyPerson"/>
+                <econditions combine="or"><econdition field-name="disabled" operator="is-null"/><econdition field-name="disabled" value="N"/></econditions>
+                <econditions combine="or"><econdition field-name="partyId" from="query"/>
+                    <econdition field-name="firstName" operator="like" value="%${query}%" ignore-case="true"/>
+                    <econdition field-name="lastName" operator="like" value="%${query}%" ignore-case="true"/></econditions>
+                <order-by field-name="firstName,lastName,partyId"/>
+            </entity-find>
+            <script>ec.web.sendJsonResponse(people.collect { [value:it.partyId,label:([it.firstName,it.lastName].findAll().join(' ') ?: it.partyId)] })</script>
+        </actions>
+        <default-response type="none"/>
+    </transition>
     <transition name="addNote">
         <actions>
             <if condition="ec.web.request.method != 'POST'"><return error="true" message="Submit the note form to save a note."/></if>
@@ -19,6 +45,33 @@
         </if>
         <service-call name="zenith.crm.CrmServices.get#CrmSalesAccess" out-map="salesAccess"/>
         <entity-find-one entity-name="mantle.party.PartyRole" value-field="customerRole"><field-map field-name="partyId"/><field-map field-name="roleTypeId" value="Customer"/></entity-find-one>
+        <set field="isBusinessCustomer" from="customerRole &amp;&amp; contact.partyTypeEnumId == 'PtyOrganization'"/>
+        <script><![CDATA[
+            accountPeople = []
+            if (isBusinessCustomer) {
+                def links = ec.entity.find('mantle.party.PartyRelationship').condition('toPartyId',partyId)
+                        .condition('relationshipTypeEnumId','PrtContact').conditionDate('fromDate','thruDate',ec.user.nowTimestamp).list()
+                def people = links ? ec.entity.find('mantle.party.PartyDetail').condition('partyId','in',links*.fromPartyId)
+                        .condition('ownerPartyId',activeOrg).condition('partyTypeEnumId','PtyPerson').list().findAll { it.disabled != 'Y' } : []
+                if (people) {
+                    def peopleById = people.collectEntries { [(it.partyId):it] }
+                    def currentMethods = { entity, purpose, field ->
+                        ec.entity.find(entity).condition('partyId','in',peopleById.keySet() as List).condition('contactMechPurposeId',purpose)
+                            .conditionDate('fromDate','thruDate',ec.user.nowTimestamp).orderBy('fromDate,contactMechId').list()
+                            .collectEntries { [(it.partyId):it.get(field)] }
+                    }
+                    def emails = currentMethods('mantle.party.contact.PartyContactMechInfo','EmailPrimary','infoString')
+                    def phones = currentMethods('mantle.party.contact.PartyContactMechTelecomNumber','PhonePrimary','contactNumber')
+                    accountPeople = links.findAll { peopleById.containsKey(it.fromPartyId) }.collect { rel ->
+                        def person = peopleById[rel.fromPartyId]
+                        [personPartyId:rel.fromPartyId,personName:([person.firstName,person.lastName].findAll().join(' ') ?: person.partyId),
+                         designation:rel.relationshipName,preferredChannel:rel.crmPreferredChannel,primaryContact:rel.crmPrimaryContact ?: 'N',
+                         email:emails[person.partyId],phone:phones[person.partyId]]
+                    }.sort { a,b -> (b.primaryContact <=> a.primaryContact) ?: (a.personName <=> b.personName) }
+                }
+            }
+            editingPerson = accountPeople.find { it.personPartyId == editPersonId }
+        ]]></script>
         <set field="canViewCases" from="customerRole &amp;&amp; (!navRestricted || saasVisibleModules?.contains('helpdesk')) &amp;&amp; (!customRoleNavigation || roleNavSections?.any { section -> section.screens?.any { it.id == '/helpdesk/Tickets' } })"/>
         <script><![CDATA[
             receivables = []
@@ -63,6 +116,32 @@
             <link url="../../helpdesk/Tickets" text="Support cases" parameter-map="[customerPartyId:partyId]" condition="canViewCases"/>
             <label text="Phone: ${contactRow?.phoneNumber ?: '—'}" type="p"/>
         </box-body></container-box>
+        <section name="BusinessPeople" condition="isBusinessCustomer"><widgets>
+            <container-box><box-header title="Account contacts"/><box-body>
+                <section name="EmptyAccountContacts" condition="accountPeople.isEmpty()"><widgets><label text="No people linked to this business yet." type="p"/></widgets></section>
+                <form-list name="AccountPeople" list="accountPeople" skip-form="true">
+                    <field name="personPartyId"><default-field title="Person"><link url="../ContactDetail" text="${personName}" parameter-map="[partyId:personPartyId]"/></default-field></field>
+                    <field name="designation"><default-field title="Designation"><display/></default-field></field>
+                    <field name="email"><default-field title="Email"><display/></default-field></field>
+                    <field name="phone"><default-field title="Phone"><display/></default-field></field>
+                    <field name="preferredChannel"><default-field title="Preferred channel"><display/></default-field></field>
+                    <field name="primaryContact"><default-field title="Primary"><display text="${primaryContact == 'Y' ? 'Yes' : '—'}"/></default-field></field>
+                    <field name="editContact"><default-field title=" "><link url="." text="Edit" condition="modCanWrite &amp;&amp; contact.disabled != 'Y'" parameter-map="[partyId:contact.partyId,editPersonId:personPartyId]"/></default-field></field>
+                </form-list>
+                <section name="ManageAccountContact" condition="modCanWrite &amp;&amp; contact.disabled != 'Y'"><widgets>
+                    <form-single name="AccountContactDetails" transition="saveContact" map="editingPerson">
+                        <field name="partyId"><default-field><hidden default-value="${contact.partyId}"/></default-field></field>
+                        <field name="personPartyId"><conditional-field condition="editingPerson" title="Person"><display text="${editingPerson?.personName}" also-hidden="true"/></conditional-field>
+                            <default-field title="Link existing person"><drop-down><dynamic-options transition="findAccountPerson" server-search="true" min-length="2"/></drop-down></default-field></field>
+                        <field name="designation"><default-field title="Designation"><text-line maxlength="100"/></default-field></field>
+                        <field name="preferredChannel"><default-field title="Preferred channel"><drop-down allow-empty="true"><option key="Email"/><option key="Phone"/><option key="WhatsApp"/><option key="SMS"/></drop-down></default-field></field>
+                        <field name="primaryContact"><default-field title="Primary contact"><drop-down no-current-selected-key="N"><option key="N" text="No"/><option key="Y" text="Yes"/></drop-down></default-field></field>
+                        <field name="submitButton"><default-field title="Save contact"><submit/></default-field></field>
+                    </form-single>
+                    <link url="." text="Cancel edit" condition="editingPerson" parameter-map="[partyId:contact.partyId,editPersonId:'']"/>
+                </widgets></section>
+            </box-body></container-box>
+        </widgets></section>
         <section name="CustomerSales" condition="customerRole &amp;&amp; (salesAccess.routes || salesAccess.canCreateQuote)"><widgets>
             <container-box><box-header title="Sales documents"/><box-body>
                 <section-iterate name="CustomerBalances" list="receivables" entry="total"><widgets>

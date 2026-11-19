@@ -12,6 +12,8 @@
         <service-call name="zenith.crm.CrmServices.create#CrmCampaign"/>
         <default-response url="."/><error-response url="."/>
     </transition>
+    <transition-include name="exportList" location="component://zenith-erp-crm/screen/include/CrmExport.xml"/>
+
     <actions>
         <set field="activeOrg" from="(crmOrganization.activeOrgId ?: '_NA_') ?: '__NO_ORGANIZATION__'"/>
         <entity-find entity-name="zenith.erp.crm.LeadSource" list="allSources">
@@ -92,7 +94,11 @@
         </box-body></container-box>
         <container-box><box-header title="Campaigns"/><box-body>
             <section name="NoCampaigns" condition="campaigns.isEmpty()"><widgets><label text="No campaigns yet. Create one to build tracked links." type="p"/></widgets></section>
-            <form-list name="CampaignList" list="campaigns" skip-form="true" header-dialog="true" show-csv-button="true">
+            <link url="exportList" condition="crmCanExport" text="Export CSV" link-type="anchor" target-window="_blank"
+                  parameter-map="crmExportFilters + [dataset:'campaigns', format:'csv']"/>
+            <link url="exportList" condition="crmCanExport" text="Export XLSX" link-type="anchor" target-window="_blank"
+                  parameter-map="crmExportFilters + [dataset:'campaigns', format:'xlsx']"/>
+            <form-list name="CampaignList" list="campaigns" skip-form="true" header-dialog="true">
                 <field name="campaignName"><header-field><text-find size="24"/></header-field><default-field><display/></default-field></field>
                 <field name="leadSourceId"><default-field title="Source"><display/></default-field></field>
                 <field name="medium"><default-field><display/></default-field></field>

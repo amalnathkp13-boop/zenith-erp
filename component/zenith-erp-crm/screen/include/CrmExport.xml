@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd">
+    <transition name="exportList" read-only="true" require-session-token="false">
+        <parameter name="format" required="true"/>
+        <parameter name="dataset" required="true"/>
+        <actions><script location="component://zenith-erp-crm/script/ExportList.groovy"/></actions>
+        <default-response type="none"/>
+    </transition>
+</screen>

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
+    <service verb="send" noun="DueFollowUps" authenticate="false" transaction="ignore">
+        <description>Process a bounded batch of due activities through the native background job runner.</description>
+        <out-parameters><parameter name="delivered" type="Integer"/><parameter name="suppressed" type="Integer"/><parameter name="failed" type="Integer"/></out-parameters>
+        <actions>
+            <if condition="ec.web || !ec.artifactExecution.authzDisabled"><return error="true" message="Run the CRM reminder service through the background scheduler."/></if>
+            <script><![CDATA[
+                import org.moqui.entity.EntityCondition
+                delivered = 0
+                suppressed = 0
+                failed = 0
+                def now = ec.user.nowTimestamp
+                def topic = 'CrmFollowUpDue'
+                def defaults = ec.entity.find('moqui.security.user.NotificationTopic').condition('topic',topic).one()
+                if (!defaults) { ec.message.addError('Load the CRM reminder topic and job seed data.'); return }
+                def due = ec.entity.find('zenith.erp.crm.CrmActivityWithReminder').condition('statusId','Scheduled')
+                        .condition('dueDate',EntityCondition.LESS_THAN_EQUAL_TO,now)
+                        .condition('organizationPartyId',EntityCondition.NOT_EQUAL,null)
+                        .condition('assignedToUserId',EntityCondition.NOT_EQUAL,null)
+                        .condition('processedAt',null).orderBy('dueDate,activityId').limit(100).list()
+                def recipientsByOrg = [:]
+                due.each { candidate ->
+                    try {
+                        def decision = ec.transaction.runUseOrBegin(30, 'CRM reminder delivery failed', {
+                            def activity = ec.entity.find('zenith.erp.crm.CrmActivity').condition('activityId',candidate.activityId)
+                                    .forUpdate(true).one()
+                            if (!activity || activity.statusId != 'Scheduled' || activity.organizationPartyId != candidate.organizationPartyId ||
+                                    activity.assignedToUserId != candidate.assignedToUserId || activity.dueDate != candidate.dueDate) return
+                            def key = [activityId:activity.activityId, assignedToUserId:activity.assignedToUserId, dueDate:activity.dueDate]
+                            if (ec.entity.find('zenith.erp.crm.CrmFollowUpReminder').condition(key).one()) return
+
+                            def org = activity.organizationPartyId
+                            if (!recipientsByOrg.containsKey(org)) {
+                                def members = ec.resource.script('component://zenith-erp-crm/script/AssignmentCandidates.groovy',null,
+                                        [recordType:'Activity', organizationPartyId:org])
+                                recipientsByOrg[org] = members*.userId.toSet()
+                            }
+                            def owner = activity.assignedToUserId
+                            def preference = ec.entity.find('moqui.security.user.NotificationTopicUser').condition('topic',topic).condition('userId',owner).one()
+                            def messageId = null
+                            if (recipientsByOrg[org].contains(owner) && (preference?.receiveNotifications ?: defaults.receiveNotifications) == 'Y') {
+                                // The topic broadcast API also targets all-message subscribers. Only this recipient owns the task.
+                                def notification = ec.entity.makeValue('moqui.security.user.NotificationMessage')
+                                        .setAll([topic:topic, subTopic:org, sentDate:now, titleText:'Your CRM follow-up is due',
+                                                typeString:'info', linkText:'/apps/zenith/Crm/ActivityDetail?activityId=' + java.net.URLEncoder.encode(activity.activityId,'UTF-8'),
+                                                messageJson:groovy.json.JsonOutput.toJson([recordType:'Activity',recordId:activity.activityId])])
+                                notification.setSequencedIdPrimary()
+                                notification.create()
+                                messageId = notification.notificationMessageId
+                                ec.entity.makeValue('moqui.security.user.NotificationMessageUser')
+                                        .setAll([notificationMessageId:messageId, userId:owner, sentDate:now]).create()
+                            }
+                            ec.entity.makeValue('zenith.erp.crm.CrmFollowUpReminder').setAll(key + [processedAt:now, notificationMessageId:messageId]).create()
+                            return messageId ? "delivered" : "suppressed"
+                        })
+                        if (decision == 'delivered') delivered++
+                        if (decision == 'suppressed') suppressed++
+                    } catch (Exception failure) {
+                        // A failed transaction has no delivery marker. The next pass retries it.
+                        failed++
+                        ec.logger.error("Failed to deliver CRM follow-up reminder for activity ${candidate.activityId}", failure)
+                    }
+                }
+            ]]></script>
+        </actions>
+    </service>
+</services>

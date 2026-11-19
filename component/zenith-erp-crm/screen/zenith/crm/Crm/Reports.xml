@@ -4,6 +4,8 @@
         default-menu-title="Reports" default-menu-index="8">
     <parameter name="period"/><parameter name="sourceId"/><parameter name="campaignId"/>
     <transition name="saveView"><service-call name="zenith.crm.CrmServices.save#CrmFilter"/><default-response url="."/><error-response url="."/></transition>
+    <transition-include name="exportList" location="component://zenith-erp-crm/screen/include/CrmExport.xml"/>
+
     <actions>
         <set field="activeOrg" from="crmOrganization.activeOrgId"/>
         <if condition="!activeOrg || activeOrg == '_NA_'"><return error="true" message="Choose an organization to view CRM reports."/></if>
@@ -173,7 +175,11 @@
         <container-box><box-header title="Original source performance"/><box-body>
             <label text="The period uses lead creation dates, expected close dates for open deals and actual outcome dates for closed deals." type="p"/>
             <section name="NoSources" condition="sourceRows.isEmpty()"><widgets><label text="No leads or opportunities match the selected filters." type="p"/></widgets></section>
-            <form-list name="SourceReport" list="sourceRows" skip-form="true" show-csv-button="true">
+            <link url="exportList" condition="crmCanExport" text="Export CSV" link-type="anchor" target-window="_blank"
+                  parameter-map="crmExportFilters + [dataset:'sourceRows', format:'csv']"/>
+            <link url="exportList" condition="crmCanExport" text="Export XLSX" link-type="anchor" target-window="_blank"
+                  parameter-map="crmExportFilters + [dataset:'sourceRows', format:'xlsx']"/>
+            <form-list name="SourceReport" list="sourceRows" skip-form="true">
                 <field name="sourceName">
                     <conditional-field name="sourceWithLeads" title="Source" condition="leads &gt; 0"><link url="../Leads" text="${sourceName}" parameter-map="[firstTouchSourceId:sourceId, campaignId:campaignId, period:period]"/></conditional-field>
                     <default-field title="Source"><display/></default-field>
@@ -220,7 +226,11 @@
             </form-list>
         </box-body></container-box>
         <container-box><box-header title="Pipeline by stage"/><box-body>
-            <form-list name="ForecastReport" list="forecastRows" skip-form="true" show-csv-button="true">
+            <link url="exportList" condition="crmCanExport" text="Export CSV" link-type="anchor" target-window="_blank"
+                  parameter-map="crmExportFilters + [dataset:'forecastRows', format:'csv']"/>
+            <link url="exportList" condition="crmCanExport" text="Export XLSX" link-type="anchor" target-window="_blank"
+                  parameter-map="crmExportFilters + [dataset:'forecastRows', format:'xlsx']"/>
+            <form-list name="ForecastReport" list="forecastRows" skip-form="true">
                 <field name="stageName"><default-field title="Stage"><display/></default-field></field>
                 <field name="currency"><default-field title="Currency"><display/></default-field></field>
                 <field name="deals"><default-field title="Deals"><display/></default-field></field>

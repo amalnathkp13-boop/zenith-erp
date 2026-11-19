@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<entities xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/entity-definition-3.xsd">
+    <entity entity-name="CrmFollowUpReminder" package="zenith.erp.crm">
+        <description>One delivery decision per follow-up, assignee and due time. A null message means the recipient was ineligible or opted out.</description>
+        <field name="activityId" type="id" is-pk="true"/>
+        <field name="assignedToUserId" type="id" is-pk="true"/>
+        <field name="dueDate" type="date-time" is-pk="true"/>
+        <field name="processedAt" type="date-time" not-null="true"/>
+        <field name="notificationMessageId" type="id"/>
+        <seed-data>
+            <moqui.security.user.NotificationTopic topic="CrmFollowUpDue" description="Due CRM follow-ups"
+                    receiveNotifications="Y" isPrivate="Y" emailNotifications="N" persistOnSend="Y"/>
+            <moqui.service.job.ServiceJob jobName="zenith_CrmDueFollowUps" description="Deliver private inbox reminders for due CRM follow-ups"
+                    serviceName="zenith.crm.CrmReminderServices.send#DueFollowUps" cronExpression="0 * * * * ?" paused="N"/>
+        </seed-data>
+    </entity>
+
+    <view-entity entity-name="CrmActivityWithReminder" package="zenith.erp.crm">
+        <member-entity entity-alias="ACT" entity-name="zenith.erp.crm.CrmActivity"/>
+        <member-entity entity-alias="REM" entity-name="zenith.erp.crm.CrmFollowUpReminder" join-from-alias="ACT" join-optional="true">
+            <key-map field-name="activityId"/><key-map field-name="assignedToUserId"/><key-map field-name="dueDate"/>
+        </member-entity>
+        <alias entity-alias="ACT" name="activityId"/>
+        <alias entity-alias="ACT" name="organizationPartyId"/>
+        <alias entity-alias="ACT" name="assignedToUserId"/>
+        <alias entity-alias="ACT" name="dueDate"/>
+        <alias entity-alias="ACT" name="statusId"/>
+        <alias entity-alias="REM" name="processedAt"/>
+    </view-entity>
+</entities>

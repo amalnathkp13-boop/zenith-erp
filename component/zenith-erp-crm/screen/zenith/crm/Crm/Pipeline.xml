@@ -2,7 +2,7 @@
 <screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         default-menu-title="Pipeline" default-menu-index="3">
-    <parameter name="period"/>
+    <parameter name="period"/><parameter name="cohort"/>
     <parameter name="ownerId"/>
     <parameter name="searchText"/>
 
@@ -20,14 +20,37 @@
     <!-- ZE-SEC-JSON f/u: org-scoped party picker (stock SimpleScreens searchPartyList leaks cross-tenant). -->
     <transition-include name="searchPartyList" location="component://zenith-erp-base/screen/include/PartyPicker.xml"/>
 
+    <transition-include name="exportList" location="component://zenith-erp-crm/screen/include/CrmExport.xml"/>
+
     <actions>
+        <set field="cohort" from="cohort in ['open','won'] ? cohort : null"/>
+        <set field="defaultPeriod" value="month"/>
+        <set field="throughToday" from="cohort != null"/>
+        <script location="component://zenith-erp-crm/script/CrmPeriod.groovy"/>
+        <script><![CDATA[
+            import org.moqui.entity.EntityCondition as EC
+            def factory = ec.entity.conditionFactory
+            def parts = []
+            if (cohort) {
+                if (cohort == 'won') {
+                    parts << factory.makeCondition('opportunityStageId', EC.EQUALS, 'SoClosedWon')
+                } else {
+                    def excluded = factory.makeCondition('opportunityStageId', EC.NOT_IN, ['SoClosedWon','SoClosedLost'])
+                    def unstaged = factory.makeCondition('opportunityStageId', EC.EQUALS, null)
+                    parts << factory.makeCondition([excluded, unstaged], EC.OR)
+                }
+                if (periodStart) {
+                    def field = cohort == 'won' ? 'wonDate' : 'estimatedCloseDate'
+                    parts << factory.makeCondition(field, EC.GREATER_THAN_EQUAL_TO, periodStart)
+                    parts << factory.makeCondition(field, EC.LESS_THAN, periodEnd)
+                }
+            }
+            dealCohortCondition = parts ? factory.makeCondition(parts, EC.AND) : null
+        ]]></script>
         <entity-find entity-name="zenith.erp.crm.OpportunityListView" list="summaryOppList">
             <search-form-inputs default-order-by="stageSequence,-estimatedAmount" skip-fields="organizationPartyId"
                                 input-fields-map="ec.context + [pageIndex:null, pageSize:null]" paginate="false"/>
-            <econdition field-name="organizationPartyId" from="(crmOrganization.activeOrgId ?: '_NA_') ?: '__NO_ORGANIZATION__'"/>
-        </entity-find>
-        <entity-find entity-name="zenith.erp.crm.OpportunityListView" list="oppList">
-            <search-form-inputs default-order-by="stageSequence,-estimatedAmount" skip-fields="organizationPartyId"/>
+            <econdition-object field="dealCohortCondition"/>
             <econdition field-name="organizationPartyId" from="(crmOrganization.activeOrgId ?: '_NA_') ?: '__NO_ORGANIZATION__'"/>
         </entity-find>
         <entity-find entity-name="mantle.sales.opportunity.SalesOpportunityStage" list="stages">
@@ -61,9 +84,8 @@
             def rows = summaryOppList ?: []
             def ownerIds = rows*.assignedToUserId.findAll { it }.unique().sort()
             ownerOptions = ownerIds.collect { [id:it, label:it] }
-            ownerId = ownerIds.contains(ownerId) ? ownerId : ''
+            ownerId = (ownerId ?: '').toString().trim()
             searchText = (searchText ?: '').toString().trim().take(80)
-            period = period == 'all' ? 'all' : 'month'
             def query = searchText.toLowerCase(java.util.Locale.ROOT)
             boardRows = rows.findAll { row ->
                 (!ownerId || row.assignedToUserId == ownerId) &&
@@ -71,10 +93,7 @@
                     it?.toString()?.toLowerCase(java.util.Locale.ROOT)?.contains(query)
                 })
             }
-            def today = java.time.LocalDate.parse(new java.text.SimpleDateFormat('yyyy-MM-dd').format(ec.user.nowTimestamp))
-            def monthStart = java.sql.Date.valueOf(today.withDayOfMonth(1))
-            def nextMonth = java.sql.Date.valueOf(today.withDayOfMonth(1).plusMonths(1))
-            def inPeriod = { date -> period == 'all' || (date && date >= monthStart && date < nextMonth) }
+            def inPeriod = { date -> !periodStart || (date && date >= periodStart && date < periodEnd) }
             def openRows = boardRows.findAll { !['SoClosedWon', 'SoClosedLost'].contains(it.opportunityStageId) }
             def totalsByCurrency = { deals, amount ->
                 if (!deals) return '0'
@@ -85,7 +104,7 @@
             def amount = { it.estimatedAmount ?: 0G }
             openCount = openRows.size()
             openValue = totalsByCurrency(openRows, amount)
-            weightedValue = totalsByCurrency(openRows) { it.expectedRevenue != null ? it.expectedRevenue : (it.estimatedAmount ?: 0G) * (it.estimatedProbability ?: 0G) }
+            weightedValue = totalsByCurrency(openRows) { (it.estimatedAmount ?: 0G) * (it.estimatedProbability ?: 0G) }
             closingRows = openRows.findAll { inPeriod(it.estimatedCloseDate) }
             closingValue = totalsByCurrency(closingRows, amount)
             wonRows = boardRows.findAll { it.opportunityStageId == 'SoClosedWon' && inPeriod(it.wonDate) }
@@ -100,10 +119,20 @@
                     nextActivityByOpportunity[activity.salesOpportunityId] = activity.dueDate
             }
         ]]></script>
+        <entity-find entity-name="zenith.erp.crm.OpportunityListView" list="oppList">
+            <search-form-inputs default-order-by="stageSequence,-estimatedAmount" skip-fields="organizationPartyId"/>
+            <econdition-object field="dealCohortCondition"/>
+            <econdition field-name="salesOpportunityId" operator="in" from="boardRows*.salesOpportunityId ?: ['__NO_MATCH__']" ignore="!ownerId &amp;&amp; !searchText"/>
+            <econdition field-name="organizationPartyId" from="(crmOrganization.activeOrgId ?: '_NA_') ?: '__NO_ORGANIZATION__'"/>
+        </entity-find>
     </actions>
 
     <widgets>
         <container style="zcrm-intro"><label text="Pipeline" type="h3"/><label text="Track and manage your sales opportunities." type="p"/></container>
+        <section name="DashboardDrilldown" condition="cohort"><widgets><container style="zcrm-period">
+            <link url="../Dashboard" text="Back to dashboard" parameter-map="[period:period]"/>
+            <label text="${cohort == 'won' ? 'Closed-won deals by won date' : 'Open deals by expected close date'} · ${dateRangeLabel}" type="strong"/>
+        </container></widgets></section>
         <container style="zcrm-pipeline-actions">
             <section name="NewOpp_write"><condition><expression>modCanWrite</expression></condition><widgets>
                 <container-dialog id="NewOppDialog" button-text="New Opportunity">
@@ -112,6 +141,7 @@
                         <field name="accountPartyId"><default-field title="Account"><drop-down>
                             <dynamic-options transition="searchPartyList" server-search="true" min-length="2"/>
                         </drop-down></default-field></field>
+                        <field name="competitorPartyId"><default-field title="Competitor (optional)"><drop-down allow-empty="true"><dynamic-options transition="searchPartyList" server-search="true" min-length="2"/></drop-down></default-field></field>
                         <field name="nextStep"><default-field title="Next step"><text-line size="40"/></default-field></field>
                         <field name="estimatedAmount"><default-field title="Amount (${currSymbol})"><text-line size="12"/></default-field></field>
                         <field name="estimatedCloseDate"><default-field title="Expected Close"><date-time type="date"/></default-field></field>
@@ -125,7 +155,9 @@
         </container>
         <container style="zcrm-board-toolbar">
             <form-single name="PipelineFilters" transition="." type="find">
-                <field name="period"><default-field title="Close date"><drop-down>
+                <field name="cohort"><default-field><hidden default-value="${cohort ?: ''}"/></default-field></field>
+                <field name="period"><default-field title="Period"><drop-down>
+                    <option key="today" text="Today"/><option key="week" text="This week"/>
                     <option key="month" text="This month"/><option key="all" text="All time"/>
                 </drop-down></default-field></field>
                 <field name="ownerId"><default-field title="Owner"><drop-down allow-empty="true">
@@ -139,7 +171,7 @@
         </container>
         <container style="zcrm-period zcrm-saved-views">
             <section-iterate name="PipelineSavedViews" list="savedFilters" entry="saved"><widgets><link url="." text="${saved.filterName}" parameter-map="new groovy.json.JsonSlurper().parseText(saved.filterJson)"/></widgets></section-iterate>
-            <section name="SavePipelineView" condition="modCanWrite"><widgets><form-single name="SavePipelineFilter" transition="saveView">
+            <section name="SavePipelineView" condition="modCanWrite &amp;&amp; !cohort"><widgets><form-single name="SavePipelineFilter" transition="saveView">
                 <field name="screenName"><default-field><hidden default-value="Pipeline"/></default-field></field>
                 <field name="period"><default-field><hidden default-value="${period}"/></default-field></field>
                 <field name="ownerId"><default-field><hidden default-value="${ownerId ?: ''}"/></default-field></field>
@@ -149,11 +181,12 @@
             </form-single></widgets></section>
         </container>
         <container style="zcrm-metrics zcrm-reference-metrics">
-            <container style="zcrm-metric"><label text="Open Pipeline" type="span"/><label text="${openValue}" type="h4"/><label text="${openCount} deals" type="span" style="zcrm-muted"/></container>
-            <container style="zcrm-metric"><label text="Weighted Value" type="span"/><label text="${weightedValue}" type="h4"/><label text="Expected revenue" type="span" style="zcrm-muted"/></container>
-            <container style="zcrm-metric"><label text="Closing ${period == 'month' ? 'This Month' : 'All Time'}" type="span"/><label text="${closingValue}" type="h4"/><label text="${closingRows.size()} deals" type="span" style="zcrm-muted"/></container>
-            <container style="zcrm-metric"><label text="Won ${period == 'month' ? 'This Month' : 'All Time'}" type="span"/><label text="${wonValue}" type="h4"/><label text="${wonRows.size()} deals" type="span" style="zcrm-muted"/></container>
+            <section name="ShowOpenMetric" condition="cohort != 'won'"><widgets><container style="zcrm-metric"><label text="Open Pipeline" type="span"/><label text="${openValue}" type="h4"/><label text="${openCount} deals" type="span" style="zcrm-muted"/></container></widgets></section>
+            <section name="ShowWeightedMetric" condition="cohort != 'won'"><widgets><container style="zcrm-metric"><label text="Weighted Value" type="span"/><label text="${weightedValue}" type="h4"/><label text="Expected revenue" type="span" style="zcrm-muted"/></container></widgets></section>
+            <section name="ShowClosingMetric" condition="!cohort"><widgets><container style="zcrm-metric"><label text="Closing · ${periodLabel}" type="span"/><label text="${closingValue}" type="h4"/><label text="${closingRows.size()} deals" type="span" style="zcrm-muted"/></container></widgets></section>
+            <section name="ShowWonMetric" condition="cohort != 'open'"><widgets><container style="zcrm-metric"><label text="Won · ${periodLabel}" type="span"/><label text="${wonValue}" type="h4"/><label text="${wonRows.size()} deals" type="span" style="zcrm-muted"/></container></widgets></section>
         </container>
+        <section name="OpenDealBoard" condition="cohort != 'won'"><widgets>
         <container style="zcrm-board" id="pipeline-board">
             <section-iterate name="crmPipelineStages" list="boardStages" entry="column"><widgets>
                 <container style="zcrm-board-column" id="crm-stage-${column.id}">
@@ -173,6 +206,7 @@
                 </container>
             </widgets></section-iterate>
         </container>
+        </widgets></section>
         <section name="DragStageWrite" condition="modCanWrite"><widgets><container style="zcrm-drag-form">
             <form-single name="DragStageForm" transition="advanceStage">
                 <field name="salesOpportunityId"><default-field><hidden/></default-field></field>
@@ -185,8 +219,12 @@
         <container-box><box-header title="Manage opportunities"/><box-body>
             <render-mode><text type="html,qvt"><![CDATA[<span class="zlc-ph" data-ph="Search Pipeline..." style="display:none"></span>]]></text></render-mode>
             <section name="NoOpportunities" condition="oppList.isEmpty()"><widgets><container style="zcrm-empty"><label text="No opportunities match this search. Clear filters or create an opportunity." type="p"/></container></widgets></section>
+            <link url="exportList" condition="crmCanExport" text="Export CSV" link-type="anchor" target-window="_blank"
+                  parameter-map="crmExportFilters + [dataset:'oppList', format:'csv']"/>
+            <link url="exportList" condition="crmCanExport" text="Export XLSX" link-type="anchor" target-window="_blank"
+                  parameter-map="crmExportFilters + [dataset:'oppList', format:'xlsx']"/>
             <form-list name="OppListForm" list="oppList" transition="advanceStage" header-dialog="true"
-                       show-csv-button="true" show-xlsx-button="true" show-page-size="true">
+                       show-page-size="true">
                 <field name="salesOpportunityId">
                     <default-field title="ID"><display/></default-field>
                 </field>
@@ -207,7 +245,7 @@
                 </field>
                 <field name="expectedRevenue">
                     <header-field title="Weighted" show-order-by="true"/>
-                    <default-field><display text="${currencyUomId ?: 'Unspecified currency'} ${ec.l10n.format(expectedRevenue ?: 0, '#,##0.00')}"/></default-field>
+                    <default-field><display text="${currencyUomId ?: 'Unspecified currency'} ${ec.l10n.format((estimatedAmount ?: 0G) * (estimatedProbability ?: 0G), '#,##0.00')}"/></default-field>
                 </field>
                 <field name="stageName">
                     <header-field title="Stage">

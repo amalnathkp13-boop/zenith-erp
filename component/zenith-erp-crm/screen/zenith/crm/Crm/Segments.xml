@@ -10,6 +10,8 @@
         <error-response url="."/>
     </transition>
 
+    <transition-include name="exportList" location="component://zenith-erp-crm/screen/include/CrmExport.xml"/>
+
     <actions>
         <entity-find entity-name="zenith.erp.crm.CustomerSegment" list="summarySegments">
             <econdition field-name="organizationPartyId" from="(crmOrganization.activeOrgId ?: '_NA_') ?: '__NO_ORGANIZATION__'"/>
@@ -55,8 +57,12 @@
         <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-lg z-listchrome zcrm-reference-list">
             <render-mode><text type="html,qvt"><![CDATA[<span class="zlc-ph" data-ph="Search Segments..." style="display:none"></span>]]></text></render-mode>
             <section name="NoSegments" condition="segments.isEmpty()"><widgets><container style="zcrm-empty"><label text="No segments match this search. Clear filters or create a segment." type="p"/></container></widgets></section>
+            <link url="exportList" condition="crmCanExport" text="Export CSV" link-type="anchor" target-window="_blank"
+                  parameter-map="crmExportFilters + [dataset:'segments', format:'csv']"/>
+            <link url="exportList" condition="crmCanExport" text="Export XLSX" link-type="anchor" target-window="_blank"
+                  parameter-map="crmExportFilters + [dataset:'segments', format:'xlsx']"/>
             <form-list name="SegmentsForm" list="segments" skip-form="true" header-dialog="true"
-                       select-columns="true" show-csv-button="true">
+                       select-columns="true">
                 <field name="segmentName"><header-field show-order-by="true"><text-find size="20"/></header-field>
                     <default-field title="Segment">
                         <link url="editSegment" text="${segmentName}" parameter-map="[segmentId:segmentId]"/>

@@ -3,7 +3,7 @@
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         default-menu-title="Leads" default-menu-index="2">
     <parameter name="leadSourceId"/><parameter name="firstTouchSourceId"/><parameter name="latestTouchSourceId"/>
-    <parameter name="campaignId"/><parameter name="statusId"/><parameter name="assignedToUserId"/><parameter name="period"/><parameter name="ownership"/>
+    <parameter name="campaignId"/><parameter name="statusId"/><parameter name="assignedToUserId"/><parameter name="period"/><parameter name="ownership"/><parameter name="cohort"/>
 
     <transition name="createLead">
         <service-call name="zenith.crm.CrmServices.create#Lead"/>
@@ -16,45 +16,46 @@
     <transition name="saveView"><service-call name="zenith.crm.CrmServices.save#CrmFilter"/><default-response url="."/><error-response url="."/></transition>
     <transition name="deleteView"><service-call name="zenith.crm.CrmServices.delete#CrmFilter"/><default-response url="."/><error-response url="."/></transition>
 
+    <transition-include name="exportList" location="component://zenith-erp-crm/screen/include/CrmExport.xml"/>
+
     <actions>
-        <script><![CDATA[
-            period = period == 'month' ? 'month' : 'all'
-            def today = java.time.LocalDate.parse(new java.text.SimpleDateFormat('yyyy-MM-dd').format(ec.user.nowTimestamp))
-            periodStart = period == 'month' ? java.sql.Timestamp.valueOf(today.withDayOfMonth(1).atStartOfDay()) : null
-            periodEnd = period == 'month' ? java.sql.Timestamp.valueOf(today.withDayOfMonth(1).plusMonths(1).atStartOfDay()) : null
-        ]]></script>
+        <set field="cohort" from="cohort in ['created','qualified'] ? cohort : null"/>
+        <set field="defaultPeriod" value="all"/>
+        <set field="throughToday" from="cohort != null"/>
+        <script location="component://zenith-erp-crm/script/CrmPeriod.groovy"/>
         <entity-find-count entity-name="zenith.erp.crm.Lead" count-field="organizationLeadCount">
             <econdition field-name="organizationPartyId" from="(crmOrganization.activeOrgId ?: '_NA_') ?: '__NO_ORGANIZATION__'"/>
             <econdition field-name="createdDate" operator="greater-equals" from="periodStart" ignore-if-empty="true"/>
-            <econdition field-name="createdDate" operator="less" from="periodEnd" ignore-if-empty="true"/>
+            <econdition field-name="createdDate" operator="less" from="periodEnd" ignore="!periodStart"/>
         </entity-find-count>
         <entity-find-count entity-name="zenith.erp.crm.Lead" count-field="newLeadCount">
             <econdition field-name="organizationPartyId" from="(crmOrganization.activeOrgId ?: '_NA_') ?: '__NO_ORGANIZATION__'"/>
             <econdition field-name="statusId" value="LeadNew"/>
             <econdition field-name="createdDate" operator="greater-equals" from="periodStart" ignore-if-empty="true"/>
-            <econdition field-name="createdDate" operator="less" from="periodEnd" ignore-if-empty="true"/>
+            <econdition field-name="createdDate" operator="less" from="periodEnd" ignore="!periodStart"/>
         </entity-find-count>
         <entity-find-count entity-name="zenith.erp.crm.Lead" count-field="qualifiedLeadCount">
             <econdition field-name="organizationPartyId" from="(crmOrganization.activeOrgId ?: '_NA_') ?: '__NO_ORGANIZATION__'"/>
             <econdition field-name="statusId" value="LeadQualified"/>
             <econdition field-name="createdDate" operator="greater-equals" from="periodStart" ignore-if-empty="true"/>
-            <econdition field-name="createdDate" operator="less" from="periodEnd" ignore-if-empty="true"/>
+            <econdition field-name="createdDate" operator="less" from="periodEnd" ignore="!periodStart"/>
         </entity-find-count>
         <entity-find-count entity-name="zenith.erp.crm.Lead" count-field="convertedLeadCount">
             <econdition field-name="organizationPartyId" from="(crmOrganization.activeOrgId ?: '_NA_') ?: '__NO_ORGANIZATION__'"/>
             <econdition field-name="statusId" value="LeadConverted"/>
             <econdition field-name="createdDate" operator="greater-equals" from="periodStart" ignore-if-empty="true"/>
-            <econdition field-name="createdDate" operator="less" from="periodEnd" ignore-if-empty="true"/>
+            <econdition field-name="createdDate" operator="less" from="periodEnd" ignore="!periodStart"/>
         </entity-find-count>
         <entity-find entity-name="zenith.erp.crm.LeadListView" list="leadList">
             <search-form-inputs default-order-by="-createdDate" skip-fields="organizationPartyId"/>
             <econdition field-name="organizationPartyId" from="(crmOrganization.activeOrgId ?: '_NA_') ?: '__NO_ORGANIZATION__'"/>
+            <econdition field-name="statusId" operator="in" from="['LeadQualified','LeadConverted']" ignore="cohort != 'qualified'"/>
             <econdition field-name="assignedToUserId" from="ec.user.userId" ignore="ownership != 'mine'"/>
             <econdition field-name="assignedToUserId" from="null" ignore="ownership != 'unassigned'"/>
             <econdition field-name="firstTouchSourceId" ignore-if-empty="true"/>
             <econdition field-name="latestTouchSourceId" ignore-if-empty="true"/>
             <econdition field-name="createdDate" operator="greater-equals" from="periodStart" ignore-if-empty="true"/>
-            <econdition field-name="createdDate" operator="less" from="periodEnd" ignore-if-empty="true"/>
+            <econdition field-name="createdDate" operator="less" from="periodEnd" ignore="!periodStart"/>
         </entity-find>
         <service-call name="zenith.crm.CrmServices.get#AssignmentCandidates" in-map="[recordType:'Lead']" out-map="assignment"/>
         <service-call name="zenith.base.SecurityServices.get#ActiveOrgList" out-map="context"/>
@@ -82,18 +83,27 @@
 
     <widgets>
         <container style="zcrm-intro zcrm-leads-head"><label text="Leads" type="h3"/><label text="Track and manage potential customers." type="p"/></container>
-        <container style="zcrm-period"><link url="." text="All time" parameter-map="[period:'all']" style="${period == 'all' ? 'zcrm-period-active' : ''}"/><link url="." text="This month" parameter-map="[period:'month']" style="${period == 'month' ? 'zcrm-period-active' : ''}"/></container>
+        <section name="DashboardDrilldown" condition="cohort"><widgets><container style="zcrm-period">
+            <link url="../Dashboard" text="Back to dashboard" parameter-map="[period:period]"/>
+            <label text="${cohort == 'qualified' ? 'Qualified and converted leads' : 'Leads created'} · ${dateRangeLabel}" type="strong"/>
+        </container></widgets></section>
+        <container style="zcrm-period">
+            <link url="." text="Today" parameter-map="[period:'today',cohort:cohort,ownership:ownership]" style="${period == 'today' ? 'zcrm-period-active' : ''}"/>
+            <link url="." text="This week" parameter-map="[period:'week',cohort:cohort,ownership:ownership]" style="${period == 'week' ? 'zcrm-period-active' : ''}"/>
+            <link url="." text="This month" parameter-map="[period:'month',cohort:cohort,ownership:ownership]" style="${period == 'month' ? 'zcrm-period-active' : ''}"/>
+            <link url="." text="All time" parameter-map="[period:'all',cohort:cohort,ownership:ownership]" style="${period == 'all' ? 'zcrm-period-active' : ''}"/>
+        </container>
         <container style="zcrm-pipeline-actions">
-            <link url="." text="All leads" parameter-map="[ownership:'all',period:period]"/>
-            <link url="." text="My leads" parameter-map="[ownership:'mine',period:period]"/>
-            <link url="." text="Unassigned" parameter-map="[ownership:'unassigned',period:period]"/>
+            <link url="." text="All leads" parameter-map="[ownership:'all',period:period,cohort:cohort]"/>
+            <link url="." text="My leads" parameter-map="[ownership:'mine',period:period,cohort:cohort]"/>
+            <link url="." text="Unassigned" parameter-map="[ownership:'unassigned',period:period,cohort:cohort]"/>
             <link url="../ImportLeads" text="Import CSV" condition="modCanWrite"/></container>
         <container style="zcrm-period zcrm-saved-views">
             <section-iterate name="LeadSavedViews" list="savedFilters" entry="saved"><widgets>
                 <link url="." text="${saved.filterName}" parameter-map="new groovy.json.JsonSlurper().parseText(saved.filterJson)"/>
                 <link url="deleteView" text="Remove" parameter-map="[filterId:saved.filterId]" condition="modCanWrite" confirmation="Remove this saved view?"/>
             </widgets></section-iterate>
-            <section name="SaveLeadView" condition="modCanWrite"><widgets><form-single name="SaveLeadFilter" transition="saveView">
+            <section name="SaveLeadView" condition="modCanWrite &amp;&amp; !cohort"><widgets><form-single name="SaveLeadFilter" transition="saveView">
                 <field name="screenName"><default-field><hidden default-value="Leads"/></default-field></field>
                 <field name="period"><default-field><hidden default-value="${period}"/></default-field></field>
                 <field name="leadSourceId"><default-field><hidden default-value="${leadSourceId ?: ''}"/></default-field></field>
@@ -168,9 +178,13 @@
             <section name="NoOrg" condition="!_hasActiveOrg"><widgets><label text="Select an organization to create or view leads." type="span" style="text-grey-7"/></widgets></section>
         </box-toolbar><box-body>
             <render-mode><text type="html,qvt"><![CDATA[<span class="zlc-ph" data-ph="Search Leads..." style="display:none"></span>]]></text></render-mode>
-            <label text="${organizationLeadCount} leads in this organization. Use the table filters to find a lead." type="p" style="zcrm-list-count"/>
+            <label text="${leadListCount != null ? leadListCount : leadList.size()} matching leads" type="p" style="zcrm-list-count"/>
+            <link url="exportList" condition="crmCanExport" text="Export CSV" link-type="anchor" target-window="_blank"
+                  parameter-map="crmExportFilters + [dataset:'leadList', format:'csv']"/>
+            <link url="exportList" condition="crmCanExport" text="Export XLSX" link-type="anchor" target-window="_blank"
+                  parameter-map="crmExportFilters + [dataset:'leadList', format:'xlsx']"/>
             <form-list name="LeadListForm" list="leadList" skip-form="true" header-dialog="true"
-                       select-columns="true" show-csv-button="true" show-xlsx-button="true" show-page-size="true">
+                       select-columns="true" show-page-size="true">
                 <field name="firstName">
                     <header-field title="Lead"><text-find size="20" hide-options="true"/></header-field>
                     <default-field><link url="editLead" text="${firstName} ${lastName ?: ''}" parameter-map="[leadId:leadId]"/></default-field>

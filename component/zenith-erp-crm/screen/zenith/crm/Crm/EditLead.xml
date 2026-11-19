@@ -196,7 +196,7 @@
                                     <option key="Call" text="Phone Call"/>
                                     <option key="Email" text="Email"/>
                                     <option key="Meeting" text="Meeting"/>
-                                    <option key="WhatsApp" text="WhatsApp"/>
+                                    <option key="WhatsApp" text="WhatsApp"/><option key="SMS" text="SMS"/>
                                     <option key="Note" text="Note"/>
                                     <option key="Task" text="Task"/>
                                 </drop-down>

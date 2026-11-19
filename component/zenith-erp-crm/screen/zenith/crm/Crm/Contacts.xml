@@ -2,6 +2,8 @@
 <screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         default-menu-title="Contacts" default-menu-index="5">
+    <transition-include name="exportList" location="component://zenith-erp-crm/screen/include/CrmExport.xml"/>
+
     <actions>
         <set field="activeOrg" from="(crmOrganization.activeOrgId ?: '_NA_') ?: '__NO_ORGANIZATION__'"/>
         <entity-find-count entity-name="mantle.party.Party" count-field="contactCount"><econdition field-name="ownerPartyId" from="activeOrg"/></entity-find-count>
@@ -19,7 +21,11 @@
         </container>
         <container-box><box-header title="Contact directory"/><box-body>
             <section name="NoContacts" condition="contacts.isEmpty()"><widgets><label text="No contacts match. Create a contact in the shared Contacts module or clear filters." type="p"/></widgets></section>
-            <form-list name="CrmContactsList" list="contacts" skip-form="true" header-dialog="true" show-csv-button="true" show-page-size="true">
+            <link url="exportList" condition="crmCanExport" text="Export CSV" link-type="anchor" target-window="_blank"
+                  parameter-map="crmExportFilters + [dataset:'contacts', format:'csv']"/>
+            <link url="exportList" condition="crmCanExport" text="Export XLSX" link-type="anchor" target-window="_blank"
+                  parameter-map="crmExportFilters + [dataset:'contacts', format:'xlsx']"/>
+            <form-list name="CrmContactsList" list="contacts" skip-form="true" header-dialog="true" show-page-size="true">
                 <field name="partyId"><default-field title="Contact"><link url="../ContactDetail" text="${organizationName ?: ((firstName ?: '') + ' ' + (lastName ?: '')).trim() ?: partyId}" parameter-map="[partyId:partyId]"/></default-field></field>
                 <field name="organizationName"><header-field title="Company"><text-find size="22"/></header-field><default-field><display/></default-field></field>
                 <field name="emailAddress"><header-field title="Email"><text-find size="22"/></header-field><default-field><display/></default-field></field>

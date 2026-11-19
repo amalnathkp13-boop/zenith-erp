@@ -127,6 +127,7 @@
 .zcrm-page .zcrm-reference-metrics .zcrm-metric:nth-child(4n + 4){border-top:3px solid #31c7ab}
 .zcrm-page .zcrm-pipeline-actions{display:flex;justify-content:flex-end;margin:-62px 0 24px}
 .zcrm-page .zcrm-pipeline-actions :is(.btn-primary,.bg-primary){background:#008d9d!important;border-color:#008d9d!important;color:#fff!important;border-radius:8px}
+.zcrm-page .zcrm-workflow-templates{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
 .zcrm-page .zcrm-activity-actions{display:flex;justify-content:flex-end;margin:-62px 0 24px}
 .zcrm-page .zcrm-activity-actions :is(.btn-primary,.bg-primary){background:#008d9d!important;border-color:#008d9d!important;color:#fff!important;border-radius:8px}
 .zcrm-page .zcrm-board-toolbar{margin:0 0 16px}

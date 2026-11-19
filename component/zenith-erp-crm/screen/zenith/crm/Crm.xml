@@ -6,6 +6,17 @@
     <always-actions>
         <service-call name="zenith.contacts.ContactServices.get#AuthorizedActiveOrganization" out-map="crmOrganization"/>
         <set field="html_title" value="CRM"/>
+        <set field="crmCanExport" from="crmOrganization.activeOrgId &amp;&amp; crmOrganization.activeOrgId != '_NA_' &amp;&amp; ec.user.hasPermission('ZENITH_CRM_EXPORT')"/>
+        <if condition="!crmCanExport &amp;&amp; (sri.renderMode in ['csv','xlsx','text'] || ec.web?.requestParameters?.renderMode in ['csv','xlsx','text'])">
+            <script>throw new org.moqui.context.ArtifactAuthorizationException('Your role does not include CRM bulk export.')</script>
+        </if>
+        <script><![CDATA[
+            // Only forward list searches, operators and sort order into a download URL.
+            def fields = 'period view ownership cohort ownerId searchText orderByField leadId firstName lastName companyName email mobile sourceName campaignName assignedToUserId score estimatedAmount statusId createdDate leadSourceId campaignId sourceId firstTouchSourceId latestTouchSourceId utmSource utmMedium utmCampaign utmContent utmTerm salesOpportunityId opportunityName accountName estimatedCloseDate opportunityStageId stageName activityId activityDate activityType subject dueDate priority contactPartyId outcome nextFollowUpDate partyId organizationName emailAddress phoneNumber partyTypeEnumId segmentName segmentTypeEnumId description isActive medium startDate endDate'.tokenize() as Set
+            crmExportFilters = (ec.web?.requestParameters ?: [:]).findAll { key, value ->
+                fields.contains(key.replaceFirst(/_(op|not|ic|from|thru|period|poffset|pdate)$/, ''))
+            }
+        ]]></script>
     </always-actions>
 
     <transition name="goSales"><default-response url="../sales/SalesDashboard"/></transition>

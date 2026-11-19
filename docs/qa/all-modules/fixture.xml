@@ -56,6 +56,8 @@
     <mantle.facility.Facility facilityId="AUDIT_QA_FAC_A2" ownerPartyId="AUDIT_QA_A" facilityTypeEnumId="FcTpWarehouse" facilityName="Disposable destination A"/>
     <mantle.facility.Facility facilityId="AUDIT_QA_FAC_B" ownerPartyId="AUDIT_QA_B" facilityTypeEnumId="FcTpWarehouse" facilityName="Disposable warehouse B"/>
     <mantle.product.Product productId="AUDIT_QA_PRODUCT_A" ownerPartyId="AUDIT_QA_A" pseudoId="AUDIT_QA_PRODUCT_A" productName="Disposable product A" productTypeEnumId="PtAsset" amountUomId="OTH_ea" inventoryTracked="Y"/>
+    <mantle.party.Party partyId="AUDIT_QA_COMPETITOR" partyTypeEnumId="PtyOrganization" ownerPartyId="AUDIT_QA_A"/>
+    <mantle.party.Organization partyId="AUDIT_QA_COMPETITOR" organizationName="Disposable competitor"/>
     <mantle.product.Product productId="AUDIT_QA_CRM_GST18" ownerPartyId="AUDIT_QA_B" productName="Disposable CRM tax example" productTypeEnumId="PtAsset" gstSlabId="GST_18" amountUomId="OTH_ea"/>
     <mantle.product.Product productId="AUDIT_QA_PRODUCT_B" ownerPartyId="AUDIT_QA_B" pseudoId="AUDIT_QA_PRODUCT_B" productName="Disposable product B" productTypeEnumId="PtAsset" amountUomId="OTH_ea" inventoryTracked="Y"/>
     <mantle.product.Product productId="AUDIT_QA_SERIAL" ownerPartyId="AUDIT_QA_A" pseudoId="AUDIT_QA_SERIAL" productName="Disposable serial product" productTypeEnumId="PtAsset" amountUomId="OTH_ea" inventoryTracked="Y" enableSerialTracking="Y"/>

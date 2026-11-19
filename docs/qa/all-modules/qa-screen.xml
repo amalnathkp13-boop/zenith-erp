@@ -16,7 +16,7 @@
         }
         ec.entity.makeDataLoader().location('component://zenith-erp-crm/AllModulesQaFixture.xml').load()
         def demo=ec.entity.find('moqui.security.UserAccount').condition('userId','EX_JOHN_DOE').one()
-        ['AUDIT_QA_USER_A','AUDIT_QA_USER_B'].each { id ->
+        ['AUDIT_QA_USER_A','AUDIT_QA_USER_B','AUDIT_QA_REP_A'].each { id ->
             def account=ec.entity.find('moqui.security.UserAccount').condition('userId',id).one()
             ['currentPassword','passwordSalt','passwordHashType','passwordBase64'].each { account.set(it,demo.get(it)) }
             account.disabled='N';account.requirePasswordChange='N';account.update()
