@@ -33,8 +33,7 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
   const offline = async () => {await context.setOffline(true);await page.waitForFunction(() => window._posOffline?.active()&&!window._posOffline.paused());};
   const online = async () => {await context.setOffline(false);await page.waitForFunction(() => window._posOffline&&!window._posOffline.active());await page.evaluate(() => window._posOffline.cacheHeldBills());};
   try {
-   await page.goto(base+(layout==='normal'?'/apps':'/qapps')+'/zenith/pos/Terminal?sessionId='+session.sessionId+'&taxOn=N');
-   await page.waitForURL('**/apps/zenith/pos/Terminal?**');
+   await page.goto(base+'/apps/zenith/pos/Terminal?sessionId='+session.sessionId+'&taxOn=N');
    await page.waitForFunction(() => !!window._posOffline?.lookup('POS_QA_A_P18'));
    await page.locator('.nb-modes__btn').click();await page.locator('[data-pos-layout="'+layout+'"]').click();
    await waitCache(2);
