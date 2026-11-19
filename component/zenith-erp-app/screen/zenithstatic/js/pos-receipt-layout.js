@@ -12,6 +12,10 @@
         // Default 6mm suits most printers; a template sets 0 for a big right-offset printer. See #182/#189.
         var padL=(s.printLeftMargin==null||s.printLeftMargin==='')?6:Number(s.printLeftMargin);
         if(isNaN(padL)||padL<0||padL>20)padL=6;
+        // Top print margin is PER-TEMPLATE (blank=default 1mm): lets one store add more top space
+        // without touching other tenants' tuned printers. Same per-template pattern as padL (#261).
+        var padT=(s.printTopMargin==null||s.printTopMargin==='')?1:Number(s.printTopMargin);
+        if(isNaN(padT)||padT<0||padT>20)padT=1;
         var padR=width===58?8:9;
         function enabled(key) { return o[key]!==false; }
         function shown(key) { return s[key]!=='N'; }
@@ -22,7 +26,7 @@
         function row(label,value,section,strong) { return '<tr style="color:'+tone(section)+'"><td>'+text(label)+'</td><td class="r'+(strong?' b':'')+'">'+text(value)+'</td></tr>'; }
         var h='<!DOCTYPE html><html><head><meta charset="utf-8"><title>Receipt</title><style>'
             +'@page{size:'+width+'mm auto;margin:0}html,body{margin:0;padding:0;width:'+width+'mm;color:#000;font-family:Arial,Helvetica,"Nirmala UI","Noto Sans Tamil","Noto Sans Telugu","Noto Sans Malayalam","Noto Sans Devanagari","Noto Sans",sans-serif;font-size:12px;font-weight:'+weight+'}'
-            +'.rcpt{width:100%;margin:0;padding:1mm '+padR+'mm 5mm '+padL+'mm;box-sizing:border-box;overflow-wrap:anywhere}'
+            +'.rcpt{width:100%;margin:0;padding:'+padT+'mm '+padR+'mm 5mm '+padL+'mm;box-sizing:border-box;overflow-wrap:anywhere}'
             +'.block{white-space:pre-line;text-align:center}.c{text-align:center}.r{text-align:right}.b{font-weight:700}.sep{border-bottom:1px dashed #000;margin:4px 0}.sep2{border-bottom:2px solid #000;margin:4px 0}'
             +'table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{padding:3px 2px;font-size:'+(width===58?10:11)+'px;vertical-align:top;overflow-wrap:anywhere}th{border-bottom:1px solid #000}.items th:first-child,.items td:first-child{text-align:left;white-space:nowrap;overflow-wrap:normal}.items td:nth-child(3),.items th:nth-child(3){text-align:center}.tot td{font-size:'+(width===58?14:16)+'px;font-weight:700}.meta td:first-child{width:30%;text-align:left}.meta td:last-child{text-align:left}.notice{border:1px dashed #000;padding:3px;text-align:center;font-weight:700}img{display:block;margin:2px auto;max-width:90%;max-height:60px}'
             +'.item-name{white-space:pre-wrap;word-spacing:.16em;line-height:1.4;overflow-wrap:break-word;word-break:normal;text-align:left}'

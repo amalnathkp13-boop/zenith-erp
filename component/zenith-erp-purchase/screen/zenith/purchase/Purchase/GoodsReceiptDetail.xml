@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
+        default-menu-title="Goods Receipt" default-menu-include="false">
+    <parameter name="grnId" required="true"/>
+    <transition name="saveDetails"><actions>
+        <if condition="ec.web.request.method != 'POST'"><return error="true" message="Save GRN details using the form."/></if>
+        <if condition="!ec.web.parameters.moquiSessionToken || ec.web.parameters.moquiSessionToken != ec.web.sessionToken"><return error="true" message="Your session expired. Reload this GRN."/></if>
+        <service-call name="zenith.purchase.GoodsReceiptServices.save#GoodsReceiptDetails" in-map="[grnId:grnId,facilityId:facilityId,invoiceId:invoiceId,vendorInvoiceNumber:vendorInvoiceNumber]"/>
+    </actions><default-response url="." parameter-map="[grnId:grnId]"/></transition>
+    <transition name="saveLine"><actions>
+        <if condition="ec.web.request.method != 'POST'"><return error="true" message="Save delivery lines using the form."/></if>
+        <if condition="!ec.web.parameters.moquiSessionToken || ec.web.parameters.moquiSessionToken != ec.web.sessionToken"><return error="true" message="Your session expired. Reload this GRN."/></if>
+        <service-call name="zenith.purchase.GoodsReceiptServices.save#GoodsReceiptLine" in-map="[grnId:grnId,orderItemSeqId:orderItemSeqId,plannedQuantity:plannedQuantity,unitAmount:unitAmount]"/>
+    </actions><default-response url="." parameter-map="[grnId:grnId]"/></transition>
+    <transition name="saveDraft"><actions>
+        <if condition="ec.web.request.method != 'POST'"><return error="true" message="Save this delivery using the form."/></if>
+        <if condition="!ec.web.parameters.moquiSessionToken || ec.web.parameters.moquiSessionToken != ec.web.sessionToken"><return error="true" message="Your session expired. Reload this GRN."/></if>
+        <script><![CDATA[
+            def fields = ec.web.requestParameters
+            draftRows = fields.findAll { k, v -> k.startsWith('qty_') }.collectEntries { k, v ->
+                def seq = k.substring(4)
+                [(seq):[quantity:v,cost:fields['cost_'+seq],version:fields['version_'+seq] ?: '']]
+            }
+        ]]></script>
+        <service-call name="zenith.purchase.GoodsReceiptServices.save#GoodsReceiptDraft" in-map="[grnId:grnId,facilityId:facilityId,invoiceId:invoiceId,vendorInvoiceNumber:vendorInvoiceNumber,draftVersion:draftVersion,draftAction:draftAction,lines:draftRows]"/>
+    </actions><default-response url="." parameter-map="[grnId:grnId]"/><error-response url="." parameter-map="[grnId:grnId]"/></transition>
+    <transition name="submitGrn"><actions>
+        <if condition="ec.web.request.method != 'POST'"><return error="true" message="Submit this GRN using the form."/></if>
+        <if condition="!ec.web.parameters.moquiSessionToken || ec.web.parameters.moquiSessionToken != ec.web.sessionToken"><return error="true" message="Your session expired. Reload this GRN."/></if>
+        <service-call name="zenith.purchase.GoodsReceiptServices.submit#GoodsReceipt" in-map="[grnId:grnId]"/>
+    </actions><default-response url="." parameter-map="[grnId:grnId]"/></transition>
+    <transition name="cancelGrn"><actions>
+        <if condition="ec.web.request.method != 'POST'"><return error="true" message="Cancel this GRN using the form."/></if>
+        <if condition="!ec.web.parameters.moquiSessionToken || ec.web.parameters.moquiSessionToken != ec.web.sessionToken"><return error="true" message="Your session expired. Reload this GRN."/></if>
+        <service-call name="zenith.purchase.GoodsReceiptServices.cancel#GoodsReceipt" in-map="[grnId:grnId]"/>
+    </actions><default-response url="." parameter-map="[grnId:grnId]"/></transition>
+    <actions>
+        <service-call name="zenith.purchase.GoodsReceiptServices.get#GoodsReceipt" in-map="[grnId:grnId]" out-map="access"/>
+        <if condition="access.allowed">
+            <set field="grn" from="access.grn"/>
+            <set field="grnCurrency" from="access.order.currencyUomId == 'INR' ? '₹' : (access.order.currencyUomId ?: '')"/>
+            <set field="draft" from="!grn.statusId || grn.statusId == 'GrnDraft'"/>
+            <set field="canEdit" from="modCanWrite &amp;&amp; draft"/>
+            <set field="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
+            <set field="grnStatus" from="[GrnDraft:'Draft',GrnPending:'Awaiting receipt',GrnPartial:'Partially received',GrnReceived:'Received',GrnCancelled:'Cancelled'][grn.statusId] ?: 'Draft'"/>
+            <entity-find-one entity-name="mantle.party.PartyDetail" value-field="supplier"><field-map field-name="partyId" from="grn.vendorPartyId"/></entity-find-one>
+            <entity-find-one entity-name="mantle.facility.Facility" value-field="receivingLocation"><field-map field-name="facilityId" from="grn.facilityId"/></entity-find-one>
+            <entity-find entity-name="mantle.facility.Facility" list="locations"><econdition field-name="ownerPartyId" from="organizationPartyId"/><order-by field-name="facilityName"/></entity-find>
+            <entity-find entity-name="mantle.account.invoice.Invoice" list="vendorBills">
+                <econdition field-name="invoiceTypeEnumId" value="InvoicePurchase"/><econdition field-name="fromPartyId" from="grn.vendorPartyId"/>
+                <econdition field-name="toPartyId" from="organizationPartyId"/><econdition field-name="currencyUomId" from="access.order.currencyUomId"/>
+                <econdition field-name="statusId" operator="not-equals" value="InvoiceCancelled"/><order-by field-name="-invoiceDate,-invoiceId"/>
+            </entity-find>
+            <entity-find entity-name="mantle.order.OrderItem" list="poItems"><econdition field-name="orderId" from="grn.purchaseOrderId"/><econdition field-name="orderPartSeqId" value="01"/><econdition field-name="productId" operator="is-not-null"/><order-by field-name="orderItemSeqId"/></entity-find>
+            <entity-find entity-name="zenith.erp.purchase.GoodsReceiptNoteItem" list="deliveryItems"><econdition field-name="grnId"/><order-by field-name="itemSeqId"/></entity-find>
+            <set field="deliveryByItem" from="deliveryItems.findAll { it.orderItemSeqId != null }.collectEntries { [(it.orderItemSeqId):it] }"/>
+            <if condition="canEdit">
+                <service-call name="zenith.inventory.ReceiptServices.get#OrderReceiptQuantities" in-map="[orderId:grn.purchaseOrderId]" out-map="receipts"/>
+                <service-call name="zenith.inventory.ReceiptServices.get#PendingGrnQuantities" in-map="[orderId:grn.purchaseOrderId]" out-map="reservations"/>
+                <script><![CDATA[
+                    def products = poItems ? ec.entity.find('mantle.product.Product')
+                        .condition('ownerPartyId',organizationPartyId).condition('productId','in',poItems*.productId.unique()).list()
+                        .collectEntries { [(it.productId):it] } : [:]
+                    draftProducts = poItems.collect { item ->
+                        def seq = item.orderItemSeqId
+                        def saved = deliveryByItem[seq]
+                        def open = ((item.quantity ?: 0G) - (item.quantityCancelled ?: 0G) -
+                            (receipts.receivedByItem[seq] ?: 0G) - (reservations.reservedByItem[seq] ?: 0G)).max(0G)
+                        [seq:seq, label:products[item.productId]?.productName ?: item.itemDescription ?: item.productId,
+                         code:products[item.productId]?.pseudoId, available:open,
+                         qty:saved ? saved.plannedQuantity : ((deliveryItems || grn.facilityId) ? 0G : open),
+                         cost:saved?.unitAmount != null ? saved.unitAmount : item.unitAmount,
+                         version:saved?.lastUpdatedStamp?.time?.toString() ?: '']
+                    }
+                ]]></script>
+            </if>
+        </if>
+    </actions>
+    <widgets><container style="zpur-page grn-workspace">
+        <link url="../GoodsReceipt" text="← Goods receipt notes" link-type="anchor" style="grn-back"/>
+        <section name="GrnUnavailable"><condition><expression>!access.allowed</expression></condition><widgets>
+            <label text="This goods receipt is not available in your active organization." type="h3"/>
+        </widgets></section>
+        <section name="GrnContent"><condition><expression>access.allowed</expression></condition><widgets>
+            <container style="grn-card grn-header">
+                <container style="grn-title-row">
+                    <label text="Goods receipt #${grnId}" type="h3" style="grn-title"/>
+                    <label text="${grnStatus}" type="span" style="grn-state grn-state-${grn.statusId ?: 'GrnDraft'}"/>
+                </container>
+                <container style="grn-facts">
+                    <container><label text="Supplier" type="span" style="grn-caption"/><label text="${supplier?.organizationName ?: supplier?.firstName ?: grn.vendorPartyId}" type="span" style="grn-value"/></container>
+                    <container><label text="Purchase order" type="span" style="grn-caption"/><link url="../EditPurchaseOrder" parameter-map="[orderId:grn.purchaseOrderId]" text="${grn.purchaseOrderId}" style="grn-order" link-type="anchor"/></container>
+                    <container><label text="Receipt date" type="span" style="grn-caption"/><label text="${grn.receiptDate ? ec.l10n.format(grn.receiptDate, 'dd MMM yyyy') : 'Not set'}" type="span" style="grn-value"/></container>
+                </container>
+                <label condition="draft &amp;&amp; !(access.order.statusId in ['OrderApproved','OrderCompleted'])" text="Purchase order approval is required before you submit this delivery to Inventory." type="p" style="grn-warning"/>
+            </container>
+            <section name="GrnDraftEditor" condition="canEdit"><widgets>
+                <render-mode><text type="html,qvt,vuet" location="component://zenith-erp-purchase/template/purchase/GrnDraft.html.ftl" template="true" encode="false"/></render-mode>
+            </widgets></section>
+            <section name="GrnSavedDetails" condition="!canEdit"><widgets>
+            <container style="grn-card grn-details">
+                <label text="Supplier delivery details" type="h4" style="grn-heading"/>
+                <section name="GrnDetailsEdit"><condition><expression>modCanWrite &amp;&amp; grn.statusId != 'GrnCancelled'</expression></condition><widgets>
+                    <form-single name="GrnDetailsForm" transition="saveDetails" map="grn">
+                        <field name="grnId"><default-field><hidden/></default-field></field>
+                        <field name="facilityId"><default-field title="Receiving location"><drop-down allow-empty="false"><list-options list="locations.findAll { draft || it.facilityId == grn.facilityId }" key="${facilityId}" text="${facilityName}"/></drop-down></default-field></field>
+                        <field name="invoiceId"><default-field title="Existing vendor bill (optional)"><drop-down allow-empty="true"><list-options list="vendorBills" key="${invoiceId}" text="${vendorInvoiceNumber ?: invoiceId}"/></drop-down></default-field></field>
+                        <field name="vendorInvoiceNumber"><default-field title="Supplier invoice number (optional)"><text-line maxlength="50"/></default-field></field>
+                        <field name="submitButton"><default-field title="Save delivery details"><submit/></default-field></field>
+                    </form-single>
+                </widgets></section>
+                <section name="GrnDetailsRead"><condition><expression>!modCanWrite || grn.statusId == 'GrnCancelled'</expression></condition><widgets>
+                    <label text="Receiving location: ${receivingLocation?.facilityName ?: 'Not set'}" type="p"/>
+                    <label text="Supplier invoice: ${grn.vendorInvoiceNumber ?: 'Awaiting invoice'}" type="p"/>
+                    <label condition="grn.invoiceId" text="Linked vendor bill: ${grn.invoiceId}" type="p"/>
+                </widgets></section>
+            </container>
+            <container style="grn-card grn-products">
+                <label text="Delivery products" type="h4" style="grn-heading"/>
+                <container style="grn-table-scroll">
+                <form-list name="GrnDeliveryLines" list="poItems" skip-form="true">
+                    <row-actions>
+                        <set field="deliveryLine" from="deliveryByItem[orderItemSeqId]"/>
+                        <entity-find-one entity-name="mantle.product.Product" value-field="product"><field-map field-name="productId"/></entity-find-one>
+                        <set field="unitAmount" from="deliveryLine?.unitAmount != null ? deliveryLine.unitAmount : unitAmount"/>
+                        <set field="formattedCost" from="unitAmount != null ? ec.l10n.format(unitAmount, '#,##0.00####') : null"/>
+                    </row-actions>
+                    <field name="productName"><default-field title="Product"><label text="${product?.productName ?: productId}"/></default-field></field>
+                    <field name="ordered"><default-field title="PO quantity"><label text="${(quantity ?: 0G) - (quantityCancelled ?: 0G)}"/></default-field></field>
+                    <field name="delivery"><default-field title="Delivery quantity"><label text="${deliveryLine?.plannedQuantity ?: 0}"/></default-field></field>
+                    <field name="received"><default-field title="Received into stock"><label text="${deliveryLine?.inventoryReceivedQuantity ?: 0}"/></default-field></field>
+                    <field name="price"><default-field title="Unit cost"><label text="${formattedCost == null ? '—' : (access.order.currencyUomId == 'INR' ? grnCurrency + zinr.inr(formattedCost) : [grnCurrency,formattedCost].findAll().join(' '))}"/></default-field></field>
+                </form-list>
+                </container>
+                <label condition="!poItems" text="Add product lines to the purchase order before preparing this delivery." type="p" style="grn-note"/>
+            </container>
+            </widgets></section>
+            <section name="GrnReceivingActions" condition="grn.statusId in ['GrnPending','GrnPartial','GrnReceived']"><widgets>
+            <container style="grn-card grn-handoff">
+                <container>
+                    <label text="Inventory receiving" type="h4" style="grn-heading"/>
+                    <label condition="grn.statusId in ['GrnPending','GrnPartial']" text="Open this delivery in Inventory to confirm the quantities received." type="p" style="grn-note"/>
+                    <label condition="grn.statusId == 'GrnReceived'" text="All submitted quantities have been received into stock." type="p" style="grn-note"/>
+                </container>
+                <container style="grn-actions">
+                <link url="../../Inventory/ReceiveInventory" parameter-map="[orderId:grn.purchaseOrderId,grnId:grnId]" text="Open Inventory Receiving" link-type="anchor" style="grn-open" condition="grn.statusId in ['GrnPending','GrnPartial','GrnReceived']"/>
+                </container>
+            </container>
+            </widgets></section>
+                <section name="CancelGrn"><condition><expression>modCanWrite &amp;&amp; (draft || grn.statusId in ['GrnPending','GrnPartial'])</expression></condition><widgets><form-single name="CancelGrnForm" transition="cancelGrn">
+                    <field name="grnId"><default-field><hidden/></default-field></field>
+                    <field name="submitButton"><default-field title="Cancel delivery"><submit confirmation="Cancel the outstanding delivery? Quantities already received stay in stock."/></default-field></field>
+                </form-single></widgets></section>
+        </widgets></section>
+    </container></widgets>
+</screen>

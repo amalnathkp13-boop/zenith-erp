@@ -323,6 +323,57 @@
         <default-response type="none"/>
     </transition>
 
+    <transition name="restoreOfflineDraft" method="post">
+        <actions><script><![CDATA[
+            def request=ec.web.parameters
+            def draft=request.draft
+            def access=ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess')
+                .parameters([terminalId:request.terminalId,sessionId:request.sessionId]).call()
+            if (!access?.allowed || !request.terminalId || !request.sessionId) { ec.web.response.setStatus(403); return }
+            if (!(draft instanceof Map) || draft.sessionId!=request.sessionId) { ec.web.response.setStatus(400); return }
+            def restored=ec.service.sync().name('zenith.pos.PosOfflineServices.import#WorkspaceSale')
+                .parameters([terminalId:request.terminalId,sale:draft,draftOnly:true]).call()
+            if (restored?.restoreConflict) {
+                ec.web.sendJsonResponse([conflict:true,error:'The restored draft changed on the server. Review this cart before continuing.']); return
+            }
+            if (ec.message.hasError() || !restored?.restoredTransactionId) {
+                def message=ec.message.errorsString ?: 'The saved cart could not be restored.'
+                ec.message.clearErrors()
+                ec.web.sendJsonResponse([rejected:true,error:message]); return
+            }
+            ec.web.sendJsonResponse([offlineId:restored.offlineId,transactionId:restored.restoredTransactionId])
+        ]]></script></actions>
+        <default-response type="none"/>
+    </transition>
+
+    <transition name="syncOfflineHeldBills" method="post">
+        <actions><script><![CDATA[
+            def request = ec.web.parameters
+            def access = ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess')
+                .parameters([terminalId:request.terminalId,sessionId:request.sessionId]).call()
+            if (!access?.allowed || !request.terminalId || !request.sessionId) {
+                ec.web.response.setStatus(403); return
+            }
+            def drafts = request.heldBills
+            if (!(drafts instanceof List) || drafts.size()>100) {
+                ec.web.response.setStatus(400); return
+            }
+            def syncedIds = [], failures = []
+            drafts.eachWithIndex { draft, index ->
+                try {
+                    if (!(draft instanceof Map) || draft.sessionId!=request.sessionId) throw new IllegalArgumentException('The held bill belongs to a different session.')
+                    def result = ec.service.sync().name('zenith.pos.PosOfflineServices.import#WorkspaceSale')
+                        .parameters([terminalId:request.terminalId,sale:draft,holdOnly:true]).call()
+                    if (!ec.message.hasError() && result.offlineId) syncedIds.add(result.offlineId)
+                    else failures.add([index:index,error:ec.message.errorsString ?: 'This held bill remains saved on this device.'])
+                } catch (Exception error) { failures.add([index:index,error:error.message ?: 'This held bill remains saved on this device.']) }
+                ec.message.clearErrors()
+            }
+            ec.web.sendJsonResponse([syncedIds:syncedIds,failures:failures])
+        ]]></script></actions>
+        <default-response type="none"/>
+    </transition>
+
     <!-- Auto-update signal: pos-terminal.js's file mtime changes on every deploy (build-from-git
          resets all component file mtimes), so a changed value means a newer build is live. The open
          terminal polls this and reloads itself when idle (see pos-terminal.js checkAssetVersion). -->

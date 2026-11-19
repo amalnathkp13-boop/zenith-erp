@@ -15,8 +15,8 @@
     window.posShowNoHeld = function () { notice('No held bills in this session. Use Hold (F7) to save the current cart.'); };
     function connection() {
         var el = document.getElementById('pos-connection-status');
-        var offline = !navigator.onLine || window._posOffline?.disconnected();
-        if (el) { el.textContent = offline ? 'Offline' : 'Online'; el.parentElement.classList.toggle('is-offline', !!offline); }
+        var state = window._posOffline?.connectionState?.() || (navigator.onLine ? 'Online' : 'Offline');
+        if (el) { el.textContent = state; el.parentElement.classList.toggle('is-offline', state !== 'Online'); }
     }
     function paint() {
         scheduled = false;

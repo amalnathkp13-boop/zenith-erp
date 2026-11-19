@@ -132,6 +132,9 @@
         <field name="purchaseOrderId" type="id"/>
         <field name="vendorPartyId" type="id"/>
         <field name="receiptDate" type="date-time"/>
+        <field name="facilityId" type="id"/>
+        <field name="invoiceId" type="id"/>
+        <field name="vendorInvoiceNumber" type="text-short"/>
         <field name="freightAmount" type="currency-amount"/>
         <field name="insuranceAmount" type="currency-amount"/>
         <field name="customsDutyAmount" type="currency-amount"/>
@@ -145,6 +148,10 @@
         <field name="grnId" type="id" is-pk="true"/>
         <field name="itemSeqId" type="id" is-pk="true"/>
         <field name="productId" type="id"/>
+        <field name="orderItemSeqId" type="id"/>
+        <field name="plannedQuantity" type="number-decimal"/>
+        <field name="inventoryReceivedQuantity" type="number-decimal"/>
+        <field name="unitAmount" type="currency-amount"/>
         <field name="receivedQuantity" type="number-decimal"/>
         <field name="acceptedQuantity" type="number-decimal"/>
         <field name="rejectedQuantity" type="number-decimal"/>
@@ -161,7 +168,11 @@
             <key-map field-name="purchaseOrderId" related="orderId"/></member-entity>
         <member-entity entity-alias="OH" entity-name="mantle.order.OrderHeader" join-from-alias="GRN" join-optional="true"><key-map field-name="purchaseOrderId" related="orderId"/></member-entity>
         <alias entity-alias="OH" name="currencyUomId"/>
+        <alias entity-alias="OH" name="poStatusId" field="statusId"/>
         <alias entity-alias="GRN" name="grnId"/>
+        <alias entity-alias="GRN" name="facilityId"/>
+        <alias entity-alias="GRN" name="invoiceId"/>
+        <alias entity-alias="GRN" name="vendorInvoiceNumber"/>
         <alias entity-alias="GRN" name="purchaseOrderId"/>
         <alias entity-alias="GRN" name="vendorPartyId"/>
         <alias entity-alias="GRN" name="receiptDate"/>

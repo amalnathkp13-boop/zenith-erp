@@ -40,9 +40,31 @@
         </actions>
     </service>
 
+    <service verb="get" noun="PendingGrnQuantities">
+        <in-parameters><parameter name="orderId" required="true"/></in-parameters>
+        <out-parameters><parameter name="reservedByItem" type="Map"/></out-parameters>
+        <actions>
+            <service-call name="zenith.inventory.ReceiptServices.get#PurchaseOrderAccess" in-map="[orderId:orderId]" out-map="access"/>
+            <set field="reservedByItem" from="[:]"/>
+            <if condition="access.allowed"><script><![CDATA[
+                if (!ec.entity.isEntityDefined('zenith.erp.purchase.GoodsReceiptNote')) return
+                def grns = ec.entity.find('zenith.erp.purchase.GoodsReceiptNote').condition('purchaseOrderId',orderId)
+                    .condition('statusId','in',['GrnPending','GrnPartial']).list()
+                for (grn in grns) {
+                    for (line in ec.entity.find('zenith.erp.purchase.GoodsReceiptNoteItem').condition('grnId',grn.grnId).list()) {
+                        if (!line.orderItemSeqId) continue
+                        def remaining = ((line.plannedQuantity ?: 0G) - (line.inventoryReceivedQuantity ?: 0G)).max(0G)
+                        reservedByItem[line.orderItemSeqId] = (reservedByItem[line.orderItemSeqId] ?: 0G) + remaining
+                    }
+                }
+            ]]></script></if>
+        </actions>
+    </service>
+
     <service verb="receive" noun="Stock" no-tx-cache="true">
         <in-parameters>
             <parameter name="orderId"/><parameter name="orderItemSeqId"/>
+            <parameter name="grnId"/><parameter name="grnReceivedBefore"/>
             <parameter name="productId"/><parameter name="facilityId" required="true"/>
             <parameter name="quantityAccepted" required="true"/>
             <parameter name="valuationRate"/><parameter name="mrpAmount"/>
@@ -83,8 +105,11 @@
                 if (ec.message.hasError()) return
                 def facility = ec.entity.find('mantle.facility.Facility').condition('facilityId', facilityId).one()
                 if (facility?.ownerPartyId != orgId) { ec.message.addError('Choose a store / warehouse from your organization.'); return }
+                if (grnId && !orderId) { ec.message.addError('A purchase order is required for this GRN.'); return }
                 def header = null
                 def item = null
+                def grn = null
+                def grnLine = null
                 if (orderId) {
                     // Serialize PO receipts before checking the remaining quantity (also protects double clicks).
                     header = ec.entity.find('mantle.order.OrderHeader').condition('orderId', orderId).forUpdate(true).useCache(false).one()
@@ -99,10 +124,28 @@
                     }
                     def totals = ec.service.sync().name('zenith.inventory.ReceiptServices.get#OrderReceiptQuantities').parameters([orderId:orderId]).call()
                     def remaining = (item.quantity ?: 0G) - (item.quantityCancelled ?: 0G) - (totals.receivedByItem[item.orderItemSeqId] ?: 0G)
-                    if (qty > remaining) { ec.message.addError('Quantity exceeds the remaining purchase order quantity (' + remaining.max(0G) + ').'); return }
-                    // Product, price and currency are authoritative stored PO values, never hidden-form values.
+                    def reserved = ec.service.sync().name('zenith.inventory.ReceiptServices.get#PendingGrnQuantities').parameters([orderId:orderId]).call().reservedByItem
+                    if (grnId) {
+                        grn = ec.entity.find('zenith.erp.purchase.GoodsReceiptNote').condition('grnId',grnId).forUpdate(true).useCache(false).one()
+                        if (!grn || grn.purchaseOrderId != orderId || grn.vendorPartyId != part.vendorPartyId ||
+                                !(grn.statusId in ['GrnPending','GrnPartial']) || grn.facilityId != facilityId) {
+                            ec.message.addError('Choose a pending GRN for this purchase order and its receiving location.'); return
+                        }
+                        grnLine = ec.entity.find('zenith.erp.purchase.GoodsReceiptNoteItem').condition('grnId',grnId)
+                            .condition('orderItemSeqId',orderItemSeqId).forUpdate(true).useCache(false).one()
+                        def before = parseAmount(grnReceivedBefore, 'Previously received GRN quantity', true)
+                        if (ec.message.hasError()) return
+                        if (!grnLine || grnLine.productId != item.productId || before != (grnLine.inventoryReceivedQuantity ?: 0G)) {
+                            ec.message.addError('This GRN line changed or was already received. Reload Receiving before confirming.'); return
+                        }
+                        remaining = remaining.min(((grnLine.plannedQuantity ?: 0G) - (grnLine.inventoryReceivedQuantity ?: 0G)).max(0G))
+                    } else {
+                        remaining -= reserved[orderItemSeqId] ?: 0G
+                    }
+                    if (qty > remaining) { ec.message.addError('Quantity exceeds the unreceived, available delivery quantity (' + remaining.max(0G) + ').'); return }
+                    // Product/currency come from the PO. A submitted GRN supplies its recorded supplier unit cost.
                     productId = item.productId
-                    cost = parseAmount(item.unitAmount ?: 0G, 'Purchase order unit cost', true)
+                    cost = parseAmount(grnLine ? grnLine.unitAmount : (item.unitAmount ?: 0G), 'Recorded unit cost', true)
                 } else if (orderItemSeqId) {
                     ec.message.addError('A purchase order is required for this line.'); return
                 }
@@ -111,12 +154,21 @@
                 if (product.enableSerialTracking == 'Y') { ec.message.addError('Serial-tracked goods require the serial-number receipt workflow.'); return }
                 if (product.enableBatchTracking == 'Y' && !batchNumber?.toString()?.trim()) { ec.message.addError('Batch / lot number is required for this product.'); return }
                 if (ec.message.hasError()) return
+                def costCurrency = header?.currencyUomId
+                if (!orderId && (cost != null || mrp != null)) {
+                    def setting = ec.entity.find('zenith.erp.base.CompanySettings').condition('organizationPartyId', orgId)
+                        .condition('settingKey', 'CURRENCY_UOM_ID').one()
+                    costCurrency = setting?.settingValue ?: 'INR'
+                    if (ec.entity.find('moqui.basic.Uom').condition('uomId', costCurrency).one()?.uomTypeEnumId != 'UT_CURRENCY_MEASURE') {
+                        ec.message.addError('Configure a valid currency for this organization before receiving stock.'); return
+                    }
+                }
                 // A separate lot keeps each delivery's cost, dates and batch identity intact.
                 def result = ec.service.sync().name('create#mantle.product.asset.Asset').parameters([
                     assetTypeEnumId:'AstTpInventory', classEnumId:'AsClsInventory', statusId:'AstAvailable', hasQuantity:'Y',
                     ownerPartyId:orgId, productId:productId, facilityId:facilityId,
                     quantityOnHandTotal:0G, availableToPromiseTotal:0G,
-                    acquireCost:cost, valuationRate:cost, acquireCostUomId:header?.currencyUomId,
+                    acquireCost:cost, valuationRate:cost, acquireCostUomId:costCurrency,
                     acquireOrderId:orderId, acquireOrderItemSeqId:item?.orderItemSeqId,
                     batchNumber:batchNumber?.toString()?.trim(), manufacturingDate:mfg, expiryDate:expiry,
                     mrpAmount:mrp, receivedDate:ec.user.nowTimestamp]).call()
@@ -126,7 +178,15 @@
                     assetId:assetId, productId:productId, orderId:orderId, orderItemSeqId:item?.orderItemSeqId,
                     effectiveDate:ec.user.nowTimestamp, quantityOnHandDiff:qty, availableToPromiseDiff:qty,
                     unitCost:cost, description:orderId ? ('Goods received ' + orderId) : 'Direct goods receipt']).call()
-                if (!ec.message.hasError()) ec.message.addMessage('Received ' + qty + ' units into stock.')
+                if (ec.message.hasError()) return
+                if (grnLine) {
+                    def received = (grnLine.inventoryReceivedQuantity ?: 0G) + qty
+                    grnLine.setAll([inventoryReceivedQuantity:received,receivedQuantity:received,acceptedQuantity:received]).update()
+                    def lines = ec.entity.find('zenith.erp.purchase.GoodsReceiptNoteItem').condition('grnId',grnId).useCache(false).list()
+                    def completed = lines.every { (it.inventoryReceivedQuantity ?: 0G) >= (it.plannedQuantity ?: 0G) }
+                    grn.set('statusId',completed ? 'GrnReceived' : 'GrnPartial').update()
+                }
+                ec.message.addMessage('Received ' + qty + ' units into stock.')
             ]]></script>
         </actions>
     </service>

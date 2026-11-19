@@ -26,7 +26,7 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
    .evaluateAll(buttons=>buttons.map(b=>b.textContent.replace(/\s+/g,' ').trim()));
   const onlineFooter=await footer(),onlineHeader=await header();
   await context.setOffline(true);
-  await page.locator('#pos-offline-banner').waitFor();
+  await page.waitForFunction(()=>window._posOffline?.active()&&document.querySelector('.pos-reference-payments'));
   check('network loss preserves an editable existing bill instead of pausing it',!await page.evaluate(()=>window._posOffline.paused()));
   check('the original item survives network loss',await page.locator('.aj-p').count()===1);
   await page.locator('.aj-p').fill('80');
@@ -84,14 +84,19 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
   await page.locator('.pos-header form[action*="toggleTax"] button').click();
   check('offline tax off preserves the selected selling price',await page.locator('#posSumTotal').textContent()==='₹90.00');
   await page.locator('#pos-split').click();
-  await page.locator('[data-tender=Cash]').fill('40');await page.locator('[data-tender=UPI]').fill('50');
-  await page.locator('#oflConfirmPayment').click();
+  await page.locator('#pos-split-cash').fill('40');
+  check('offline split uses the shared remaining balance and disables incomplete payment',
+   await page.locator('.pos-split-remaining').textContent()==='₹50.00'&&await page.locator('.pos-split-confirm').isDisabled());
+  await page.getByRole('button',{name:'Fill remaining with UPI'}).click();
+  await page.locator('#pos-split-upi-ref').fill('QA-UPI-REF');
+  await page.locator('.pos-split-confirm').click();
   await page.getByRole('dialog',{name:'Sale saved on this device'}).waitFor();
   const split=(await page.evaluate(()=>window._posOffline.getQueue()))[0];
-  check('split checkout records the exact offline payment breakdown',split.payments.length===2&&split.taxOn==='N'&&split.total===90,split);
+  check('split checkout records the exact offline payment breakdown and reference',split.payments.length===2&&split.taxOn==='N'&&split.total===90&&
+   split.payments.some(payment=>payment.method==='UPI'&&payment.amount===50&&payment.reference==='QA-UPI-REF'),split);
   await page.locator('#posOfflineDialog .ofl-cancel').click();
   await context.setOffline(false);await page.waitForFunction(async()=>!(await window._posOffline.getQueue()).length);
-  let tenders=0;for(let i=0;i<30;i++){tenders=Number(q("SELECT count(*) AS n FROM pos_payment WHERE reference_number='OFFLINE:"+split.offlineId+"'")[0].n);if(tenders===2)break;await new Promise(r=>setTimeout(r,200));}
+  let tenders=0;for(let i=0;i<30;i++){tenders=Number(q("SELECT count(*) AS n FROM pos_payment WHERE reference_number IN ('OFFLINE:"+split.offlineId+"','OFFLINE:"+split.offlineId+":QA-UPI-REF')")[0].n);if(tenders===2)break;await new Promise(r=>setTimeout(r,200));}
   check('split offline sync stores both tender rows',tenders===2,{tenders});
   for(const mutation of [{organizationPartyId:'POS_QA_B'},{userId:'ANOTHER_USER'},{terminalId:'POS_QA_B_TERM1'},{items:[{...first.items[0],productId:'POS_QA_B_P18'}]}]){
    const invalid={...first,...mutation,offlineId:'REJECT-'+Date.now()+'-'+Math.random()};
@@ -104,19 +109,34 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
   check('offline bill discount updates payable with GST',await page.locator('#posSumTotal').textContent()==='₹106.00');
   await page.keyboard.press('F7');await page.waitForFunction(()=>!document.querySelector('.aj-p'));
   await page.evaluate(()=>window._posOffline.add('POS_QA_A_P5'));await page.locator('.aj-mode').selectOption('WHOLESALE');
-  await page.evaluate(()=>window._posOffline.clearDraft());await page.locator('#pos-held-wrap :is(button,summary)').click();await page.locator('[data-recall]').click();
+  await page.evaluate(()=>window._posOffline.clearDraft());await page.locator('#pos-held-wrap summary').click();await page.locator('[data-recall]').click();
   check('offline held bill restores its original mode rate discount and GST',await page.locator('.aj-mode').inputValue()==='RETAIL'&&await page.locator('.aj-p').inputValue()==='100'&&await page.locator('#posSumTotal').textContent()==='₹106.00');
-  await page.locator('#pos-customer-btn').click();await page.locator('#oflName').fill('Synthetic Offline Customer');await page.locator('#oflPhone').fill('9876543678');await page.locator('#posOfflineDialog button[type=submit]').click();
-  await page.locator('#pos-credit').click();await page.locator('#oflConfirmPayment').click();await page.getByRole('dialog',{name:'Sale saved on this device'}).waitFor();
+  await page.locator('#pos-credit').click();await page.getByRole('dialog',{name:'Credit sale'}).waitFor();
+  await page.locator('#credit-confirm').click();await page.getByRole('alert').filter({hasText:'Enter the customer name.'}).waitFor();
+  check('offline credit validates inside its own dialog before saving',!(await page.evaluate(()=>window._posOffline.getQueue())).length);
+  await page.locator('#credit-name').fill('Synthetic Offline Customer');await page.locator('#credit-phone').fill('9876543678');
+  await page.locator('#credit-upfront').fill('6');await page.locator('#credit-days').fill('7');
+  check('offline credit uses the online customer and balance fields',
+   await page.locator('#credit-due-preview').textContent()==='Balance after this payment: ₹100.00');
+  await page.locator('#credit-confirm').click();await page.getByRole('dialog',{name:'Sale saved on this device'}).waitFor();
   const credit=(await page.evaluate(()=>window._posOffline.getQueue()))[0];
-  check('offline credit retains customer and discounted tax',credit.paymentMethod==='Credit'&&credit.customer.name==='Synthetic Offline Customer'&&credit.total===106&&credit.taxAmount===16.2,credit);
+  check('offline credit retains the customer, term, upfront payment and discounted tax',credit.paymentMethod==='Credit'&&credit.customer.name==='Synthetic Offline Customer'&&
+   credit.customer.creditDays===7&&credit.payments[0]?.amount===6&&credit.total===106&&credit.taxAmount===16.2,credit);
   await page.locator('#oflPrintReceipt').click();
   const printed=await page.locator('#pos-offline-frame').evaluate(f=>f.contentDocument.body.innerText);
-  check('offline printable receipt includes supplier customer units tax and outstanding',printed.includes('Synthetic Offline Customer')&&printed.includes('Nos')&&printed.includes('16.20')&&printed.includes('outstanding ₹106.00')&&printed.includes(credit.offlineId),{printed});
+  check('offline printable receipt uses standard layout and shows pending sync and the outstanding balance',
+   printed.includes('Synthetic Offline Customer')&&printed.includes('Nos')&&printed.includes('16.20')&&/Amount Due\s+100\.00/.test(printed)&&
+   printed.includes(credit.offlineId)&&printed.includes('OFFLINE RECEIPT — PENDING SYNC'),{printed});
   await page.locator('#posOfflineDialog .ofl-cancel').click();
-  await context.setOffline(false);await page.waitForFunction(async()=>!(await window._posOffline.getQueue()).length);
-  let creditRow;for(let i=0;i<30;i++){creditRow=q("SELECT is_credit,paid_amount,payable_amount FROM pos_transaction WHERE customer_phone='9876543678' AND status_id='PtCompleted' ORDER BY completed_date DESC")[0];if(creditRow)break;await new Promise(r=>setTimeout(r,200));}
-  check('offline credit sync creates the receivable without inventing payment',creditRow?.is_credit==='Y'&&Number(creditRow.paid_amount)===0&&Number(creditRow.payable_amount)===106,creditRow);
+  const creditSync=page.waitForResponse(response=>response.url().endsWith('/syncOfflineTransactions')&&
+   response.request().postData()?.includes(credit.offlineId));
+  await context.setOffline(false);
+  const creditAcknowledgement=await (await creditSync).json();
+  check('offline credit sync acknowledges the exact bill',creditAcknowledgement.syncedIds?.includes(credit.offlineId),creditAcknowledgement);
+  await page.waitForFunction(async()=>!(await window._posOffline.getQueue()).length);
+  const creditRow=q("SELECT is_credit,paid_amount,payable_amount,credit_days FROM pos_transaction WHERE session_id='"+session.sessionId+"' AND is_credit='Y' AND status_id='PtCompleted'")[0];
+  check('offline credit sync creates the receivable and records only the payment received',creditRow?.is_credit==='Y'&&
+   Number(creditRow.paid_amount)===6&&Number(creditRow.payable_amount)===106&&Number(creditRow.credit_days)===7,creditRow);
   await page.waitForFunction(()=>!window._posOffline.active());
   check('reconnection restores regular POS buttons after the completed offline bills sync',
    await page.locator('.pos-reference-payments').count()===1&&await page.locator('#pos-connection-status').textContent()==='Online');
@@ -160,7 +180,7 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
   check('the saved bill is visible in existing History while the connection badge is Offline',
    await history.getByText('OFFLINE — PENDING SYNC',{exact:true}).isVisible()&&
    await history.locator('[data-device-reprint]').isVisible()&&
-   await page.locator('#pos-offline-banner').textContent()==='Offline workspace · Pending: 1');
+   await page.locator('#pos-offline-banner').count()===0);
   await page.screenshot({path:path.join(out,'pos-offline-pending-history.png')});
   await history.locator('#hist-close').click();
   outage=false;
@@ -183,6 +203,7 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
   check('equal-price lines in different modes sync successfully',modeResult.syncedIds?.includes(separateModes.offlineId),modeResult);
   let modeRows=[];for(let i=0;i<30;i++){modeRows=q("SELECT i.sales_mode_id FROM pos_transaction_item i JOIN pos_offline_transaction o ON o.created_transaction_id=i.transaction_id WHERE o.transaction_data_json LIKE '%"+separateModes.offlineId+"%'");if(modeRows.length===2)break;await new Promise(r=>setTimeout(r,200));}
   check('replay keeps separate line modes instead of merging equal-price items',modeRows.length===2&&new Set(modeRows.map(r=>r.sales_mode_id)).size===2,modeRows);
+  await require('./verify-offline-held-bills.cjs')({a,base,check,q,invoke,post,out});
   await page.screenshot({path:path.join(out,'offline-workspace.png')});
  } finally {
   await context.setOffline(false);

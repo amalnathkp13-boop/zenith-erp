@@ -212,6 +212,19 @@ window._posSetCustomerChip = function(name, phone) {
     }, true);
 })();
 
+function posReceiptPrintMarkup(title, message, offline = false) {
+    const button = (id, label, primary) => '<button type="button" ' + id
+        + ' style="padding:10px 14px;border:1px solid #7C3AED;border-radius:8px;background:' + (primary ? '#7C3AED;color:#fff' : '#fff;color:#5b21b6')
+        + ';font-size:14px;font-weight:700;cursor:pointer">' + label + '</button>';
+    return '<div style="background:#fff;color:#111;padding:24px;border-radius:12px;max-width:440px;max-height:85vh;overflow:auto;overflow-wrap:anywhere">'
+        + '<h2 style="margin:0 0 12px;font-size:20px">' + window._posReceiptTextData(title) + '</h2>'
+        + '<p class="pos-print-status" role="status" style="margin:0 0 18px;white-space:pre-line">' + window._posReceiptTextData(message) + '</p>'
+        + '<div style="display:flex;flex-wrap:wrap;gap:10px">'
+        + (offline ? button('id="oflPrintReceipt"', 'Print receipt', true) : button('class="pos-print-retry"', 'Retry QZ', true)
+            + button('class="pos-print-browser"', 'Print using browser', false))
+        + button('class="pos-print-cancel ofl-cancel"', 'Close', false) + '</div></div>';
+}
+
 /* === POS offline workspace: cached catalog, editable cart and durable checkout queue. === */
 window._posOffline = (function () {
     var afScope = document.getElementById('cartInlineAddForm');
@@ -227,15 +240,26 @@ window._posOffline = (function () {
     var lastLocalAmount;
     var booted = false;
     var syncing = false;
+    var syncTask;
     var payPending = false;
+    var heldSyncing = false;
     var serverDraftPaused = false;
+    var restoringTask, restoreError;
     var transportDown = false, connectionProbe, connectionTimer;
-    var pendingLocalEdits = [], storageReady = false, rejectedSales = new Map();
+    var pendingLocalEdits = [], storageReady = false, rejectedSales = new Map(), localClose = null;
     function disconnected() {
         return !navigator.onLine || transportDown;
     }
     function active() {
-        return disconnected() || localEditing;
+        return !!localClose || disconnected() || localEditing;
+    }
+    function connectionState() {
+        if (disconnected()) return 'Offline';
+        if (localClose || !localEditing) return 'Online';
+        return restoreError ? 'Review cart' : 'Reconnecting';
+    }
+    function announceConnection() {
+        window.dispatchEvent(new Event('posconnectionchange'));
     }
     function probeConnection() {
         if (!navigator.onLine) return Promise.resolve(false);
@@ -259,7 +283,8 @@ window._posOffline = (function () {
     }
     function connectionChanged() {
         scheduleConnectionCheck();
-        window.dispatchEvent(new Event('posconnectionchange'));
+        announceConnection();
+        if (localClose) { if (window.PosDeferredClose) window.PosDeferredClose.flush(); return; }
         if (disconnected()) {
             begin();
         } else {
@@ -268,7 +293,9 @@ window._posOffline = (function () {
                 draft = null;
                 pendingLocalEdits.length = 0;
             }
-            sync();
+            sync().then(function () {
+                if (localEditing && canUseOnlineHeldPicker()) window._posRefreshHeldPicker?.();
+            });
             if (!localEditing) cacheCatalog();
         }
     }
@@ -278,7 +305,7 @@ window._posOffline = (function () {
             if (!afScope.isConnected || !navigator.onLine) return;
             var changed = transportDown === reachable;
             transportDown = !reachable;
-            if (changed || force === true) connectionChanged();
+            if (changed || force === true || (reachable && draft?.restoreRequest && !restoreError)) connectionChanged();
             else scheduleConnectionCheck();
         });
     }
@@ -593,6 +620,23 @@ window._posOffline = (function () {
             });
         });
     }
+    function readSessionDraft() {
+        var currentSession = tCtx().sessionId;
+        return new Promise(function (resolve, reject) {
+            var transaction = db.transaction('state', 'readwrite'), state = transaction.objectStore('state');
+            var saved, request = state.get('draft:' + scope);
+            request.onsuccess = function () {
+                saved = request.result?.value || null;
+                if (saved && saved.sessionId !== currentSession) {
+                    state.put({key:'retained-draft:' + scope + ':' + saved.sessionId + ':' + (saved.draftId || 'legacy'), value:saved});
+                    state.delete('draft:' + scope);
+                    saved = null;
+                }
+            };
+            transaction.oncomplete = function () { resolve(saved); };
+            transaction.onerror = transaction.onabort = function () { reject(transaction.error || Error('Could not load the saved cart.')); };
+        });
+    }
     function copy(value) {
         return JSON.parse(JSON.stringify(value));
     }
@@ -741,10 +785,9 @@ window._posOffline = (function () {
     function paused() {
         return serverDraftPaused;
     }
-    var bannerVersion = 0;
     function banner(show) {
-        var version = ++bannerVersion;
         var b = document.getElementById('pos-offline-banner');
+        if ((!serverDraftPaused && !restoreError) || localClose) { if (b) b.remove(); return; }
         if (!b) {
             b = document.createElement('span');
             b.id = 'pos-offline-banner';
@@ -754,21 +797,7 @@ window._posOffline = (function () {
             document.body.appendChild(b);
         }
         b.hidden = !show;
-        var strip = document.getElementById('pos-last-completed') || document.querySelector('.pos-sum-strip');
-        if (strip && !serverDraftPaused) {
-            strip.append(b);
-            b.style.cssText = 'color:#92400e;font-weight:600;margin-left:12px';
-        }
-        var message = serverDraftPaused ? 'Offline snapshot unavailable. Reconnect before changing this draft.'
-            : disconnected() ? 'Offline workspace' : show ? 'Saved workspace' : '';
-        if (show) b.textContent = message;
-        getQueue().then(function (q) {
-            if (version !== bannerVersion) return;
-            var reviews = q.filter(function (sale) { return rejectedSales.has(sale.offlineId); }).length;
-            b.hidden = !show && !q.length;
-            b.textContent = [message, q.length ? 'Pending: ' + q.length : '', reviews ? 'Review in History: ' + reviews : '']
-                .filter(Boolean).join(' · ');
-        }).catch(function () {});
+        b.textContent = restoreError || 'Offline snapshot unavailable. Reconnect before changing this draft.';
     }
     function newDraft() {
         var c = tCtx();
@@ -790,9 +819,30 @@ window._posOffline = (function () {
         snapshot = copy(data);
         if (db) stateWrite('snapshot:' + scope, snapshot).catch(function () {});
     }
+    function setDraftSource(bill) {
+        bill.sourceTransactionId = snapshot.transactionId;
+        bill.sourceRevision = snapshot.sourceRevision;
+        bill.originState = snapshot.originState;
+        bill.destinationState = snapshot.destinationState;
+        bill.items = snapshot.items.map(function (item) {
+            return {productId:item.pid,seq:item.seq,name:item.name,printName:item.printName,
+                qty:Number(item.qty),price:Number(item.price),mode:item.mode || bill.mode,
+                uom:item.uom,discount:Number(item.disc || 0)};
+        });
+        bill.customer = snapshot.customer ? {partyId:snapshot.customerPartyId,name:snapshot.customer,
+            phone:snapshot.customerPhone,creditDays:snapshot.customerCreditDays,state:snapshot.destinationState} : null;
+        return bill;
+    }
+    function draftContent(bill) {
+        var lines = bill.items.map(function (item) {
+            return [item.productId, item.qty, item.price, item.mode, item.discount];
+        });
+        return JSON.stringify([lines, bill.mode, bill.taxOn, bill.customer, bill.destinationState, bill.sourceRevision]);
+    }
     var leaseReady = false,
         leasePending = false;
     function begin() {
+        if (localClose) return false;
         if (!storageReady || (window._posCartWriteInFlight && window._posCartWriteInFlight())) return false;
         if (!leaseReady) {
             if (!leasePending) {
@@ -822,7 +872,8 @@ window._posOffline = (function () {
                                 return;
                             }
                             leaseReady = true;
-                            if (active() || draft) begin();
+                            if (active() || draft || sessionHolds().length) begin();
+                            if ((draft || sessionHolds().length) && !disconnected()) sync();
                             return new Promise(function () {});
                         },
                     )
@@ -834,10 +885,12 @@ window._posOffline = (function () {
             return false;
         }
         if (localEditing) {
+            if (restoringTask || draft?.restoreRequest) return false;
             if (!serverDraftPaused) applyPendingEdits();
             return !serverDraftPaused;
         }
         localEditing = true;
+        announceConnection();
         if (!settings.version) {
             serverDraftPaused = true;
             banner(true);
@@ -858,33 +911,9 @@ window._posOffline = (function () {
                     banner(true);
                     return false;
                 }
-                draft.sourceTransactionId = snapshot.transactionId;
-                draft.sourceRevision = snapshot.sourceRevision;
-                draft.originState = snapshot.originState;
-                draft.destinationState = snapshot.destinationState;
-                draft.items = snapshot.items.map(function (i) {
-                    return {
-                        productId: i.pid,
-                        seq: i.seq,
-                        name: i.name,
-                        printName: i.printName,
-                        qty: Number(i.qty),
-                        price: Number(i.price),
-                        mode: i.mode || draft.mode,
-                        uom: i.uom,
-                        discount: Number(i.disc || 0),
-                    };
-                });
-                draft.customer = snapshot.customer
-                    ? {
-                          partyId: snapshot.customerPartyId,
-                          name: snapshot.customer,
-                          phone: snapshot.customerPhone,
-                          creditDays: snapshot.customerCreditDays,
-                          state: snapshot.destinationState,
-                      }
-                    : null;
+                setDraftSource(draft);
             }
+            if (draft.sourceTransactionId) draft.onlineBaseline = draftContent(draft);
         }
         cart = draft.items;
         if (!applyPendingEdits()) change();
@@ -900,18 +929,19 @@ window._posOffline = (function () {
     function money(n) {
         return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
     }
-    function totals() {
+    function totals(bill) {
+        bill = bill || draft;
         var sub = 0,
             tax = 0,
             discount = 0,
             qty = 0;
-        cart.forEach(function (i) {
+        bill.items.forEach(function (i) {
             var p = catalog[i.productId] || {},
                 m = modeInfo(i.mode),
                 gross = Number(i.price) * Number(i.qty),
                 disc = (gross * Number(i.discount || 0)) / 100,
                 net = gross - disc;
-            var destination = (draft.customer || {}).state || draft.destinationState || settings.state,
+            var destination = (bill.customer || {}).state || bill.destinationState || settings.state,
                 interstate = destination && String(destination) !== String(settings.state);
             var rates = (interstate ? p.interstateRates : p.taxRates) || [],
                 sum = rates.reduce(function (s, r) {
@@ -919,7 +949,7 @@ window._posOffline = (function () {
                 }, 0),
                 base = net,
                 amount = 0;
-            if (draft.taxOn === 'Y') {
+            if (bill.taxOn === 'Y') {
                 if (m.inclusive && sum > 0) base = money((net * 100) / (100 + sum));
                 amount = rates.reduce(function (s, r) {
                     return s + money((base * Number(r)) / 100);
@@ -976,6 +1006,7 @@ window._posOffline = (function () {
             taxButton.setAttribute('aria-pressed', String(draft.taxOn === 'Y'));
         }
         window._posSetCustomerChip(draft.customer && draft.customer.name, draft.customer && draft.customer.phone);
+        renderHeldPicker();
     }
     function change() {
         saveDraft();
@@ -1053,7 +1084,7 @@ window._posOffline = (function () {
         begin();
     }
     function edit(op) {
-        if (serverDraftPaused) return;
+        if (serverDraftPaused || payPending || restoringTask || draft?.restoreRequest) return;
         pendingLocalEdits.push(op);
         begin();
     }
@@ -1100,27 +1131,32 @@ window._posOffline = (function () {
     function catalogSize() {
         return Object.keys(catalog).length;
     }
-    function modal(title, body, paymentPanel) {
+    function modal(title, body, panelWidth) {
         var old = document.getElementById('posOfflineDialog');
         if (old) old.remove();
-        var overlay = document.createElement('div');
+        var overlay = document.createElement('dialog');
         overlay.id = 'posOfflineDialog';
         overlay.className = 'pos-pay-overlay';
         overlay.setAttribute('role', 'dialog');
         overlay.setAttribute('aria-label', title);
-        overlay.style.cssText =
-            'position:fixed;inset:0;z-index:999999;background:#0007;display:grid;place-items:center;padding:16px';
-        overlay.innerHTML = (paymentPanel
-            ? '<form style="width:min(100%,540px);max-height:85vh;overflow:auto">'
+        overlay.style.cssText = 'position:fixed;inset:0;background:transparent;border:0;padding:0;max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);width:' + (panelWidth || 460) + 'px';
+        overlay.innerHTML = (panelWidth
+            ? '<form novalidate style="margin:0">'
             : '<form style="background:white;color:#111;border-radius:12px;padding:24px;max-width:600px;width:90%;max-height:85vh;overflow:auto"><h2>' + esc(title) + '</h2>') +
             body +
             '<p role="alert" class="ofl-error" style="color:#b91c1c" hidden></p>' +
-            (paymentPanel ? '' : '<button type="button" class="ofl-cancel">Cancel</button>') + '</form>';
-        document.body.appendChild(overlay);
-        overlay.querySelector('.ofl-cancel,.pos-cash-cancel').onclick = function () {
+            (panelWidth ? '' : '<button type="button" class="ofl-cancel">Cancel</button>') + '</form>';
+        function close() {
+            if (payPending || overlay.dataset.paymentReceived) return;
+            overlay.close();
             overlay.remove();
             resumeOnline();
-        };
+        }
+        overlay.querySelector('.ofl-cancel,.pos-cash-cancel,.pos-split-cancel,#posPayConfCancel,#credit-cancel')?.addEventListener('click', close);
+        overlay.addEventListener('cancel', function (event) { event.preventDefault(); close(); });
+        overlay.addEventListener('click', function (event) { if (event.target === overlay) close(); });
+        document.body.appendChild(overlay);
+        overlay.showModal();
         return overlay;
     }
     function chooseCustomer() {
@@ -1201,11 +1237,19 @@ window._posOffline = (function () {
         });
     }
     function holdDraft() {
-        if (!cart.length || payPending) return;
+        if (!cart.length || payPending || draft?.restoreRequest) return Promise.resolve(false);
+        if (heldSyncing) {
+            toast('Held bills are reconnecting. Try again in a moment.');
+            return Promise.resolve(false);
+        }
         payPending = true;
-        var all = holds.concat([copy(draft)]),
+        var saved = copy(draft);
+        delete saved.onlineBaseline;
+        saved.draftId = crypto.randomUUID();
+        saved.heldAt = Date.now();
+        var all = holds.concat([saved]),
             next = newDraft();
-        writeTail
+        writeTail = writeTail
             .then(function () {
                 return storeWorkspace(next, all);
             })
@@ -1214,67 +1258,129 @@ window._posOffline = (function () {
                 draft = next;
                 cart = draft.items;
                 render();
-                toast('Bill held on this device.');
+                toast('Bill held', '#b45309');
+                return true;
             })
             .catch(function () {
                 toast('Could not hold the bill. Keep it open.', '#c62828');
+                return false;
             })
             .finally(function () {
                 payPending = false;
             });
-    }
-    function heldDialog() {
-        var ov = modal(
-            'Offline held bills',
-            holds.length
-                ? holds
-                      .map(function (h, index) {
-                          return (
-                              '<button type="button" data-recall="' +
-                              index +
-                              '">' +
-                              esc(modeInfo(h.mode).name) +
-                              ' · ' +
-                              h.items.length +
-                              ' items</button>'
-                          );
-                      })
-                      .join('')
-                : '<p>No offline held bills.</p>',
-        );
-        ov.querySelectorAll('[data-recall]').forEach(function (b) {
-            b.onclick = function () {
-                if (cart.length || payPending) {
-                    toast('Hold or clear this bill before recalling another.', '#c62828');
-                    return;
-                }
-                payPending = true;
-                var index = Number(b.dataset.recall),
-                    next = copy(holds[index]),
-                    rest = holds.filter(function (h, i) {
-                        return i !== index;
-                    });
-                writeTail
-                    .then(function () {
-                        return storeWorkspace(next, rest);
-                    })
-                    .then(function () {
-                        draft = next;
-                        holds = rest;
-                        cart = draft.items;
-                        render();
-                        ov.remove();
-                    })
-                    .catch(function () {
-                        toast('Could not recall this bill. Keep this page open.', '#c62828');
-                    })
-                    .finally(function () {
-                        payPending = false;
-                    });
-            };
+        return writeTail.then(function (saved) {
+            if (!saved || disconnected()) return false;
+            return (syncTask || Promise.resolve()).then(sync).then(function () { return !active(); });
         });
     }
-    function validation(method) {
+    function canUseOnlineHeldPicker() {
+        return !disconnected() && !serverDraftPaused && !sessionHolds().length;
+    }
+    function renderHeldPicker() {
+        var wrap = document.getElementById('pos-held-wrap');
+        if (!wrap || !localEditing || canUseOnlineHeldPicker()) return;
+        var button = wrap.querySelector('summary,button');
+        if (!button) return;
+        var open = !!wrap.querySelector('details[open]');
+        var summary = document.createElement('summary');
+        summary.className = 'nb-abtn nb-abtn--hold';
+        summary.innerHTML = button.innerHTML;
+        summary.querySelectorAll('.nb-cnt').forEach(function (count) { count.remove(); });
+        var currentHolds = sessionHolds();
+        if (currentHolds.length) {
+            var count = document.createElement('span');
+            count.className = 'nb-cnt'; count.textContent = currentHolds.length;
+            summary.insertBefore(count, summary.querySelector('kbd'));
+        }
+        var details = document.createElement('details');
+        details.className = 'nb-held__d'; details.open = open;
+        details.appendChild(summary);
+        var menu = document.createElement('div');
+        menu.className = 'nb-held__menu';
+        menu.innerHTML = '<div class="nb-held__hint">Tap a bill to switch to it. Your current cart is held automatically.</div>';
+        currentHolds.reverse().forEach(function (held, index) {
+            var row = document.createElement('button');
+            row.type = 'button'; row.className = 'nb-held__item'; row.dataset.recall = held.draftId;
+            var time = held.heldAt ? new Date(held.heldAt).toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'}) : '';
+            row.innerHTML = '<span><b>Held bill ' + (index + 1) + '</b> · ' + held.items.length + (held.items.length === 1 ? ' item' : ' items') +
+                '<div class="nb-held__t">' + (time ? 'held ' + esc(time) + ' · ' : '') + 'Saved on this device</div></span>' +
+                '<span class="nb-held__amt">₹ ' + totals(held).sub.toLocaleString('en-IN', {minimumFractionDigits:2,maximumFractionDigits:2}) + '</span>';
+            menu.appendChild(row);
+        });
+        if (!currentHolds.length) menu.innerHTML += '<div class="nb-held__hint">No held bills on this device.</div>';
+        details.appendChild(menu);
+        wrap.replaceChildren(details);
+    }
+    function heldDialog() {
+        renderHeldPicker();
+        var picker = document.querySelector('#pos-held-wrap details');
+        if (picker) picker.open = !picker.open;
+    }
+    function recallDraft(id) {
+        if (payPending || heldSyncing || draft?.restoreRequest) return;
+        var held = sessionHolds().find(function (bill) { return bill.draftId === id; });
+        if (!held) return;
+        payPending = true;
+        var next = copy(held), rest = holds.filter(function (bill) { return bill.draftId !== id; });
+        if (cart.length) {
+            var current = copy(draft);
+            delete current.onlineBaseline;
+            current.draftId = crypto.randomUUID(); current.heldAt = Date.now(); rest.push(current);
+        }
+        writeTail = writeTail.then(function () { return storeWorkspace(next, rest); }).then(function () {
+            draft = next; holds = rest; cart = draft.items;
+            render();
+            var picker = document.querySelector('#pos-held-wrap details');
+            if (picker) picker.open = false;
+        }).catch(function () {
+            toast('Could not recall this bill. Keep this page open.', '#c62828');
+        }).finally(function () {
+            payPending = false;
+            if (!disconnected()) sync();
+        });
+    }
+    function sessionHolds() {
+        var sessionId = tCtx().sessionId;
+        return holds.filter(function (bill) { return bill.sessionId === sessionId; });
+    }
+    function syncHeldDrafts(sales) {
+        if (!leaseReady || serverDraftPaused || heldSyncing || payPending || disconnected()) return Promise.resolve();
+        var activeSource = draft && draft.sourceTransactionId;
+        var ready = sessionHolds().filter(function (bill) {
+            if (!bill.sourceTransactionId) return true;
+            return bill.sourceTransactionId !== activeSource && !sales.some(function (sale) {
+                return sale.sourceTransactionId === bill.sourceTransactionId;
+            });
+        });
+        if (!ready.length) return Promise.resolve();
+        heldSyncing = true;
+        var saved = ready.slice(0,100).map(function (bill) {
+            var amounts = totals(bill);
+            return Object.assign(copy(bill), {version:2,offlineId:bill.draftId,userId:settings.userId,
+                organizationPartyId:orgId,total:amounts.pay,taxAmount:amounts.tax,
+                ts:new Date(bill.heldAt || Date.now()).toISOString()});
+        });
+        var token = document.querySelector('[name=moquiSessionToken]');
+        return fetch('Terminal/syncOfflineHeldBills', {method:'POST',credentials:'same-origin',signal:AbortSignal.timeout(20000),
+            headers:{'Content-Type':'application/json'},body:JSON.stringify({terminalId:tCtx().terminalId,sessionId:tCtx().sessionId,
+                moquiSessionToken:token && token.value,heldBills:saved})
+        }).then(function (response) {
+            if (!response.ok) throw Error('Held bills remain saved on this device.');
+            return response.json();
+        }).then(function (result) {
+            var ids = new Set((result.syncedIds || []).filter(function (id) { return saved.some(function (bill) { return bill.offlineId === id; }); }));
+            if (!ids.size) return;
+            var rest = holds.filter(function (bill) { return !ids.has(bill.draftId); });
+            writeTail = writeTail.then(function () { return stateWrite('holds:' + scope, copy(rest)); }).then(function () {
+                holds = rest;
+                renderHeldPicker();
+                if ((!localEditing || cart.length) && canUseOnlineHeldPicker()) window._posRefreshHeldPicker?.();
+            });
+            return writeTail;
+        }).catch(function (error) { return transportFailure(error); })
+          .finally(function () { heldSyncing = false; });
+    }
+    function validation(method, bill = draft) {
         if (!cart.length) return 'Add products first.';
         if (storageError) return 'Device storage failed. Keep this bill open.';
         if (
@@ -1290,9 +1396,9 @@ window._posOffline = (function () {
         )
             return 'Enter positive quantities and prices. Free items need online manager approval.';
         if (
-            draft.taxOn === 'Y' &&
+            bill.taxOn === 'Y' &&
             cart.some(function (i) {
-                var destination = (draft.customer || {}).state || draft.destinationState || settings.state;
+                var destination = (bill.customer || {}).state || bill.destinationState || settings.state;
                 return !Array.isArray(
                     (catalog[i.productId] || {})[
                         destination && String(destination) !== String(settings.state)
@@ -1303,122 +1409,225 @@ window._posOffline = (function () {
             })
         )
             return 'Tax cache is unavailable for an item. Reconnect before payment.';
-        var total = totals();
+        var total = totals(bill);
+        if (total.pay <= 0) return 'Reconnect to complete a zero-total bill.';
         var modes = new Set(
             cart.map(function (i) {
                 return i.mode;
             }),
         );
         var rule = (settings.rules || []).find(function (r) {
-            return modes.has(r.mode) && ((r.customer && !draft.customer) || Number(r.minimum) > total.grand);
+            return modes.has(r.mode) && ((r.customer && !bill.customer && method !== 'Credit') || Number(r.minimum) > total.grand);
         });
         if (rule) return 'This shop’s customer or minimum-order rule is not met.';
-        if (
-            method === 'Credit' &&
-            (!draft.customer ||
-                !draft.customer.name ||
-                !/^\d{10,15}$/.test(String(draft.customer.phone || '').replace(/\D/g, '')))
-        )
-            return 'Select Customer and enter a valid name and phone for credit.';
         return '';
     }
+    function tenderError(overlay, message) {
+        var error = overlay.querySelector('.ofl-error');
+        error.textContent = message;
+        error.hidden = !message;
+    }
     function tender(method) {
+        if (!disconnected()) return;
         if (!begin()) return;
         var error = validation(method);
         if (error) {
             toast(error, '#c62828');
             return;
         }
-        var total = payable(),
-            cash = method === 'Cash',
-            body = cash ? window.PosTillDialogs.cashMarkup(total, true) : '<p>Bill: ₹' + f2(total) + '</p>';
-        if (method === 'Split')
-            body += ['Cash', 'Card', 'UPI']
-                .map(function (m) {
-                    return (
-                        '<label>' +
-                        m +
-                        '<input data-tender="' +
-                        m +
-                        '" inputmode="decimal" value="0"/></label>'
-                    );
-                })
-                .join('');
-        if (method === 'Card' || method === 'UPI')
-            body +=
-                '<p>Confirm only after the payment has been received. Offline mode does not verify a bank or payment provider.</p>';
-        if (method === 'Credit') body += '<p>' + esc(draft.customer.name) + ' · Payment due later.</p>';
-        if (!cash) body += '<button id="oflConfirmPayment" type="submit">Confirm ' + esc(method) + '</button>';
-        var ov = modal(method + ' payment', body, cash);
-        var input = ov.querySelector('input');
-        if (cash) {
-            var panel = ov.querySelector('.pos-cash-panel');
-            input.addEventListener('input', function () { window.PosTillDialogs.updateCash(panel, total); });
+        var total = payable();
+        var dialogs = window.PosTillDialogs;
+        if (method === 'Credit') { creditTender(); return; }
+        if (method === 'Cash') {
+            var ov = modal('Cash payment', dialogs.cashMarkup(total, true), 540);
+            var panel = ov.querySelector('.pos-cash-panel'), input = panel.querySelector('.pos-cash-input');
+            input.addEventListener('input', function () { dialogs.updateCash(panel, total); });
             panel.addEventListener('click', function (event) {
                 var quick = event.target.closest('.pos-cash-quick');
                 if (!quick) return;
                 input.value = quick.dataset.amt;
-                window.PosTillDialogs.updateCash(panel, total);
+                dialogs.updateCash(panel, total);
             });
-        }
-        if (input) {
             input.focus();
-            input.select();
-        } else ov.querySelector('#oflConfirmPayment').focus();
-        ov.querySelector('form').onsubmit = function (e) {
-            e.preventDefault();
-            if (payPending) return;
-            var payments = [],
-                error = '';
-            if (method === 'Cash') {
-                var received = Number(input.value);
-                if (!window.PosTillDialogs.updateCash(panel, total) || !Number.isFinite(received) || received < total || money(received) !== received)
-                    error = 'Received cash must cover the bill.';
-                else payments = [{ method: 'Cash', amount: received }];
-            } else if (method === 'Split') {
-                ov.querySelectorAll('[data-tender]').forEach(function (i) {
-                    var amount = Number(i.value);
-                    if (!Number.isFinite(amount) || amount < 0 || money(amount) !== amount)
-                        error = 'Use valid payment amounts with at most two decimals.';
-                    else if (amount > 0) payments.push({ method: i.dataset.tender, amount: amount });
-                });
-                if (
-                    money(
-                        payments.reduce(function (sum, p) {
-                            return sum + p.amount;
-                        }, 0),
-                    ) !== total
-                )
-                    error = 'Split amounts must exactly equal the bill.';
-            } else if (method !== 'Credit') payments = [{ method: method, amount: total }];
-            if (error) {
-                ov.querySelector('.ofl-error').textContent = error;
-                ov.querySelector('.ofl-error').hidden = false;
-                return;
-            }
-            pay(method, payments, ov);
+            ov.querySelector('form').onsubmit = function (event) {
+                event.preventDefault();
+                if (dialogs.updateCash(panel, total)) pay('Cash', [{method:'Cash',amount:Number(input.value)}], ov);
+            };
+            return;
+        }
+        if (method === 'Split') {
+            var split = modal('Split payment', dialogs.splitMarkup(total), 540);
+            var splitPanel = split.querySelector('.pos-split-panel');
+            dialogs.bindSplit(splitPanel, total);
+            splitPanel.querySelector('[name=cashAmount]').focus();
+            split.querySelector('form').onsubmit = function (event) {
+                event.preventDefault();
+                if (!dialogs.updateSplit(splitPanel, total)) return;
+                var payments = ['Cash','Card','UPI'].map(function (kind) {
+                    var key = kind.toLowerCase(), amount = Number(splitPanel.querySelector('[name=' + key + 'Amount]').value);
+                    var reference = splitPanel.querySelector('[name=' + key + 'Ref]')?.value.trim().slice(0, 80);
+                    return reference ? {method:kind,amount:amount,reference:reference} : {method:kind,amount:amount};
+                }).filter(function (payment) { return payment.amount > 0; });
+                var cashChange = payments.length === 1 && payments[0].method === 'Cash' && payments[0].amount > total;
+                pay(cashChange ? 'Cash' : 'Split', payments, split);
+            };
+            return;
+        }
+        var digital = modal(method + ' Payment', dialogs.digitalMarkup(method, total, true), 420);
+        var confirmation = digital.querySelector('#posPayConfOk');
+        confirmation.focus();
+        confirmation.onclick = function () {
+            var payments = [{method:method,amount:total}];
+            if (method !== 'UPI') { pay(method, payments, digital); return; }
+            digital.dataset.paymentReceived = 'true';
+            digital.setAttribute('aria-label', 'Save UPI bill');
+            var card = digital.querySelector('form').firstElementChild;
+            card.innerHTML = dialogs.upiReceiptMarkup(total);
+            var save = card.querySelector('#posPaySave');
+            save.onclick = function () { pay(method, payments, digital, {receipt:'save'}); };
+            card.querySelector('#posPaySavePrint').onclick = function () { pay(method, payments, digital, {receipt:'print'}); };
+            save.focus();
         };
     }
-    function pay(method, payments, ov) {
+    function creditTender() {
+        var overlay = modal('Credit sale', window.PosTillDialogs.creditMarkup(), 420);
+        var field = function (id) { return overlay.querySelector('#credit-' + id); };
+        var name = field('name'), phone = field('phone'), days = field('days'), reason = field('terms-reason');
+        var results = field('cust-results'), upfront = field('upfront'), confirm = field('confirm');
+        var selected = draft.customer && draft.customer.partyId ? draft.customer : null;
+        var phoneDigits = function (value) { return String(value || '').replace(/\D/g, ''); };
+        var creditZone = settings.creditTimeZone;
+        name.value = (draft.customer || {}).name || '';
+        phone.value = (draft.customer || {}).phone || '';
+        name.maxLength = 80;
+        phone.maxLength = 20;
+        confirm.type = 'submit';
+        field('due-preview').before(overlay.querySelector('.ofl-error'));
+        function withCustomer(customer) {
+            return Object.assign({}, draft, {customer:customer, destinationState:customer?.state || draft.originState || settings.state});
+        }
+        function hideResults() { results.style.display = 'none'; results.replaceChildren(); }
+        function preview() {
+            var total = totals(withCustomer(selected)).pay;
+            upfront.max = String(total);
+            var paid = upfront.valueAsNumber;
+            field('due-preview').textContent = upfront.validity.valid && Number.isFinite(paid)
+                ? 'Balance after this payment: ₹' + f2(total - paid) : 'Enter an amount from ₹0 to the bill total.';
+            var note = field('date-preview');
+            if (!days.value || !days.validity.valid) { note.textContent = 'Choose a calendar-day term for this bill.'; return; }
+            var dateParts = new Intl.DateTimeFormat('en-CA', {timeZone:creditZone,year:'numeric',month:'2-digit',day:'2-digit'})
+                .formatToParts(new Date());
+            var part = function (type) { return Number(dateParts.find(function (entry) { return entry.type === type; }).value); };
+            var due = new Date(Date.UTC(part('year'),part('month') - 1,part('day') + days.valueAsNumber));
+            note.textContent = 'Due through ' + due.toISOString().slice(0,10) + (creditZone ? ' (' + creditZone + ')' : '') + '. Day 0 is today.';
+        }
+        function applyTerms() {
+            days.value = selected?.creditDays ?? '';
+            days.readOnly = selected?.creditDays != null && !settings.canOverrideCreditTerms;
+            reason.parentElement.hidden = !(selected?.creditDays != null && settings.canOverrideCreditTerms);
+            reason.value = '';
+            preview();
+        }
+        function selectCustomer(customer) {
+            selected = customer;
+            name.value = customer.name;
+            phone.value = customer.phone || '';
+            hideResults();
+            applyTerms();
+            (phone.value ? upfront : phone).focus();
+        }
+        name.addEventListener('input', function () {
+            if (selected) { selected = null; phone.value = ''; applyTerms(); }
+            hideResults();
+            var term = name.value.trim().toLowerCase();
+            if (!term) return;
+            var matches = (settings.customers || []).filter(function (customer) {
+                return customer.name.toLowerCase().includes(term) || String(customer.phone || '').includes(term);
+            });
+            matches.slice(0,8).forEach(function (customer) {
+                var button = document.createElement('button');
+                button.type = 'button'; button.className = 'cc-row';
+                button.style.cssText = 'display:block;width:100%;padding:10px 12px;border:0;border-bottom:1px solid #f0f0f0;background:#fff;color:#e65100;text-align:left;font-weight:700;cursor:pointer';
+                button.textContent = customer.name + (customer.phone ? ' · ' + customer.phone : '');
+                button.onclick = function () { selectCustomer(customer); };
+                results.appendChild(button);
+            });
+            if (matches.length) results.style.display = 'block';
+        });
+        phone.addEventListener('input', function () {
+            if (selected && selected.phone && phoneDigits(phone.value) !== phoneDigits(selected.phone)) {
+                selected = null;
+                applyTerms();
+            }
+        });
+        field('add-customer').onclick = function () {
+            selected = null;
+            hideResults();
+            applyTerms();
+            (name.value.trim() ? phone : name).focus();
+        };
+        overlay.addEventListener('click', function (event) {
+            if (event.target !== name && !results.contains(event.target)) hideResults();
+        });
+        overlay.addEventListener('input', function () { tenderError(overlay, ''); });
+        upfront.addEventListener('input', preview);
+        days.addEventListener('input', preview);
+        applyTerms();
+        name.focus();
+        overlay.querySelector('form').onsubmit = function (event) {
+            event.preventDefault();
+            var customerName = name.value.trim(), customerPhone = phoneDigits(phone.value);
+            if (!customerName) { tenderError(overlay, 'Enter the customer name.'); name.focus(); return; }
+            if (!/^\d{10,15}$/.test(customerPhone)) { tenderError(overlay, 'Enter a valid 10 to 15 digit phone number.'); phone.focus(); return; }
+            if (!days.validity.valid) { tenderError(overlay, 'Enter 0–3650 calendar days.'); days.focus(); return; }
+            var customer = selected || (settings.customers || []).find(function (saved) {
+                return saved.name.toLowerCase() === customerName.toLowerCase() && phoneDigits(saved.phone) === customerPhone;
+            });
+            var creditDays = days.value === '' ? customer?.creditDays ?? null : days.valueAsNumber;
+            if (customer?.creditDays != null && creditDays !== customer.creditDays &&
+                (!settings.canOverrideCreditTerms || !reason.value.trim())) {
+                tenderError(overlay, 'Use the saved credit term or enter a manager-approved reason to override it.');
+                return;
+            }
+            var bill = withCustomer(Object.assign({}, customer, {name:customerName,phone:customerPhone,creditDays:creditDays}));
+            if (reason.value.trim()) bill.customer.termsReason = reason.value.trim();
+            var error = validation('Credit',bill);
+            if (error) { tenderError(overlay,error); return; }
+            upfront.max = String(totals(bill).pay);
+            var paid = upfront.valueAsNumber;
+            if (!Number.isFinite(paid) || !upfront.validity.valid) {
+                tenderError(overlay, 'Enter an amount from ₹0 to the bill total, with at most two decimal places.');
+                upfront.focus();
+                return;
+            }
+            var payments = paid > 0 ? [{method:field('upfront-method').value,amount:paid}] : [];
+            pay('Credit',payments,overlay,{bill:bill});
+        };
+    }
+    function pay(method, payments, ov, options = {}) {
         if (payPending) return;
+        tenderError(ov, '');
         payPending = true;
-        var t = totals(),
-            sale = Object.assign(copy(draft), {
+        var bill = options.bill || draft;
+        var t = totals(bill),
+            sale = Object.assign(copy(bill), {
                 version: 2,
                 offlineId: 'OFL-' + crypto.randomUUID(),
                 userId: settings.userId,
                 organizationPartyId: orgId,
-                store: settings.store,
-                items: copy(cart),
+                store: Object.assign({}, settings.store, method === 'Credit' ? settings.creditReceiptText : null),
+                receiptOptions: settings.receiptOptions?.[method === 'Credit' ? 'credit' : 'normal'],
                 total: t.pay,
                 taxAmount: t.tax,
                 subtotal: t.sub,
+                discountTotal: t.disc,
                 roundOff: t.round,
-            paymentMethod: method,
-            change: method === 'Cash' ? money(payments[0].amount - t.pay) : 0,
+                paymentMethod: method,
+                change: method === 'Cash' ? money(payments[0].amount - t.pay) : 0,
                 payments: payments,
                 ts: new Date().toISOString(),
             });
+        delete sale.onlineBaseline;
         writeTail
             .catch(function () {
                 throw Error('Draft storage failed');
@@ -1435,11 +1644,13 @@ window._posOffline = (function () {
                     render();
                     banner(true);
                     if (ov) ov.remove();
-                    receiptDialog(sale);
+                    if (options.receipt === 'print') printReceipt(sale);
+                    if (options.receipt) toast('Bill saved on this device and queued to sync.');
+                    else receiptDialog(sale);
                     if (!disconnected()) sync();
                 },
                 function (e) {
-                    toast('Sale NOT saved: ' + e.message, '#c62828');
+                    tenderError(ov, 'Could not save the sale. ' + e.message);
                 },
             )
             .finally(function () {
@@ -1447,54 +1658,31 @@ window._posOffline = (function () {
             });
     }
     function printReceipt(sale) {
-        var store = sale.store || {},
-            html =
-                '<!doctype html><html><head><meta charset="utf-8"><style>@page{size:80mm auto;margin:0}body{font:12px Arial;color:#000;width:72mm;margin:3mm}table{width:100%}td:last-child,th:last-child{text-align:right}</style></head><body><h2>' +
-                esc(store.name || 'Receipt') +
-                '</h2><div>' +
-                esc(store.address) +
-                '</div><div>GSTIN: ' +
-                esc(store.taxReg) +
-                '</div><h3>OFFLINE RECEIPT — PENDING SYNC</h3><div>' +
-                esc(sale.offlineId) +
-                '</div><div>' +
-                esc(new Date(sale.ts).toLocaleString()) +
-                '</div><div>Customer: ' +
-                esc((sale.customer && sale.customer.name) || 'Walk-in Customer') +
-                '</div><table><tr><th>Item</th><th>Qty</th><th>Rate</th><th>Total</th></tr>';
-        sale.items.forEach(function (i) {
-            html +=
-                '<tr><td>' +
-                esc(i.printName || (catalog[i.productId] || {}).printName || i.name) +
-                '</td><td>' +
-                esc(i.qty) +
-                ' ' +
-                esc(i.uom) +
-                '</td><td>' +
-                f2(i.price) +
-                '</td><td>' +
-                f2(i.total) +
-                '</td></tr>';
-        });
-        html +=
-            '</table><hr><div>Subtotal ' +
-            f2(sale.subtotal) +
-            '</div><div>Tax ' +
-            f2(sale.taxAmount) +
-            '</div><div>Round off ' +
-            f2(sale.roundOff) +
-            '</div><h2>TOTAL ₹' +
-            f2(sale.total) +
-            '</h2><p>' +
-            (sale.paymentMethod === 'Credit'
-                ? 'Credit — outstanding ₹' + f2(sale.total)
-                : 'Payment recorded: ' + esc(sale.paymentMethod)) +
-            (sale.change ? '</p><p>Change ₹' + f2(sale.change) : '') +
-            '</p><p>Pending validation and official invoice number on reconnection.</p></body></html>';
+        var customer = sale.customer || {}, payments = sale.payments || [];
+        var store = Object.assign({showPaymentDetails:'Y'}, sale.store);
+        var isCredit = sale.paymentMethod === 'Credit';
+        var receipt = {
+            store:store,
+            options:sale.receiptOptions,
+            bill:{number:sale.offlineId,numbers:{offline:true},date:new Date(sale.ts).toLocaleString(),
+                customer:customer.name || 'Walk-in Customer', customerPhone:customer.phone},
+            items:sale.items.map(function (item) {
+                return {name:item.printName || (catalog[item.productId] || {}).printName || item.name,
+                    qty:item.qty,uom:item.uom,rate:item.price,total:item.total,tax:item.tax,
+                    discount:money(item.price * item.qty * (item.discount || 0) / 100)};
+            }),
+            summary:{total:sale.total,subtotal:sale.subtotal,tax:sale.taxAmount,
+                discount:sale.discountTotal,roundOff:sale.roundOff},
+            payments:payments,change:sale.change,isCredit:isCredit,
+            outstanding:isCredit ? money(sale.total - payments.reduce(function (paid, payment) { return paid + Number(payment.amount); },0)) : 0,
+            notes:'OFFLINE RECEIPT — PENDING SYNC. The official invoice number is assigned after synchronization.',
+        };
+        var html = window.PosReceiptLayout.render(receipt, sale.taxOn === 'Y') + '</body></html>';
         var frame = document.getElementById('pos-offline-frame');
         if (!frame) {
             frame = document.createElement('iframe');
             frame.id = 'pos-offline-frame';
+            frame.setAttribute('aria-hidden', 'true');
             frame.style.cssText = 'position:fixed;left:-10000px;width:80mm';
             document.body.appendChild(frame);
         }
@@ -1506,18 +1694,10 @@ window._posOffline = (function () {
         frame.contentWindow.print();
     }
     function receiptDialog(sale) {
-        var ov = modal(
-            'Sale saved on this device',
-            '<p>Reference: ' +
-                esc(sale.offlineId) +
-                '</p><p>₹' +
-                f2(sale.total) +
-                ' · ' +
-                esc(sale.paymentMethod) +
-                '</p><p>Bill saved on this device and queued to sync.' +
-                (sale.change ? ' Change given: ₹' + f2(sale.change) + '.' : '') +
-                '</p><button type="button" id="oflPrintReceipt">Print receipt</button>',
-        );
+        var title = 'Sale saved on this device';
+        var message = '₹' + f2(sale.total) + ' · ' + sale.paymentMethod + '\nReference: ' + sale.offlineId
+            + '\nBill queued to sync.' + (sale.change ? ' Change given: ₹' + f2(sale.change) + '.' : '');
+        var ov = modal(title, posReceiptPrintMarkup(title, message, true), 440);
         ov.querySelector('#oflPrintReceipt').onclick = function () {
             printReceipt(sale);
         };
@@ -1534,26 +1714,106 @@ window._posOffline = (function () {
             });
         });
     }
+    function hasQueuedSaleForDraft(sales, sourceId) {
+        var sessionId = tCtx().sessionId;
+        return sales.some(function (sale) {
+            return (!sale.sessionId || sale.sessionId === sessionId) && sale.sourceTransactionId &&
+                (!sourceId || sale.sourceTransactionId === sourceId);
+        });
+    }
+    function canResumeOnline() {
+        return !localClose && !disconnected() && localEditing && draft?.sessionId === tCtx().sessionId && leaseReady &&
+            !syncing && !payPending && !pendingLocalEdits.length && !document.getElementById('posOfflineDialog') &&
+            typeof window._posResumeOnline === 'function' && typeof window._posReadRestoredCart === 'function';
+    }
+    function matchesOnlineDraft() {
+        if (draft.restoreRequest) return false;
+        if (!draft.sourceTransactionId) return !draft.items.length;
+        // An unchanged cached copy can safely give control back to its server draft.
+        if (!snapshot || snapshot.transactionId !== draft.sourceTransactionId || draft.sessionId !== tCtx().sessionId) return false;
+        var baseline = draft.onlineBaseline || draftContent(setDraftSource(newDraft()));
+        return draftContent(draft) === baseline;
+    }
+    async function restoreDraft(bill) {
+        if (!bill.restoreRequest) {
+            var amounts = totals(bill), request = copy(bill);
+            delete request.onlineBaseline;
+            bill.restoreRequest = Object.assign(request, {version:2,offlineId:crypto.randomUUID(),userId:settings.userId,
+                organizationPartyId:orgId,total:amounts.pay,taxAmount:amounts.tax,ts:new Date().toISOString()});
+        }
+        await saveDraft();
+        var context = tCtx(), token = document.querySelector('[name=moquiSessionToken]');
+        var response = await fetch('Terminal/restoreOfflineDraft', {method:'POST',credentials:'same-origin',signal:AbortSignal.timeout(15000),
+            headers:{'Content-Type':'application/json'},body:JSON.stringify({terminalId:context.terminalId,sessionId:context.sessionId,
+                moquiSessionToken:token && token.value,draft:bill.restoreRequest})});
+        if (!response.ok) {
+            if ([401,403].includes(response.status)) restoreError = 'Sign in again to confirm this saved cart.';
+            var error = Error('Waiting for the server to confirm the saved cart.');
+            error.posGateway = [502,503,504].includes(response.status);
+            throw error;
+        }
+        var result = await response.json();
+        if (result.rejected) {
+            delete bill.restoreRequest;
+            await saveDraft();
+        }
+        if (result.rejected || result.conflict) {
+            restoreError = result.error;
+            return null;
+        }
+        if (result.offlineId !== bill.restoreRequest.offlineId || !result.transactionId) return null;
+        return window._posReadRestoredCart(result.transactionId, bill);
+    }
     function resumeOnline() {
-        if (disconnected() || !localEditing || !draft || draft.items.length || draft.sourceTransactionId || holds.length ||
-            syncing || payPending || pendingLocalEdits.length || document.getElementById('posOfflineDialog') ||
-            typeof window._posResumeOnline !== 'function') return;
-        getQueue().then(function (sales) {
-            if (sales.length || disconnected() || !localEditing || !draft || draft.items.length || draft.sourceTransactionId ||
-                holds.length || syncing || payPending || pendingLocalEdits.length || document.getElementById('posOfflineDialog')) return;
+        if (restoringTask) return restoringTask;
+        if (!canResumeOnline()) return Promise.resolve();
+        restoringTask = getQueue().then(async function (sales) {
+            if (!canResumeOnline()) return;
+            var bill = draft, unchanged = matchesOnlineDraft(), source = bill.sourceTransactionId ? snapshot : null;
+            if (hasQueuedSaleForDraft(sales, bill.sourceTransactionId) && (unchanged || bill.sourceTransactionId)) {
+                restoreError = 'A saved payment needs review in Bill History before this cart can reconnect.';
+                return;
+            }
+            if (!unchanged) {
+                source = await restoreDraft(bill);
+                if (!source || !source.success || disconnected() || draft !== bill) return;
+                await stateWrite('snapshot:' + scope, source);
+            }
+            if (disconnected() || draft !== bill) return;
+            await writeTail.catch(function () {});
+            await stateWrite('draft:' + scope, null);
+            if (disconnected()) {
+                if (source?.transactionId) {
+                    snapshot = source;
+                    draft = setDraftSource(Object.assign(newDraft(), {mode:bill.mode,taxOn:bill.taxOn}));
+                    draft.onlineBaseline = draftContent(draft);
+                    window._posRememberRestoredSource?.(source.transactionId);
+                    render();
+                }
+                await saveDraft();
+                return;
+            }
             localEditing = false;
             draft = null;
-            writeTail = writeTail.catch(function () {}).then(function () { return stateWrite('draft:' + scope, null); });
-            writeTail.catch(function () {});
-            window._posResumeOnline();
-            banner(false);
+            restoreError = null;
+            var restored = window._posResumeOnline(source, unchanged ? null : bill);
             cacheCatalog();
-        }).catch(function () {});
+            return restored;
+        }).catch(function (error) {
+            return transportFailure(error);
+        }).finally(function () {
+            restoringTask = null;
+            banner(active());
+            announceConnection();
+        });
+        return restoringTask;
     }
     function sync() {
-        if (syncing || disconnected()) return Promise.resolve(0);
+        if (localClose) return window.PosDeferredClose ? window.PosDeferredClose.flush() : Promise.resolve(0);
+        if (syncTask) return syncTask;
+        if (disconnected()) return Promise.resolve(0);
         syncing = true;
-        return recoverLegacy()
+        syncTask = recoverLegacy()
             .then(getQueue)
             .then(function (q) {
                 if (!q.length) return 0;
@@ -1593,6 +1853,7 @@ window._posOffline = (function () {
                             })
                             .then(function () {
                                 ack.forEach(function (id) { rejectedSales.delete(id); });
+                                if (ack.length) window.dispatchEvent(new Event('posofflinesynced'));
                                 (d.failures || []).forEach(function (failure) {
                                     var sale = q[failure.index];
                                     if (sale && failure.error) rejectedSales.set(sale.offlineId, failure.error);
@@ -1601,27 +1862,122 @@ window._posOffline = (function () {
                             });
                     });
             })
+            .then(function (count) {
+                return getQueue().then(function (remaining) {
+                    return syncHeldDrafts(remaining).then(function () { return count; });
+                });
+            })
             .catch(function (error) { return transportFailure(error).then(function () { return 0; }); })
             .finally(function () {
                 syncing = false;
+                syncTask = null;
                 banner(active());
-                resumeOnline();
+                cacheSummary();
+                return resumeOnline();
             });
+        return syncTask;
+    }
+    var summaryRequest;
+    function rememberSummary(summary) {
+        if (summary && summary.success) return stateWrite('summary:' + tCtx().sessionId, copy(summary));
+        return Promise.resolve();
+    }
+    function cacheSummary() {
+        if (summaryRequest || disconnected() || localClose || !tCtx().sessionId) return summaryRequest || Promise.resolve();
+        summaryRequest = fetch('Terminal/ajaxCart', {method:'POST', credentials:'same-origin', signal:AbortSignal.timeout(5000),
+            body:new URLSearchParams({action:'sessionSummary', sessionId:tCtx().sessionId,
+                moquiSessionToken:(document.querySelector('[name=moquiSessionToken]') || {}).value || ''})})
+            .then(function (response) { if (response.ok) return response.json(); })
+            .then(rememberSummary).catch(function () {}).finally(function () { summaryRequest = null; });
+        return summaryRequest;
+    }
+    async function closeSummary() {
+        var summary = await stateRead('summary:' + tCtx().sessionId);
+        var saved = !!summary;
+        summary = Object.assign({billCount:0,totalSales:0,openingCash:0,cashReceived:0,changeGiven:0,movementNet:0,expectedCash:0,cardReceived:0,upiReceived:0}, summary);
+        ['billCount','totalSales','openingCash','cashReceived','changeGiven','movementNet','expectedCash','cardReceived','upiReceived'].forEach(function (field) { summary[field] = Number(summary[field] || 0); });
+        var known = new Set(summary.offlineIds || []);
+        (await getQueue()).filter(function (sale) { return sale.sessionId === tCtx().sessionId && !known.has(sale.offlineId); }).forEach(function (sale) {
+            summary.billCount++;
+            summary.totalSales += Number(sale.total || 0);
+            summary.changeGiven += Number(sale.change || 0);
+            (sale.payments || []).forEach(function (payment) {
+                var field = {Cash:'cashReceived',Card:'cardReceived',UPI:'upiReceived'}[payment.method];
+                if (field) summary[field] += Number(payment.amount || 0);
+            });
+        });
+        summary.expectedCash = Number(summary.openingCash) + Number(summary.cashReceived) - Number(summary.changeGiven) + Number(summary.movementNet);
+        summary.warning = saved ? 'Offline estimate from the last saved session summary. Enter the actual cash in the drawer. Saved bills will sync automatically when connected.'
+            : 'The online summary is unavailable. Enter the actual cash in the drawer. Saved bills will sync automatically when connected.';
+        if ((draft && draft.items.length) || holds.length) summary.warning += ' Unpaid cart items and held bills in this session will be discarded.';
+        return summary;
+    }
+    function showClosed(request) {
+        if (!request || request.sessionId !== tCtx().sessionId) return;
+        localClose = request;
+        localEditing = false;
+        draft = null; holds = []; cart = []; snapshot = null;
+        banner(false);
+        var dialog = document.getElementById('posSessionClosed');
+        if (!dialog) {
+            dialog = document.createElement('dialog');
+            dialog.id = 'posSessionClosed';
+            dialog.className = 'pos-close-overlay';
+            dialog.setAttribute('role','dialog');
+            dialog.setAttribute('aria-labelledby','pos-closed-title');
+            dialog.innerHTML = '<div style="background:#fff;border-radius:16px;padding:32px;max-width:480px;color:#17213b">' +
+                '<h2 id="pos-closed-title" style="margin:0 0 12px;font-size:24px">Session closed</h2>' +
+                '<p class="pos-closed-status" role="status"></p><p>Closing cash: ₹' + f2(request.closingCash) + '</p>' +
+                '<div style="display:flex;gap:12px;margin-top:20px"><button type="button" class="pos-closed-history" style="padding:10px 14px;border:1px solid #7c3aed;border-radius:8px;background:#fff;color:#6d28d9;font:inherit">Bill History</button>' +
+                '<a href="/apps/zenith/pos/PosTerminals" style="padding:10px 14px;border-radius:8px;background:#7c3aed;color:white;text-decoration:none">Back to counters</a></div></div>';
+            dialog.addEventListener('cancel', function (event) { event.preventDefault(); });
+            dialog.querySelector('button').addEventListener('click', function () {
+                if (window.posOpenHistory) window.posOpenHistory();
+                var history = document.getElementById('pos-history-overlay');
+                if (history) dialog.append(history);
+            });
+            (document.fullscreenElement || document.body).append(dialog);
+            dialog.showModal();
+        }
+        dialog.querySelector('.pos-closed-status').textContent = request.syncedAt ? 'All saved bills and the session closure have synchronized.'
+            : request.error ? 'Closed on this device. Saved bills are retained for automatic retry. You can check them in Bill History.'
+            : 'Closed on this device. Saved bills will sync automatically when the connection returns.';
+        Object.keys(request.failures || {}).forEach(function (id) { rejectedSales.set(id, request.failures[id]); });
+    }
+    async function deferClose(amount) {
+        if (draft?.restoreRequest || payPending || (window._posCartWriteInFlight && window._posCartWriteInFlight())) throw Error('Wait for the current cart or payment to be confirmed, then close the session.');
+        if (!window.PosDeferredClose) throw Error('Offline session closure is unavailable. Reload while connected before going offline.');
+        await writeTail;
+        var ctx = tCtx();
+        var request = await window.PosDeferredClose.save({sessionId:ctx.sessionId, terminalId:ctx.terminalId, closingCash:amount});
+        showClosed(request);
+        window.PosDeferredClose.flush();
+        return {success:true,deferred:true};
     }
     function clearDraft() {
-        if (!begin()) return;
+        if (!begin()) return false;
         var sourceId = draft.sourceTransactionId, sourceRevision = draft.sourceRevision;
         draft = newDraft();
         // Clearing the local rows must also replace the unpaid source when the next sale syncs.
         if (sourceId) { draft.sourceTransactionId = sourceId; draft.sourceRevision = sourceRevision; }
         cart = draft.items;
         change();
+        return true;
     }
     function sessionClosed() {
-        if (!db || holds.length || (draft && draft.items.length)) return Promise.resolve();
+        if (!db || sessionHolds().length || (draft && draft.items.length)) return Promise.resolve();
         return getQueue().then(function (pending) {
-            if (pending.length) return;
+            if (pending.some(function (sale) { return sale.sessionId === tCtx().sessionId; })) return;
             return Promise.all([stateWrite('draft:' + scope, null), stateWrite('snapshot:' + scope, null)]);
+        });
+    }
+    async function needsDeferredClose() {
+        if (disconnected()) return true;
+        if (localEditing) await sync();
+        if (draft?.restoreRequest) throw Error('Wait for the server to confirm the saved cart before closing the session.');
+        var sessionId = tCtx().sessionId;
+        return localEditing || sessionHolds().length > 0 || (await getQueue()).some(function (sale) {
+            return sale.sessionId === sessionId;
         });
     }
     function boot() {
@@ -1630,7 +1986,7 @@ window._posOffline = (function () {
         // A missing snapshot or another tab's lease must never leave the server-rendered cart editable.
         ['beforeinput', 'submit', 'change'].forEach(function (eventName) {
             document.addEventListener(eventName, function (event) {
-                if (serverDraftPaused && event.target.closest('.pos-cart,.pos-summary,#cartInlineAddForm')) {
+                if ((serverDraftPaused || restoringTask || draft?.restoreRequest) && event.target.closest('.pos-cart,.pos-summary,#cartInlineAddForm')) {
                     event.preventDefault(); event.stopImmediatePropagation();
                 }
             }, true);
@@ -1639,23 +1995,32 @@ window._posOffline = (function () {
             .then(loadCatalog)
             .then(function () {
                 return Promise.all([
-                    stateRead('draft:' + scope),
+                    readSessionDraft(),
                     stateRead('snapshot:' + scope),
                     stateRead('holds:' + scope),
+                    window.PosDeferredClose ? window.PosDeferredClose.get(tCtx().sessionId) : Promise.resolve(null),
                 ]);
             })
             .then(function (saved) {
+                if (saved[3]) {
+                    storageReady = true;
+                    showClosed(saved[3]);
+                    window.PosDeferredClose.flush();
+                    return;
+                }
                 draft = saved[0] || null;
                 holds = saved[2] || [];
+                holds.forEach(function (bill) { bill.draftId = bill.draftId || crypto.randomUUID(); });
                 if (!snapshot) snapshot = saved[1] || null;
                 storageReady = true;
-                if (draft || disconnected()) begin();
+                if (draft || sessionHolds().length || disconnected()) begin();
                 connectionChanged();
             })
             .catch(function () {
                 toast('Offline storage unavailable. Keep online checkout.', '#c62828');
             });
         window.addEventListener('offline', connectionChanged);
+        window.addEventListener('possessionclosed', function (event) { showClosed(event.detail); });
         window.addEventListener('online', function () { checkConnection(true); });
         document.addEventListener('visibilitychange', function () {
             if (document.hidden) clearTimeout(connectionTimer);
@@ -1676,22 +2041,6 @@ window._posOffline = (function () {
                         draft.taxOn = draft.taxOn === 'Y' ? 'N' : 'Y';
                         change();
                     }
-                } else if (e.target.matches('.pos-header form[action*="closeSession"]')) {
-                    e.preventDefault();
-                    e.stopImmediatePropagation();
-                    var form = e.target;
-                    if (!disconnected() && !cart.length && !holds.length && !payPending) {
-                        sync().then(getQueue).then(function (pending) {
-                            if (pending.length) { toast('Resolve the pending offline sales before closing.', '#c62828'); return; }
-                            localEditing = false;
-                            form.requestSubmit();
-                        });
-                        return;
-                    }
-                    toast(
-                        'Sync pending sales and finish this workspace before closing the session.',
-                        '#c62828',
-                    );
                 }
             },
             true,
@@ -1699,15 +2048,25 @@ window._posOffline = (function () {
         document.addEventListener(
             'click',
             function (e) {
-                if (!active()) return;
                 var b = e.target.closest('button,a,summary');
                 if (!b) return;
+                var savedHold = b.matches('#pos-held-wrap [data-recall]');
+                if (!active() && !savedHold) return;
+                if (b.closest('#posSessionClosed,#pos-history-overlay,#posCloseSessionOverlay')) return;
+                if (localClose) { e.preventDefault(); e.stopImmediatePropagation(); return; }
+                if (b.closest('#posOfflineDialog')) return;
+                if (!disconnected() && b.matches('#pos-pay-cash,#pos-pay-card,#pos-credit,#pos-pay-upi,#pos-split,#pos-hold')) {
+                    e.preventDefault(); e.stopImmediatePropagation();
+                    sync();
+                    toast(restoreError || 'Wait for the saved cart to reconnect, then try again.', '#b45309');
+                    return;
+                }
                 if (payPending) {
                     e.preventDefault();
                     e.stopImmediatePropagation();
                     return;
                 }
-                if (serverDraftPaused) {
+                if (serverDraftPaused && !b.closest('.pos-header form[action*="closeSession"]')) {
                     e.preventDefault();
                     e.stopImmediatePropagation();
                     return;
@@ -1732,7 +2091,15 @@ window._posOffline = (function () {
                     if (window._gridSearch) window._gridSearch('');
                     return;
                 }
-                if (b.closest('#posOfflineDialog')) return;
+                if (draft?.restoreRequest && b.closest('.pos-cart,.pos-summary,#cartInlineAddForm,.pos-left-panel')) {
+                    e.preventDefault(); e.stopImmediatePropagation(); return;
+                }
+                if (savedHold) {
+                    e.preventDefault(); e.stopImmediatePropagation();
+                    if (begin()) recallDraft(b.dataset.recall);
+                    return;
+                }
+                if (b.closest('#pos-held-wrap') && canUseOnlineHeldPicker()) return;
                 if (
                     b.matches(
                         '.pos-cart .aj-q,.pos-cart .aj-rm,#pos-held-wrap > button,#pos-held-wrap summary,#pos-pay-cash,#pos-pay-card,#pos-credit,#pos-pay-upi,#pos-split,#pos-discount,#pos-hold',
@@ -1768,7 +2135,7 @@ window._posOffline = (function () {
             function (e) {
                 if (!active() || !e.target.matches('.pos-cart .aj-p,.pos-cart .aj-qi')) return;
                 e.stopImmediatePropagation();
-                if (payPending) {
+                if (payPending || restoringTask || draft?.restoreRequest) {
                     e.preventDefault();
                     return;
                 }
@@ -1814,7 +2181,7 @@ window._posOffline = (function () {
                     return;
                 }
                 if (!active()) return;
-                if (e.key === 'F9' && !document.getElementById('posOfflineDialog')) {
+                if (e.key === 'F9' && !canUseOnlineHeldPicker() && !document.getElementById('posOfflineDialog')) {
                     e.preventDefault();
                     e.stopImmediatePropagation();
                     if (begin()) heldDialog();
@@ -1840,6 +2207,7 @@ window._posOffline = (function () {
         boot: boot,
         active: active,
         disconnected: disconnected,
+        connectionState: connectionState,
         transportFailure: transportFailure,
         handoff: handoff,
         edit: edit,
@@ -1847,7 +2215,18 @@ window._posOffline = (function () {
         add: add,
         scan: scan,
         sync: sync,
+        canUseOnlineHeldPicker: canUseOnlineHeldPicker,
+        async prepareOnlineRecall() {
+            if (!canUseOnlineHeldPicker()) return false;
+            await resumeOnline();
+            return !active();
+        },
+        hold: function () {
+            if (!disconnected()) { sync(); return; }
+            if (begin()) holdDraft();
+        },
         clearDraft: clearDraft,
+        needsDeferredClose: needsDeferredClose,
         render: render,
         chooseCustomer: function () { if (begin()) chooseCustomer(); },
         discount: function () { if (begin()) discountDialog(); },
@@ -1871,6 +2250,10 @@ window._posOffline = (function () {
         reviewReason: function (id) { return rejectedSales.get(id); },
         recoverLegacy: recoverLegacy,
         sessionClosed: sessionClosed,
+        closeSummary: closeSummary,
+        rememberSummary: rememberSummary,
+        deferClose: deferClose,
+        acknowledgeLegacy: acknowledgeLegacy,
     };
 })();
 
@@ -1907,7 +2290,7 @@ window._posOffline = (function () {
     }
         /* === Bill History Panel === */
         var historyOverlay = null, historyCriteria = {}, historyRequest, historyVersion = 0;
-        var historyReconnect, historyFailed = false;
+        var historyReconnect, historySynced, historyFailed = false;
         function openBillHistory(search) {
             closeHistory(); historyCriteria = {};
             var ov = document.createElement('div');
@@ -1960,6 +2343,8 @@ window._posOffline = (function () {
             function reload() { clearTimeout(searchTimer); loadHistoryList(searchInput.value); }
             historyReconnect = function() { if (historyFailed) reload(); };
             window.addEventListener('online', historyReconnect);
+            historySynced = reload;
+            window.addEventListener('posofflinesynced', historySynced);
             filter.addEventListener('click', function () {
                 form.hidden = !form.hidden;
                 filter.setAttribute('aria-expanded', String(!form.hidden));
@@ -1994,6 +2379,8 @@ window._posOffline = (function () {
         function closeHistory() {
             ++historyVersion;
             window.removeEventListener('online', historyReconnect);
+            window.removeEventListener('posofflinesynced', historySynced);
+            historySynced = null;
             historyReconnect = null; historyFailed = false;
             if (historyRequest) historyRequest.abort();
             if (historyOverlay) { historyOverlay.remove(); historyOverlay = null; }
@@ -3866,6 +4253,13 @@ window.posToggleFullscreen = function() {
         }
         function recallHeldBill(hid) {
             if (!hid || cartClearing || modeSwitching) return;
+            if (window._posOffline?.active?.()) {
+                window._posOffline.prepareOnlineRecall().then(function (ready) {
+                    if (ready) recallHeldBill(hid);
+                    else showToast('Finish syncing the current cart before recalling this bill.', '#b45309');
+                });
+                return;
+            }
             if (window._posCommitEdits && !window._posCommitEdits()) return;
             cartClearing = true;
             OPT.whenIdle().then(function() {
@@ -4284,20 +4678,11 @@ window.posToggleFullscreen = function() {
             panel.setAttribute('role', 'dialog');
             panel.setAttribute('aria-label', 'Receipt printing');
             panel.style.cssText = 'position:fixed;inset:0;z-index:999999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box';
-            panel.innerHTML = '<div style="background:#fff;color:#111;padding:24px;border-radius:12px;max-width:440px;max-height:85vh;overflow:auto">'
-                + '<h2 style="margin-top:0;font-size:20px">Receipt printing</h2>'
-                + '<p class="pos-print-status" role="status">QZ Tray did not confirm printing. Check the printer before retrying. Browser printing may exit fullscreen.</p>'
-                + '<div style="display:flex;flex-wrap:wrap;gap:10px">'
-                + '<button type="button" class="pos-print-retry">Retry QZ</button>'
-                + '<button type="button" class="pos-print-browser">Print using browser</button>'
-                + '<button type="button" class="pos-print-cancel">Close</button></div></div>';
+            panel.innerHTML = posReceiptPrintMarkup('Receipt printing',
+                'QZ Tray did not confirm printing. Check the printer before retrying. Browser printing may exit fullscreen.');
             document.body.appendChild(panel);
             if (qzErr) { try { panel.querySelector('.pos-print-status').textContent = 'QZ Tray did not print. Reason: ' + qzErr + '. Retry, or print via browser.'; } catch(e) {} }
-            panel.querySelectorAll('button').forEach(function(button) {
-                button.style.cssText = 'padding:10px 14px;border:1px solid #7C3AED;border-radius:8px;background:#fff;color:#5b21b6;font-size:14px;cursor:pointer';
-            });
             var retry = panel.querySelector('.pos-print-retry');
-            retry.style.background = '#7C3AED'; retry.style.color = '#fff';
             retry.addEventListener('click', function() {
                 panel.querySelectorAll('button').forEach(function(button) { button.disabled = true; });
                 panel.querySelector('.pos-print-status').textContent = 'Connecting to QZ Tray. Allow the connection if prompted.';
@@ -4371,7 +4756,7 @@ window.posToggleFullscreen = function() {
                 // A refresh can already be in flight when the cashier clears the draft.
                 return cartRequest.catch(function() {}).then(function() { return post(params, signal); });
             }
-            params.sessionId = SI; params.taxOn = params.taxOn || TO; params.salesModeId = SM; params.moquiSessionToken = TK;
+            params.sessionId = SI; params.taxOn = params.taxOn || TO; params.salesModeId = params.salesModeId || SM; params.moquiSessionToken = TK;
             cartRequest = fetch('Terminal/ajaxCart', {
                 method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'},
                 body: new URLSearchParams(params), credentials: 'same-origin', signal: signal || AbortSignal.timeout(25000)
@@ -4720,12 +5105,39 @@ window.posToggleFullscreen = function() {
                 count.dataset.day = sourceCount.dataset.day;
             }
         }
-        window._posResumeOnline = function () {
+        window._posReadRestoredCart = function (transactionId, bill) {
+            return post({action:'refresh',transactionId:transactionId,taxOn:bill.taxOn,salesModeId:bill.mode}, AbortSignal.timeout(12000));
+        };
+        window._posRememberRestoredSource = function (transactionId) {
+            TX = transactionId;
+            af.elements.transactionId.value = transactionId;
+        };
+
+        window._posResumeOnline = function (source, bill) {
             if (!af.isConnected) return;
             if (smRoot) smRoot.removeAttribute('data-sig');
-            resetCompletedCart(true);
+            if (bill) {
+                SM = bill.mode || SM;
+                TO = bill.taxOn;
+                af.elements.salesModeId.value = SM;
+                var url = new URL(location.href);
+                url.searchParams.set('transactionId', source.transactionId);
+                url.searchParams.set('salesModeId', SM);
+                url.searchParams.set('taxOn', TO);
+                url.searchParams.delete('freshSale');
+                url.searchParams.delete('lastCompletedId');
+                history.replaceState(history.state, '', url.href);
+                document.querySelectorAll('.pos-header a[href*="changeSalesMode"]').forEach(function (link) {
+                    link.classList.toggle('is-active', new URL(link.href).searchParams.get('salesModeId') === SM);
+                });
+            }
+            if (source) renderCart(source, true);
+            else resetCompletedCart(true);
             applyTaxMode(TO);
-            fetchScreen({}).then(syncIssuedBillHeader).catch(function () {});
+            return fetchScreen({}, AbortSignal.timeout(12000)).then(function (doc) {
+                syncHeldWrap(doc);
+                syncCompletedBillSummary(doc);
+            }).catch(function () {});
         };
 
         /* ============================================================
@@ -5003,7 +5415,7 @@ window.posToggleFullscreen = function() {
         window._posClearCart = function() {
             if (window._posOffline?.active?.()) {
                 if (window._posOffline.paused()) return Promise.reject(new Error('Reconnect before clearing this cart.'));
-                window._posOffline.clearDraft();
+                if (!window._posOffline.clearDraft()) return Promise.reject(new Error('Wait for the saved cart to reconnect before clearing it.'));
                 return Promise.resolve();
             }
             if (!navigator.onLine) return Promise.reject(new Error('Reconnect before clearing the server cart.'));
@@ -5618,20 +6030,43 @@ window.posToggleFullscreen = function() {
             if (closeForm.dataset.loading || document.getElementById('posCloseSessionOverlay')) return;
             closeForm.dataset.loading = '1';
             try {
-                var response = await fetch('Terminal/ajaxCart', {
-                    method:'POST', credentials:'same-origin',
-                    body:new URLSearchParams({action:'sessionSummary', sessionId:SI, taxOn:TO, salesModeId:SM, moquiSessionToken:TK})
-                });
-                var summary = await response.json();
-                if (!response.ok || !summary.success) throw new Error(summary.error || 'Failed to load session summary');
-                PosTillDialogs.openClose({sessionId:SI, summary:summary, close:async function(amount) {
+                var offline = window._posOffline;
+                var deferred = offline && await offline.needsDeferredClose();
+                var summary;
+                if (!deferred) {
+                    try {
+                        var response = await fetch('Terminal/ajaxCart', {
+                            method:'POST', credentials:'same-origin', signal:AbortSignal.timeout(5000),
+                            body:new URLSearchParams({action:'sessionSummary', sessionId:SI, taxOn:TO, salesModeId:SM, moquiSessionToken:TK})
+                        });
+                        summary = await response.json();
+                        if (!response.ok || !summary.success) throw new Error(summary.error || 'Failed to load session summary');
+                        if (offline) await offline.rememberSummary(summary).catch(function () {});
+                    } catch (error) {
+                        if (!offline || !(await offline.transportFailure(error))) throw error;
+                        deferred = true;
+                    }
+                }
+                if (deferred) summary = await offline.closeSummary();
+                PosTillDialogs.openClose({sessionId:SI, summary:summary, warning:summary.warning, close:async function(amount) {
+                    if (deferred || (offline && await offline.needsDeferredClose())) return offline.deferClose(amount);
                     var fd = new FormData(closeForm);
                     fd.set('closingCash',amount); fd.set('wantJson','1'); fd.set('moquiSessionToken',TK);
-                    var response = await fetch(closeForm.action,{method:'POST',body:new URLSearchParams(fd),credentials:'same-origin'});
+                    var response;
+                    try { response = await fetch(closeForm.action,{method:'POST',body:new URLSearchParams(fd),credentials:'same-origin',signal:AbortSignal.timeout(5000)}); }
+                    catch (error) {
+                        if (offline && await offline.transportFailure(error)) return offline.deferClose(amount);
+                        throw error;
+                    }
+                    if ([502,503,504].includes(response.status) && offline) {
+                        var gateway = new Error('Session close unavailable'); gateway.posGateway = true;
+                        if (await offline.transportFailure(gateway)) return offline.deferClose(amount);
+                    }
                     var result = await response.json().catch(function() { return {}; });
                     if (!response.ok || !result.success) throw new Error(result.error || 'Session close failed. Please try again.');
                     return result;
                 }, onClosed:function(result) {
+                    if (result.deferred) return;
                     showToast('Session closed successfully');
                     var cleared = window._posOffline ? window._posOffline.sessionClosed() : Promise.resolve();
                     cleared.finally(function() { location.assign(result.redirectUrl || '/apps/zenith/pos/Terminal?sessionId='+encodeURIComponent(SI)); });
@@ -5698,8 +6133,17 @@ window.posToggleFullscreen = function() {
         // Refresh the server-rendered held-bills picker (#pos-held-wrap <details>) from a full
         // terminal render after an AJAX void.
         function syncHeldWrap(doc) {
-            try { var s = doc.querySelector('#pos-held-wrap'); var d = document.getElementById('pos-held-wrap'); if (s && d) d.innerHTML = s.innerHTML; } catch (e) {}
+            if (window._posOffline && !window._posOffline.canUseOnlineHeldPicker()) return;
+            var source = doc.querySelector('#pos-held-wrap'), target = document.getElementById('pos-held-wrap');
+            if (!source || !target) return;
+            var open = !!target.querySelector('details[open]');
+            target.innerHTML = source.innerHTML;
+            var picker = target.querySelector('details');
+            if (picker) picker.open = open;
         }
+        window._posRefreshHeldPicker = function () {
+            return fetchScreen({}, AbortSignal.timeout(12000)).then(syncHeldWrap).catch(function () {});
+        };
         // Hold in place: a native navigation exits browser fullscreen.
         document.addEventListener('submit', function(e) {
             if (!af.isConnected) return;
@@ -5708,6 +6152,7 @@ window.posToggleFullscreen = function() {
             var act = form.getAttribute('action') || '';
             if (act.indexOf('holdSale') !== -1) {
                 e.preventDefault(); e.stopImmediatePropagation();
+                if (window._posOffline?.active?.()) { window._posOffline.hold(); return; }
                 if (cartClearing || modeSwitching || !TX) return;
                 cartClearing = true;
                 OPT.whenIdle().then(function() {

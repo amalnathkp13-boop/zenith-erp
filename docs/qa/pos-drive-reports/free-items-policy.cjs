@@ -137,7 +137,7 @@ module.exports=async function({manager,cashier,foreign,session,id,free,credit,ca
  const warmedData=await (await warmed).json();check('Offline free-item fixture caches its own empty draft',warmedData.success&&warmedData.transactionId===offlineCart&&warmedData.items.length===0);
  await offlinePage.waitForFunction(()=>window._posOffline?.lookup('POS_QA_A_FREE'));
  await manager.c.setOffline(true);
- await offlinePage.locator('#pos-offline-banner').waitFor();
+ await offlinePage.waitForFunction(()=>window._posOffline?.active()&&!window._posOffline.paused());
  const queued=await offlinePage.evaluate(async()=>{window._posOffline.add('POS_QA_A_FREE');return(await window._posOffline.getQueue()).length;});
  await offlinePage.locator('.aj-p').fill('0');
  check('Offline zero-price fixture uses the visible rate field',await offlinePage.locator('.aj-p').inputValue()==='0');

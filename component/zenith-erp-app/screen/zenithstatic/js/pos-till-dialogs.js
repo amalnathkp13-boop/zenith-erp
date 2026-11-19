@@ -53,7 +53,7 @@
         return !confirm.disabled;
     }
 
-    function digitalMarkup(method, due) {
+    function digitalMarkup(method, due, offline = false) {
         const isUpi = method === 'UPI';
         const icon = isUpi ? '&#128241;' : '&#128179;';
         const label = isUpi ? 'UPI Payment' : 'Card Payment';
@@ -62,7 +62,8 @@
         return '<div style="background:#fff;border-radius:14px;max-width:420px;width:100%;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,0.4);font-family:inherit">'
             + '<div style="font-size:18px;font-weight:800;color:#222;margin-bottom:14px" id="pos-digital-title">' + icon + ' ' + label + '</div>'
             + '<div style="display:flex;justify-content:space-between;align-items:center;font-size:16px;margin-bottom:6px"><span style="color:#666">Amount</span><b style="color:#222;font-size:24px">&#8377; ' + due.toFixed(2) + '</b></div>'
-            + '<div style="font-size:14px;color:#5d4037;line-height:1.6;margin:12px 0 18px;padding:11px 13px;background:#fff8e1;border:1px solid #ffe082;border-radius:9px">Take the payment on the <b>' + where + '</b> first. Press <b>Confirm</b> only after it shows <b>approved</b>. If it failed or you tapped by mistake, press <b>Cancel</b> &mdash; no bill is created.</div>'
+            + '<div style="font-size:14px;color:#5d4037;line-height:1.6;margin:12px 0 18px;padding:11px 13px;background:#fff8e1;border:1px solid #ffe082;border-radius:9px">Take the payment on the <b>' + where + '</b> first. Press <b>Confirm</b> only after it shows <b>approved</b>. If it failed or you tapped by mistake, press <b>Cancel</b> &mdash; no bill is created.'
+            + (offline ? ' POS cannot verify the payment provider while offline.' : '') + '</div>'
             + '<div data-pos-tender-row style="display:flex;gap:10px"><button type="button" id="posPayConfCancel" style="flex:1;padding:14px;font-size:15px;font-weight:700;border:1px solid #bbb;background:#f5f5f5;color:#444;border-radius:10px;cursor:pointer">Cancel</button>'
             + '<button type="button" id="posPayConfOk" style="flex:2;padding:14px;font-size:16px;font-weight:800;border:none;background:' + accent + ';color:#fff;border-radius:10px;cursor:pointer">Confirm Payment Received</button></div>'
             + '</div>';

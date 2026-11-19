@@ -68,6 +68,12 @@ deployment claim. Never reuse a database containing customer records.
   unacknowledged queue entries after partial/legacy/failed responses, check GST cache
   and receipt markup, and preserve invalid-quantity lines. A differing
   historical offline total stays unacknowledged for review; no cash is invented.
+- Offline session close persists the actual closing cash and closes the local workspace
+  immediately. On reconnection, the original user's organization syncs acknowledged
+  bills before finalizing the close, including from another ERP page. The focused
+  `POS_QA_FOCUS=offline-session-close` scenario covers reload, a lost close response,
+  legacy/current snapshots from retired drawers, original timestamps, cash
+  reconciliation, duplicate replay, and rollback of real draft/payment conflicts.
 - Concurrent completion numbers and synthetic-only amendment validation, linked
   invoice totals, tax detail and audit. No production issued bill is amended.
 - Tenant service/detail/receipt denial, CSRF, cashier permissions, child report

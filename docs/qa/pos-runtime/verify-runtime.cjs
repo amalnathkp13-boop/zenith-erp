@@ -72,10 +72,12 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  if(process.env.POS_QA_FOCUS==='product-mode-form'){await require('./verify-product-mode-form.cjs')({a,base,check,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='live-mode-pricing'){await require('./verify-live-mode-pricing.cjs')({a,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='checkout-recovery'){await require('./verify-checkout-recovery.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
+ if(process.env.POS_QA_FOCUS==='reconnect-checkout'){await require('./verify-reconnect-checkout.cjs')({a,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='kot-compact'){await require('./verify-kot-compact.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='checkout-reference'){await require('./verify-checkout-reference.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='printer-billing-resilience'){await require('./verify-printer-billing-resilience.cjs')({a,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='offline-workspace'){await require('./verify-offline-workspace.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
+ if(process.env.POS_QA_FOCUS==='offline-session-close'){await require('./verify-offline-session-close.cjs')({a,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='receipt-designs'){await require('./verify-receipt-designs.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='hold-print'){await require('./verify-hold-print.cjs')({a,base,check,q,invoke,post});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='dashboard-today'){await require('./verify-dashboard-today.cjs')({a,base,check});await browser.close();browser=null;return;}
@@ -434,6 +436,8 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  // Finish the online cart/hold/close assertions before the offline scenario opens its own session.
  await require('./verify-printer-billing-resilience.cjs')({a,base,check,q,invoke,post,out});
  await require('./verify-offline-workspace.cjs')({a,foreign,base,check,q,invoke,post,out});
+ await require('./verify-reconnect-checkout.cjs')({a,base,check,q,invoke,post,out});
+ await require('./verify-offline-session-close.cjs')({a,base,check,q,invoke,post,out});
  }
  if(process.env.POS_QA_UI_ONLY!=='true'){
  const recovery=await account('pos.qa'),lp=recovery.p;

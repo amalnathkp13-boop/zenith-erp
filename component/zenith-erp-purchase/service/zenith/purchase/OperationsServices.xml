@@ -110,7 +110,11 @@
             <if condition="quantity&lt;=0 || unitAmount&lt;0 || (!productId &amp;&amp; !itemDescription?.trim())"><return error="true" message="Enter a product or description, positive quantity and nonnegative unit price."/></if>
             <script><![CDATA[
                 def product=productId ? ec.entity.find('mantle.product.Product').condition('productId',productId).disableAuthz().one() : null
-                if(productId && (!product || product.ownerPartyId!=access.part.customerPartyId)) ec.message.addError('Select a product from the buying organization.')
+                if (productId && (!product || product.ownerPartyId != access.part.customerPartyId)) {
+                    ec.message.addError('Select a product from the buying organization.')
+                } else if (product && !itemDescription?.trim()) {
+                    itemDescription = product.productName ?: product.pseudoId ?: product.productId
+                }
             ]]></script>
             <if condition="ec.message.hasError()"><return/></if>
             <service-call name="create#mantle.order.OrderItem" in-map="[orderId:orderId,orderPartSeqId:'01',productId:productId,itemDescription:itemDescription,quantity:quantity,unitAmount:unitAmount,requiredByDate:requiredByDate,itemTypeEnumId:'ItemInventory']" out-map="context"/>
@@ -144,7 +148,7 @@
                 try {date=java.sql.Timestamp.valueOf(java.time.LocalDate.parse(receiptDate.toString().trim()).atStartOfDay())} catch(Exception ignored) {ec.message.addError('Enter a valid receipt date.');return}
                 def amounts=[freightAmount,insuranceAmount,customsDutyAmount]
                 if(amounts.any {it!=null && it<0}) {ec.message.addError('Landed surcharges cannot be negative.');return}
-                def row=ec.entity.makeValue('zenith.erp.purchase.GoodsReceiptNote').setAll([purchaseOrderId:purchaseOrderId,vendorPartyId:access.part.vendorPartyId,receiptDate:date,freightAmount:freightAmount,insuranceAmount:insuranceAmount,customsDutyAmount:customsDutyAmount]).setSequencedIdPrimary().create()
+                def row=ec.entity.makeValue('zenith.erp.purchase.GoodsReceiptNote').setAll([purchaseOrderId:purchaseOrderId,vendorPartyId:access.part.vendorPartyId,statusId:'GrnDraft',receiptDate:date,freightAmount:freightAmount,insuranceAmount:insuranceAmount,customsDutyAmount:customsDutyAmount]).setSequencedIdPrimary().create()
                 grnId=row.grnId
             ]]></script>
         </actions>
