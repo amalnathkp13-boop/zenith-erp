@@ -628,7 +628,12 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
   await require('./verify-product-mode-form.cjs')({a,base,check,out});
   await require('./verify-live-mode-pricing.cjs')({a,base,check,q,invoke,post,out});
   await require('./verify-shop-dashboard-access.cjs')({a,browser,base,check,invoke,post,q,out});
-  await require('./verify-checkout-recovery.cjs')({a,foreign,base,check,q,invoke,post,out});
+  // Session rotation invalidates its browser session; isolate it from the suite's other live pages.
+  const checkoutRecovery=await account('pos.qa');await checkoutRecovery.p.close();
+  try {await require('./verify-checkout-recovery.cjs')({a:checkoutRecovery,foreign,base,check,q,out,cleanupInvoke:invoke,
+   invoke:(op,params,reject=false)=>invoke(op,params,reject,checkoutRecovery),
+   post:(screen,transition,params={},actor=checkoutRecovery,csrf=true,shell='apps')=>post(screen,transition,params,actor,csrf,shell)});
+  } finally {await checkoutRecovery.c.close();}
   await require('./verify-kot-receipts.cjs')({a,foreign,base,check,q,invoke,post,out});
  }
  cp.execFileSync(process.execPath,[path.join(__dirname,'check-kitchen-navigation.cjs')],{stdio:'inherit'});
