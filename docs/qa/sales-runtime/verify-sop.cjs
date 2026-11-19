@@ -17,6 +17,18 @@ module.exports=async function({ctx,p,post,invoke,q,rows,inv,count,check,base,out
  const createdId=(r,field)=>{const loc=r.headers().location;return loc?new URL(loc,base).searchParams.get(field):null;};
  async function createInvoice(extra={}){const r=await post('CreateInvoice','createInvoice',{toPartyId:'SALES_QA_CUST_A',...extra});const id=createdId(r,'invoiceId');check('SOP invoice persisted',!!id&&!!inv(id),{id});report.created.push({type:'SOP invoice',id});return id;}
  async function page(screen,shell='apps'){const r=await p.goto(`${base}/${shell}/zenith/sales/${screen}`,{waitUntil:'networkidle'});check('SOP '+shell+' '+screen+' loads',r.status()===200&&!/Error rendering|ScreenRenderException|HTTP Status 500|No entity found|Ambiguous method|Template Error/.test(await p.locator('body').innerText()),{status:r.status()});return p.locator('.z-sales-page').innerText();}
+ async function withBuyerState(state, run){
+  const activeState=()=>String(rows('tax_registration',"registration_id='SALES_QA_TAX_INTER'")[0].region_geo_id);
+  const previous=activeState();
+  try{
+   await post('SalesQaAcceptance','customerState',{state});
+   check('SOP temporary buyer registration applied',activeState()===state,{previous,state});
+   await run();
+  }finally{
+   await post('SalesQaAcceptance','customerState',{state:previous});
+   check('SOP original buyer registration restored',activeState()===previous,{previous});
+  }
+ }
  await scenario(['SL-010','SL-020','SL-012','SL-021'],'Create quote/order through actual forms and auto-price',async()=>{
   for(const [screen,transition] of [['CreateQuotation','createQuotation'],['CreateOrder','createOrder']]){
    const r=await post(screen,transition,{customerPartyId:'SALES_QA_CUST_A',orderDate:'2026-07-02',facilityId:'SALES_QA_FAC_A'}),id=createdId(r,'orderId');
@@ -82,11 +94,54 @@ module.exports=async function({ctx,p,post,invoke,q,rows,inv,count,check,base,out
    await post('EditQuotation','convertToOrder',{orderId:id});check('SOP empty quote stays proposed',rows('order_header',`order_id='${id}'`)[0].status_id==='OrderProposed',{id});
    await post('EditQuotation','addItem',{orderId:id,productId:'SALES_QA_PROD_A',quantity:'2',unitAmount:'100',taxPercentage:'18'});
    const i=rows('order_item',`order_id='${id}'`)[0];check('SOP '+(inter?'inter':'intra')+' state quotation tax golden',Number(i?.cgst_amount)===(inter?0:18)&&Number(i?.sgst_amount)===(inter?0:18)&&Number(i?.igst_amount)===(inter?36:0),i);
-   if(inter){await post('SalesQaAcceptance','customerState',{state:'29'});await post('EditQuotation','convertToOrder',{orderId:id});await post('EditOrder','convertToInvoice',{orderId:id});const bill=rows('order_item_billing',`order_id='${id}'`)[0];check('SOP state change retaxes converted invoice',!!bill&&Number(inv(bill.invoice_id).total_cgst)===18&&Number(inv(bill.invoice_id).total_sgst)===18&&Number(inv(bill.invoice_id).total_igst)===0,{id,bill});await post('SalesQaAcceptance','customerState',{state:'27'});}
+   if(inter) await withBuyerState('29',async()=>{
+    await post('EditQuotation','convertToOrder',{orderId:id});
+    await post('EditOrder','convertToInvoice',{orderId:id});
+    const bill=rows('order_item_billing',`order_id='${id}'`)[0];
+    check('SOP state change retaxes converted invoice',!!bill&&Number(inv(bill.invoice_id).total_cgst)===18&&Number(inv(bill.invoice_id).total_sgst)===18&&Number(inv(bill.invoice_id).total_igst)===0,{id,bill});
+   });
   }
   const empty=await post('CreateOrder','createOrder',{customerPartyId:'SALES_QA_CUST_A',facilityId:'SALES_QA_FAC_A'}),id=createdId(empty,'orderId');check('SOP empty order created',!!id,{id});await post('EditOrder','convertToInvoice',{orderId:id});check('SOP empty order has no invoice link',count('order_item_billing',`order_id='${id}'`)===0,{id});
   await page('EditQuotation?orderId=SALES_QA_QUOTE');await p.getByText('Add Item',{exact:true}).first().click();
   const rates=await p.locator('select[name="taxPercentage"] option').evaluateAll(es=>es.map(e=>e.value));check('SOP GST dropdown offers only supported slabs',rates.join(',')==='0,5,12,18,28',rates);
+ });
+ await scenario(['SL-014','SL-015','SL-022','XF-002'],'A changed tax jurisdiction preserves the accepted rate and requires revision for a changed price',async()=>{
+  const customer='SALES_QA_CUST_INTER';
+  const product='SALES_QA_PROD_A';
+  check('SOP manual rate fixture uses an 18 percent catalog product',rows('product',`product_id='${product}'`)[0].gst_slab_id==='GST_18',{product});
+  async function acceptedOrder(price,expectedTax,expectedTotal){
+   const quote=await post('CreateQuotation','createQuotation',{customerPartyId:customer,orderDate:'2026-07-03'});
+   const id=createdId(quote,'orderId');
+   await post('EditQuotation','addItem',{orderId:id,productId:product,quantity:'1',unitAmount:price,taxPercentage:'5'});
+   await post('EditQuotation','convertToOrder',{orderId:id});
+   const line=rows('order_item',`order_id='${id}'`)[0];
+   const header=rows('order_header',`order_id='${id}'`)[0];
+   check('SOP accepted interstate 5 percent order at '+price,header?.document_type==='SALES_ORDER'&&Number(header.grand_total)===expectedTotal&&
+    Number(line?.igst_rate)===5&&Number(line.igst_amount)===expectedTax&&Number(line.total_tax_amount)===expectedTax,{id,price,line});
+   return id;
+  }
+  const equal=await acceptedOrder('100.00',5,105);
+  const different=await acceptedOrder('10.20',0.51,10.71);
+  await withBuyerState('29',async()=>{
+   await post('EditOrder','convertToInvoice',{orderId:equal});
+   const link=rows('order_item_billing',`order_id='${equal}'`)[0];
+   const billed=link&&inv(link.invoice_id);
+   const line=link&&rows('invoice_item',`invoice_id='${link.invoice_id}' AND product_id='${product}'`)[0];
+   check('SOP changed jurisdiction keeps the accepted 5 percent rate on an 18 percent catalog product',
+    billed&&Number(billed.invoice_total)===105&&Number(line?.cgst_amount)===2.5&&Number(line.sgst_amount)===2.5&&Number(line.igst_amount)===0,
+    {order:equal,invoice:link?.invoice_id,line});
+   const priorCount=count('invoice',`from_party_id='SALES_QA_A' AND to_party_id='${customer}'`);
+   const response=await post('EditOrder','convertToInvoice',{orderId:different});
+   const location=response.headers().location;
+   const feedback=location?await (await ctx.request.get(new URL(location,response.url()).href)).text():await response.text();
+   check('SOP one-paisa jurisdiction change asks for a quotation revision',/revise the quotation/i.test(feedback),{id:different,status:response.status()});
+   check('SOP one-paisa jurisdiction change does not create an invoice or billing link',
+    count('invoice',`from_party_id='SALES_QA_A' AND to_party_id='${customer}'`)===priorCount&&count('order_item_billing',`order_id='${different}'`)===0,{id:different});
+   const original=rows('order_item',`order_id='${different}'`)[0];
+   check('SOP accepted amount and original IGST survive the rejected conversion',
+    Number(rows('order_header',`order_id='${different}'`)[0].grand_total)===10.71&&Number(original.igst_amount)===0.51&&Number(original.total_tax_amount)===0.51,
+    {id:different,original});
+  });
  });
  await scenario(['SL-050','SL-051','SL-082'],'Invoice issue/sent/acknowledged/cash settlement flow',async()=>{
   const id=await createInvoice();await post('EditInvoice','addItem',{invoiceId:id,quantity:'1',amount:'100',taxPercentage:'18'});

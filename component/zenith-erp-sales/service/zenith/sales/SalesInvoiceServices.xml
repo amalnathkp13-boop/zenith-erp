@@ -115,9 +115,14 @@
 
             <!-- Get seller and buyer tax registrations -->
             <service-call name="zenith.tax.TaxServices.get#PartyTaxRegistration"
-                          in-map="[partyId:organizationPartyId]" out-map="sellerTaxReg"/>
+                          in-map="[partyId:organizationPartyId,countryGeoId:(sourceOrderId ? 'IND' : null)]" out-map="sellerTaxReg"/>
             <service-call name="zenith.tax.TaxServices.get#PartyTaxRegistration"
-                          in-map="[partyId:customerPartyId]" out-map="buyerTaxReg" ignore-error="true"/>
+                          in-map="[partyId:customerPartyId,countryGeoId:(sourceOrderId ? 'IND' : null)]" out-map="buyerTaxReg" ignore-error="true"/>
+
+            <if condition="sourceOrderId">
+                <script location="component://zenith-erp-sales/script/SalesOrderInvoiceTax.groovy"/>
+                <if condition="ec.message.hasError()"><return/></if>
+            </if>
 
             <!-- Get financial year prefix -->
             <service-call name="zenith.base.LocalizationServices.get#FinancialYearDates"
@@ -165,30 +170,8 @@
                     discountAmount:lineDiscount, isTaxInclusive:item.isTaxInclusive ?: 'N'])</script>
             </iterate>
 
-            <if condition="sourceOrderId">
-                <script><![CDATA[
-                    taxResult = [taxedItems:sourceItems.collect { row ->
-                        def details
-                        if (row.salesTaxDetailsJson) {
-                            details = new groovy.json.JsonSlurper().parseText(row.salesTaxDetailsJson)
-                        } else {
-                            // Legacy quotations stored each rounded GST component directly on the line.
-                            details = ['CGST','SGST','IGST'].findResults { name ->
-                                def key = name.toLowerCase(), rate = row.get(key+'Rate') ?: 0, amount = row.get(key+'Amount') ?: 0
-                                (rate || amount) ? [taxName:name,taxRate:rate,taxableAmount:row.taxableAmount,taxAmount:amount,
-                                        countryGeoId:'IND',isIncludedInPrice:row.isTaxInclusive ?: 'N'] : null
-                            }
-                        }
-                        def total = details.sum { it.taxAmount ?: 0 } ?: BigDecimal.ZERO
-                        if (row.totalTaxAmount != null && total != row.totalTaxAmount) {
-                            ec.message.addError('The saved order tax components do not match its line total. Review the order before invoicing.')
-                        }
-                        [taxableAmount:row.taxableAmount, totalTaxAmount:total, taxBreakdowns:details]
-                    }]
-                ]]></script>
-                <if condition="ec.message.hasError()"><return/></if>
-                <else>
-                    <service-call name="zenith.tax.TaxServices.calculate#Tax"
+            <if condition="!sourceOrderId">
+                <service-call name="zenith.tax.TaxServices.calculate#Tax"
                           in-map="[organizationPartyId:organizationPartyId, customerPartyId:customerPartyId,
                                    items:taxItems, originRegionGeoId:sellerTaxReg.regionGeoId,
                                    destinationRegionGeoId:buyerTaxReg?.regionGeoId ?: sellerTaxReg.regionGeoId,
@@ -196,7 +179,6 @@
                                    transactionType:'SALE', isReverseCharge:isReverseCharge,
                                    isSezSupply:isSezSupply, isWithPayment:isWithPayment]"
                           out-map="taxResult"/>
-                </else>
             </if>
 
             <!-- Create each invoice item with tax -->
