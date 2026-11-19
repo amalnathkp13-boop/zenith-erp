@@ -217,7 +217,7 @@
     </service>
 
     <service verb="create" noun="StockTransfer" no-tx-cache="true">
-        <in-parameters><parameter name="fromFacilityId" required="true"/><parameter name="toFacilityId" required="true"/><parameter name="transferDate" type="Timestamp"/><parameter name="remarks"/></in-parameters>
+        <in-parameters><parameter name="fromFacilityId" required="true"/><parameter name="toFacilityId" required="true"/><parameter name="transferDate" type="Timestamp"/><parameter name="ewayBillChoice" required="true"/><parameter name="remarks"/></in-parameters>
         <out-parameters>
             <parameter name="stockTransferId" type="id"/>
         </out-parameters>
@@ -242,12 +242,13 @@
 
     <!-- The form and the locked shipping service must agree even when a warehouse's registration changes after drafting. -->
     <service verb="calculate" noun="StockTransferDispatch">
-        <in-parameters><parameter name="items" type="List"/><parameter name="fromGstin"/><parameter name="toGstin"/></in-parameters>
+        <in-parameters><parameter name="items" type="List"/><parameter name="fromGstin"/><parameter name="toGstin"/><parameter name="ewayBillChoice"/></in-parameters>
         <out-parameters><parameter name="totalValue" type="BigDecimal"/><parameter name="ewayBillRequired"/><parameter name="requirementReason"/></out-parameters>
         <actions><script><![CDATA[
             totalValue = items?.sum { (it.quantity ?: 0G) * (it.unitAmount ?: 0G) } ?: 0G
             if (fromGstin && toGstin && fromGstin.take(2) != toGstin.take(2)) requirementReason = 'The warehouses have different GST state codes.'
             else if (totalValue > 50000G) requirementReason = 'The transfer value exceeds ₹50,000.'
+            else if (ewayBillChoice == 'Y') requirementReason = 'Required was selected for this transfer.'
             ewayBillRequired = requirementReason ? 'Y' : 'N'
         ]]></script></actions>
     </service>
@@ -261,7 +262,7 @@
             </entity-find>
             <entity-find-one entity-name="mantle.facility.Facility" value-field="sender"><field-map field-name="facilityId" from="guard.transfer.fromFacilityId"/></entity-find-one>
             <entity-find-one entity-name="mantle.facility.Facility" value-field="receiver"><field-map field-name="facilityId" from="guard.transfer.toFacilityId"/></entity-find-one>
-            <service-call name="zenith.inventory.InventoryServices.calculate#StockTransferDispatch" in-map="[items:_stiList, fromGstin:sender?.facilityGstin, toGstin:receiver?.facilityGstin]" out-map="context"/>
+            <service-call name="zenith.inventory.InventoryServices.calculate#StockTransferDispatch" in-map="[items:_stiList, fromGstin:sender?.facilityGstin, toGstin:receiver?.facilityGstin, ewayBillChoice:guard.transfer.ewayBillChoice]" out-map="context"/>
             <service-call name="update#zenith.erp.inventory.StockTransfer"
                 in-map="[stockTransferId:stockTransferId, totalValue:totalValue, ewayBillRequired:ewayBillRequired]"/>
         </actions>
@@ -361,6 +362,7 @@
             <parameter name="fromFacilityId"/>
             <parameter name="toFacilityId"/>
             <parameter name="transferDate" type="Timestamp"/>
+            <parameter name="ewayBillChoice"/>
             <parameter name="remarks"/>
         </in-parameters>
         <actions>
@@ -378,11 +380,12 @@
             </if>
             <set field="newFrom" from="fromFacilityId ?: stx.fromFacilityId"/>
             <set field="newTo" from="toFacilityId ?: stx.toFacilityId"/>
+            <if condition="ewayBillChoice &amp;&amp; !(ewayBillChoice in ['Y','N'])"><return error="true" message="Choose Required or Not required for the e-way bill."/></if>
             <service-call name="zenith.inventory.StockTransferServices.validate#StockTransferFacilities"
                 in-map="[organizationPartyId:guard.organizationPartyId, fromFacilityId:newFrom, toFacilityId:newTo]"/>
             <service-call name="update#zenith.erp.inventory.StockTransfer"
                 in-map="[stockTransferId:stockTransferId, fromFacilityId:newFrom, toFacilityId:newTo,
-                         transferDate:(transferDate ?: stx.transferDate ?: ec.user.nowTimestamp), remarks:remarks]"/>
+                         transferDate:(transferDate ?: stx.transferDate ?: ec.user.nowTimestamp), ewayBillChoice:ewayBillChoice ?: stx.ewayBillChoice, remarks:remarks]"/>
             <service-call name="zenith.inventory.InventoryServices.recalc#StockTransferTotals" in-map="[stockTransferId:stockTransferId]"/>
         </actions>
     </service>

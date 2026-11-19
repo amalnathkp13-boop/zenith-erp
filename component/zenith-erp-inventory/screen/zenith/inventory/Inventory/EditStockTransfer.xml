@@ -129,7 +129,7 @@
         ]]></script>
         <set field="isDraft" from="stx?.statusId == 'StxDraft'"/>
         <if condition="isDraft">
-            <service-call name="zenith.inventory.InventoryServices.calculate#StockTransferDispatch" in-map="[items:itemList, fromGstin:fromFac?.facilityGstin, toGstin:toFac?.facilityGstin]" out-map="dispatch"/>
+            <service-call name="zenith.inventory.InventoryServices.calculate#StockTransferDispatch" in-map="[items:itemList, fromGstin:fromFac?.facilityGstin, toGstin:toFac?.facilityGstin, ewayBillChoice:stx.ewayBillChoice]" out-map="dispatch"/>
         </if>
         <set field="isTransit" from="stx?.statusId == 'StxInTransit'"/>
         <set field="isReceived" from="stx?.statusId == 'StxReceived'"/>
@@ -144,10 +144,12 @@
         <set field="toFacilityId" from="stx?.toFacilityId"/>
         <set field="transferDate" from="stx?.transferDate"/>
         <set field="remarks" from="stx?.remarks"/>
+        <set field="ewayBillChoice" from="stx?.ewayBillChoice"/>
         </if>
     </actions>
 
     <widgets>
+        <container id="stockTransferDetail" style="st-workspace">
         <!-- stock-transfer-edit §4: breadcrumb back-link in the brand primary colour. -->
         <link url="back" text="← Back to Stock Transfers" link-type="anchor" style="text-primary text-weight-bold text-decoration-none"/>
 
@@ -165,7 +167,7 @@
         <section name="TheTransfer">
         <condition><expression>!noAccess</expression></condition>
         <widgets>
-        <container style="zenith-card bg-white shadow-2 border-radius-md q-pa-md q-mt-sm q-mb-md">
+        <container style="st-detail-summary st-panel">
             <container style="row items-center justify-between">
                 <container style="column">
                     <!-- stock-transfer-edit §5: title carries the transfer number. -->
@@ -174,7 +176,7 @@
                 </container>
                 <label text="${statusNice}" type="span" style="zenith-badge ${isReceived ? 'success' : (isTransit ? 'info' : 'warning')}"/>
             </container>
-            <container style="row q-gutter-xl q-mt-sm">
+            <container style="st-route-summary">
                 <container style="column"><label text="From (sender)" type="p" style="text-grey-6 text-caption q-mb-none"/><label text="${fromFac?.facilityName ?: stx?.fromFacilityId ?: '—'}" type="p" style="text-dark text-weight-bold q-my-none"/></container>
                 <container style="column"><label text="To (receiver)" type="p" style="text-grey-6 text-caption q-mb-none"/><label text="${toFac?.facilityName ?: stx?.toFacilityId ?: '—'}" type="p" style="text-dark text-weight-bold q-my-none"/></container>
                 <container style="column"><label text="Transfer value" type="p" style="text-grey-6 text-caption q-mb-none"/><label text="${!isDraft &amp;&amp; stx.totalValue == null ? '—' : '₹' + zinr.inr(ec.l10n.format(isDraft ? dispatch.totalValue : stx.totalValue, '#,##0.00'))}" type="p" style="text-dark q-my-none"/></container>
@@ -186,7 +188,7 @@
             <container id="transfer-dispatch" style="zenith-card bg-white shadow-1 border-radius-md q-pa-md q-mb-md">
                 <label text="Prepare dispatch" type="h5" style="text-dark text-weight-bold q-mt-none q-mb-xs"/>
                 <container style="q-mb-md">
-                    <label text="${dispatch.requirementReason} Generate the bill on the GST portal, then enter its 12-digit number here." type="p" style="q-mb-xs"/>
+                    <label text="${stx.ewayBillChoice == 'N' ? 'You selected Not required. ' : ''}${dispatch.requirementReason} Generate the bill on the GST portal, then enter its 12-digit number here." type="p" style="q-mb-xs"/>
                     <render-mode><text type="html,qvt,vuet"><![CDATA[<a href="https://ewaybillgst.gov.in/" target="_blank" rel="noopener noreferrer">Open GST e-way bill portal ↗</a>]]></text></render-mode>
                 </container>
                 <form-single name="TransferDispatchForm" transition="shipTransfer" map="stx">
@@ -227,6 +229,7 @@
                                 <drop-down><list-options list="facilityList" key="${facilityId}" text="${facilityName}"/></drop-down>
                             </default-field></field>
                             <field name="transferDate"><default-field title="Date"><date-time type="date"/></default-field></field>
+                            <field name="ewayBillChoice"><default-field title="E-way bill"><drop-down allow-empty="true"><option key="Y" text="Required"/><option key="N" text="Not required"/></drop-down></default-field></field>
                             <field name="remarks"><default-field title="Notes"><text-area rows="2" cols="40"/></default-field></field>
                             <field name="submitButton"><default-field title="Save changes"><submit/></default-field></field>
                         </form-single>
@@ -392,5 +395,6 @@
         </section>
         </widgets>
         </section>
+        </container>
     </widgets>
 </screen>

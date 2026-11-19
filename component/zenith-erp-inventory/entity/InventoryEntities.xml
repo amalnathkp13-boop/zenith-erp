@@ -60,6 +60,7 @@
         <field name="remarks" type="text-medium"/>
         <field name="totalValue" type="currency-amount"/>
         <field name="ewayBillRequired" type="text-indicator"/>
+        <field name="ewayBillChoice" type="text-indicator"/>
         <field name="ewayBillNumber" type="text-short"/>
         <field name="lrNumber" type="text-short"/>
         <field name="vehicleNumber" type="text-short"/>

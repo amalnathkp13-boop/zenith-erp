@@ -15,6 +15,7 @@
             <service-call name="zenith.inventory.InventoryServices.create#StockTransfer" in-map="context" out-map="context"/>
         </actions>
         <default-response url="../EditStockTransfer"><parameter name="stockTransferId" from="stockTransferId"/></default-response>
+        <error-response url="."/>
     </transition>
     <transition name="back"><default-response url="../StockTransfers"/></transition>
 
@@ -33,9 +34,11 @@
         </entity-find>
         <!-- Pre-fill the date with today (the mockup shows a filled date). -->
         <set field="transferDate" from="ec.user.nowTimestamp"/>
+        <set field="inventoryPath" from="(sri.renderMode in ['qvt','vuet'] || ec.web.request.requestURI.startsWith('/qapps/') ? '/qapps' : '/apps') + '/zenith/Inventory/'"/>
     </actions>
 
     <widgets>
+        <container id="stockTransferNew" style="st-workspace">
         <!-- stock-creation §4: breadcrumb back-link in the brand primary colour (matches EditStockTransfer). -->
         <link url="back" text="← Back to Stock Transfers" link-type="anchor" style="text-primary text-weight-bold text-decoration-none"/>
 
@@ -53,46 +56,13 @@
         <section name="CreateForm">
         <condition><expression>invCanWrite</expression></condition>
         <widgets>
-            <!-- stock-creation §5: page header — title + subtitle, no action buttons (they live in the card footer). -->
-            <container style="q-mt-sm q-mb-md">
-                <label text="New Stock Transfer" type="h3" style="text-primary text-weight-bold q-my-none"/>
-                <label text="Move stock from one store/warehouse to another." type="p" style="text-grey-7 q-mt-xs q-mb-none"/>
+            <container style="st-page-title">
+                <label text="New stock transfer" type="h1"/>
+                <label text="Choose the route and e-way bill requirement. Add products after creating the transfer." type="p"/>
             </container>
-
-            <!-- stock-creation §6: single full-width form card, 2-column field grid + full-width remarks + footer. -->
-            <container style="zenith-card bg-white shadow-2 border-radius-md q-pa-lg q-mb-md">
-                <form-single name="NewTransferForm" transition="createTransfer">
-                    <field name="organizationPartyId"><default-field><hidden/></default-field></field>
-                    <field name="fromFacilityId"><default-field title="From Warehouse (Sender)">
-                        <drop-down><list-options list="facilityList" key="${facilityId}" text="${facilityName}"/></drop-down>
-                    </default-field></field>
-                    <field name="toFacilityId"><default-field title="To Warehouse (Receiver)">
-                        <drop-down><list-options list="facilityList" key="${facilityId}" text="${facilityName}"/></drop-down>
-                    </default-field></field>
-                    <field name="transferDate"><default-field title="Date"><date-time type="date"/></default-field></field>
-                    <!-- E-Way Bill is DERIVED (value &gt; ₹50,000 OR an inter-state route), not a user choice — show a
-                         read-only note in the mockup's slot rather than a fake editable select. -->
-                    <field name="ewayInfo"><default-field title="E-way bill">
-                        <label text="Checked from the route and value. If required, add the issued number at dispatch." type="span" style="text-grey-6 text-caption"/>
-                    </default-field></field>
-                    <field name="remarks"><default-field title="Remarks (optional)">
-                        <text-area rows="3" cols="60"/>
-                    </default-field></field>
-                    <field name="cancelBtn"><default-field title="">
-                        <link url="back" text="Cancel" link-type="anchor" style="zst-cancel-btn text-weight-bold"/>
-                    </default-field></field>
-                    <field name="submitButton"><default-field title="">
-                        <submit text="Create Transfer" style="bg-primary text-white text-weight-bold border-radius-sm"/>
-                    </default-field></field>
-                    <field-layout>
-                        <field-row><field-ref name="fromFacilityId"/><field-ref name="toFacilityId"/></field-row>
-                        <field-row><field-ref name="transferDate"/><field-ref name="ewayInfo"/></field-row>
-                        <field-row-big><field-ref name="remarks"/></field-row-big>
-                        <field-row><field-ref name="cancelBtn"/><field-ref name="submitButton"/></field-row>
-                    </field-layout>
-                </form-single>
-            </container>
+            <render-mode><text type="html,qvt,vuet" location="component://zenith-erp-inventory/template/inventory/NewStockTransfer.html.ftl" template="true" encode="false"/></render-mode>
         </widgets>
         </section>
+        </container>
     </widgets>
 </screen>

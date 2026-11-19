@@ -35,12 +35,13 @@
         </actions>
     </service>
     <service verb="create" noun="StockTransfer">
-        <in-parameters><parameter name="fromFacilityId" required="true"/><parameter name="toFacilityId" required="true"/><parameter name="transferDate" type="Timestamp"/><parameter name="remarks"/></in-parameters>
+        <in-parameters><parameter name="fromFacilityId" required="true"/><parameter name="toFacilityId" required="true"/><parameter name="transferDate" type="Timestamp"/><parameter name="ewayBillChoice" required="true"/><parameter name="remarks"/></in-parameters>
         <out-parameters><parameter name="stockTransferId"/></out-parameters>
         <actions>
             <service-call name="zenith.inventory.StockTransferServices.require#StockTransferWrite" out-map="guard"/>
             <service-call name="zenith.inventory.StockTransferServices.validate#StockTransferFacilities" in-map="[organizationPartyId:guard.organizationPartyId, fromFacilityId:fromFacilityId, toFacilityId:toFacilityId]"/>
-            <service-call name="create#zenith.erp.inventory.StockTransfer" in-map="[organizationPartyId:guard.organizationPartyId, fromFacilityId:fromFacilityId, toFacilityId:toFacilityId, transferDate:transferDate ?: ec.user.nowTimestamp, remarks:remarks, statusId:'StxDraft', totalValue:0, ewayBillRequired:'N']" out-map="created"/>
+            <if condition="!(ewayBillChoice in ['Y','N'])"><return error="true" message="Choose Required or Not required for the e-way bill."/></if>
+            <service-call name="create#zenith.erp.inventory.StockTransfer" in-map="[organizationPartyId:guard.organizationPartyId, fromFacilityId:fromFacilityId, toFacilityId:toFacilityId, transferDate:transferDate ?: ec.user.nowTimestamp, remarks:remarks, statusId:'StxDraft', totalValue:0, ewayBillChoice:ewayBillChoice]" out-map="created"/>
             <set field="stockTransferId" from="created.stockTransferId"/>
             <service-call name="update#zenith.erp.inventory.StockTransfer" in-map="[stockTransferId:stockTransferId, transferNumber:stockTransferId]"/>
             <service-call name="zenith.inventory.InventoryServices.recalc#StockTransferTotals" in-map="[stockTransferId:stockTransferId]"/>
