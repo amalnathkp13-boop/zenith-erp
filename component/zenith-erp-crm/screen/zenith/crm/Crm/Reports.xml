@@ -24,60 +24,69 @@
         </entity-find>
         <script><![CDATA[
             period = period == 'month' ? 'month' : 'all'
-            def today = java.time.LocalDate.parse(new java.text.SimpleDateFormat('yyyy-MM-dd').format(ec.user.nowTimestamp))
-            def start = java.sql.Timestamp.valueOf(today.withDayOfMonth(1).atStartOfDay())
-            def end = java.sql.Timestamp.valueOf(today.withDayOfMonth(1).plusMonths(1).atStartOfDay())
+            def zone = ec.user.timeZone.toZoneId()
+            def monthStart = ec.user.nowTimestamp.toInstant().atZone(zone).toLocalDate().withDayOfMonth(1)
+            def monthEnd = monthStart.plusMonths(1)
+            def start = java.sql.Timestamp.from(monthStart.atStartOfDay(zone).toInstant())
+            def end = java.sql.Timestamp.from(monthEnd.atStartOfDay(zone).toInstant())
             def within = { date -> period == 'all' || (date && date >= start && date < end) }
             sourceId = sourceCatalogue.any { it.leadSourceId == sourceId } ? sourceId : ''
             campaignId = campaigns.any { it.campaignId == campaignId } ? campaignId : ''
             def attributedLeads = allLeads.findAll { (!sourceId || (it.firstTouchSourceId ?: it.leadSourceId ?: 'Unknown') == sourceId) && (!campaignId || it.campaignId == campaignId) }
             filteredLeads = attributedLeads.findAll { within(it.createdDate) }
             def attributedLeadIds = attributedLeads*.leadId as Set
-            def selectedIds = filteredLeads*.leadId as Set
             filteredOpps = allOpportunities.findAll { (!sourceId || (it.leadSourceId ?: 'Unknown') == sourceId) && (!campaignId || it.campaignId == campaignId) }
             def selectedOppIds = filteredOpps*.salesOpportunityId as Set
-            filteredActivities = allActivities.findAll {
-                within(it.dueDate ?: it.activityDate) && (!sourceId && !campaignId || attributedLeadIds.contains(it.leadId) || selectedOppIds.contains(it.salesOpportunityId))
+            def attributedActivities = allActivities.findAll {
+                (!sourceId && !campaignId) || attributedLeadIds.contains(it.leadId) || selectedOppIds.contains(it.salesOpportunityId)
+            }
+            def completed = { row -> row.statusId == 'Completed' || (!row.statusId && !row.dueDate && row.activityDate) }
+            filteredActivities = attributedActivities.findAll { row ->
+                within(completed(row) ? (row.completedDate ?: row.activityDate) : (row.dueDate ?: row.activityDate))
             }
             def currency = { row -> row.currencyUomId ?: 'Unspecified' }
             def amountText = { deals, value ->
                 deals.groupBy(currency).sort().collect { code, matching ->
-                    code + ' ' + ec.l10n.format(matching.sum(value), '#,##0.00')
+                    code + ' ' + ec.l10n.format(matching.sum(value), '#,##0.00##')
                 }.join(' / ') ?: '—'
             }
             def amount = { row -> row.estimatedAmount ?: 0G }
             def weighted = { row -> amount(row) * (row.estimatedProbability ?: 0G) }
             def sourceNames = sourceCatalogue.collectEntries { [(it.leadSourceId):it.description] }
-            def sourceKeys = filteredLeads.collect { it.firstTouchSourceId ?: it.leadSourceId ?: 'Unknown' }.unique().sort()
+            def allOpenDeals = filteredOpps.findAll { it.opportunityStageId !in ['SoClosedWon','SoClosedLost'] }
+            openOpps = allOpenDeals.findAll { period == 'all' || (it.estimatedCloseDate &&
+                it.estimatedCloseDate.toLocalDate() >= monthStart && it.estimatedCloseDate.toLocalDate() < monthEnd) }
+            def wonDeals = filteredOpps.findAll { it.opportunityStageId == 'SoClosedWon' && within(it.wonDate) }
+            def lostDeals = filteredOpps.findAll { it.opportunityStageId == 'SoClosedLost' && within(it.lostDate) }
+            def periodDeals = openOpps + wonDeals + lostDeals
+            def leadsBySource = filteredLeads.groupBy { it.firstTouchSourceId ?: it.leadSourceId ?: 'Unknown' }
+            def dealsBySource = periodDeals.groupBy { it.leadSourceId ?: 'Unknown' }
+            def sourceKeys = (leadsBySource.keySet() + dealsBySource.keySet()).sort()
             sourceRows = sourceKeys.collect { key ->
-                def leads = filteredLeads.findAll { (it.firstTouchSourceId ?: it.leadSourceId ?: 'Unknown') == key }
-                def opps = filteredOpps.findAll { (it.leadSourceId ?: 'Unknown') == key && (period == 'all' || selectedIds.contains(it.leadId)) }
-                def won = opps.findAll { it.opportunityStageId == 'SoClosedWon' && within(it.wonDate) }
+                def leads = leadsBySource[key] ?: []
+                def opps = dealsBySource[key] ?: []
+                def won = opps.findAll { it.opportunityStageId == 'SoClosedWon' }
                 def qualified = leads.count { it.statusId in ['LeadQualified','LeadConverted'] }
                 [sourceId:key, sourceName:sourceNames[key] ?: key, leads:leads.size(),
-                 qualified:qualified, qualifiedPercent:leads ? (qualified * 100 / leads.size()).intValue() : 0,
+                 qualified:qualified, qualifiedPercent:leads ? (qualified * 100 / leads.size()).intValue() : null,
                  opportunities:opps.size(), won:won.size(), wonValue:amountText(won, amount)]
             }
             latestRows = filteredLeads.groupBy { it.latestTouchSourceId ?: it.leadSourceId ?: 'Unknown' }
                 .collect { key, rows -> [sourceId:key, sourceName:sourceNames[key] ?: key, leads:rows.size()] }
                 .sort { it.sourceName }
-            openOpps = filteredOpps.findAll { !['SoClosedWon','SoClosedLost'].contains(it.opportunityStageId) &&
-                (period == 'all' || (it.estimatedCloseDate && it.estimatedCloseDate >= java.sql.Date.valueOf(today.withDayOfMonth(1)) &&
-                    it.estimatedCloseDate < java.sql.Date.valueOf(today.withDayOfMonth(1).plusMonths(1)))) }
             def settingsByStage = stageSettings.collectEntries { [(it.opportunityStageId): it] }
             def stageName = { stage -> settingsByStage[stage.opportunityStageId]?.displayName ?: stage.description }
             pipelineTotal = amountText(openOpps, amount)
             weightedTotal = amountText(openOpps, weighted)
-            forecastRows = stages.collectMany { stage ->
-                def matching = openOpps.findAll { it.opportunityStageId == stage.opportunityStageId }
-                matching.groupBy(currency).sort().collect { code, deals ->
-                    [stageName:stageName(stage), currency:code, deals:deals.size(),
-                     amount:deals.sum(amount), weighted:deals.sum(weighted)]
+            def stageNames = stages.collectEntries { [(it.opportunityStageId): stageName(it)] }
+            def stageOrder = stages.collectEntries { [(it.opportunityStageId):settingsByStage[it.opportunityStageId]?.sequenceNum ?: it.sequenceNum] }
+            forecastRows = openOpps.groupBy { it.opportunityStageId }.collectMany { id, matching ->
+                matching.groupBy(currency).collect { code, deals ->
+                    [stageName:stageNames[id] ?: id ?: 'Unspecified', sequenceNum:stageOrder[id] ?: Integer.MAX_VALUE,
+                     currency:code, deals:deals.size(), amount:deals.sum(amount), weighted:deals.sum(weighted)]
                 }
-            }
-            def wonDeals = filteredOpps.findAll { it.opportunityStageId == 'SoClosedWon' && within(it.wonDate) }
-            def lostDeals = filteredOpps.findAll { it.opportunityStageId == 'SoClosedLost' && within(it.lostDate) }
-            categoryRows = (openOpps + wonDeals + lostDeals).groupBy(currency).sort().collect { code, deals ->
+            }.sort { a, b -> a.sequenceNum <=> b.sequenceNum ?: a.stageName <=> b.stageName ?: a.currency <=> b.currency }
+            categoryRows = periodDeals.groupBy(currency).sort().collect { code, deals ->
                 def amounts = deals.groupBy { deal ->
                     if (deal.opportunityStageId == 'SoClosedWon') return 'Closed'
                     if (deal.opportunityStageId == 'SoClosedLost') return 'Omitted'
@@ -90,9 +99,8 @@
             allActivities.each { activity ->
                 def id = activity.salesOpportunityId
                 def timestamp = activity.completedDate ?: activity.activityDate
-                if (id && activity.statusId == 'Completed' && timestamp && (!lastCompleted[id] || timestamp > lastCompleted[id])) lastCompleted[id] = timestamp
+                if (id && completed(activity) && timestamp && (!lastCompleted[id] || timestamp > lastCompleted[id])) lastCompleted[id] = timestamp
             }
-            def stageNames = stages.collectEntries { [(it.opportunityStageId): stageName(it)] }
             def now = ec.user.nowTimestamp.time
             staleRows = []
             openOpps.each { deal ->
@@ -107,13 +115,14 @@
                 }
             }
             staleRows.sort { a, b -> b.idleDays <=> a.idleDays ?: a.salesOpportunityId <=> b.salesOpportunityId }
-            completedActivities = filteredActivities.count { it.statusId == 'Completed' }
-            def scheduled = filteredActivities.findAll { it.statusId == 'Scheduled' }
+            completedActivities = filteredActivities.count(completed)
+            def scheduled = attributedActivities.findAll { it.statusId == 'Scheduled' }
             overdueRows = scheduled.findAll { it.dueDate && it.dueDate < ec.user.nowTimestamp }.sort { it.dueDate }
             overdueActivities = overdueRows.size()
             def owner = { record -> record.assignedToUserId }
-            def leadCounts = filteredLeads.findAll { it.statusId !in ['LeadLost','LeadConverted'] }.countBy(owner)
-            def dealCounts = openOpps.countBy(owner)
+            def openLeads = attributedLeads.findAll { it.statusId !in ['LeadLost','LeadConverted'] }
+            def leadCounts = openLeads.countBy(owner)
+            def dealCounts = allOpenDeals.countBy(owner)
             def scheduledCounts = scheduled.countBy(owner)
             def overdueCounts = overdueRows.countBy(owner)
             def owners = (leadCounts.keySet() + dealCounts.keySet() + scheduledCounts.keySet()).sort { it ?: '' }
@@ -124,12 +133,12 @@
             def statusCounts = filteredLeads.countBy { it.statusId }
             leadStatusRows = leadStatuses.collect { [statusName:it.description, leads:statusCounts.remove(it.statusId) ?: 0] }
             leadStatusRows.addAll(statusCounts.collect { id, count -> [statusName:id ?: 'Unspecified', leads:count] })
-            unassignedLeads = filteredLeads.count { !it.assignedToUserId }
+            unassignedLeads = openLeads.count { !it.assignedToUserId }
             def scheduledLeadIds = allActivities.findAll { it.statusId == 'Scheduled' && it.leadId }.collect { it.leadId } as Set
-            unattendedLeads = filteredLeads.count { it.statusId !in ['LeadLost','LeadConverted'] && !scheduledLeadIds.contains(it.leadId) }
+            unattendedLeads = openLeads.count { !scheduledLeadIds.contains(it.leadId) }
             wonCount = wonDeals.size()
             lostCount = lostDeals.size()
-            winRate = wonCount + lostCount ? (wonCount * 100 / (wonCount + lostCount)).intValue() : 0
+            winRate = wonCount + lostCount ? (wonCount * 100 / (wonCount + lostCount)).intValue() : null
             lostRows = lostDeals.groupBy { it.lostReason ?: 'Unspecified' }.collect { key, rows ->
                     [reason:key, deals:rows.size(), amount:amountText(rows, amount)]
                 }
@@ -159,15 +168,19 @@
             <container style="zcrm-metric"><label text="Leads" type="span"/><label text="${filteredLeads.size()}" type="h4"/></container>
             <container style="zcrm-metric"><label text="Open pipeline" type="span"/><label text="${pipelineTotal}" type="h4"/></container>
             <container style="zcrm-metric"><label text="Weighted forecast" type="span"/><label text="${weightedTotal}" type="h4"/></container>
-            <container style="zcrm-metric"><label text="Win rate" type="span"/><label text="${winRate}%" type="h4"/><label text="Won / (Won + Lost)" type="span" style="zcrm-muted"/></container>
+            <container style="zcrm-metric"><label text="Win rate" type="span"/><label text="${winRate == null ? '—' : winRate + '%'}" type="h4"/><label text="Won / (Won + Lost)" type="span" style="zcrm-muted"/></container>
         </container>
         <container-box><box-header title="Original source performance"/><box-body>
-            <section name="NoSources" condition="sourceRows.isEmpty()"><widgets><label text="No leads match the selected filters." type="p"/></widgets></section>
+            <label text="The period uses lead creation dates, expected close dates for open deals and actual outcome dates for closed deals." type="p"/>
+            <section name="NoSources" condition="sourceRows.isEmpty()"><widgets><label text="No leads or opportunities match the selected filters." type="p"/></widgets></section>
             <form-list name="SourceReport" list="sourceRows" skip-form="true" show-csv-button="true">
-                <field name="sourceName"><default-field title="Source"><link url="../Leads" text="${sourceName}" parameter-map="[firstTouchSourceId:sourceId, campaignId:campaignId, period:period]"/></default-field></field>
+                <field name="sourceName">
+                    <conditional-field name="sourceWithLeads" title="Source" condition="leads &gt; 0"><link url="../Leads" text="${sourceName}" parameter-map="[firstTouchSourceId:sourceId, campaignId:campaignId, period:period]"/></conditional-field>
+                    <default-field title="Source"><display/></default-field>
+                </field>
                 <field name="leads"><default-field title="Leads"><display/></default-field></field>
                 <field name="qualified"><default-field title="Qualified"><display/></default-field></field>
-                <field name="qualifiedPercent"><default-field title="Qualified %"><display/></default-field></field>
+                <field name="qualifiedPercent"><default-field title="Qualified %"><display text="${qualifiedPercent == null ? '—' : qualifiedPercent + '%'}"/></default-field></field>
                 <field name="opportunities"><default-field title="Opportunities"><display/></default-field></field>
                 <field name="won"><default-field title="Won"><display/></default-field></field>
                 <field name="wonValue"><default-field title="Won value"><display/></default-field></field>
@@ -177,8 +190,8 @@
             <form-list name="LatestSourceReport" list="latestRows" skip-form="true"><field name="sourceName"><default-field title="Source"><link url="../Leads" text="${sourceName}" parameter-map="[latestTouchSourceId:sourceId, campaignId:campaignId, period:period]"/></default-field></field><field name="leads"><default-field title="Leads"><display/></default-field></field></form-list>
         </box-body></container-box></row-col>
         <row-col lg="6"><container-box><box-header title="Activity and attention"/><box-body>
-            <label text="${filteredActivities.size()} due or logged · ${completedActivities} completed · ${overdueActivities} overdue" type="p"/>
-            <label text="${unassignedLeads} unassigned leads · ${unattendedLeads} open leads without a scheduled activity" type="p"/>
+            <label text="${filteredActivities.size()} activities in period · ${completedActivities} completed in period" type="p"/>
+            <label text="${overdueActivities} currently overdue · ${unassignedLeads} unassigned open leads · ${unattendedLeads} open leads without a follow-up" type="p"/>
             <link url="../Activities" text="Open activities"/><link url="../Leads" text="Open leads"/>
         </box-body></container-box></row-col></container-row>
         <container-row><row-col lg="5"><container-box><box-header title="Leads by status"/><box-body>
@@ -188,6 +201,7 @@
             </form-list>
         </box-body></container-box></row-col>
         <row-col lg="7"><container-box><box-header title="Owner workload"/><box-body>
+            <label text="Current open work across all dates for the selected source and campaign." type="p"/>
             <section name="NoWorkload" condition="workloadRows.isEmpty()"><widgets><label text="No open work matches these filters." type="p"/></widgets></section>
             <form-list name="WorkloadReport" list="workloadRows" skip-form="true">
                 <field name="ownerName"><default-field title="Owner"><display/></default-field></field>
@@ -210,8 +224,8 @@
                 <field name="stageName"><default-field title="Stage"><display/></default-field></field>
                 <field name="currency"><default-field title="Currency"><display/></default-field></field>
                 <field name="deals"><default-field title="Deals"><display/></default-field></field>
-                <field name="amount"><default-field title="Open amount"><display format="#,##0.00"/></default-field></field>
-                <field name="weighted"><default-field title="Weighted"><display format="#,##0.00"/></default-field></field>
+                <field name="amount"><default-field title="Open amount"><display format="#,##0.00##"/></default-field></field>
+                <field name="weighted"><default-field title="Weighted"><display format="#,##0.00##"/></default-field></field>
             </form-list>
         </box-body></container-box>
         <container-box><box-header title="Forecast by category"/><box-body>
@@ -219,11 +233,11 @@
             <section name="NoCategoryForecast" condition="categoryRows.isEmpty()"><widgets><label text="No opportunities match these filters." type="p"/></widgets></section>
             <form-list name="ForecastCategories" list="categoryRows" skip-form="true">
                 <field name="currency"><default-field title="Currency"><display/></default-field></field>
-                <field name="pipeline"><default-field title="Pipeline"><display format="#,##0.00"/></default-field></field>
-                <field name="bestCase"><default-field title="Best Case"><display format="#,##0.00"/></default-field></field>
-                <field name="commitValue"><default-field title="Commit"><display format="#,##0.00"/></default-field></field>
-                <field name="closed"><default-field title="Closed"><display format="#,##0.00"/></default-field></field>
-                <field name="omitted"><default-field title="Omitted (excluded)"><display format="#,##0.00"/></default-field></field>
+                <field name="pipeline"><default-field title="Pipeline"><display format="#,##0.00##"/></default-field></field>
+                <field name="bestCase"><default-field title="Best Case"><display format="#,##0.00##"/></default-field></field>
+                <field name="commitValue"><default-field title="Commit"><display format="#,##0.00##"/></default-field></field>
+                <field name="closed"><default-field title="Closed"><display format="#,##0.00##"/></default-field></field>
+                <field name="omitted"><default-field title="Omitted (excluded)"><display format="#,##0.00##"/></default-field></field>
             </form-list>
         </box-body></container-box>
         <container-box><box-header title="Inactive opportunities"/><box-body>

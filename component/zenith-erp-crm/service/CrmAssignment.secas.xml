@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <secas xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-eca-3.xsd">
     <seca id="CrmAssignmentInbox" service="create#zenith.erp.crm.CrmAuditEvent" when="tx-commit">
-        <condition><expression>newValue &amp;&amp; newValue != previousValue &amp;&amp; ((recordType == 'Lead' &amp;&amp; action == 'OwnerChange') || (recordType == 'Activity' &amp;&amp; action == 'Reassigned'))</expression></condition>
+        <condition><expression>newValue &amp;&amp; newValue != previousValue &amp;&amp; ((recordType in ['Lead','Opportunity'] &amp;&amp; action == 'OwnerChange') || (recordType == 'Activity' &amp;&amp; action == 'Reassigned'))</expression></condition>
         <actions><script><![CDATA[
-            def lead = recordType == 'Lead'
-            def entity = lead ? 'zenith.erp.crm.Lead' : 'zenith.erp.crm.CrmActivity'
-            def field = lead ? 'leadId' : 'activityId'
+            def targets = [
+                Lead:['zenith.erp.crm.Lead','leadId','EditLead','A CRM lead was assigned to you'],
+                Activity:['zenith.erp.crm.CrmActivity','activityId','ActivityDetail','A CRM follow-up was assigned to you'],
+                Opportunity:['mantle.sales.opportunity.SalesOpportunity','salesOpportunityId','EditOpportunity','A CRM opportunity was assigned to you']
+            ]
+            def (entity,field,route,title) = targets[recordType]
             def assigned = ec.entity.find(entity).condition(field, recordId).condition('organizationPartyId', organizationPartyId)
                 .condition('assignedToUserId', newValue).disableAuthz().count()
             if (!assigned) return
@@ -17,9 +20,7 @@
             if ((preference?.receiveNotifications ?: defaults?.receiveNotifications) == 'N') return
 
             // A CRM assignment is private. Topic broadcasting also targets users subscribed to all messages.
-            def route = lead ? 'EditLead' : 'ActivityDetail'
             def link = '/apps/zenith/Crm/' + route + '?' + field + '=' + java.net.URLEncoder.encode(recordId, 'UTF-8')
-            def title = lead ? 'A CRM lead was assigned to you' : 'A CRM follow-up was assigned to you'
             def message = ec.service.sync().name('create#moqui.security.user.NotificationMessage')
                 .parameters([topic:topic, subTopic:organizationPartyId, sentDate:eventDate, titleText:title, linkText:link,
                     messageJson:groovy.json.JsonOutput.toJson([recordType:recordType,recordId:recordId]), typeString:'info'])

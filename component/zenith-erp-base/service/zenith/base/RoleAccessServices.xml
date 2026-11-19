@@ -233,6 +233,12 @@
                 def saved = new groovy.json.JsonSlurper().parseText(role.selectionsJson)
                 saved.each { mod, screens -> selections[mod] = ((selections[mod] ?: []) + screens).unique() }
             }
+            if (selections.crm) {
+                [EditLead:'Leads', ActivityDetail:'Activities', EditOpportunity:'Pipeline', ContactDetail:'Contacts'].each { detail, list ->
+                    if (selections.crm.contains('/Crm/' + list) && !selections.crm.contains('/Crm/' + detail))
+                        selections.crm.add('/Crm/' + detail)
+                }
+            }
             if (selections.pos) {
                 [EditSession:'PosSessions', PosSessionsPdf:'PosSessions', EditTransaction:'PosTransactions',
                  BillAuditReportPdf:'BillAuditReport', PriceOverridesPdf:'PriceOverrides', ReceiptPdf:'Terminal'].each { screen, tab ->

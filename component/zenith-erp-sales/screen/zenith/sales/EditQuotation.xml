@@ -161,7 +161,7 @@
             
             ec.service.sync().name("update#mantle.order.OrderHeader").parameters([
                 orderId: cloneOut.orderId, 
-                statusId: 'OrderProposed',
+                statusId: 'OrderProposed', documentType: 'QUOTATION',
                 orderRevision: revNo,
                 orderName: newName
             ]).call()

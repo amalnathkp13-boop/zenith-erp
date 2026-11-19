@@ -12,6 +12,9 @@
     <zenith.erp.base.CompanySettings organizationPartyId="AUDIT_QA_A" settingKey="CURRENCY_UOM_ID" settingValue="INR"/>
     <zenith.erp.base.SystemSequence organizationPartyId="AUDIT_QA_A" sequenceType="INVOICE" prefix="QA-INVOICE/" nextValue="1" padLength="5" includeFinancialYear="Y"/>
     <zenith.erp.base.CompanySettings organizationPartyId="AUDIT_QA_A" settingKey="COUNTRY_GEO_ID" settingValue="IND"/>
+    <zenith.erp.india.IndiaGstin gstinId="AUDIT_QA_CRM_GSTIN" partyId="AUDIT_QA_B" gstin="29ABCDE1234F1ZW" stateCode="29" isActive="Y"/>
+    <zenith.erp.base.SystemSequence organizationPartyId="AUDIT_QA_B" sequenceType="INVOICE" prefix="QA-B-INVOICE/" nextValue="1" padLength="5" includeFinancialYear="Y"/>
+    <zenith.erp.base.CompanySettings organizationPartyId="AUDIT_QA_B" settingKey="TAX_CALCULATION_SERVICE" settingValue="zenith.india.IndiaTaxServices.calculate#Tax"/>
     <zenith.erp.base.CompanySettings organizationPartyId="AUDIT_QA_B" settingKey="CURRENCY_UOM_ID" settingValue="INR"/>
     <mantle.party.Party partyId="AUDIT_QA_USER_A" partyTypeEnumId="PtyPerson"/>
     <mantle.party.Person partyId="AUDIT_QA_USER_A" firstName="Disposable" lastName="Workflow A"/>
@@ -24,6 +27,18 @@
     <mantle.party.Person partyId="AUDIT_QA_REP_A" firstName="Disposable" lastName="Representative"/>
     <moqui.security.UserAccount userId="AUDIT_QA_REP_A" username="audit.rep.qa" userFullName="Disposable representative" partyId="AUDIT_QA_REP_A" disabled="N"/>
     <mantle.party.PartyRelationship partyRelationshipId="AUDIT_QA_REL_REP_A" fromPartyId="AUDIT_QA_REP_A" toPartyId="AUDIT_QA_A" relationshipTypeEnumId="PrtAgent" toRoleTypeId="OrgInternal" fromDate="2020-01-01 00:00:00"/>
+    <moqui.security.UserGroupMember userId="AUDIT_QA_REP_A" userGroupId="ZENITH_SALES_EXEC" fromDate="2020-01-01 00:00:00"/>
+    <mantle.party.Party partyId="AUDIT_QA_NO_CRM_A" partyTypeEnumId="PtyPerson"/>
+    <mantle.party.Person partyId="AUDIT_QA_NO_CRM_A" firstName="Disposable" lastName="Non-CRM staff"/>
+    <moqui.security.UserAccount userId="AUDIT_QA_NO_CRM_A" username="audit.noncrm.qa" userFullName="Disposable non-CRM staff" partyId="AUDIT_QA_NO_CRM_A" disabled="N"/>
+    <mantle.party.PartyRelationship partyRelationshipId="AUDIT_QA_REL_NO_CRM_A" fromPartyId="AUDIT_QA_NO_CRM_A" toPartyId="AUDIT_QA_A" relationshipTypeEnumId="PrtAgent" toRoleTypeId="OrgInternal" fromDate="2020-01-01 00:00:00"/>
+    <mantle.party.Party partyId="AUDIT_QA_LEAD_ONLY" partyTypeEnumId="PtyPerson"/>
+    <mantle.party.Person partyId="AUDIT_QA_LEAD_ONLY" firstName="Scoped" lastName="Lead representative"/>
+    <moqui.security.UserAccount userId="AUDIT_QA_LEAD_ONLY" username="audit.lead.only.qa" userFullName="Scoped lead representative" partyId="AUDIT_QA_LEAD_ONLY" disabled="N"/>
+    <mantle.party.PartyRelationship partyRelationshipId="AUDIT_QA_REL_LEAD_ONLY" fromPartyId="AUDIT_QA_LEAD_ONLY" toPartyId="AUDIT_QA_A" relationshipTypeEnumId="PrtAgent" toRoleTypeId="OrgInternal" fromDate="2020-01-01 00:00:00"/>
+    <moqui.security.UserGroup userGroupId="ZENITH_ORG_QA_LEADS_A" description="Disposable lead-only role"/>
+    <zenith.erp.base.OrganizationAccessRole userGroupId="ZENITH_ORG_QA_LEADS_A" organizationPartyId="AUDIT_QA_A" roleName="Disposable lead-only role" nameKey="qa lead-only" selectionsJson='{"crm":["/Crm/Leads"]}'/>
+    <moqui.security.UserGroupMember userId="AUDIT_QA_LEAD_ONLY" userGroupId="ZENITH_ORG_QA_LEADS_A" fromDate="2020-01-01 00:00:00"/>
     <mantle.party.Party partyId="AUDIT_QA_USER_B" partyTypeEnumId="PtyPerson"/>
     <mantle.party.Person partyId="AUDIT_QA_USER_B" firstName="Disposable" lastName="Workflow B"/>
     <moqui.security.UserAccount userId="AUDIT_QA_USER_B" username="audit.b.qa" userFullName="Disposable workflow manager B" partyId="AUDIT_QA_USER_B" timeZone="Asia/Kolkata" disabled="Y" requirePasswordChange="N"/>
@@ -41,6 +56,7 @@
     <mantle.facility.Facility facilityId="AUDIT_QA_FAC_A2" ownerPartyId="AUDIT_QA_A" facilityTypeEnumId="FcTpWarehouse" facilityName="Disposable destination A"/>
     <mantle.facility.Facility facilityId="AUDIT_QA_FAC_B" ownerPartyId="AUDIT_QA_B" facilityTypeEnumId="FcTpWarehouse" facilityName="Disposable warehouse B"/>
     <mantle.product.Product productId="AUDIT_QA_PRODUCT_A" ownerPartyId="AUDIT_QA_A" pseudoId="AUDIT_QA_PRODUCT_A" productName="Disposable product A" productTypeEnumId="PtAsset" amountUomId="OTH_ea" inventoryTracked="Y"/>
+    <mantle.product.Product productId="AUDIT_QA_CRM_GST18" ownerPartyId="AUDIT_QA_B" productName="Disposable CRM tax example" productTypeEnumId="PtAsset" gstSlabId="GST_18" amountUomId="OTH_ea"/>
     <mantle.product.Product productId="AUDIT_QA_PRODUCT_B" ownerPartyId="AUDIT_QA_B" pseudoId="AUDIT_QA_PRODUCT_B" productName="Disposable product B" productTypeEnumId="PtAsset" amountUomId="OTH_ea" inventoryTracked="Y"/>
     <mantle.product.Product productId="AUDIT_QA_SERIAL" ownerPartyId="AUDIT_QA_A" pseudoId="AUDIT_QA_SERIAL" productName="Disposable serial product" productTypeEnumId="PtAsset" amountUomId="OTH_ea" inventoryTracked="Y" enableSerialTracking="Y"/>
     <mantle.product.Product productId="AUDIT_QA_BATCH" ownerPartyId="AUDIT_QA_A" pseudoId="AUDIT_QA_BATCH" productName="Disposable batch product" productTypeEnumId="PtAsset" amountUomId="OTH_ea" inventoryTracked="Y" enableBatchTracking="Y"/>

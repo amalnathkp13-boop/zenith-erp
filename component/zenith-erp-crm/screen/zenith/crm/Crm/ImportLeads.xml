@@ -63,14 +63,14 @@
                     def leadEmails = [:], leadPhones = [:], contactEmails = [:], contactPhones = [:]
                     def digits = { phone -> phone?.replaceAll(/\D/,'') }
                     ec.entity.find('zenith.erp.crm.Lead').condition('organizationPartyId',orgId)
-                        .selectFields(['leadId','email','mobile','phone']).list().each { row ->
-                            if (row.email) leadEmails[row.email.trim().toLowerCase(java.util.Locale.ROOT)] = row.leadId
-                            [row.mobile,row.phone].findAll().each { leadPhones[digits(it)] = row.leadId }
+                        .selectFields(['leadId','email','mobile','phone']).list().each { customer ->
+                            if (customer.email) leadEmails[customer.email.trim().toLowerCase(java.util.Locale.ROOT)] = customer.leadId
+                            [customer.mobile,customer.phone].findAll().each { leadPhones[digits(it)] = customer.leadId }
                         }
                     ec.entity.find('zenith.erp.contacts.ContactListView').condition('ownerPartyId',orgId)
-                        .selectFields(['partyId','emailAddress','phoneNumber']).list().each { row ->
-                            if (row.emailAddress) contactEmails[row.emailAddress.trim().toLowerCase(java.util.Locale.ROOT)] = row.partyId
-                            if (row.phoneNumber) contactPhones[digits(row.phoneNumber)] = row.partyId
+                        .selectFields(['partyId','emailAddress','phoneNumber']).list().each { customer ->
+                            if (customer.emailAddress) contactEmails[customer.emailAddress.trim().toLowerCase(java.util.Locale.ROOT)] = customer.partyId
+                            if (customer.phoneNumber) contactPhones[digits(customer.phoneNumber)] = customer.partyId
                         }
                     def parsed = []
                     def seenEmails = [:], seenMobiles = [:]

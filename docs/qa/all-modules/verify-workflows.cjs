@@ -11,6 +11,17 @@ const count=(table,where)=>Number(q(`SELECT count(*) AS n FROM ${table==='subscr
 const checks=[];let mode=process.env.AUDIT_QA_MODE||'baseline';
 function check(name,passed,evidence={}){checks.push({name,passed:!!passed,evidence});console.log((passed?'PASS ':'FAIL ')+name);}
 async function scenario(name,fn){try{await fn();}catch(error){check(name,false,{error:error.message});}}
+async function checkAssignmentNotice(label, path, recipient) {
+ const sql = `SELECT u.user_id FROM notification_message m JOIN notification_message_user u USING(notification_message_id)
+   WHERE m.topic='CrmAssignment' AND m.link_text=${quote('/apps/zenith/Crm/'+path)}`;
+ let notices=[];
+ for(let attempt=0;attempt<20;attempt++) {
+  notices=q(sql);
+  if(notices.length)break;
+  await new Promise(resolve=>setTimeout(resolve,100));
+ }
+ check(label,notices.length===1&&notices[0].user_id===recipient);
+}
 (async()=>{
  const browser=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe'});
  const contexts=[];
@@ -109,23 +120,21 @@ async function scenario(name,fn){try{await fn();}catch(error){check(name,false,{
    check('CRM: conversion requires qualification',premature.errors?.length>0&&row.status_id==='LeadNew');
    await a.post('Crm/EditLead/assignLead',{leadId,ownerUserId:'AUDIT_QA_USER_B'});
    check('CRM: foreign lead owner rejected',q(`SELECT assigned_to_user_id FROM lead WHERE lead_id=${quote(leadId)}`)[0]?.assigned_to_user_id==='AUDIT_QA_USER_A');
+   await a.post('Crm/EditLead/assignLead',{leadId,ownerUserId:'AUDIT_QA_NO_CRM_A'});
+   check('CRM: same-organization staff without lead grants cannot receive a lead',
+    q(`SELECT assigned_to_user_id FROM lead WHERE lead_id=${quote(leadId)}`)[0]?.assigned_to_user_id==='AUDIT_QA_USER_A');
    await a.post('Crm/EditLead/assignLead',{leadId,ownerUserId:'_UNASSIGNED_'});
    await a.post('Crm/EditLead/assignLead',{leadId,ownerUserId:'AUDIT_QA_USER_A'});
    await a.post('Crm/EditLead/assignLead',{leadId,ownerUserId:'AUDIT_QA_USER_A'});
-   async function checkAssignmentNotice(label, path, recipient) {
-    const sql = `SELECT u.user_id FROM notification_message m JOIN notification_message_user u USING(notification_message_id)
-      WHERE m.topic='CrmAssignment' AND m.link_text=${quote('/apps/zenith/Crm/'+path)}`;
-    let notices=[];
-    for(let attempt=0;attempt<20;attempt++) {
-     notices=q(sql);
-     if(notices.length)break;
-     await new Promise(resolve=>setTimeout(resolve,100));
-    }
-    check(label,notices.length===1&&notices[0].user_id===recipient);
-   }
    await checkAssignmentNotice('CRM: repeated assignment delivers one private lead notification','EditLead?leadId='+leadId,'AUDIT_QA_USER_A');
    const intake=q(`SELECT activity_id FROM crm_activity WHERE lead_id=${quote(leadId)} AND subject='Disposable intake call'`)[0];
    if(intake) {
+    await a.post('Crm/ActivityDetail/reassignActivity',{activityId:intake.activity_id,assignedToUserId:'AUDIT_QA_NO_CRM_A'});
+    check('CRM: same-organization staff without activity grants cannot receive a follow-up',
+     q(`SELECT assigned_to_user_id FROM crm_activity WHERE activity_id=${quote(intake.activity_id)}`)[0]?.assigned_to_user_id==='AUDIT_QA_USER_A');
+    await a.post('Crm/ActivityDetail/reassignActivity',{activityId:intake.activity_id,assignedToUserId:'AUDIT_QA_LEAD_ONLY'});
+    check('CRM: a custom Leads grant cannot receive an activity',
+     q(`SELECT assigned_to_user_id FROM crm_activity WHERE activity_id=${quote(intake.activity_id)}`)[0]?.assigned_to_user_id==='AUDIT_QA_USER_A');
     const input={activityId:intake.activity_id,assignedToUserId:'AUDIT_QA_REP_A'};
     await a.post('Crm/ActivityDetail/reassignActivity',input);
     await a.post('Crm/ActivityDetail/reassignActivity',input);
@@ -134,6 +143,9 @@ async function scenario(name,fn){try{await fn();}catch(error){check(name,false,{
    check('CRM: unassigning and assigning a lead leave an audit trail',
     count('crm_audit_event',`record_id=${quote(leadId)} AND organization_party_id='AUDIT_QA_A' AND action='OwnerChange'`)===2);
    check('CRM: original source and UTM are stored',row.lead_source_id==='Instagram'&&row.first_touch_source_id==='Instagram'&&row.utm_source==='instagram'&&row.utm_medium==='social');
+   await a.post('Crm/EditLead/assignLead',{leadId,ownerUserId:'AUDIT_QA_LEAD_ONLY'});
+   check('CRM: a lead can be assigned to a colleague granted only Leads in this organization',
+    q(`SELECT assigned_to_user_id FROM lead WHERE lead_id=${quote(leadId)}`)[0]?.assigned_to_user_id==='AUDIT_QA_LEAD_ONLY');
    const retry=await a.invoke('lead.create',{firstName:'Disposable lead A',leadSourceId:'Instagram',externalSubmissionId:'audit-lead-a'});
    check('CRM: intake retry returns the original lead',retry.result?.leadId===leadId&&count('lead_submission',"organization_party_id='AUDIT_QA_A' AND external_submission_id='audit-lead-a'")===1);
    await a.invoke('lead.touch',{leadId,touchId:'audit-touch-1',leadSourceId:'YouTube',utmSource:'youtube'});
@@ -185,6 +197,15 @@ async function scenario(name,fn){try{await fn();}catch(error){check(name,false,{
    const id=created.result?.salesOpportunityId;
    check('CRM: owned opportunity persists in pipeline',!!id&&q(`SELECT organization_party_id FROM sales_opportunity WHERE sales_opportunity_id=${quote(id)}`)[0]?.organization_party_id==='AUDIT_QA_A');
    if(id){
+    const assign=ownerUserId=>a.post('Crm/EditOpportunity/assignOwner',{salesOpportunityId:id,ownerUserId});
+    const owner=()=>q(`SELECT assigned_to_user_id FROM sales_opportunity WHERE sales_opportunity_id=${quote(id)}`)[0]?.assigned_to_user_id;
+    await assign('AUDIT_QA_LEAD_ONLY');
+    check('CRM: a lead-only role cannot take an opportunity',owner()==='AUDIT_QA_USER_A');
+    await assign('AUDIT_QA_REP_A');
+    await assign('AUDIT_QA_REP_A');
+    check('CRM: manager reassigns an open opportunity once',owner()==='AUDIT_QA_REP_A'&&
+      count('crm_audit_event',`record_id=${quote(id)} AND record_type='Opportunity' AND action='OwnerChange'`)===1);
+    await checkAssignmentNotice('CRM: opportunity owner receives one private inbox notification','EditOpportunity?salesOpportunityId='+id,'AUDIT_QA_REP_A');
     const rule = {opportunityStageId:'SoQualification',taskSubject:'Disposable qualification follow-up',daysUntilDue:'2',isActive:'Y'};
     await a.post('Crm/Workflows/saveWorkflow',rule);
     const taskFilter = `sales_opportunity_id=${quote(id)} AND subject=${quote(rule.taskSubject)}`;
@@ -200,6 +221,8 @@ async function scenario(name,fn){try{await fn();}catch(error){check(name,false,{
     check('CRM: opportunity note is stored on the deal',
      count('crm_activity',`sales_opportunity_id=${quote(id)} AND organization_party_id='AUDIT_QA_A' AND activity_type='Note' AND description='Disposable note body'`)===1);
     await a.invoke('opportunity.advance',{salesOpportunityId:id,opportunityStageId:'SoClosedWon',confirmOutcome:'Y'});
+    await assign('AUDIT_QA_USER_A');
+    check('CRM: a closed opportunity retains its owner',owner()==='AUDIT_QA_REP_A');
     const won=q(`SELECT * FROM sales_opportunity WHERE sales_opportunity_id=${quote(id)}`)[0];
     check('CRM: won stage records full expected revenue',won.opportunity_stage_id==='SoClosedWon'&&Number(won.expected_revenue)===100);
     const rejected=await a.invoke('opportunity.advance',{salesOpportunityId:id,opportunityStageId:'SoClosedLost'});

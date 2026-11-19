@@ -41,7 +41,7 @@
         <entity-find entity-name="zenith.erp.crm.CrmCampaign" list="campaigns"><econdition field-name="organizationPartyId" from="activeOrg"/><econdition field-name="isActive" value="Y"/></entity-find>
         <service-call name="zenith.crm.CrmServices.assert#CrmWrite" out-map="leadWrite"/>
         <if condition="leadWrite.allowed">
-            <service-call name="zenith.crm.CrmServices.get#AssignmentCandidates" out-map="assignment"/>
+            <service-call name="zenith.crm.CrmServices.get#AssignmentCandidates" in-map="[recordType:'Lead']" out-map="assignment"/>
             <if condition="lead.statusId == 'LeadQualified'">
                 <service-call name="zenith.crm.CrmServices.get#LeadCustomerMatches" out-map="review" in-map="[leadId:leadId]"/>
                 <set field="conversionOptions" from="review.matches"/>

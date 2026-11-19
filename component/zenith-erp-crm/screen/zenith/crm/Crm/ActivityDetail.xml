@@ -19,7 +19,7 @@
         </if>
         <set field="mayAssign" from="modCanWrite &amp;&amp; activity.statusId == 'Scheduled' &amp;&amp; ['ADMIN','ZENITH_ADMIN','ZENITH_SALES_MGR'].any { ec.user.isInGroup(it) }"/>
         <set field="mayEdit" from="mayAssign || (modCanWrite &amp;&amp; activity.statusId == 'Scheduled' &amp;&amp; activity.assignedToUserId == ec.user.userId)"/>
-        <if condition="mayAssign"><service-call name="zenith.crm.CrmServices.get#AssignmentCandidates" out-map="available"/></if>
+        <if condition="mayAssign"><service-call name="zenith.crm.CrmServices.get#AssignmentCandidates" in-map="[recordType:'Activity']" out-map="available"/></if>
         <entity-find entity-name="zenith.erp.crm.CrmAuditEvent" list="auditEvents"><econdition field-name="organizationPartyId" from="activeOrg"/><econdition field-name="recordType" value="Activity"/><econdition field-name="recordId" from="activityId"/><order-by field-name="-eventDate"/></entity-find>
     </actions>
     <widgets>

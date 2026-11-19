@@ -19,6 +19,7 @@
     </service>
 
     <service verb="get" noun="AssignmentCandidates" authenticate="true">
+        <in-parameters><parameter name="recordType" required="true"/></in-parameters>
         <out-parameters><parameter name="candidates" type="List"/></out-parameters>
         <actions>
             <service-call name="zenith.crm.CrmServices.assert#CrmWrite" out-map="crmWrite"/>
@@ -30,10 +31,37 @@
                         .condition('relationshipTypeEnumId', 'in', ['PrtEmployee','PrtAgent','PrtMember'])
                         .conditionDate('fromDate','thruDate',ec.user.nowTimestamp)
                         .selectField('fromPartyId').distinct(true).disableAuthz().list()*.fromPartyId
-                if (members) candidates = ec.entity.find('moqui.security.UserAccount').condition('partyId','in',members)
-                        .selectField('userId').selectField('userFullName').selectField('username').selectField('disabled')
-                        .orderBy('userFullName').disableAuthz().list().findAll { it.disabled != 'Y' }
-                        .collect { [userId:it.userId, userFullName:it.userFullName, username:it.username] }
+                def routes = [Lead:['/Crm/Leads','/Crm/EditLead'], Activity:['/Crm/Activities','/Crm/ActivityDetail'],
+                              Opportunity:['/Crm/Pipeline','/Crm/EditOpportunity']][recordType]
+                if (!members || !routes) return
+                def now = ec.user.nowTimestamp
+                def accounts = ec.entity.find('moqui.security.UserAccount').condition('partyId','in',members)
+                    .selectFields(['userId','userFullName','username','disabled','terminateDate'])
+                    .orderBy('userFullName').disableAuthz().list().findAll { it.disabled != 'Y' &&
+                        (!it.terminateDate || it.terminateDate > now) }
+                if (!accounts) return
+                def memberships = ec.entity.find('moqui.security.UserGroupMember').condition('userId','in',accounts*.userId)
+                    .conditionDate('fromDate','thruDate',now).selectFields(['userId','userGroupId']).disableAuthz().list()
+                def groupIds = memberships*.userGroupId.unique()
+                if (!groupIds) return
+                def eligibleGroups = ['ADMIN','ZENITH_ADMIN'] as Set
+                def grantedGroups = ec.entity.find('moqui.security.ArtifactAuthz').condition('artifactGroupId','Z_CRM')
+                    .condition('userGroupId','in',groupIds).condition('authzActionEnumId','AUTHZA_ALL')
+                    .condition('authzTypeEnumId','in',['AUTHZT_ALLOW','AUTHZT_ALWAYS']).selectField('userGroupId').disableAuthz().list()
+                eligibleGroups.addAll(grantedGroups*.userGroupId.findAll { !it.startsWith('ZENITH_ORG_') && it != 'ZENITH_ALL' })
+                def customIds = groupIds.findAll { it.startsWith('ZENITH_ORG_') }
+                if (customIds) {
+                    def roles = ec.entity.find('zenith.erp.base.OrganizationAccessRole').condition('organizationPartyId',crmWrite.activeOrg)
+                        .condition('userGroupId','in',customIds).selectFields(['userGroupId','selectionsJson']).disableAuthz().list()
+                    roles.each { role ->
+                        def selections = new groovy.json.JsonSlurper().parseText(role.selectionsJson)
+                        if (selections.crm?.any { it in routes }) eligibleGroups.add(role.userGroupId)
+                    }
+                }
+                def eligibleUsers = memberships.findAll { eligibleGroups.contains(it.userGroupId) }*.userId.toSet()
+                candidates = accounts.findAll { eligibleUsers.contains(it.userId) }.collect {
+                    [userId:it.userId,userFullName:it.userFullName,username:it.username]
+                }
             ]]></script>
         </actions>
     </service>
@@ -329,23 +357,36 @@
 
     <service verb="assign" noun="Lead" authenticate="true">
         <in-parameters><parameter name="leadId" required="true"/><parameter name="ownerUserId" required="true"/></in-parameters>
+        <actions><service-call name="zenith.crm.CrmServices.assign#CrmOwner" in-map="[leadId:leadId,ownerUserId:ownerUserId]"/></actions>
+    </service>
+
+    <service verb="assign" noun="CrmOwner" authenticate="true">
+        <in-parameters><parameter name="leadId"/><parameter name="salesOpportunityId"/><parameter name="ownerUserId" required="true"/></in-parameters>
         <actions>
             <service-call name="zenith.crm.CrmServices.assert#CrmWrite" out-map="crmWrite"/>
             <if condition="!crmWrite.allowed || !['ADMIN','ZENITH_ADMIN','ZENITH_SALES_MGR'].any { ec.user.isInGroup(it) }">
-                <return error="true" message="A CRM manager in your organization must assign the lead."/>
+                <return error="true" message="A CRM manager in your organization must assign the owner."/>
             </if>
-            <entity-find-one entity-name="zenith.erp.crm.Lead" value-field="lead" for-update="true"/>
-            <if condition="!lead || lead.organizationPartyId != crmWrite.activeOrg"><return error="true" message="Lead not found for your organization."/></if>
+            <if condition="(leadId &amp;&amp; salesOpportunityId) || (!leadId &amp;&amp; !salesOpportunityId)"><return error="true" message="Choose one lead or opportunity."/></if>
+            <set field="recordType" from="leadId ? 'Lead' : 'Opportunity'"/>
+            <if condition="leadId">
+                <set field="record" from="ec.entity.find('zenith.erp.crm.Lead').condition('organizationPartyId',crmWrite.activeOrg).condition('leadId',leadId).forUpdate(true).one()"/>
+                <else><set field="record" from="ec.entity.find('mantle.sales.opportunity.SalesOpportunity').condition('organizationPartyId',crmWrite.activeOrg).condition('salesOpportunityId',salesOpportunityId).forUpdate(true).one()"/></else>
+            </if>
+            <if condition="!record"><return error="true" message="Record not found for your organization."/></if>
+            <if condition="salesOpportunityId &amp;&amp; record.opportunityStageId in ['SoClosedWon','SoClosedLost']">
+                <return error="true" message="Only open opportunities can be reassigned."/>
+            </if>
             <set field="newOwner" from="ownerUserId == '_UNASSIGNED_' ? null : ownerUserId"/>
-            <if condition="newOwner == lead.assignedToUserId"><return/></if>
+            <if condition="newOwner == record.assignedToUserId"><return/></if>
             <if condition="newOwner">
-                <service-call name="zenith.crm.CrmServices.get#AssignmentCandidates" out-map="assignment"/>
-                <if condition="!assignment.candidates.any { it.userId == newOwner }"><return error="true" message="Choose an active member of your organization."/></if>
+                <service-call name="zenith.crm.CrmServices.get#AssignmentCandidates" in-map="[recordType:recordType]" out-map="assignment"/>
+                <if condition="!assignment.candidates.any { it.userId == newOwner }"><return error="true" message="Choose an active team member with access to this CRM record type."/></if>
             </if>
-            <service-call name="create#zenith.erp.crm.CrmAuditEvent" in-map="[organizationPartyId:crmWrite.activeOrg,recordType:'Lead',recordId:leadId,
-                    action:'OwnerChange',previousValue:lead.assignedToUserId,newValue:newOwner,actorUserId:ec.user.userId,eventDate:ec.user.nowTimestamp]"/>
-            <set field="lead.assignedToUserId" from="newOwner"/>
-            <entity-update value-field="lead"/>
+            <service-call name="create#zenith.erp.crm.CrmAuditEvent" in-map="[organizationPartyId:crmWrite.activeOrg,recordType:recordType,recordId:leadId ?: salesOpportunityId,
+                    action:'OwnerChange',previousValue:record.assignedToUserId,newValue:newOwner,actorUserId:ec.user.userId,eventDate:ec.user.nowTimestamp]"/>
+            <set field="record.assignedToUserId" from="newOwner"/>
+            <entity-update value-field="record"/>
         </actions>
     </service>
 
@@ -784,7 +825,7 @@
         <in-parameters><parameter name="activityId" required="true"/><parameter name="assignedToUserId" required="true"/></in-parameters>
         <actions>
             <service-call name="zenith.crm.CrmServices.get#EditableActivity" in-map="[activityId:activityId]" out-map="editable"/>
-            <service-call name="zenith.crm.CrmServices.get#AssignmentCandidates" out-map="available"/>
+            <service-call name="zenith.crm.CrmServices.get#AssignmentCandidates" in-map="[recordType:'Activity']" out-map="available"/>
             <if condition="!available.candidates.any { it.userId == assignedToUserId }"><return error="true" message="Choose an active team member from this organization."/></if>
             <set field="previousOwner" from="editable.activity.assignedToUserId"/>
             <if condition="previousOwner == assignedToUserId"><return/></if>

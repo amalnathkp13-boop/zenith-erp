@@ -56,7 +56,7 @@
             <econdition field-name="createdDate" operator="greater-equals" from="periodStart" ignore-if-empty="true"/>
             <econdition field-name="createdDate" operator="less" from="periodEnd" ignore-if-empty="true"/>
         </entity-find>
-        <service-call name="zenith.crm.CrmServices.get#AssignmentCandidates" out-map="assignment"/>
+        <service-call name="zenith.crm.CrmServices.get#AssignmentCandidates" in-map="[recordType:'Lead']" out-map="assignment"/>
         <service-call name="zenith.base.SecurityServices.get#ActiveOrgList" out-map="context"/>
         <set field="_ao" from="(crmOrganization.activeOrgId ?: '_NA_')"/>
         <set field="_hasActiveOrg" from="(_ao != null &amp;&amp; _ao != '_NA_')"/>

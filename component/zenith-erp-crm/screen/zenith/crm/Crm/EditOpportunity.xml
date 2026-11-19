@@ -11,6 +11,10 @@
         </actions>
         <default-response url="."/><error-response url="."/>
     </transition>
+    <transition name="assignOwner">
+        <actions><service-call name="zenith.crm.CrmServices.assign#CrmOwner" in-map="[salesOpportunityId:salesOpportunityId,ownerUserId:ownerUserId]"/></actions>
+        <default-response url="."/><error-response url="."/>
+    </transition>
     <transition name="updateOpportunity">
         <service-call name="zenith.crm.CrmServices.update#Opportunity"/>
         <default-response url="."/><error-response url="."/>
@@ -32,6 +36,9 @@
         </if>
         <entity-find entity-name="mantle.sales.opportunity.SalesOpportunityStage" list="stages"><order-by field-name="sequenceNum"/></entity-find>
         <entity-find entity-name="zenith.erp.crm.CrmStageSetting" list="stageSettings"><econdition field-name="organizationPartyId" from="activeOrg"/></entity-find>
+        <if condition="!(opp.opportunityStageId in ['SoClosedWon','SoClosedLost'])">
+            <service-call name="zenith.crm.CrmServices.get#AssignmentCandidates" in-map="[recordType:'Opportunity']" out-map="assignment"/>
+        </if>
         <service-call name="zenith.crm.CrmServices.get#CrmSalesAccess" out-map="salesAccess"/>
         <script><![CDATA[
             def settings = stageSettings.collectEntries { [(it.opportunityStageId):it] }
@@ -53,7 +60,7 @@
                     def ownIds = parts.findAll { id, rows -> rows.every { it.vendorPartyId == activeOrg && it.customerPartyId == opp.accountPartyId } }.keySet() as List
                     if (ownIds) {
                         ec.entity.find('mantle.order.OrderHeader').condition('orderId','in',ownIds).orderBy('-entryDate').list().each { header ->
-                            def isOrder = header.documentType == 'SALES_ORDER' || header.statusId in ['OrderPlaced','OrderApproved','OrderCompleted']
+                            def isOrder = header.documentType ? header.documentType == 'SALES_ORDER' : header.statusId in ['OrderPlaced','OrderApproved','OrderCompleted']
                             def route = isOrder ? 'EditOrder' : 'EditQuotation'
                             if (salesAccess.routes.contains(route)) {
                                 def status = ec.entity.find('moqui.basic.StatusItem').condition('statusId',header.statusId).useCache(true).one()
@@ -88,6 +95,18 @@
             <container style="zcrm-metric"><label text="Original source" type="span"/><label text="${opp.leadSourceId ?: 'Unknown'}" type="h4"/></container>
             <container style="zcrm-metric"><label text="Expected close" type="span"/><label text="${opp.estimatedCloseDate ? ec.l10n.format(opp.estimatedCloseDate, 'dd MMM yyyy') : 'Not set'}" type="h4"/></container>
         </container>
+        <section name="OpportunityOwner" condition="assignment?.candidates"><widgets>
+            <form-single name="AssignOpportunityOwner" transition="assignOwner">
+                <field name="salesOpportunityId"><default-field><hidden default-value="${salesOpportunityId}"/></default-field></field>
+                <field name="ownerUserId"><default-field title="Opportunity owner">
+                    <drop-down no-current-selected-key="${opp.assignedToUserId ?: '_UNASSIGNED_'}">
+                        <option key="_UNASSIGNED_" text="Unassigned"/>
+                        <list-options list="assignment.candidates" key="${userId}" text="${userFullName ?: username}"/>
+                    </drop-down>
+                </default-field></field>
+                <field name="submitButton"><default-field title="Update owner"><submit/></default-field></field>
+            </form-single>
+        </widgets></section>
         <container-row><row-col lg="6"><container-box><box-header title="Forecast"/><box-body>
             <form-single name="OpportunityForm" map="opp" transition="updateOpportunity">
                 <field name="salesOpportunityId"><default-field><hidden/></default-field></field>
@@ -156,7 +175,7 @@
                 <field name="outcome"><default-field><display/></default-field></field>
             </form-list>
         </box-body></container-box>
-        <container-box><box-header title="Stage history"/><box-body>
+        <container-box><box-header title="Opportunity history"/><box-body>
             <section name="NoStageEvents" condition="auditEvents.isEmpty()"><widgets><label text="No stage changes recorded yet." type="p"/></widgets></section>
             <form-list name="OpportunityAudit" list="auditEvents" skip-form="true">
                 <field name="eventDate"><default-field title="When"><display format="dd MMM yyyy HH:mm"/></default-field></field>

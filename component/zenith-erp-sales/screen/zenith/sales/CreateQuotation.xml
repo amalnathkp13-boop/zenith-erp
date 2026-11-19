@@ -21,13 +21,14 @@
                 <if condition="!_ca.allowed"><return error="true" message="Please select a valid customer from your account."/></if>
             </if>
             <if condition="salesOpportunityId">
+                <if condition="!ec.entity.isEntityDefined('zenith.erp.crm.Lead')"><return error="true" message="CRM opportunities are unavailable. Open a new quotation in Sales."/></if>
                 <service-call name="zenith.crm.CrmServices.prepare#OpportunityQuotation"
                               in-map="[salesOpportunityId:salesOpportunityId, customerPartyId:customerPartyId]"/>
                 <if condition="ec.message.hasError()"><return/></if>
             </if>
             <!-- ZE-SALES: set currencyUomId explicitly (mantle's create#Order otherwise defaults to USD; this is an
                  India-only ERP, so quotes/orders/invoices are all INR — matches CreateInvoice/CreateCreditNote). -->
-            <service-call name="mantle.order.OrderServices.create#Order" in-map="[orderName:'New Quotation', entryDate:orderDate, statusId:'OrderProposed', currencyUomId:'INR', vendorPartyId:_salesOrgId, customerPartyId:customerPartyId, isReverseCharge:(ec.web.parameters.isReverseCharge == 'Y' ? 'Y' : 'N'), isExport:(ec.web.parameters.isExport == 'Y' ? 'Y' : 'N')]" out-map="createOut"/>
+            <service-call name="mantle.order.OrderServices.create#Order" in-map="[orderName:'New Quotation', documentType:'QUOTATION', entryDate:orderDate, statusId:'OrderProposed', currencyUomId:'INR', vendorPartyId:_salesOrgId, customerPartyId:customerPartyId, isReverseCharge:(ec.web.parameters.isReverseCharge == 'Y' ? 'Y' : 'N'), isExport:(ec.web.parameters.isExport == 'Y' ? 'Y' : 'N')]" out-map="createOut"/>
             <if condition="salesOpportunityId &amp;&amp; createOut.orderId">
                 <service-call name="create#mantle.sales.opportunity.SalesOpportunityOrder"
                               in-map="[salesOpportunityId:salesOpportunityId, orderId:createOut.orderId]"/>
