@@ -68,6 +68,8 @@
         </entity-find>
         <!-- ZE-SALES-014 (SL-068) sweep: gate page title/subtitle + Search block to screen-only so they
              don't leak onto line 1 of the CSV export before the real column headers. -->
+        <set field="salesRows" from="quoteList"/>
+        <script location="component://zenith-erp-sales/script/SalesListTotals.groovy"/>
         <set field="isCsv" from="sri.getRenderMode() == 'csv'"/>
     </actions>
 
@@ -165,8 +167,8 @@
                 </field>
                 <field name="grandTotal">
                     <header-field title="Total" show-order-by="true"/>
-                    <default-field><label text="${currSymbol}${zinr.inr(ec.l10n.format(grandTotal ?: 0, '#,##,##0.00'))}" type="span" style="text-weight-bold text-dark"/></default-field>
-                    <csv-field><display text="${grandTotal ?: 0}"/></csv-field>
+                    <default-field><label text="${currSymbol}${zinr.inr(ec.l10n.format(displayTotals.getOrDefault(orderId, grandTotal ?: 0), '#,##,##0.00'))}" type="span" style="text-weight-bold text-dark"/></default-field>
+                    <csv-field><display text="${displayTotals.getOrDefault(orderId, grandTotal ?: 0)}"/></csv-field>
                 </field>
                 <field name="statusId">
                     <header-field title="Status"/>
@@ -195,7 +197,7 @@
                 <field name="orderId"><header-field title="Quotation No."/><default-field><display text="${displayId ?: orderId}"/></default-field></field>
                 <field name="entryDate"><header-field title="Date"/><default-field><display text="${ec.l10n.format(entryDate, 'yyyy-MM-dd')}"/></default-field></field>
                 <field name="customerPartyId"><header-field title="Customer"/><default-field><display text="${_csvCustomer}"/></default-field></field>
-                <field name="grandTotal"><header-field title="Total (INR)"/><default-field><display text="${grandTotal ?: 0}"/></default-field></field>
+                <field name="grandTotal"><header-field title="Total"/><default-field><display text="${displayTotals.getOrDefault(orderId, grandTotal ?: 0)}"/></default-field></field>
                 <field name="statusId"><header-field title="Status"/><default-field><display text="${statusId}"/></default-field></field>
             </form-list>
         </widgets></section>

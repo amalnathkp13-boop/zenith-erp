@@ -154,27 +154,12 @@
             <service-call name="mantle.party.ContactServices.get#PartyContactInfo" in-map="[partyId:invoice.toPartyId]" out-map="customerContactInfo"/>
         </if>
 
-        <script><![CDATA[
-            long __n = ((invoice?.invoiceTotal ?: 0) as BigDecimal).setScale(0, java.math.RoundingMode.FLOOR).longValue()
-            def __o = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen']
-            def __t = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety']
-            Closure __h = { int x ->
-                StringBuilder bb = new StringBuilder(); int hh=(int)(x/100); int rr=x%100
-                if (hh>0) { bb.append(__o[hh]).append(' Hundred'); if (rr>0) bb.append(' ') }
-                if (rr>0) { if (rr<20) bb.append(__o[rr]) else { bb.append(__t[(int)(rr/10)]); if (rr%10>0) bb.append(' ').append(__o[rr%10]) } }
-                return bb.toString()
-            }
-            long c=__n.intdiv(10000000); __n=__n%10000000
-            long l=__n.intdiv(100000); __n=__n%100000
-            long t=__n.intdiv(1000); __n=__n%1000
-            long h=__n
-            StringBuilder w=new StringBuilder()
-            if (c>0) w.append(__h((int)c)).append(' Crore ')
-            if (l>0) w.append(__h((int)l)).append(' Lakh ')
-            if (t>0) w.append(__h((int)t)).append(' Thousand ')
-            if (h>0) w.append(__h((int)h))
-            amountInWords = (w.toString().trim() ?: 'Zero') + ' Rupees Only'
-        ]]></script>
+        <if condition="invoice">
+            <service-call name="zenith.base.LocalizationServices.convert#AmountToWords"
+                    in-map="[amount:invoice.invoiceTotal, currencyUomId:invoice.currencyUomId, organizationPartyId:invoice.fromPartyId]"
+                    out-map="printedAmount"/>
+            <set field="amountInWords" from="printedAmount.amountInWords"/>
+        </if>
 
         <!-- Use our custom template -->
         <!-- ZE-SALES-016 f/u (SL-070): resolve a human status label so the printed tax invoice shows its

@@ -129,30 +129,28 @@
                         </fo:table-row>
                     </fo:table-header>
                     <fo:table-body>
-                        <#assign totalAmount = 0>
                         <#list orderItems as orderItem>
-                            <#assign taxableAmount = orderItem.taxableAmount ! ((orderItem.quantity!1) * (orderItem.unitAmount!0))>
-                            <#assign gstTotal = (orderItem.igstAmount!0) + (orderItem.cgstAmount!0) + (orderItem.sgstAmount!0)>
-                            <#assign itemAmount = taxableAmount + gstTotal>
-                            <#assign totalAmount = totalAmount + itemAmount>
+                            <#assign amounts = orderLineAmounts[orderItem.orderItemSeqId]>
                             <fo:table-row keep-together.within-page="always" font-size="8pt" border-bottom="0.1pt solid gray">
                                 <fo:table-cell padding="3pt" border-right="0.5pt solid black"><fo:block text-align="center">${orderItem_index+1}</fo:block></fo:table-cell>
                                 <fo:table-cell padding="3pt" border-right="0.5pt solid black"><fo:block font-weight="bold"><@encodeText (orderItem.itemDescription)!""/></fo:block><#if (orderItem.discountPercent!0)?number != 0><fo:block font-size="6pt" color="#c0392b">Less ${orderItem.discountPercent}% discount (<@formatINR orderItem.discountAmount!0/>)</fo:block></#if></fo:table-cell>
                                 <fo:table-cell padding="3pt" border-right="0.5pt solid black"><fo:block text-align="center">${orderItem.hsnSacCode!"-"}</fo:block></fo:table-cell>
                                 <fo:table-cell padding="3pt" border-right="0.5pt solid black"><fo:block text-align="center">${orderItem.quantity!"1"}</fo:block></fo:table-cell>
                                 <fo:table-cell padding="3pt" border-right="0.5pt solid black"><fo:block text-align="right"><@formatINR orderItem.unitAmount/></fo:block></fo:table-cell>
-                                <fo:table-cell padding="3pt" border-right="0.5pt solid black"><fo:block text-align="right"><@formatINR gstTotal/></fo:block></fo:table-cell>
-                                <fo:table-cell padding="3pt"><fo:block text-align="right"><@formatINR itemAmount/></fo:block></fo:table-cell>
+                                <fo:table-cell padding="3pt" border-right="0.5pt solid black"><fo:block text-align="right"><@formatINR amounts.tax/></fo:block></fo:table-cell>
+                                <fo:table-cell padding="3pt"><fo:block text-align="right"><@formatINR amounts.total/></fo:block></fo:table-cell>
                             </fo:table-row>
                         </#list>
                         
                         <fo:table-row font-size="9pt" font-weight="bold" border-top="0.5pt solid black" border-bottom="0.5pt solid black">
                             <fo:table-cell padding="3pt" border-right="0.5pt solid black" number-columns-spanned="6" text-align="right"><fo:block>Estimated Grand Total (Inc. GST)</fo:block></fo:table-cell>
-                            <#-- ZE-SALES-020 f/u (SL-042): sum the item lines (discounted taxable + GST) so the
-                                 "Inc. GST" grand total matches the rows; order.grandTotal is mantle's line-amount
-                                 sum, which excludes the custom GST and the line discount. -->
-                            <fo:table-cell padding="3pt"><fo:block text-align="right"><@formatINR totalAmount/></fo:block></fo:table-cell>
+                            <fo:table-cell padding="3pt"><fo:block text-align="right"><@formatINR displayOrderTotal!0/></fo:block></fo:table-cell>
                         </fo:table-row>
+                        <#if hasHistoricalDifference>
+                            <fo:table-row><fo:table-cell number-columns-spanned="7" padding="3pt"><fo:block font-size="7pt">
+                                Recorded header: <@formatINR order.grandTotal/>. Line total with tax and discounts: <@formatINR lineGrandTotal/>.
+                            </fo:block></fo:table-cell></fo:table-row>
+                        </#if>
                     </fo:table-body>
                 </fo:table>
 

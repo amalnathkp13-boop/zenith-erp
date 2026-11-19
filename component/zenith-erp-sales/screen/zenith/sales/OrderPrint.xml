@@ -44,6 +44,7 @@
             <service-call name="mantle.party.ContactServices.get#PartyContactInfo" in-map="[partyId:orderPart?.customerPartyId]" out-map="customerContactInfo"/>
         </if>
 
+        <script location="component://zenith-erp-sales/script/SalesOrderDisplayTotals.groovy"/>
         <set field="templateLocation" value="component://zenith-erp-sales/template/sales/OrderPrint.xsl-fo.ftl"/>
     </actions>
     <widgets>

@@ -28,8 +28,7 @@
                               in-map="[entityName:'mantle.product.Product', idField:'productId', idValue:ec.web.parameters.productId, orgField:'ownerPartyId']"/>
                 <if condition="!_pa.allowed"><return error="true" message="Please select a valid product from your account."/></if>
             </if>
-            <service-call name="zenith.sales.SalesAccessServices.assert#RecordOrgAccess" in-map="[entityName:'mantle.order.OrderPart', idField:'orderId', idValue:orderId, orgField:'vendorPartyId']" out-map="_acc"/>
-            <if condition="!_acc.allowed"><return error="true" message="You do not have access to this record."/></if>
+            <service-call name="zenith.sales.SalesLineServices.assert#EditableOrderLines" in-map="[orderId:orderId]"/>
             <script>
                 // Sync price with Inventory &amp; Pricing: auto-fill when the user leaves Unit Price blank
                 def _line = ec.service.sync().name("zenith.sales.SalesLineServices.validate#LineInput")
@@ -73,7 +72,16 @@
                         .parameters([orderId: orderId, orderPartSeqId: '01']).call()
                     _partSeq = '01'
                 }
-                def inMap = context + [quantity: qty, unitAmount: price, orderPartSeqId: _partSeq]
+                def orderHeader = ec.entity.find("mantle.order.OrderHeader").condition("orderId",orderId).forUpdate(true).one()
+                if (!orderHeader.documentType) { orderHeader.documentType = 'SALES_ORDER'; orderHeader.update() }
+                def discount = ec.l10n.roundCurrency(qty * price * _line.discountPercentValue / 100, orderHeader.currencyUomId)
+                def priced = ec.service.sync().name("zenith.sales.SalesLineServices.get#CatalogOrderLineTax").parameters([
+                    orderId:orderId,orderPartSeqId:_partSeq,productId:productId,productTaxCode:hsnSacCode,
+                    quantity:qty,unitAmount:price,discountAmount:discount]).call()
+                if (ec.message.hasError()) return
+                def inMap = [orderId:orderId,orderPartSeqId:_partSeq,productId:productId,itemDescription:itemDescription,
+                        itemTypeEnumId:(itemTypeEnumId ?: 'ItemProduct'),quantity:qty,unitAmount:price,
+                        discountPercent:_line.discountPercentValue,hsnSacCode:hsnSacCode,productTaxCode:hsnSacCode,mrpAmount:mrpAmount] + priced.lineFields
                 ec.service.sync().name("mantle.order.OrderServices.create#OrderItem").parameters(inMap).call()
             </script>
         </actions>
@@ -102,25 +110,38 @@
             <if condition="!_acc.allowed"><return error="true" message="You do not have access to this record."/></if>
             <set field="activeOrg" from="_salesOrgId"/>
             <script><![CDATA[
-                def parts = ec.entity.find("mantle.order.OrderPart").condition("orderId", orderId).list()
+                def parts = ec.entity.find("mantle.order.OrderPart").condition("orderId", orderId).orderBy("orderPartSeqId").list()
                 def part = parts ? parts.first() : null
                 if (part == null || part.vendorPartyId != activeOrg) {
                     ec.message.addError("Order not found for your account."); return
                 }
                 def billed = ec.entity.find("mantle.order.OrderItemBilling").condition("orderId", orderId).list()
                 if (billed) {
+                    def lines = ec.entity.find("mantle.order.OrderItem").condition("orderId",orderId).list()
+                    def billedQuantities = billed.groupBy { it.orderItemSeqId }
+                    if (billed*.invoiceId.unique().size() != 1 || !lines.every { row ->
+                            billedQuantities[row.orderItemSeqId]?.sum { it.quantity ?: 0 } == row.quantity }) {
+                        ec.message.addError("This order has previous partial billing. Review its linked invoices before billing the remaining items."); return
+                    }
                     targetInvoiceId = billed.first().invoiceId
                     ec.message.addMessage("This order has already been invoiced (" + targetInvoiceId + ").")
                     return
                 }
+                if (parts.any { it.customerPartyId != part.customerPartyId || it.vendorPartyId != part.vendorPartyId ||
+                        it.facilityId != part.facilityId || it.settlementTermId != part.settlementTermId }) {
+                    ec.message.addError("This order has parts with different customers, shops or payment terms. Invoice those parts separately."); return
+                }
+                if (!_lockedOrder.documentType) { _lockedOrder.documentType = 'SALES_ORDER'; _lockedOrder.update() }
                 def oItems = ec.entity.find("mantle.order.OrderItem").condition("orderId", orderId)
-                    .condition("orderPartSeqId", part.orderPartSeqId).orderBy("orderItemSeqId").list()
-                def items = []; def billOItems = []
+                    .orderBy(["orderPartSeqId","orderItemSeqId"]).list()
+                def items = []
                 for (oi in oItems) {
-                    if (!oi.productId) continue
-                    items.add([productId:oi.productId, itemDescription:oi.itemDescription,
+                    if (!oi.productId && oi.itemTypeEnumId != 'ItemProduct') {
+                        ec.message.addError("This order contains a separate adjustment or charge. Review its lines before invoicing."); return
+                    }
+                    items.add([orderItemSeqId:oi.orderItemSeqId,productId:oi.productId, itemDescription:oi.itemDescription,
+                               productTaxCode:oi.productTaxCode ?: oi.hsnSacCode,isTaxInclusive:oi.isTaxInclusive,
                                quantity:oi.quantity, unitAmount:oi.unitAmount, discountPercent:oi.discountPercent, discountAmount:oi.discountAmount])
-                    billOItems.add(oi)
                 }
                 if (!items) { ec.message.addError("Order has no billable product items."); return }
                 // ZE-SALES-020 (SL-075) sweep f/u: create#SalesInvoice requires customerPartyId. A customer-less
@@ -130,21 +151,14 @@
                 if (!part.customerPartyId) {
                     ec.message.addError("Add a customer to this order before converting it to an invoice."); return
                 }
+                ec.service.sync().name("zenith.sales.SalesLineServices.reconcile#OpenSalesOrder").parameters([orderId:orderId]).call()
+                if (ec.message.hasError()) return
                 def oh = ec.entity.find("mantle.order.OrderHeader").condition("orderId", orderId).one()
                 def inv = ec.service.sync().name("zenith.sales.SalesInvoiceServices.create#SalesInvoice")
-                    .parameters([organizationPartyId:activeOrg, customerPartyId:part.customerPartyId,
+                    .parameters([sourceOrderId:orderId,sourceOrderPartSeqId:part.orderPartSeqId,organizationPartyId:activeOrg, customerPartyId:part.customerPartyId,
                                  currencyUomId:oh?.currencyUomId, settlementTermId:part.settlementTermId, facilityId:part.facilityId, isReverseCharge:(oh?.isReverseCharge ?: 'N'), isExport:(oh?.isExport ?: 'N'), isSezSupply:(oh?.isSezSupply ?: 'N'), isWithPayment:(oh?.isSezSupply == 'Y' ? 'Y' : 'N'), items:items]).call()
                 if (ec.message.hasError() || !inv?.invoiceId) return
                 targetInvoiceId = inv.invoiceId
-                def invItems = ec.entity.find("mantle.account.invoice.InvoiceItem")
-                    .condition("invoiceId", targetInvoiceId).condition("itemTypeEnumId","ItemProduct")
-                    .orderBy("invoiceItemSeqId").list()
-                for (int i = 0; i < billOItems.size() && i < invItems.size(); i++) {
-                    ec.service.sync().name("create#mantle.order.OrderItemBilling").parameters([
-                        orderId:orderId, orderItemSeqId:billOItems[i].orderItemSeqId,
-                        invoiceId:targetInvoiceId, invoiceItemSeqId:invItems[i].invoiceItemSeqId,
-                        quantity:billOItems[i].quantity, amount:billOItems[i].unitAmount]).call()
-                }
             ]]></script>
         </actions>
         <default-response url="../EditInvoice"><parameter name="invoiceId" value="${targetInvoiceId}"/></default-response>
@@ -209,6 +223,7 @@
             <order-by field-name="orderItemSeqId"/>
         </entity-find>
         
+        <script location="component://zenith-erp-sales/script/SalesOrderDisplayTotals.groovy"/>
         <entity-find-one entity-name="mantle.party.PartyDetail" value-field="customer">
             <field-map field-name="partyId" from="orderPart?.customerPartyId"/>
         </entity-find-one>
@@ -277,7 +292,7 @@
                     </container>
                     <container style="column">
                         <label text="Order ${order?.displayId ?: orderId}" type="h3" style="text-primary text-weight-bold q-my-none"/>
-                        <label text="${currSymbol}${zinr.inr(ec.l10n.format(order.grandTotal ?: 0, '#,##,##0.00'))}" type="p" style="text-grey-7 text-h6 q-mt-xs q-mb-none"/>
+                        <label text="${currSymbol}${zinr.inr(ec.l10n.format(displayOrderTotal ?: 0, '#,##,##0.00'))}" type="p" style="text-grey-7 text-h6 q-mt-xs q-mb-none"/>
                     </container>
                 </container>
                 <container style="row items-center">
@@ -354,7 +369,9 @@
                     <label text="Summary" type="h5" style="text-primary text-weight-bold q-mb-md border-bottom q-pb-sm"/>
                     <container style="row q-col-gutter-md">
                         <container style="col-12 col-md-6"><label text="Total Items" type="strong" style="text-grey-7 block"/><label text="${orderItems?.size() ?: 0}" type="span" style="text-dark"/></container>
-                        <container style="col-12 col-md-6"><label text="Grand Total" type="strong" style="text-grey-7 block"/><label text="${currSymbol}${zinr.inr(ec.l10n.format(order.grandTotal ?: 0, '#,##,##0.00'))}" type="h4" style="text-primary q-my-none"/></container>
+                        <container style="col-12 col-md-6"><section name="HistoricalSalesTotal"><condition><expression>hasHistoricalDifference</expression></condition><widgets>
+                            <label text="Recorded header: ${order.currencyUomId} ${ec.l10n.format(order.grandTotal, '#,##0.00')}. Line total with tax and discounts: ${order.currencyUomId} ${ec.l10n.format(lineGrandTotal, '#,##0.00')}." type="p" style="text-warning q-mb-xs"/>
+                        </widgets></section><label text="Grand Total" type="strong" style="text-grey-7 block"/><label text="${currSymbol}${zinr.inr(ec.l10n.format(displayOrderTotal ?: 0, '#,##,##0.00'))}" type="h4" style="text-primary q-my-none"/></container>
                     </container>
                 </container>
             </row-col>
@@ -413,7 +430,7 @@
                             </default-field></field>
                             <field name="quantity"><default-field><text-line size="8"/></default-field></field>
                             <field name="unitAmount"><default-field title="Unit Price"><text-line size="12"/></default-field></field>
-                            <!-- Mock GST fields -->
+                            <field name="discountPercent"><default-field title="Discount (%)"><text-line size="8" default-value="0"/></default-field></field>
                             <field name="hsnSacCode"><default-field title="HSN/SAC Code"><text-line size="8"/></default-field></field>
                             <field name="mrpAmount"><default-field title="MRP"><text-line size="12"/></default-field></field>
                             <field name="submitButton"><default-field title="Add Item"><submit/></default-field></field>
@@ -430,7 +447,7 @@
                 <field name="quantity"><default-field><label text="${quantity}" type="span" style="text-dark"/></default-field></field>
                 <field name="unitAmount"><default-field title="Unit Price"><label text="${zinr.inr(ec.l10n.format(unitAmount, '#,##,##0.00'))}" type="span"/></default-field></field>
                 <field name="mrpAmount"><default-field title="MRP"><label text="${zinr.inr(ec.l10n.format(mrpAmount?:0, '#,##,##0.00'))}" type="span"/></default-field></field>
-                <field name="total"><default-field title="Total"><label text="${zinr.inr(ec.l10n.format((quantity ?: 0) * (unitAmount ?: 0), '#,##,##0.00'))}" type="span" style="text-weight-bold"/></default-field></field>
+                <field name="total"><default-field title="Total"><label text="${zinr.inr(ec.l10n.format(orderLineAmounts[orderItemSeqId].total, '#,##,##0.00'))}" type="span" style="text-weight-bold"/></default-field></field>
                 <field name="findButton"><header-field title="Find"><submit/></header-field></field>
                 </form-list>
 </container>

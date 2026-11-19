@@ -40,6 +40,7 @@
             <service-call name="zenith.sales.SalesAccessServices.get#AuthorizedActiveOrganization" out-map="scope"/>
             <service-call name="zenith.sales.SalesAccessServices.assert#RecordOrgAccess" out-map="access" in-map="[entityName:'mantle.order.OrderPart', idField:'orderId', idValue:orderId, orgField:'vendorPartyId']"/>
             <if condition="!access.allowed"><return error="true" message="Order not found for your account."/></if>
+            <service-call name="zenith.sales.SalesLineServices.reconcile#OpenSalesOrder" in-map="[orderId:orderId,legacyDocumentType:'SALES_ORDER']"/>
             <set field="today" from="java.sql.Date.valueOf(ec.l10n.format(ec.user.nowTimestamp, 'yyyy-MM-dd'))"/>
             <entity-find-one entity-name="mantle.order.OrderHeader" value-field="order"/>
             <if condition="order">

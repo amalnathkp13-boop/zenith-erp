@@ -43,6 +43,119 @@
             valid = true
         ]]></script></actions>
     </service>
+    <service verb="assert" noun="EditableOrderLines" authenticate="true">
+        <in-parameters><parameter name="orderId" required="true"/></in-parameters>
+        <actions>
+            <service-call name="zenith.sales.SalesAccessServices.assert#RecordOrgAccess" out-map="access"
+                    in-map="[entityName:'mantle.order.OrderPart',idField:'orderId',idValue:orderId,orgField:'vendorPartyId']"/>
+            <if condition="!access.allowed"><return error="true" message="Order not found for your account."/></if>
+            <entity-find-one entity-name="mantle.order.OrderHeader" value-field="header" for-update="true"/>
+            <entity-find-count entity-name="mantle.order.OrderItemBilling" count-field="billed"><econdition field-name="orderId"/></entity-find-count>
+            <if condition="billed || header?.statusId in ['OrderCancelled','OrderRejected','OrderCompleted']">
+                <return error="true" message="This document is already billed or closed. Create a new document to change its items."/>
+            </if>
+            <entity-find entity-name="mantle.account.payment.Payment" list="orderPayments"><econdition field-name="orderId"/></entity-find>
+            <if condition="orderPayments.any { !(it.statusId in ['PmntProposed','PmntPromised','PmntDeclined','PmntCancelled','PmntVoid']) }">
+                <return error="true" message="This order has a payment in progress. Review its payment plan before changing items."/>
+            </if>
+        </actions>
+    </service>
+    <service verb="get" noun="CatalogOrderLineTax" authenticate="true">
+        <description>Price a direct Sales order line once using the seller's installed tax engine.</description>
+        <in-parameters>
+            <parameter name="orderId" required="true"/><parameter name="orderPartSeqId" required="true"/>
+            <parameter name="productId"/><parameter name="productTaxCode"/>
+            <parameter name="quantity" type="BigDecimal" required="true"/><parameter name="unitAmount" type="BigDecimal" required="true"/>
+            <parameter name="discountAmount" type="BigDecimal" default="0"/><parameter name="isTaxInclusive" default-value="N"/>
+        </in-parameters>
+        <out-parameters><parameter name="lineFields" type="Map"/></out-parameters>
+        <actions>
+            <service-call name="zenith.sales.SalesAccessServices.assert#RecordOrgAccess" out-map="access"
+                    in-map="[entityName:'mantle.order.OrderPart',idField:'orderId',idValue:orderId,orgField:'vendorPartyId']"/>
+            <if condition="!access.allowed"><return error="true" message="Order not found for your account."/></if>
+            <if condition="productId">
+                <service-call name="zenith.sales.SalesAccessServices.assert#RecordOrgAccess" out-map="productAccess"
+                        in-map="[entityName:'mantle.product.Product',idField:'productId',idValue:productId,orgField:'ownerPartyId']"/>
+                <if condition="!productAccess.allowed"><return error="true" message="Product not found for your account."/></if>
+            </if>
+            <entity-find-one entity-name="mantle.order.OrderPart" value-field="part"/>
+            <entity-find-one entity-name="mantle.order.OrderHeader" value-field="header"/>
+            <if condition="!part || !header"><return error="true" message="Order part not found."/></if>
+            <if condition="part.vendorPartyId"><service-call name="zenith.tax.TaxServices.get#PartyTaxRegistration" in-map="[partyId:part.vendorPartyId]" out-map="seller"/></if>
+            <if condition="part.customerPartyId"><service-call name="zenith.tax.TaxServices.get#PartyTaxRegistration" in-map="[partyId:part.customerPartyId]" out-map="buyer"/></if>
+            <service-call name="zenith.tax.TaxServices.calculate#Tax" out-map="calculation"
+                    in-map="[organizationPartyId:part.vendorPartyId,customerPartyId:part.customerPartyId,currencyUomId:header.currencyUomId,
+                        transactionDate:header.entryDate,transactionType:'SALE',originRegionGeoId:seller?.regionGeoId,
+                        destinationRegionGeoId:buyer?.regionGeoId ?: seller?.regionGeoId,isReverseCharge:header.isReverseCharge,
+                        isSezSupply:(header.isSezSupply == 'Y' || header.isExport == 'Y' ? 'Y' : 'N'),
+                        isWithPayment:(header.isSezSupply == 'Y' &amp;&amp; header.isExport != 'Y' ? 'Y' : 'N'),
+                        items:[[productId:productId,productTaxCode:productTaxCode,quantity:quantity,unitAmount:unitAmount,
+                            discountAmount:discountAmount,isTaxInclusive:isTaxInclusive]]]"/>
+            <script><![CDATA[
+                def taxed = calculation.taxedItems.first()
+                def details = taxed.taxBreakdowns ?: []
+                lineFields = [taxableAmount:ec.l10n.roundCurrency(taxed.taxableAmount, header.currencyUomId),
+                        totalTaxAmount:taxed.totalTaxAmount, discountAmount:discountAmount,
+                        salesTaxDetailsJson:groovy.json.JsonOutput.toJson(details)]
+                for (String code in ['CGST','SGST','IGST']) {
+                    def components = details.findAll { it.taxName == code }
+                    lineFields[code.toLowerCase()+'Amount'] = components.sum { it.taxAmount } ?: 0
+                    lineFields[code.toLowerCase()+'Rate'] = components.sum { it.taxRate } ?: 0
+                }
+            ]]></script>
+        </actions>
+    </service>
+    <service verb="reconcile" noun="OpenSalesOrder" authenticate="true">
+        <description>Bring an open native Sales document's parts and header up to its saved line prices on an explicit write.</description>
+        <in-parameters><parameter name="orderId" required="true"/><parameter name="legacyDocumentType"/></in-parameters>
+        <actions>
+            <service-call name="zenith.sales.SalesAccessServices.assert#RecordOrgAccess" out-map="access"
+                    in-map="[entityName:'mantle.order.OrderPart',idField:'orderId',idValue:orderId,orgField:'vendorPartyId']"/>
+            <if condition="!access.allowed"><return error="true" message="Order not found for your account."/></if>
+            <entity-find-one entity-name="mantle.order.OrderHeader" value-field="header" for-update="true"/>
+            <if condition="!header || header.statusId in ['OrderCancelled','OrderRejected','OrderCompleted']"><return/></if>
+            <set field="documentType" from="header.documentType ?: legacyDocumentType"/>
+            <if condition="!(documentType in ['QUOTATION','SALES_ORDER'])"><return/></if>
+            <entity-find-count entity-name="mantle.order.OrderItemBilling" count-field="billingCount"><econdition field-name="orderId"/></entity-find-count>
+            <if condition="billingCount"><return/></if>
+            <if condition="!header.documentType"><set field="header.documentType" from="documentType"/><entity-update value-field="header"/></if>
+            <entity-find entity-name="mantle.order.OrderPart" list="parts"><econdition field-name="orderId"/><order-by field-name="orderPartSeqId"/></entity-find>
+            <script><![CDATA[
+                boolean hasLines = false
+                for (part in parts) {
+                    def items = ec.entity.find('mantle.order.OrderItem').condition('orderId',orderId).condition('orderPartSeqId',part.orderPartSeqId).list()
+                    if (!items) continue // preserve imported opening balances without line detail
+                    hasLines = true
+                    // Older direct orders left their line tax unresolved until invoicing.
+                    if (documentType == 'SALES_ORDER') {
+                        for (row in items.findAll { it.taxableAmount == null && (it.productId || it.itemTypeEnumId == 'ItemProduct') }) {
+                            def discount = row.discountAmount != null ? row.discountAmount : ec.l10n.roundCurrency(
+                                    row.quantity * row.unitAmount * (row.discountPercent ?: 0) / 100, header.currencyUomId)
+                            def pricing = ec.service.sync().name('zenith.sales.SalesLineServices.get#CatalogOrderLineTax').parameters([
+                                    orderId:orderId,orderPartSeqId:part.orderPartSeqId,productId:row.productId,
+                                    productTaxCode:row.productTaxCode ?: row.hsnSacCode,quantity:row.quantity,unitAmount:row.unitAmount,
+                                    discountAmount:discount,isTaxInclusive:row.isTaxInclusive]).call()
+                            if (ec.message.hasError()) return
+                            row.setAll(pricing.lineFields); row.update()
+                        }
+                    }
+                    def partTotal = items.sum { row ->
+                        ec.service.sync().name('mantle.order.OrderServices.get#OrderItemTotal').parameters([orderItem:row]).call().itemTotal
+                    }
+                    partTotal = ec.l10n.roundCurrency(partTotal,header.currencyUomId)
+                    if (partTotal == part.partTotal) continue
+                    // The native updater also changes a single payment promise. Avoid changing a settled or split payment plan.
+                    def payments = ec.entity.find('mantle.account.payment.Payment').condition('orderId',orderId)
+                            .condition('orderPartSeqId',part.orderPartSeqId).list()
+                    if (payments.size() > 1 || payments.any { !(it.statusId in ['PmntProposed','PmntPromised','PmntDeclined']) }) {
+                        ec.message.addError('This order has existing payments. Review its payment plan before reconciling the order.'); return
+                    }
+                    ec.service.sync().name('mantle.order.OrderServices.update#OrderPartTotal').parameters([orderId:orderId,orderPartSeqId:part.orderPartSeqId]).call()
+                }
+                if (hasLines) ec.service.sync().name('mantle.order.OrderServices.update#OrderHeaderTotal').parameters([orderId:orderId]).call()
+            ]]></script>
+        </actions>
+    </service>
     <service verb="refresh" noun="DraftInvoiceTotals" authenticate="true">
         <in-parameters><parameter name="invoiceId" required="true"/></in-parameters>
         <actions>
@@ -82,8 +195,13 @@
                     tax += (item.totalTaxAmount != null ? item.totalTaxAmount : ((item.cgstAmount ?: 0)+(item.sgstAmount ?: 0)+(item.igstAmount ?: 0))) as BigDecimal
                 }
                 def grand=taxable+tax
-                def roundOff=invoice.currencyUomId == 'INR' ? grand.setScale(0,java.math.RoundingMode.HALF_UP)-grand : BigDecimal.ZERO
-                def words=invoice.currencyUomId == 'INR' ? ec.service.sync().name('zenith.base.LocalizationServices.convert#AmountToWords').parameters([amount:grand+roundOff,organizationPartyId:invoice.fromPartyId]).call()?.amountInWords : invoice.amountInWords
+                def roundOff = BigDecimal.ZERO
+                if (invoice.currencyUomId == 'INR') {
+                    def orderLinked = invoice.invoiceTypeEnumId == 'InvoiceSales' &&
+                            ec.entity.find('mantle.order.OrderItemBilling').condition('invoiceId', invoiceId).count() > 0
+                    if (!orderLinked) roundOff = grand.setScale(0, java.math.RoundingMode.HALF_UP) - grand
+                }
+                def words=invoice.currencyUomId == 'INR' ? ec.service.sync().name('zenith.base.LocalizationServices.convert#AmountToWords').parameters([amount:grand+roundOff,currencyUomId:invoice.currencyUomId,organizationPartyId:invoice.fromPartyId]).call()?.amountInWords : invoice.amountInWords
                 ec.service.sync().name('update#mantle.account.invoice.Invoice').parameters([
                     invoiceId:invoiceId, invoiceTotal:grand, unpaidTotal:grand + roundOff - (invoice.appliedPaymentsTotal ?: 0),
                     totalTaxableAmount:taxable, totalCgst:cgst, totalSgst:sgst, totalIgst:igst,

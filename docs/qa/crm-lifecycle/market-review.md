@@ -48,15 +48,13 @@ Implementation evidence is in the [CRM screens](../../../component/zenith-erp-cr
 
 ## ERP quotation verification
 
-The disposable two-tenant test submits the CRM and Sales forms and reads their persisted PostgreSQL records. Two independent authenticated sessions submit the same quotation request concurrently. One draft is created. Its revision links back to the same opportunity, and conversion links the ERP order and invoice. The customer record opens that customer's quotation, order and invoice lists. Finalizing and settling the tax-free invoice takes its outstanding balance to zero. To reproduce, load the all-modules fixture, set `CRM_QA_PASSWORD` to its test password and run `python3 docs/qa/crm-lifecycle/check-opportunity.py <local-base-url> <postgres-container>`. [Regression test](check-opportunity.py)
+The disposable test submits the native CRM and Sales forms, reads the saved records in PostgreSQL, and extracts the three customer-facing PDFs. Separate sessions request the same quotation concurrently. The resulting draft and its revision stay linked to the opportunity. [Regression test](check-opportunity.py)
 
-Both fixtures quote two units at ₹100 each with a 10% discount. The invoice uses the tenant's configured tax engine and the product's tax classification when issuing the invoice.
+Both examples use two units at ₹100 and a 10% discount.
 
-| Test fixture | Taxable amount on quote and order line | GST on quote and order line | Native order header | ERP invoice total including GST |
-| --- | ---: | ---: | ---: | ---: |
-| Tax-free quote and tenant with default tax fallback | ₹180.00 | ₹0.00 | ₹200.00 | ₹180.00 |
-| India GST engine, registered seller and 18% product slab | ₹180.00 | ₹32.40 | ₹200.00 | ₹212.40 |
+| Accepted GST | Taxable value | GST | Quotation | Sales order | Invoice payable |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 0% | ₹180.00 | ₹0.00 | ₹180.00 | ₹180.00 | ₹180.00 |
+| 18% | ₹180.00 | ₹32.40 | ₹212.40 | ₹212.40 | ₹212.40 |
 
-The test creates both invoices and finalizes and settles the tax-free invoice. The taxed invoice is verified in draft.
-
-**Existing Sales discrepancy.** The native quote and order screens read `OrderHeader.grandTotal`. Mantle derives it from item quantities and unit prices. Zenith's quotation line records its discount and GST in additional fields. In both fixtures the native header therefore displays ₹200.00 before either adjustment. The quote print template sums the line's taxable amount and GST, and the configured invoice independently calculates the same ₹212.40. Existing payment and commission logic consumes the native header. Reconciling that stored total across ERP consumers and legacy documents needs a separate Sales accounting change. The CRM handoff reuses the native records. [ERP quotation screen](../../../component/zenith-erp-sales/screen/zenith/sales/EditQuotation.xml), [print template](../../../component/zenith-erp-sales/template/sales/OrderPrint.xsl-fo.ftl), [order conversion](../../../component/zenith-erp-sales/screen/zenith/sales/EditOrder.xml)
+Previously, the order header stored ₹200.00 before discount and tax, and the linked invoice rounded the payment down to ₹212.00. The native Sales total now includes the line discount and agreed tax. Conversion carries those saved amounts into the invoice, including paise. The test checks the printed amount, amount in words, payment balance and commission. It also covers a direct order priced from the catalog and an accepted quotation rate that differs from the catalog rate. [Sales totals](../../../component/zenith-erp-sales/service/zenith/sales/SalesLineServices.xml)

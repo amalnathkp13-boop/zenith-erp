@@ -21,10 +21,11 @@
             <parameter name="isReverseCharge" default-value="N"/>
             <parameter name="isSezSupply" default-value="N"/>
             <parameter name="isWithPayment" default-value="N"/>
+            <parameter name="sourceOrderId"/><parameter name="sourceOrderPartSeqId"/>
             <parameter name="items" type="List" required="true">
                 <parameter name="itemEntry" type="Map">
                     <parameter name="productId"/>
-                    <parameter name="itemDescription"/>
+                    <parameter name="itemDescription"/><parameter name="orderItemSeqId"/>
                     <parameter name="quantity" type="BigDecimal" required="true"/>
                     <parameter name="unitAmount" type="BigDecimal" required="true"/>
                     <parameter name="mrpAmount" type="BigDecimal"/>
@@ -60,6 +61,48 @@
                     <return error="true" message="Discount amount must be between zero and the gross line amount."/>
                 </if>
             </iterate>
+
+            <!-- An order conversion takes its accepted financial values from the locked native order. -->
+            <if condition="sourceOrderId">
+                <service-call name="zenith.sales.SalesAccessServices.assert#RecordOrgAccess" out-map="sourceAccess"
+                        in-map="[entityName:'mantle.order.OrderPart',idField:'orderId',idValue:sourceOrderId,orgField:'vendorPartyId']"/>
+                <if condition="!sourceAccess.allowed"><return error="true" message="Order not found for your account."/></if>
+                <entity-find-one entity-name="mantle.order.OrderHeader" value-field="sourceOrder" for-update="true"><field-map field-name="orderId" from="sourceOrderId"/></entity-find-one>
+                <entity-find-one entity-name="mantle.order.OrderPart" value-field="sourcePart"><field-map field-name="orderId" from="sourceOrderId"/><field-map field-name="orderPartSeqId" from="sourceOrderPartSeqId"/></entity-find-one>
+                <if condition="sourceOrder?.documentType != 'SALES_ORDER' || sourceOrder.currencyUomId != currencyUomId || sourcePart?.vendorPartyId != organizationPartyId || sourcePart?.customerPartyId != customerPartyId">
+                    <return error="true" message="Order parties or currency do not match the invoice."/>
+                </if>
+                <if condition="sourceOrder.statusId in ['OrderCancelled','OrderRejected']"><return error="true" message="A cancelled or rejected order cannot be invoiced."/></if>
+                <set field="facilityId" from="sourcePart.facilityId"/>
+                <set field="settlementTermId" from="sourcePart.settlementTermId"/>
+                <set field="isReverseCharge" from="sourceOrder.isReverseCharge ?: 'N'"/>
+                <set field="isExport" from="sourceOrder.isExport ?: 'N'"/>
+                <set field="isSezSupply" from="sourceOrder.isSezSupply ?: 'N'"/>
+                <set field="isWithPayment" from="sourceOrder.isSezSupply == 'Y' &amp;&amp; sourceOrder.isExport != 'Y' ? 'Y' : 'N'"/>
+                <entity-find entity-name="mantle.order.OrderPart" list="sourceParts"><econdition field-name="orderId" from="sourceOrderId"/></entity-find>
+                <if condition="sourceParts.any { it.customerPartyId != sourcePart.customerPartyId || it.vendorPartyId != sourcePart.vendorPartyId || it.facilityId != sourcePart.facilityId || it.settlementTermId != sourcePart.settlementTermId }">
+                    <return error="true" message="Invoice order parts with different customers, shops or payment terms separately."/>
+                </if>
+                <entity-find entity-name="mantle.order.OrderItem" list="sourceItems"><econdition field-name="orderId" from="sourceOrderId"/><order-by field-name="orderPartSeqId"/><order-by field-name="orderItemSeqId"/></entity-find>
+                <entity-find entity-name="mantle.order.OrderItemBilling" list="priorBilling"><econdition field-name="orderId" from="sourceOrderId"/></entity-find>
+                <if condition="priorBilling">
+                    <set field="billedByLine" from="priorBilling.groupBy { it.orderItemSeqId }"/>
+                    <if condition="priorBilling*.invoiceId.unique().size() != 1 || !sourceItems.every { row -> billedByLine[row.orderItemSeqId]?.sum { it.quantity ?: 0 } == row.quantity }">
+                        <return error="true" message="This order is partially billed. Review the linked invoices before billing it again."/>
+                    </if>
+                    <set field="invoiceId" from="priorBilling[0].invoiceId"/><return/>
+                </if>
+                <if condition="items*.orderItemSeqId != sourceItems*.orderItemSeqId || sourceItems.any { it.taxableAmount == null }">
+                    <return error="true" message="Order lines changed. Reload the order before invoicing."/>
+                </if>
+                <script><![CDATA[
+                    items = sourceItems.collect { row ->
+                        [productId:row.productId,itemDescription:row.itemDescription,quantity:row.quantity,unitAmount:row.unitAmount,
+                            discountPercent:row.discountPercent,discountAmount:row.discountAmount,isTaxInclusive:row.isTaxInclusive,
+                            productTaxCode:row.productTaxCode ?: row.hsnSacCode,mrpAmount:row.mrpAmount]
+                    }
+                ]]></script>
+            </if>
 
             <!-- Get company currency -->
             <entity-find-one entity-name="zenith.erp.base.CompanySettings" value-field="currSetting">
@@ -97,7 +140,7 @@
                           out-map="invResult"/>
             <set field="invoiceId" from="invResult.invoiceId"/>
             <!-- ZE-SHOP: attribute to a shop (param or the caller's active shop); stamp only if it's this org's store -->
-            <if condition="!facilityId"><set field="facilityId" from="ec.user.getPreference('ACTIVE_SHOP')"/></if>
+            <if condition="!sourceOrderId &amp;&amp; !facilityId"><set field="facilityId" from="ec.user.getPreference('ACTIVE_SHOP')"/></if>
             <if condition="facilityId">
                 <entity-find-one entity-name="mantle.facility.Facility" value-field="_shopf"><field-map field-name="facilityId"/></entity-find-one>
                 <if condition="_shopf != null &amp;&amp; _shopf.facilityTypeEnumId == 'FcTpRetailStore' &amp;&amp; _shopf.ownerPartyId == organizationPartyId">
@@ -109,23 +152,43 @@
             <set field="taxItems" from="[]"/>
             <iterate list="items" entry="item">
                 <set field="lineAmount" from="((item.quantity ?: 0) as BigDecimal) * ((item.unitAmount ?: 0) as BigDecimal)"/>
-                <if condition="item.discountPercent">
-                    <set field="lineDiscount" from="lineAmount * ((item.discountPercent ?: 0) as BigDecimal) / 100" type="BigDecimal"/>
-                    <else-if condition="item.discountAmount">
-                        <set field="lineDiscount" from="(item.discountAmount ?: 0) as BigDecimal"/>
+                <if condition="sourceOrderId &amp;&amp; item.discountAmount != null">
+                    <set field="lineDiscount" from="item.discountAmount"/>
+                    <else-if condition="item.discountPercent">
+                        <set field="lineDiscount" from="lineAmount * ((item.discountPercent ?: 0) as BigDecimal) / 100" type="BigDecimal"/>
                     </else-if>
-                    <else>
-                        <set field="lineDiscount" from="BigDecimal.ZERO" type="BigDecimal"/>
-                    </else>
+                    <else-if condition="item.discountAmount"><set field="lineDiscount" from="item.discountAmount" type="BigDecimal"/></else-if>
+                    <else><set field="lineDiscount" from="BigDecimal.ZERO" type="BigDecimal"/></else>
                 </if>
-
                 <script>taxItems.add([productId:item.productId, productTaxCode:item.productTaxCode,
                     taxCategoryId:item.taxCategoryId, quantity:item.quantity, unitAmount:item.unitAmount,
                     discountAmount:lineDiscount, isTaxInclusive:item.isTaxInclusive ?: 'N'])</script>
             </iterate>
 
-            <!-- Calculate tax via pluggable tax engine (honor reverse-charge / SEZ / export-with-payment) -->
-            <service-call name="zenith.tax.TaxServices.calculate#Tax"
+            <if condition="sourceOrderId">
+                <script><![CDATA[
+                    taxResult = [taxedItems:sourceItems.collect { row ->
+                        def details
+                        if (row.salesTaxDetailsJson) {
+                            details = new groovy.json.JsonSlurper().parseText(row.salesTaxDetailsJson)
+                        } else {
+                            // Legacy quotations stored each rounded GST component directly on the line.
+                            details = ['CGST','SGST','IGST'].findResults { name ->
+                                def key = name.toLowerCase(), rate = row.get(key+'Rate') ?: 0, amount = row.get(key+'Amount') ?: 0
+                                (rate || amount) ? [taxName:name,taxRate:rate,taxableAmount:row.taxableAmount,taxAmount:amount,
+                                        countryGeoId:'IND',isIncludedInPrice:row.isTaxInclusive ?: 'N'] : null
+                            }
+                        }
+                        def total = details.sum { it.taxAmount ?: 0 } ?: BigDecimal.ZERO
+                        if (row.totalTaxAmount != null && total != row.totalTaxAmount) {
+                            ec.message.addError('The saved order tax components do not match its line total. Review the order before invoicing.')
+                        }
+                        [taxableAmount:row.taxableAmount, totalTaxAmount:total, taxBreakdowns:details]
+                    }]
+                ]]></script>
+                <if condition="ec.message.hasError()"><return/></if>
+                <else>
+                    <service-call name="zenith.tax.TaxServices.calculate#Tax"
                           in-map="[organizationPartyId:organizationPartyId, customerPartyId:customerPartyId,
                                    items:taxItems, originRegionGeoId:sellerTaxReg.regionGeoId,
                                    destinationRegionGeoId:buyerTaxReg?.regionGeoId ?: sellerTaxReg.regionGeoId,
@@ -133,6 +196,8 @@
                                    transactionType:'SALE', isReverseCharge:isReverseCharge,
                                    isSezSupply:isSezSupply, isWithPayment:isWithPayment]"
                           out-map="taxResult"/>
+                </else>
+            </if>
 
             <!-- Create each invoice item with tax -->
             <set field="totalTaxableAmount" from="BigDecimal.ZERO" type="BigDecimal"/>
@@ -174,9 +239,9 @@
 
             <!-- Round-off and amount in words -->
             <set field="grandTotal" from="totalTaxableAmount + totalTaxAmount" type="BigDecimal"/>
-            <set field="roundOffAmount" from="grandTotal.setScale(0, java.math.RoundingMode.HALF_UP) - grandTotal" type="BigDecimal"/>
+            <set field="roundOffAmount" from="sourceOrderId ? BigDecimal.ZERO : grandTotal.setScale(0, java.math.RoundingMode.HALF_UP) - grandTotal" type="BigDecimal"/>
             <service-call name="zenith.base.LocalizationServices.convert#AmountToWords"
-                          in-map="[amount:grandTotal + roundOffAmount, organizationPartyId:organizationPartyId]"
+                          in-map="[amount:grandTotal + roundOffAmount, currencyUomId:currencyUomId, organizationPartyId:organizationPartyId]"
                           out-map="wordsResult" ignore-error="true"/>
 
             <script><![CDATA[
@@ -208,7 +273,16 @@
                                    vehicleNumber:vehicleNumber, lrNumber:lrNumber, distanceKm:distanceKm,
                                    isExport:isExport, isReverseCharge:isReverseCharge, isSezSupply:isSezSupply,
                                    isWithPayment:isWithPayment]"/>
-            <if condition="isExport == 'Y'"><service-call name="zenith.sales.SalesLineServices.refresh#DraftInvoiceTaxes" in-map="[invoiceId:invoiceId]"/></if>
+            <if condition="sourceOrderId">
+                <script><![CDATA[
+                    sourceItems.eachWithIndex { row, index ->
+                        ec.service.sync().name('create#mantle.order.OrderItemBilling').parameters([
+                                orderId:sourceOrderId,orderItemSeqId:row.orderItemSeqId,invoiceId:invoiceId,
+                                invoiceItemSeqId:createdItemSeqIds[index],quantity:row.quantity,amount:row.unitAmount]).call()
+                    }
+                ]]></script>
+            </if>
+            <if condition="!sourceOrderId &amp;&amp; isExport == 'Y'"><service-call name="zenith.sales.SalesLineServices.refresh#DraftInvoiceTaxes" in-map="[invoiceId:invoiceId]"/></if>
         </actions>
     </service>
 

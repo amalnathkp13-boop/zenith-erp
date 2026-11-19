@@ -42,12 +42,12 @@
                               in-map="[entityName:'mantle.product.Product', idField:'productId', idValue:ec.web.parameters.productId, orgField:'ownerPartyId']"/>
                 <if condition="!_pa.allowed"><return error="true" message="Please select a valid product from your account."/></if>
             </if>
-            <service-call name="zenith.sales.SalesAccessServices.assert#RecordOrgAccess" in-map="[entityName:'mantle.order.OrderPart', idField:'orderId', idValue:orderId, orgField:'vendorPartyId']" out-map="_acc"/>
-            <if condition="!_acc.allowed"><return error="true" message="You do not have access to this record."/></if>
+            <service-call name="zenith.sales.SalesLineServices.assert#EditableOrderLines" in-map="[orderId:orderId]"/>
         <script>
             // Get addresses to determine IGST vs CGST/SGST
             def orderPart = ec.entity.find("mantle.order.OrderPart").condition("orderId", orderId).one()
-            def orderHeader = ec.entity.find("mantle.order.OrderHeader").condition("orderId", orderId).one()
+            def orderHeader = ec.entity.find("mantle.order.OrderHeader").condition("orderId", orderId).forUpdate(true).one()
+            if (!orderHeader.documentType) { orderHeader.documentType = 'QUOTATION'; orderHeader.update() }
 
             // GST intra/inter-state from the parties' registered state (tax-registration regionGeoId),
             // matching the invoice service. (Was reading stateProvinceGeoId off PartyContactMechInfo,
@@ -95,7 +95,7 @@
             def gross = qty.multiply(price)
             def discPct = _line.discountPercentValue
             def discAmt = gross.multiply(discPct).divide(new BigDecimal(100), 2, java.math.RoundingMode.HALF_UP)
-            def taxableVal = gross.subtract(discAmt)
+            def taxableVal = ec.l10n.roundCurrency(gross.subtract(discAmt), orderHeader.currencyUomId)
             def taxPct = _line.taxPercentageValue
 
             def igstRate = 0.0
@@ -118,7 +118,8 @@
             }
 
             // Call standard create item service
-            def inMap = context + [
+            def inMap = [orderId:orderId,productId:productId,itemDescription:itemDescription,hsnSacCode:hsnSacCode,
+                productTaxCode:hsnSacCode,itemTypeEnumId:(itemTypeEnumId ?: 'ItemProduct'),
                     quantity: qty,
                 orderPartSeqId: orderPart.orderPartSeqId,
                 unitAmount: price,
@@ -142,7 +143,7 @@
         <!-- Clone the current order -->
         <service-call name="zenith.sales.SalesAccessServices.assert#RecordOrgAccess" in-map="[entityName:'mantle.order.OrderPart', idField:'orderId', idValue:orderId, orgField:'vendorPartyId']" out-map="_acc"/>
         <if condition="!_acc.allowed"><return error="true" message="You do not have access to this record."/></if>
-        <service-call name="mantle.order.OrderServices.clone#Order" in-map="[baseOrderId:orderId]" out-map="cloneOut"/>
+        <service-call name="mantle.order.OrderServices.clone#Order" in-map="[baseOrderId:orderId,documentType:'QUOTATION',productItemsOnly:false,copyPayment:false]" out-map="cloneOut"/>
         <!-- A revision remains part of the same CRM deal. Only carry relationships owned by this vendor. -->
         <if condition="ec.entity.isEntityDefined('zenith.erp.crm.Lead')">
             <entity-find entity-name="mantle.sales.opportunity.SalesOpportunityOrder" list="opportunityLinks"><econdition field-name="orderId"/></entity-find>
@@ -214,6 +215,9 @@
                  current documentType) so a re-convert never double-consumes the SO sequence. -->
             <script><![CDATA[
                 def _oh = ec.entity.find("mantle.order.OrderHeader").condition("orderId", orderId).one()
+                if (!_oh.documentType) { _oh.documentType = 'QUOTATION'; _oh.update() }
+                ec.service.sync().name("zenith.sales.SalesLineServices.reconcile#OpenSalesOrder").parameters([orderId:orderId]).call()
+                if (ec.message.hasError()) return
                 def _upd = [orderId:orderId, statusId:'OrderPlaced', documentType:'SALES_ORDER']
                 if (_oh?.documentType != 'SALES_ORDER') {
                     // preserve the quote's number for traceability before it is renumbered to the SO series
@@ -260,6 +264,7 @@
             <order-by field-name="orderItemSeqId"/>
         </entity-find>
         
+        <script location="component://zenith-erp-sales/script/SalesOrderDisplayTotals.groovy"/>
         <entity-find-one entity-name="mantle.party.PartyDetail" value-field="customer">
             <field-map field-name="partyId" from="orderPart?.customerPartyId"/>
         </entity-find-one>
@@ -389,7 +394,9 @@
                     <label text="Estimated Total Summary" type="h5" style="text-primary text-weight-bold q-mb-md border-bottom q-pb-sm"/>
                     <container style="row q-col-gutter-md">
                         <container style="col-12 col-md-6"><label text="Total Items" type="strong" style="text-grey-7 block"/><label text="${orderItems?.size() ?: 0}" type="span" style="text-dark"/></container>
-                        <container style="col-12 col-md-6"><label text="Estimated Grand Total" type="strong" style="text-grey-7 block"/><label text="₹${zinr.inr(ec.l10n.format(order.grandTotal ?: 0, '#,##,##0.00'))}" type="h4" style="text-primary q-my-none"/></container>
+                        <container style="col-12 col-md-6"><section name="HistoricalSalesTotal"><condition><expression>hasHistoricalDifference</expression></condition><widgets>
+                            <label text="Recorded header: ${order.currencyUomId} ${ec.l10n.format(order.grandTotal, '#,##0.00')}. Line total with tax and discounts: ${order.currencyUomId} ${ec.l10n.format(lineGrandTotal, '#,##0.00')}." type="p" style="text-warning q-mb-xs"/>
+                        </widgets></section><label text="Estimated Grand Total" type="strong" style="text-grey-7 block"/><label text="₹${zinr.inr(ec.l10n.format(displayOrderTotal ?: 0, '#,##,##0.00'))}" type="h4" style="text-primary q-my-none"/></container>
                     </container>
                 </container>
             </row-col>
@@ -458,7 +465,7 @@
                 </default-field></field>
 
                 <field name="total"><default-field title="Total (Inc GST)">
-                    <label text="${zinr.inr(ec.l10n.format((taxableAmount != null ? taxableAmount : ((quantity ?: 0) * (unitAmount ?: 0))) + (igstAmount ?: 0) + (cgstAmount ?: 0) + (sgstAmount ?: 0), '#,##,##0.00'))}" type="span" style="text-weight-bold"/>
+                    <label text="${zinr.inr(ec.l10n.format(orderLineAmounts[orderItemSeqId].total, '#,##,##0.00'))}" type="span" style="text-weight-bold"/>
                 </default-field></field>
                 <field name="findButton"><header-field title="Find"><submit/></header-field></field>
                 </form-list>

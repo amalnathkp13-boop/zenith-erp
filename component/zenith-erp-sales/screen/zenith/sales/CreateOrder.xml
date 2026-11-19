@@ -51,7 +51,7 @@
                 }
             ]]></script>
             <if condition="ec.message.hasError()"><return/></if>
-            <service-call name="mantle.order.OrderServices.create#Order" in-map="[orderName:'New Sales Order', entryDate:(orderDate ?: ec.user.nowTimestamp), statusId:'OrderPlaced', currencyUomId:'INR', vendorPartyId:_sellOrg, customerPartyId:customerPartyId, facilityId:_orderFacilityId, settlementTermId:settlementTermId, isReverseCharge:(isReverseCharge ?: 'N'), isExport:(isExport ?: 'N'), isSezSupply:(isSezSupply ?: 'N'), lutBondNumber:lutBondNumber]" out-map="createOut"/>
+            <service-call name="mantle.order.OrderServices.create#Order" in-map="[orderName:'New Sales Order', documentType:'SALES_ORDER', entryDate:(orderDate ?: ec.user.nowTimestamp), statusId:'OrderPlaced', currencyUomId:'INR', vendorPartyId:_sellOrg, customerPartyId:customerPartyId, facilityId:_orderFacilityId, settlementTermId:settlementTermId, isReverseCharge:(isReverseCharge ?: 'N'), isExport:(isExport ?: 'N'), isSezSupply:(isSezSupply ?: 'N'), lutBondNumber:lutBondNumber]" out-map="createOut"/>
             <!-- ZE-SALES: assign a formatted per-org, financial-year sales-order number (SO/26-27/00001). Fail-open
                  to the order id if the org has no SALES_ORDER sequence, so order creation never breaks. -->
             <script><![CDATA[

@@ -46,6 +46,9 @@
     <moqui.security.UserGroupMember userId="AUDIT_QA_USER_B" userGroupId="ZENITH_ALL" fromDate="2020-01-01 00:00:00"/>
     <mantle.party.PartyRelationship partyRelationshipId="AUDIT_QA_REL_B" fromPartyId="AUDIT_QA_USER_B" toPartyId="AUDIT_QA_B" relationshipTypeEnumId="PrtAgent" toRoleTypeId="OrgInternal" fromDate="2020-01-01 00:00:00"/>
     <moqui.security.UserPreference userId="AUDIT_QA_USER_B" preferenceKey="ACTIVE_ORGANIZATION" preferenceValue="AUDIT_QA_B"/>
+    <mantle.party.Party partyId="AUDIT_QA_PRICE_REP_B" ownerPartyId="AUDIT_QA_B" partyTypeEnumId="PtyPerson"/>
+    <mantle.party.Person partyId="AUDIT_QA_PRICE_REP_B" firstName="Disposable" lastName="Commission seller"/>
+    <zenith.erp.sales.CommissionStructure commissionId="AUDIT_QA_PRICE_RATE_B" organizationPartyId="AUDIT_QA_B" partyId="AUDIT_QA_PRICE_REP_B" commissionTypeEnumId="CmtPercentage" rate="10" isActive="Y"/>
     <mantle.party.Party partyId="AUDIT_QA_CUST_A" ownerPartyId="AUDIT_QA_A" partyTypeEnumId="PtyPerson"/>
     <mantle.party.Person partyId="AUDIT_QA_CUST_A" firstName="Disposable" lastName="Customer A"/>
     <mantle.party.PartyRole partyId="AUDIT_QA_CUST_A" roleTypeId="Customer"/>

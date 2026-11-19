@@ -121,7 +121,13 @@ function totals(name,id,taxable,cgst,sgst,igst){const i=inv(id);check(name,Numbe
   const note=await post('CreateCreditNote','createCreditNote',{originalInvoiceId:'SALES_QA_ISSUED',documentType:'Credit Note',invoiceMessage:'Disposable QA reason',invoiceDate:'2026-01-15'});const noteId=new URL(note.headers().location).searchParams.get('invoiceId');
   check('credit note preserves original, reason and financial year',!!noteId&&inv(noteId).original_invoice_id==='SALES_QA_ISSUED'&&inv(noteId).invoice_message==='Disposable QA reason'&&inv(noteId).gst_invoice_number.startsWith('CN/25-26/'),{id:noteId});report.created.push({type:'credit note',id:noteId});
   await post('EditQuotation','addItem',{orderId:'SALES_QA_QUOTE',productId:'SALES_QA_PROD_A',quantity:'10',unitAmount:'100',discountPercent:'10',taxPercentage:'18',description:'Disposable quote line'});
+  function checkQuotedTotal(stage) {
+   const header=rows('order_header',"order_id='SALES_QA_QUOTE'")[0], part=rows('order_part',"order_id='SALES_QA_QUOTE'")[0];
+   check(stage+' stores discounted total including GST',Number(header.grand_total)===1062 && Number(part.part_total)===1062,{header:header.grand_total,part:part.part_total});
+  }
+  checkQuotedTotal('quotation');
   await post('EditQuotation','convertToOrder',{orderId:'SALES_QA_QUOTE'});
+  checkQuotedTotal('converted order');
   const convertedOrder=rows('order_header',"order_id='SALES_QA_QUOTE'")[0];check('quote converts to order',convertedOrder.status_id==='OrderPlaced'&&convertedOrder.document_type==='SALES_ORDER',{status:convertedOrder.status_id});
   await post('EditOrder','convertToInvoice',{orderId:'SALES_QA_QUOTE'});
   const billed=rows('order_item_billing',"order_id='SALES_QA_QUOTE'");check('converted order is linked to invoice',billed.length===1,{count:billed.length});
@@ -207,7 +213,8 @@ function totals(name,id,taxable,cgst,sgst,igst){const i=inv(id);check(name,Numbe
    if(shell==='qapps'){
     await p.locator('#zq-subnav.show[data-mod="sales"]').waitFor();
     const header=await p.evaluate(()=>{
-     const selectors=['.q-header .q-toolbar>button:first-child','#zq-ownerview','#zq-search','#zq-toolbtns','.q-header .q-toolbar>button:last-child'];
+     const selectors=['.q-header .q-toolbar>button:first-child','#zq-ownerview','#zq-search',
+      '#zq-toolbtns .zqtb-history','#zq-toolbtns a[href*="MyPassword"]','#zq-toolbtns [data-control="notifications"]','#zq-toolbtns .zqtb-avatar'];
      const controls=selectors.map(selector=>{const e=document.querySelector(selector),r=e?.getBoundingClientRect();return r&&r.width>0&&r.height>0?{selector,left:r.left,right:r.right,top:r.top,bottom:r.bottom}:null}).filter(Boolean);
      const overlap=[];for(let i=0;i<controls.length;i++)for(let j=i+1;j<controls.length;j++){const a=controls[i],b=controls[j];if(Math.min(a.right,b.right)-Math.max(a.left,b.left)>2&&Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>2)overlap.push([a.selector,b.selector]);}
      return {controls,overlap,headerBottom:document.querySelector('.q-header').getBoundingClientRect().bottom,subnavTop:document.querySelector('#zq-subnav').getBoundingClientRect().top};

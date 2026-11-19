@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<secas xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-eca-3.xsd">
+    <!-- Mantle uses this result for part totals, the header and order payment promises. -->
+    <seca id="ZenithSalesOrderLineTotal" service="mantle.order.OrderServices.get#OrderItemTotal" when="post-service">
+        <condition><expression>orderItem?.containsKey('taxableAmount') &amp;&amp; orderItem.taxableAmount != null</expression></condition>
+        <actions><script><![CDATA[
+            def document = ec.entity.find('mantle.order.OrderHeader').condition('orderId', orderItem.orderId).one()
+            if (!(document?.documentType in ['QUOTATION', 'SALES_ORDER'])) return
+            def amounts = ec.resource.script('component://zenith-erp-sales/script/SalesOrderLineAmount.groovy', null,
+                    [line:orderItem, currency:document.currencyUomId])
+            results.itemTotal = amounts.total
+            if (getChildrenTotals) results.itemPlusChildrenTotal = results.itemTotal + (results.childrenTotal ?: 0)
+        ]]></script></actions>
+    </seca>
+</secas>

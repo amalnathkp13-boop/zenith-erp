@@ -15,6 +15,7 @@
 
     <!-- ========== Generic Order Item Extensions ========== -->
     <extend-entity entity-name="OrderItem" package="mantle.order">
+        <field name="salesTaxDetailsJson" type="text-long"><description>Tax components returned by the catalog engine when this Sales order line was priced.</description></field>
         <field name="taxableAmount" type="currency-precise"/>
         <field name="totalTaxAmount" type="currency-precise"/>
         <field name="discountAmount" type="currency-precise"/>
