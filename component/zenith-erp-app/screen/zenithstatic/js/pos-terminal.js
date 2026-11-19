@@ -1159,40 +1159,34 @@ window._posOffline = (function () {
         overlay.showModal();
         return overlay;
     }
-    function chooseCustomer() {
-        var options =
-            '<option value="">Walk-in / new customer</option>' +
-            (settings.customers || [])
-                .map(function (c, index) {
-                    return '<option value="' + index + '">' + esc(c.name) + ' ' + esc(c.phone) + '</option>';
-                })
-                .join('');
-        var ov = modal(
-            'Offline customer',
-            '<label>Saved customer<select id="oflCustomer">' +
-                options +
-                '</select></label><label>Name<input id="oflName" required/></label><label>Phone<input id="oflPhone" inputmode="tel"/></label><button type="submit">Use customer</button>',
-        );
-        var selected = null;
-        ov.querySelector('select').onchange = function () {
-            selected = this.value === '' ? null : settings.customers[Number(this.value)];
-            ov.querySelector('#oflName').value = selected ? selected.name : '';
-            ov.querySelector('#oflPhone').value = selected ? selected.phone : '';
-        };
-        if (draft.customer) {
-            ov.querySelector('#oflName').value = draft.customer.name;
-            ov.querySelector('#oflPhone').value = draft.customer.phone || '';
-        }
-        ov.querySelector('form').onsubmit = function (e) {
-            e.preventDefault();
-            draft.customer = selected
-                ? copy(selected)
-                : {
-                      name: ov.querySelector('#oflName').value.trim(),
-                      phone: ov.querySelector('#oflPhone').value.trim(),
-                  };
-            change();
-            ov.remove();
+    function customerPicker() {
+        if (!begin()) return null;
+        return {
+            taxOn: taxEnabled(),
+            search: function (term) {
+                term = term.trim().toLowerCase();
+                var digits = term.replace(/\D/g, '');
+                return (settings.customers || []).filter(function (customer) {
+                    return customer.name.toLowerCase().includes(term) || customer.partyId.toLowerCase().includes(term) ||
+                        (digits.length >= 3 && String(customer.phone || '').replace(/\D/g, '').includes(digits));
+                }).sort(function (a, b) { return a.name.localeCompare(b.name); }).slice(0, 30);
+            },
+            select: function (customer, wantsTaxBill) {
+                if (!begin()) return false;
+                var origin = draft.originState || settings.state;
+                var destination = customer?.state || origin;
+                var currentDestination = draft.customer?.state || draft.destinationState || origin;
+                if (draft.items.length && destination !== currentDestination) {
+                    toast('Start a new bill to change the tax destination. Existing bill amounts are preserved.', '#c62828');
+                    return false;
+                }
+                draft.customer = customer ? copy(customer) : null;
+                draft.destinationState = destination;
+                if (customer && wantsTaxBill) draft.taxOn = 'Y';
+                change();
+                return true;
+            },
+            close: resumeOnline,
         };
     }
     function discountDialog() {
@@ -1723,12 +1717,13 @@ window._posOffline = (function () {
     }
     function canResumeOnline() {
         return !localClose && !disconnected() && localEditing && draft?.sessionId === tCtx().sessionId && leaseReady &&
-            !syncing && !payPending && !pendingLocalEdits.length && !document.getElementById('posOfflineDialog') &&
+            !syncing && !payPending && !pendingLocalEdits.length &&
+            !document.querySelector('#posOfflineDialog,#posCustomerOverlay[data-offline]') &&
             typeof window._posResumeOnline === 'function' && typeof window._posReadRestoredCart === 'function';
     }
     function matchesOnlineDraft() {
         if (draft.restoreRequest) return false;
-        if (!draft.sourceTransactionId) return !draft.items.length;
+        if (!draft.sourceTransactionId) return !draft.items.length && !draft.customer;
         // An unchanged cached copy can safely give control back to its server draft.
         if (!snapshot || snapshot.transactionId !== draft.sourceTransactionId || draft.sessionId !== tCtx().sessionId) return false;
         var baseline = draft.onlineBaseline || draftContent(setDraftSource(newDraft()));
@@ -2054,7 +2049,7 @@ window._posOffline = (function () {
                 if (!active() && !savedHold) return;
                 if (b.closest('#posSessionClosed,#pos-history-overlay,#posCloseSessionOverlay')) return;
                 if (localClose) { e.preventDefault(); e.stopImmediatePropagation(); return; }
-                if (b.closest('#posOfflineDialog')) return;
+                if (b.closest('#posOfflineDialog,#posCustomerOverlay')) return;
                 if (!disconnected() && b.matches('#pos-pay-cash,#pos-pay-card,#pos-credit,#pos-pay-upi,#pos-split,#pos-hold')) {
                     e.preventDefault(); e.stopImmediatePropagation();
                     sync();
@@ -2181,7 +2176,7 @@ window._posOffline = (function () {
                     return;
                 }
                 if (!active()) return;
-                if (e.key === 'F9' && !canUseOnlineHeldPicker() && !document.getElementById('posOfflineDialog')) {
+                if (e.key === 'F9' && !canUseOnlineHeldPicker() && !document.querySelector('#posOfflineDialog,#posCustomerOverlay')) {
                     e.preventDefault();
                     e.stopImmediatePropagation();
                     if (begin()) heldDialog();
@@ -2228,7 +2223,7 @@ window._posOffline = (function () {
         clearDraft: clearDraft,
         needsDeferredClose: needsDeferredClose,
         render: render,
-        chooseCustomer: function () { if (begin()) chooseCustomer(); },
+        customerPicker: customerPicker,
         discount: function () { if (begin()) discountDialog(); },
         printReceipt: printReceipt,
         remember: remember,
@@ -3089,12 +3084,20 @@ window._posOffline = (function () {
         }).catch(function() { return {success:false,error:'Could not reach the server. Try again.'}; });
     }
     var customerOverlay = null;
-    function closeCustomer() { if (customerOverlay) { customerOverlay.remove(); customerOverlay = null; } }
-    function openCustomerPicker() {
+    function openCustomerPicker(local) {
         var af = document.getElementById('cartInlineAddForm');
         CTX.sessionId = af ? ((af.querySelector('[name=sessionId]') || {}).value || '') : CTX.sessionId;
-        closeCustomer();
+        if (customerOverlay) return;
         var ov = document.createElement('div'); customerOverlay = ov; ov.id='posCustomerOverlay'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-label','Choose customer');
+        if (local) ov.dataset.offline = '';
+        function closeCustomer() {
+            if (customerOverlay !== ov) return;
+            ov.remove();
+            customerOverlay = null;
+            window.removeEventListener('posconnectionchange', connectionChanged);
+            clearTimeout(t);
+            if (local) local.close();
+        }
         ov.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.5);display:flex;align-items:flex-start;justify-content:center;padding-top:6vh';
         var panel = document.createElement('div');
         panel.style.cssText = 'background:#fff;border-radius:16px;width:90vw;max-width:560px;max-height:84vh;display:flex;flex-direction:column;box-shadow:0 12px 48px rgba(0,0,0,0.3);overflow:hidden';
@@ -3104,15 +3107,23 @@ window._posOffline = (function () {
           + '<button id="cust-close" style="background:none;border:none;color:#fff;font-size:24px;cursor:pointer;padding:0 4px">&times;</button></div>'
           + '<div style="padding:12px 18px;border-bottom:1px solid #e0e0e0;display:flex;gap:8px;align-items:center">'
           + '<input id="cust-search" type="text" placeholder="Search name or phone…" autocomplete="off" style="flex:1;padding:11px 14px;border:1px solid #ccc;border-radius:8px;font-size:15px;box-sizing:border-box;outline:none"/>'
-          + '<a href="/apps/zenith/Contacts/Customers" target="_blank" rel="noopener" style="white-space:nowrap;padding:11px 14px;border-radius:8px;background:#ECE8FB;color:#7C3AED;border:1px solid #DCD3F2;font-weight:700;font-size:13px;text-decoration:none" title="Add a new customer in Contacts (opens a new tab)">&#43; New</a></div>'
+          + '<a id="cust-new" href="/apps/zenith/Contacts/Customers" target="_blank" rel="noopener" style="white-space:nowrap;padding:11px 14px;border-radius:8px;background:#ECE8FB;color:#7C3AED;border:1px solid #DCD3F2;font-weight:700;font-size:13px;text-decoration:none" title="Add a new customer in Contacts (opens a new tab)">&#43; New</a></div>'
           + '<div style="padding:8px 18px 0"><button id="cust-walkin" type="button" style="width:100%;padding:11px;border:1px dashed #bbb;background:#fafafa;border-radius:8px;font-size:14px;font-weight:700;color:#555;cursor:pointer">&#128694; Walk-In (no customer)</button></div>'
           + '<label style="display:flex;align-items:center;gap:9px;padding:10px 18px;color:#374151;font-size:13px"><input id="cust-tax-bill" type="checkbox" style="width:17px;height:17px;accent-color:#7C3AED"/> Tax bill for selected customer (3-inch receipt)</label>'
           + '<div id="cust-list" style="flex:1;overflow-y:auto;padding:10px 14px 16px"><div style="text-align:center;padding:30px;color:#999">Type a name or phone number to search your customers…</div></div>';
         ov.appendChild(panel); document.body.appendChild(ov);
         ov.addEventListener('click', function(ev) { if (ev.target === ov) closeCustomer(); });
+        ov.addEventListener('keydown', function(ev) { if (ev.key === 'Escape') { ev.stopPropagation(); closeCustomer(); } });
         panel.querySelector('#cust-close').addEventListener('click', closeCustomer);
-        panel.querySelector('#cust-tax-bill').checked = typeof window._posCurrentTax === 'function' && window._posCurrentTax() === 'Y';
+        var taxBill = panel.querySelector('#cust-tax-bill');
+        taxBill.checked = local ? local.taxOn : window._posCurrentTax?.() === 'Y';
+        function selectLocal(customer) {
+            if (!local.select(customer, taxBill.checked)) return;
+            histToast(customer ? 'Customer: ' + customer.name : 'Customer cleared — Walk-In', customer ? '#7C3AED' : '#607d8b');
+            closeCustomer();
+        }
         panel.querySelector('#cust-walkin').addEventListener('click', function() {
+            if (local) { selectLocal(null); return; }
             var tx = getOpenTxId();
             if (!tx) { window._posSetCustomerChip(); closeCustomer(); return; }
             custPost('clearCustomer', {transactionId: tx}).then(function(d) {
@@ -3122,30 +3133,73 @@ window._posOffline = (function () {
                 window._posSetCustomerChip(); histToast('Customer cleared — Walk-In', '#607d8b'); closeCustomer();
             });
         });
-        var si = panel.querySelector('#cust-search'); var t = null;
+        var si = panel.querySelector('#cust-search'), listEl = panel.querySelector('#cust-list'), t = null, requestId = 0;
+        var newCustomer = panel.querySelector('#cust-new');
+        if (local) newCustomer.title = 'Enter a customer for this bill';
+        newCustomer.addEventListener('click', function(event) {
+            if (!local) return;
+            event.preventDefault();
+            clearTimeout(t);
+            listEl.innerHTML = '<form style="display:grid;gap:10px;padding:4px;color:#374151">'
+                + '<p style="margin:0">Use a name and phone for this bill. To create a contact, open Contacts when online.</p>'
+                + '<label>Name<input name="name" required maxlength="80" style="display:block;width:100%;padding:10px;border:1px solid #ccc;border-radius:8px"/></label>'
+                + '<label>Phone<input name="phone" type="tel" maxlength="20" style="display:block;width:100%;padding:10px;border:1px solid #ccc;border-radius:8px"/></label>'
+                + '<button type="submit" style="padding:10px;background:#7C3AED;color:#fff;border:0;border-radius:8px;font-weight:700">Use customer</button></form>';
+            var form = listEl.querySelector('form');
+            form.elements.name.focus();
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                var name = form.elements.name.value.trim();
+                if (name) selectLocal({name:name, phone:form.elements.phone.value.trim()});
+            });
+        });
+        function connectionChanged() {
+            // Wait for POS to enter the local workspace before switching the open picker.
+            queueMicrotask(function() {
+                if (customerOverlay !== ov || local || !window._posOffline?.disconnected()) return;
+                local = window._posOffline.customerPicker();
+                if (!local) return;
+                ov.dataset.offline = '';
+                newCustomer.title = 'Enter a customer for this bill';
+                clearTimeout(t);
+                loadCustList(si.value);
+            });
+        }
+        window.addEventListener('posconnectionchange', connectionChanged);
         si.addEventListener('input', function() { clearTimeout(t); t = setTimeout(function() { loadCustList(si.value); }, 350); });
         si.focus();
         loadCustList('');
-    }
-    function loadCustList(term) {
-        var listEl = document.getElementById('cust-list'); if (!listEl) return;
-        listEl.innerHTML = '<div style="text-align:center;padding:24px;color:#999">Searching…</div>';
-        custPost('searchCustomers', {term: term || ''}).then(function(d) {
-            if (!d || !d.success) { listEl.innerHTML = '<div style="text-align:center;padding:24px;color:#c62828">Error loading customers</div>'; return; }
-            if (!d.customers || !d.customers.length) { listEl.innerHTML = '<div style="text-align:center;padding:24px;color:#999">No customers found. Use “+ New” to add one in Contacts.</div>'; return; }
+        function loadCustList(term) {
+            var request = ++requestId;
+            if (local) { renderCustList(local.search(term)); return; }
+            listEl.innerHTML = '<div style="text-align:center;padding:24px;color:#999">Searching…</div>';
+            custPost('searchCustomers', {term:term}).then(function(data) {
+                if (customerOverlay !== ov || request !== requestId) return;
+                if (!data || !data.success) { listEl.innerHTML = '<div style="text-align:center;padding:24px;color:#c62828">Error loading customers</div>'; return; }
+                renderCustList(data.customers || []);
+            });
+        }
+        function renderCustList(customers) {
+            if (!customers.length) {
+                listEl.innerHTML = '<div style="text-align:center;padding:24px;color:#999">' + (local
+                    ? 'No saved customers found. Reconnect to refresh the customer list.'
+                    : 'No customers found. Use “+ New” to add one in Contacts.') + '</div>';
+                return;
+            }
             var h = '';
-            d.customers.forEach(function(c) {
-                h += '<div class="cust-row" data-pid="' + custEscape(c.partyId) + '" data-name="' + custEscape(c.name || '') + '" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 14px;padding:12px 14px;border:1px solid #e8e8e8;border-radius:10px;margin-bottom:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px" onmouseover="this.style.background=\'#e8eaf6\'" onmouseout="this.style.background=\'#fff\'">'
+            customers.forEach(function(c) {
+                h += '<div class="cust-row" data-pid="' + custEscape(c.partyId) + '" data-name="' + custEscape(c.name || '') + '" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px;border:1px solid #e8e8e8;border-radius:10px;margin-bottom:8px;cursor:pointer" onmouseover="this.style.background=\'#e8eaf6\'" onmouseout="this.style.background=\'#fff\'">'
                   + '<span style="font-weight:700;color:#7C3AED">' + custEscape(c.name || c.partyId) + '</span>'
                   + (c.phone ? '<span style="font-size:13px;color:#777;white-space:nowrap">' + custEscape(c.phone) + '</span>' : '')
                   + '</div>';
             });
             listEl.innerHTML = h;
-            listEl.querySelectorAll('.cust-row').forEach(function(row) {
+            listEl.querySelectorAll('.cust-row').forEach(function(row, index) {
                 row.addEventListener('click', function() {
+                    if (local) { selectLocal(customers[index]); return; }
                     var tx = getOpenTxId();
                     var pid = row.dataset.pid, nm = row.dataset.name;
-                    var wantsTaxBill = document.getElementById('cust-tax-bill').checked;
+                    var wantsTaxBill = taxBill.checked;
                     if (!tx && !CTX.sessionId) { histToast('Open a session before selecting a customer', '#e65100'); return; }
                     custPost('setCustomer', {transactionId: tx, customerPartyId: pid}).then(function(d) {
                         if (d && d.success) {
@@ -3166,11 +3220,13 @@ window._posOffline = (function () {
                     });
                 });
             });
-        });
+        }
     }
     window.posOpenCustomer = function() {
-        if (window._posOffline?.active?.()) window._posOffline.chooseCustomer();
-        else openCustomerPicker();
+        var offline = window._posOffline;
+        if (!offline?.active()) { openCustomerPicker(); return; }
+        var local = offline.customerPicker();
+        if (local) openCustomerPicker(local);
     };
     if (!window.__posCustDelegated) {
         window.__posCustDelegated = true;

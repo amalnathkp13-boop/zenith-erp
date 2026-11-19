@@ -56,7 +56,7 @@
                 def customerIds=ec.entity.find('mantle.party.Party').condition('ownerPartyId',org).list()*.partyId
                 def customers=[]
                 if (customerIds) ec.entity.find('mantle.party.PartyRole').condition('partyId','in',customerIds)
-                    .condition('roleTypeId','in',kotWorkspace ? ['Customer','CustomerBillTo'] : ['Customer']).list().unique { it.partyId }.each { role ->
+                    .condition('roleTypeId','in',['Customer','CustomerBillTo']).list().unique { it.partyId }.each { role ->
                     def detail=ec.entity.find('mantle.party.PartyDetailAndRole').condition('partyId',role.partyId).limit(1).list()
                     def person=detail ? detail[0] : null
                     def name=person?.organizationName ?: [person?.firstName,person?.lastName].findAll { it }.join(' ')
@@ -153,8 +153,9 @@
             <script><![CDATA[
                 def org=access.organizationPartyId
                 def fail={ String message -> throw new IllegalArgumentException(message) }
+                def customerOnlyDraft=draftOnly && (sale.customer?.partyId || sale.customer?.name?.toString()?.trim())
                 if (sale.version!=2 || !sale.offlineId || sale.offlineId.toString().size()>120 || sale.terminalId!=terminalId || sale.organizationPartyId!=org || sale.userId!=ec.user.userId || !(sale.items instanceof List) ||
-                    (!sale.items && !(draftOnly && sale.sourceTransactionId)) || sale.items.size()>1000 || !(sale.taxOn in ['Y','N'])) fail('Invalid offline sale identity or items.')
+                    (!sale.items && !(draftOnly && sale.sourceTransactionId) && !customerOnlyDraft) || sale.items.size()>1000 || !(sale.taxOn in ['Y','N'])) fail('Invalid offline sale identity or items.')
                 def issued=java.sql.Timestamp.from(java.time.Instant.parse(sale.ts as String))
                 if (issued.time>ec.user.nowTimestamp.time+300000L) fail('The terminal clock is ahead. Keep this sale for review.')
                 ec.entity.find('zenith.erp.pos.PosTerminal').condition('terminalId',terminalId).forUpdate(true).one()
