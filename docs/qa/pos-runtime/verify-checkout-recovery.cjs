@@ -90,6 +90,7 @@ module.exports=async function({a,base,check,q,invoke,post,out,cleanupInvoke=invo
   a.t=duringTender.headers()['x-csrf-token'];
   const paid=page.waitForResponse(r=>r.url().endsWith('/payAndComplete'));
   await cash.locator('.pos-cash-confirm,#posCashConfirm').click();
+  await page.locator('#posPaySave').click();
   const result=await (await paid).json();
   check('the old held bill completes once at the saved total',result.success&&payments().length===1&&Number(payments()[0].amount)===747);
   await page.locator('.pos-cart .aj-p').waitFor({state:'detached'});
@@ -124,9 +125,10 @@ module.exports=async function({a,base,check,q,invoke,post,out,cleanupInvoke=invo
   a.t=duringCredit.headers()['x-csrf-token'];
   const credit=page.waitForResponse(r=>r.url().endsWith('/completeCredit')&&r.request().method()==='POST');
   await page.locator('#credit-confirm').click();
-  const issued=await credit;
+  await page.locator('#posPaySave').click();
+  const issued=await (await credit).json();
   const row=q(`SELECT status_id,is_credit,payable_amount FROM pos_transaction WHERE transaction_id='${transactionId}'`)[0];
-  check('Credit submits with the refreshed token and correct balance',issued.status()===302&&row.status_id==='PtCompleted'&&row.is_credit==='Y'&&Number(row.payable_amount)===100);
+  check('Credit submits with the refreshed token and correct balance',issued.success===true&&row.status_id==='PtCompleted'&&row.is_credit==='Y'&&Number(row.payable_amount)===100);
  } catch(error) {
   primaryError=error;
   console.error('Checkout recovery browser:',(await page.locator('body').innerText()).slice(-1300));

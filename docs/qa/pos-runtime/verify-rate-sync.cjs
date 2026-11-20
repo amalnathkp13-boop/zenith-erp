@@ -24,14 +24,17 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
    await invoke('add',{transactionId:tx.transactionId,productId:'POS_QA_A_P18',quantity:'1',taxOn:'N'});
    await page.goto(`${base}/apps/zenith/pos/Terminal?sessionId=${session.sessionId}&transactionId=${tx.transactionId}&taxOn=N`);
    check(method+' rate synchronization uses an isolated printer stub',await page.evaluate(()=>window.qz===window.__qaQzStub));
-   await page.locator('.aj-p').fill('73');await page.locator('#pos-pay-'+method.toLowerCase()).click();
-   const overlay=page.locator(method==='Cash'?'#posCashTenderOverlay':'#posPayConfirmOverlay');await overlay.waitFor();
-   check(method+' confirmation uses the rate saved before opening',(await overlay.innerText()).includes('73'));
-   if(method==='Cash')await page.locator('#posCashRecv').fill('73');
+   await page.locator('.aj-p').fill('73');
    const paid=page.waitForResponse(r=>r.url().includes('/payAndComplete'));
-   await page.locator(method==='Cash'?'#posCashConfirm':'#posPayConfOk').click();
-   if(method==='UPI') await page.locator('#posPaySavePrint').click();
-   const receipt=await (await paid).json();await page.waitForFunction(()=>window.__jobs.length===1);
+   await page.locator('#pos-pay-'+method.toLowerCase()).click();
+   if(method==='Cash') {
+    const overlay=page.locator('#posCashTenderOverlay');
+    check('Cash confirmation uses the rate saved before opening',(await overlay.innerText()).includes('73'));
+    await page.locator('#posCashRecv').fill('73');await page.locator('#posCashConfirm').click();
+   }
+   const receipt=await (await paid).json();
+   await page.locator('#posPaySavePrint').click();
+   await page.waitForFunction(()=>window.__jobs.length===1);
    check(method+' checkout waits for a rate typed without Enter',Number(read(tx.transactionId).paid_amount)===73&&Number(read(tx.transactionId).payable_amount)===73&&payRequests===index+1,read(tx.transactionId));
    check(method+' receipt uses the persisted edited rate',Number(receipt.items[0].rate)===73);
   }

@@ -14,20 +14,21 @@ window.PosFreeItems = (function () {
     function promptApproval(canApprove, items, submit) {
         return new Promise(function (resolve, reject) {
             if (document.getElementById('pos-free-approval')) { reject(new Error('Finish the open approval first.')); return; }
-            var previous = document.activeElement, ov = document.createElement('div');
+            var previous = document.activeElement, ov = document.createElement('dialog');
             ov.id = 'pos-free-approval';ov.setAttribute('role','dialog');ov.setAttribute('aria-modal','true');ov.setAttribute('aria-labelledby','pos-free-title');
-            ov.style.cssText = 'position:fixed;inset:0;z-index:2147483640;background:#17132d99;display:flex;align-items:center;justify-content:center;padding:16px';
-            ov.innerHTML = '<form style="background:#fff;color:#172033;border:1px solid #e4ddf4;border-radius:16px;padding:24px;width:440px;max-width:100%;max-height:90vh;overflow:auto;box-shadow:0 16px 50px #17132d44">'
+            ov.style.cssText = 'position:fixed;inset:0;width:min(440px,calc(100vw - 24px));max-width:none;border:0;padding:0;background:transparent;box-shadow:0 0 0 100vmax #17132d99';
+            ov.innerHTML = '<form style="background:#fff;color:#172033;border:1px solid #e4ddf4;border-radius:16px;padding:24px;width:440px;max-width:100%;max-height:90vh;overflow:auto;box-sizing:border-box;box-shadow:0 16px 50px #17132d44">'
                 + '<h2 id="pos-free-title" style="font-size:20px;margin:0 0 12px">Approve free items</h2>'
                 + '<p style="font-size:14px">Review these free items. Changes require approval again.</p><ul data-free-items style="font-size:14px;padding-left:20px;max-height:150px;overflow:auto"></ul>'
                 + '<label style="display:block">Reason<textarea name="freeReason" required maxlength="500" rows="3" style="display:block;width:100%;box-sizing:border-box;margin:6px 0 14px;padding:10px;border:1px solid #c9bfdc;border-radius:8px;color:#172033;background:#fff"></textarea></label>'
                 + (canApprove ? '<p>Your signed-in manager account will be recorded.</p>' : '<label style="display:block">Shop manager PIN<input name="freePin" type="password" inputmode="numeric" autocomplete="off" required maxlength="6" style="display:block;width:100%;box-sizing:border-box;margin:6px 0 14px;padding:10px;border:1px solid #c9bfdc;border-radius:8px;color:#172033;background:#fff"></label>')
                 + '<p role="alert" style="color:#b91c1c;font-size:14px"></p><div style="display:flex;gap:10px;justify-content:flex-end"><button type="button" data-cancel style="padding:10px 16px;border:1px solid #d4cce5;border-radius:8px;background:#fff;color:#172033">Cancel</button><button type="submit" style="padding:10px 16px;border:0;border-radius:8px;background:#7c3aed;color:#fff">Approve &amp; continue</button></div></form>';
-            document.body.appendChild(ov);var form=ov.querySelector('form'),button=form.querySelector('[type=submit]'),pending=false;
+            (document.fullscreenElement || document.body).appendChild(ov);ov.showModal();var form=ov.querySelector('form'),button=form.querySelector('[type=submit]'),pending=false;
             (items || []).forEach(function(item){var row=document.createElement('li');row.textContent=(item.name || item.product)+' × '+item.quantity;form.querySelector('[data-free-items]').appendChild(row);});
-            function close() { form.reset();ov.remove();if(previous && previous.isConnected) previous.focus(); }
+            function close() { form.reset();ov.close();ov.remove();if(previous && previous.isConnected) previous.focus(); }
             function cancel() { if(pending)return;close();reject(new Error('Free-item approval cancelled. The bill was not submitted.')); }
             ov.querySelector('[data-cancel]').onclick=cancel;
+            ov.addEventListener('cancel',function(e){e.preventDefault();cancel();});
             ov.addEventListener('keydown',function(e){
                 if(e.key==='Escape'){e.preventDefault();e.stopPropagation();cancel();}
                 if(e.key==='Tab'){var nodes=Array.from(form.querySelectorAll('textarea,input,button')).filter(function(n){return !n.disabled;});if(e.shiftKey && document.activeElement===nodes[0]){e.preventDefault();nodes[nodes.length-1].focus();}else if(!e.shiftKey && document.activeElement===nodes[nodes.length-1]){e.preventDefault();nodes[0].focus();}}
@@ -212,7 +213,7 @@ window._posSetCustomerChip = function(name, phone) {
     }, true);
 })();
 
-function posReceiptPrintMarkup(title, message, offline = false) {
+function posReceiptPrintMarkup(title, message) {
     const button = (id, label, primary) => '<button type="button" ' + id
         + ' style="padding:10px 14px;border:1px solid #7C3AED;border-radius:8px;background:' + (primary ? '#7C3AED;color:#fff' : '#fff;color:#5b21b6')
         + ';font-size:14px;font-weight:700;cursor:pointer">' + label + '</button>';
@@ -220,8 +221,8 @@ function posReceiptPrintMarkup(title, message, offline = false) {
         + '<h2 style="margin:0 0 12px;font-size:20px">' + window._posReceiptTextData(title) + '</h2>'
         + '<p class="pos-print-status" role="status" style="margin:0 0 18px;white-space:pre-line">' + window._posReceiptTextData(message) + '</p>'
         + '<div style="display:flex;flex-wrap:wrap;gap:10px">'
-        + (offline ? button('id="oflPrintReceipt"', 'Print receipt', true) : button('class="pos-print-retry"', 'Retry QZ', true)
-            + button('class="pos-print-browser"', 'Print using browser', false))
+        + button('class="pos-print-retry"', 'Retry QZ', true)
+        + button('class="pos-print-browser"', 'Print using browser', false)
         + button('class="pos-print-cancel ofl-cancel"', 'Close', false) + '</div></div>';
 }
 
@@ -639,6 +640,15 @@ window._posOffline = (function () {
     }
     function copy(value) {
         return JSON.parse(JSON.stringify(value));
+    }
+    function onlineSaleSaved(transactionId) {
+        if (snapshot?.transactionId === transactionId) snapshot = null;
+        if (draft?.sourceTransactionId !== transactionId) return Promise.resolve();
+        draft = newDraft();
+        cart = draft.items;
+        var saved = saveDraft().then(function () { return stateWrite('snapshot:' + scope, null); });
+        render();
+        return saved;
     }
     function saveDraft() {
         var saved = copy(draft);
@@ -1151,12 +1161,12 @@ window._posOffline = (function () {
             '<p role="alert" class="ofl-error" style="color:#b91c1c" hidden></p>' +
             (panelWidth ? '' : '<button type="button" class="ofl-cancel">Cancel</button>') + '</form>';
         function close() {
-            if (payPending || overlay.dataset.paymentReceived) return;
+            if (payPending) return;
             overlay.close();
             overlay.remove();
             resumeOnline();
         }
-        overlay.querySelector('.ofl-cancel,.pos-cash-cancel,.pos-split-cancel,#posPayConfCancel,#credit-cancel')?.addEventListener('click', close);
+        overlay.querySelector('.ofl-cancel,.pos-cash-cancel,.pos-split-cancel,#credit-cancel')?.addEventListener('click', close);
         overlay.addEventListener('cancel', function (event) { event.preventDefault(); close(); });
         overlay.addEventListener('click', function (event) { if (event.target === overlay) close(); });
         document.body.appendChild(overlay);
@@ -1494,7 +1504,7 @@ window._posOffline = (function () {
             input.focus();
             ov.querySelector('form').onsubmit = function (event) {
                 event.preventDefault();
-                if (dialogs.updateCash(panel, total)) pay('Cash', [{method:'Cash',amount:Number(input.value)}], ov);
+                if (dialogs.updateCash(panel, total)) completeOfflinePayment('Cash', [{method:'Cash',amount:Number(input.value)}], ov);
             };
             return;
         }
@@ -1512,25 +1522,11 @@ window._posOffline = (function () {
                     return reference ? {method:kind,amount:amount,reference:reference} : {method:kind,amount:amount};
                 }).filter(function (payment) { return payment.amount > 0; });
                 var cashChange = payments.length === 1 && payments[0].method === 'Cash' && payments[0].amount > total;
-                pay(cashChange ? 'Cash' : 'Split', payments, split);
+                completeOfflinePayment(cashChange ? 'Cash' : 'Split', payments, split);
             };
             return;
         }
-        var digital = modal(method + ' Payment', dialogs.digitalMarkup(method, total, true), 420);
-        var confirmation = digital.querySelector('#posPayConfOk');
-        confirmation.focus();
-        confirmation.onclick = function () {
-            var payments = [{method:method,amount:total}];
-            if (method !== 'UPI') { pay(method, payments, digital); return; }
-            digital.dataset.paymentReceived = 'true';
-            digital.setAttribute('aria-label', 'Save UPI bill');
-            var card = digital.querySelector('form').firstElementChild;
-            card.innerHTML = dialogs.upiReceiptMarkup(total);
-            var save = card.querySelector('#posPaySave');
-            save.onclick = function () { pay(method, payments, digital, {receipt:'save'}); };
-            card.querySelector('#posPaySavePrint').onclick = function () { pay(method, payments, digital, {receipt:'print'}); };
-            save.focus();
-        };
+        completeOfflinePayment(method, [{method:method,amount:total}]);
     }
     function creditTender() {
         var overlay = modal('Credit sale', window.PosTillDialogs.creditMarkup(), 420);
@@ -1644,14 +1640,29 @@ window._posOffline = (function () {
                 return;
             }
             var payments = paid > 0 ? [{method:field('upfront-method').value,amount:paid}] : [];
-            pay('Credit',payments,overlay,{bill:bill});
+            completeOfflinePayment('Credit',payments,overlay,bill);
         };
     }
-    function pay(method, payments, ov, options = {}) {
-        if (payPending) return;
-        tenderError(ov, '');
-        payPending = true;
-        var bill = options.bill || draft;
+    async function completeOfflinePayment(method, payments, entry, bill = draft) {
+        if (payPending || document.getElementById('posPayConfirmOverlay')) return;
+        var error = validation(method, bill);
+        if (error) { toast(error, '#c62828'); return; }
+        try {
+            var sale = await pay(method, payments, bill, entry);
+            var choice = window.PosTillDialogs.openReceiptChoice(method, sale.total, function (print) {
+                if (print) setTimeout(function () {
+                    try { printReceipt(sale); }
+                    catch (error) { toast('Bill saved. Reprint it from Bill History.', '#b45309'); }
+                }, 0);
+            }, {billNumber:sale.offlineId,change:sale.change,offline:true});
+            if (choice) choice.addEventListener('close', resumeOnline, {once:true});
+            if (!disconnected()) sync();
+        } catch (error) {
+            if (entry?.isConnected) tenderError(entry, error.message);
+            else toast(error.message, '#c62828');
+        }
+    }
+    async function pay(method, payments, bill, entry) {
         var t = totals(bill),
             sale = Object.assign(copy(bill), {
                 version: 2,
@@ -1671,34 +1682,27 @@ window._posOffline = (function () {
                 ts: new Date().toISOString(),
             });
         delete sale.onlineBaseline;
-        writeTail
-            .catch(function () {
-                throw Error('Draft storage failed');
-            })
-            .then(function () {
-                return enqueue(sale);
-            })
-            .then(
-                function () {
-                    lastLocalAmount = sale.total;
-                    draft = newDraft();
-                    cart = draft.items;
-                    snapshot = null;
-                    render();
-                    banner(true);
-                    if (ov) ov.remove();
-                    if (options.receipt === 'print') printReceipt(sale);
-                    if (options.receipt) toast('Bill saved on this device and queued to sync.');
-                    else receiptDialog(sale);
-                    if (!disconnected()) sync();
-                },
-                function (e) {
-                    tenderError(ov, 'Could not save the sale. ' + e.message);
-                },
-            )
-            .finally(function () {
-                payPending = false;
-            });
+        payPending = true;
+        try {
+            await writeTail;
+            await enqueue(sale);
+        } catch (error) {
+            throw Error('Could not save the sale. ' + error.message);
+        } finally {
+            payPending = false;
+        }
+        lastLocalAmount = sale.total;
+        draft = newDraft();
+        cart = draft.items;
+        snapshot = null;
+        if (entry) { entry.close(); entry.remove(); }
+        try {
+            render();
+            banner(true);
+        } catch (error) {
+            toast('Bill saved on this device. You can find it in Bill History.', '#b45309');
+        }
+        return sale;
     }
     function printReceipt(sale) {
         var customer = sale.customer || {}, payments = sale.payments || [];
@@ -1735,15 +1739,6 @@ window._posOffline = (function () {
         d.close();
         frame.contentWindow.focus();
         frame.contentWindow.print();
-    }
-    function receiptDialog(sale) {
-        var title = 'Sale saved on this device';
-        var message = '₹' + f2(sale.total) + ' · ' + sale.paymentMethod + '\nReference: ' + sale.offlineId
-            + '\nBill queued to sync.' + (sale.change ? ' Change given: ₹' + f2(sale.change) + '.' : '');
-        var ov = modal(title, posReceiptPrintMarkup(title, message, true), 440);
-        ov.querySelector('#oflPrintReceipt').onclick = function () {
-            printReceipt(sale);
-        };
     }
     function removeSynced(ids) {
         return ensureDb().then(function (d) {
@@ -2099,7 +2094,7 @@ window._posOffline = (function () {
                 if (!active() && !savedHold) return;
                 if (b.closest('#posSessionClosed,#pos-history-overlay,#posCloseSessionOverlay')) return;
                 if (localClose) { e.preventDefault(); e.stopImmediatePropagation(); return; }
-                if (b.closest('#posOfflineDialog,#posCustomerOverlay')) return;
+                if (b.closest('#posOfflineDialog,#posPayConfirmOverlay,#posCustomerOverlay')) return;
                 if (!disconnected() && b.matches('#pos-pay-cash,#pos-pay-card,#pos-credit,#pos-pay-upi,#pos-split,#pos-hold')) {
                     e.preventDefault(); e.stopImmediatePropagation();
                     sync();
@@ -2226,7 +2221,7 @@ window._posOffline = (function () {
                     return;
                 }
                 if (!active()) return;
-                if (e.key === 'F9' && !canUseOnlineHeldPicker() && !document.querySelector('#posOfflineDialog,#posCustomerOverlay')) {
+                if (e.key === 'F9' && !canUseOnlineHeldPicker() && !document.querySelector('#posOfflineDialog,#posPayConfirmOverlay,#posCustomerOverlay')) {
                     e.preventDefault();
                     e.stopImmediatePropagation();
                     if (begin()) heldDialog();
@@ -2275,6 +2270,7 @@ window._posOffline = (function () {
         needsDeferredClose: needsDeferredClose,
         render: render,
         customerPicker: customerPicker,
+        onlineSaleSaved: onlineSaleSaved,
         discount: function () { if (begin()) discountDialog(); },
         printReceipt: printReceipt,
         remember: remember,
@@ -3641,16 +3637,22 @@ function submitPosPaymentForm(form) {
     }
 }
 
+function submitPosTender(form, method, due, received, onSaved, onError) {
+    var fields = new FormData(form);
+    if (received != null) fields.set('amount', received.toFixed(2));
+    return window._posCompleteTender?.(form.action, fields, method, fields.get('transactionId'), due, onSaved, onError)
+        || Promise.resolve(false);
+}
+
 window.posPayCash = function(form) {
     if (window._posCommitEdits && !window._posCommitEdits()) return false;
     if (window._posWaitForEdits && window._posWaitForEdits(form)) return false;
-    if (form.dataset.posPaymentConfirmed === '1') return true;
     // Cash tender modal: quick denomination buttons + editable amount + live change.
     // Keep the cart inert while the cashier enters received cash.
     try {
         var f = form.querySelector('input[name="amount"]');
         var due = parseFloat(f ? f.value : '0') || 0;
-        if (due <= 0) { return true; }
+        if (due <= 0) { submitPosTender(form, 'Cash', due, 0); return false; }
         var old = document.getElementById('posCashTenderOverlay');
         if (old && old.parentNode) old.parentNode.removeChild(old);
         var denoms = [10, 20, 50, 100, 200, 500, 2000];
@@ -3670,6 +3672,7 @@ window.posPayCash = function(form) {
             + '<button type="button" id="posCashExact" style="padding:14px 4px;font-size:13px;font-weight:700;border:2px solid #7C3AED;background:#ECE8FB;color:#7C3AED;border-radius:10px;cursor:pointer">Exact</button>'
             + '<button type="button" id="posCashClear" style="padding:14px 4px;font-size:13px;font-weight:700;border:2px solid #c62828;background:#ffebee;color:#c62828;border-radius:10px;cursor:pointer">Clear</button></div>'
             + '<div id="posCashChange" style="text-align:center;font-size:18px;font-weight:800;padding:11px;border-radius:10px;margin-bottom:14px"></div>'
+            + '<p id="posCashSaveError" role="alert" hidden style="color:#b91c1c;font-size:14px"></p>'
             + '<div style="display:flex;gap:10px"><button type="button" id="posCashCancel" style="flex:1;padding:14px;font-size:15px;font-weight:700;border:1px solid #bbb;background:#f5f5f5;color:#444;border-radius:10px;cursor:pointer">Cancel</button>'
             + '<button type="button" id="posCashConfirm" style="flex:2;padding:14px;font-size:16px;font-weight:800;border:none;background:#4caf50;color:#fff;border-radius:10px;cursor:pointer">Confirm &amp; Complete</button></div>'
             + '</div>';
@@ -3679,6 +3682,8 @@ window.posPayCash = function(form) {
         recvInp.focus(); recvInp.select();
         var changeEl = ov.querySelector('#posCashChange');
         var confirmBtn = ov.querySelector('#posCashConfirm');
+        var errorEl = ov.querySelector('#posCashSaveError');
+        var saving = false;
         function refresh() {
             var r = parseFloat(recvInp.value) || 0;
             if (r < due) {
@@ -3688,7 +3693,7 @@ window.posPayCash = function(form) {
             } else {
                 changeEl.style.background = '#e8f5e9'; changeEl.style.color = '#1b5e20';
                 changeEl.textContent = 'Change to return: ₹' + (r - due).toFixed(2);
-                confirmBtn.disabled = false; confirmBtn.style.opacity = '1'; confirmBtn.style.cursor = 'pointer';
+                confirmBtn.disabled = saving; confirmBtn.style.opacity = saving ? '0.45' : '1'; confirmBtn.style.cursor = saving ? 'wait' : 'pointer';
             }
         }
         var denoEls = ov.querySelectorAll('.posCashDeno');
@@ -3703,23 +3708,23 @@ window.posPayCash = function(form) {
         ov.querySelector('#posCashClear').addEventListener('click', function() { recvInp.value = '0'; refresh(); recvInp.focus(); });
         recvInp.addEventListener('input', refresh);
         function closeOv() { if (ov.open) ov.close(); ov.remove(); }
-        var confirmed = false;
+        function cancelOv() { if (!saving) closeOv(); }
         function doConfirm() {
             var r = parseFloat(recvInp.value) || 0;
-            if (confirmed || r < due) { return; }
-            confirmed = true;
-            if (f) f.value = r.toFixed(2);
-            closeOv();
-            form.dataset.posPaymentConfirmed = '1';
-            submitPosPaymentForm(form);
+            if (saving || r < due) return;
+            saving = true; errorEl.hidden = true; refresh();
+            submitPosTender(form, 'Cash', due, r, closeOv, function(error) {
+                errorEl.textContent = error.message;
+                errorEl.hidden = false;
+            }).finally(function() { saving = false; refresh(); });
         }
-        ov.querySelector('#posCashCancel').addEventListener('click', closeOv);
+        ov.querySelector('#posCashCancel').addEventListener('click', cancelOv);
         confirmBtn.addEventListener('click', doConfirm);
         ov.addEventListener('click', function(e) {
             var box = ov.getBoundingClientRect();
-            if (e.target === ov && (e.clientX < box.left || e.clientX > box.right || e.clientY < box.top || e.clientY > box.bottom)) closeOv();
+            if (e.target === ov && (e.clientX < box.left || e.clientX > box.right || e.clientY < box.top || e.clientY > box.bottom)) cancelOv();
         });
-        ov.addEventListener('cancel', function(e) { e.preventDefault(); closeOv(); });
+        ov.addEventListener('cancel', function(e) { e.preventDefault(); cancelOv(); });
         recvInp.addEventListener('keydown', function(e) {
             if (e.key === 'Enter') { e.preventDefault(); doConfirm(); }
         });
@@ -3737,75 +3742,10 @@ window.posPayCash = function(form) {
 window.posPayDigital = function(form) {
     if (window._posCommitEdits && !window._posCommitEdits()) return false;
     if (window._posWaitForEdits && window._posWaitForEdits(form)) return false;
-    if (form.dataset.posPaymentConfirmed === '1') return true;
-    // Card / UPI confirmation gate. Unlike Cash, these forms submit (and mint the
-    // bill) the instant the button is tapped, so a mis-tap or a declined/cancelled
-    // payment would still complete the sale. Require the cashier to confirm the
-    // payment actually went through first; Cancel aborts with no bill created.
-    // Defensive: any error falls through to a normal submit (never blocks checkout).
-    try {
-        var amtI = form.querySelector('input[name="amount"]');
-        var due = parseFloat(amtI ? amtI.value : '0') || 0;
-        var methodI = form.querySelector('input[name="paymentMethod"]');
-        var method = methodI ? methodI.value : 'Card';
-        var isUpi = (method === 'UPI');
-        var label = isUpi ? 'UPI Payment' : 'Card Payment';
-        var old = document.getElementById('posPayConfirmOverlay');
-        if (old) return false;
-        var ov = document.createElement('div');
-        ov.id = 'posPayConfirmOverlay';
-        ov.setAttribute('role', 'dialog');
-        ov.setAttribute('aria-modal', 'true');
-        ov.setAttribute('aria-label', label);
-        ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.55);z-index:2147483600;display:flex;align-items:center;justify-content:center;padding:12px';
-        ov.innerHTML = PosTillDialogs.digitalMarkup(method, due);
-        document.body.appendChild(ov);
-        function closeOv() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
-        var okBtn = ov.querySelector('#posPayConfOk');
-        var choosingReceipt = false;
-        var submitted = false;
-        function completePayment(skipReceipt) {
-            if (submitted) return;
-            submitted = true;
-            if (skipReceipt) {
-                var choice = document.createElement('input');
-                choice.type = 'hidden';
-                choice.name = 'skipReceipt';
-                choice.value = 'Y';
-                form.appendChild(choice);
-            }
-            closeOv();
-            form.dataset.posPaymentConfirmed = '1';
-            try { submitPosPaymentForm(form); }
-            finally { if (choice) choice.remove(); }
-        }
-        function doConfirm() {
-            if (choosingReceipt || submitted) return;
-            if (!isUpi) { completePayment(false); return; }
-            choosingReceipt = true;
-            ov.setAttribute('aria-label', 'Save UPI bill');
-            var panel = ov.firstElementChild;
-            panel.innerHTML = PosTillDialogs.upiReceiptMarkup(due);
-            var save = panel.querySelector('#posPaySave');
-            save.addEventListener('click', function() { completePayment(true); });
-            panel.querySelector('#posPaySavePrint').addEventListener('click', function() { completePayment(false); });
-            save.focus();
-        }
-        ov.querySelector('#posPayConfCancel').addEventListener('click', closeOv);
-        okBtn.addEventListener('click', doConfirm);
-        ov.addEventListener('click', function(e) { if (e.target === ov && !choosingReceipt) closeOv(); });
-        ov.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' && (!choosingReceipt || e.repeat)) {
-                e.preventDefault();
-                if (!e.repeat) doConfirm();
-            } else if (e.key === 'Escape') {
-                e.preventDefault();
-                if (!choosingReceipt) closeOv();
-            }
-        });
-        setTimeout(function() { try { okBtn.focus(); } catch (e) {} }, 50);
-        return false;
-    } catch (e) { return true; }
+    var due = Number(form.querySelector('[name=amount]')?.value || 0);
+    var method = form.querySelector('[name=paymentMethod]')?.value || 'Card';
+    submitPosTender(form, method, due);
+    return false;
 };
 
 (function () {
@@ -4622,25 +4562,17 @@ window.posToggleFullscreen = function() {
                 var remaining = Math.max(0, Number(lastPay || 0) - Number((lastCartData && lastCartData.paid) || 0));
                 if (!/^\d+(\.\d{1,2})?$/.test(amountInp.value.trim()) || !Number.isFinite(paidNow) || paidNow > remaining) { showToast('Paid now must be between ₹0 and the remaining bill balance, with at most two decimals', '#e53935'); amountInp.focus(); return; }
                 var btn = document.getElementById('credit-confirm');
-                btn.disabled = true; btn.textContent = 'Completing...';
-                // Submit a real form POST so the SPA navigates to the receipt/confirmation screen
-                var f = document.createElement('form');
-                f.method = 'post'; f.action = 'Terminal/completeCredit'; f.style.display = 'none';
-                function hid(n, v) { var i = document.createElement('input'); i.type = 'hidden'; i.name = n; i.value = v; f.appendChild(i); }
-                hid('transactionId', TX); hid('sessionId', SI); hid('salesModeId', SM); hid('taxOn', TO);
-                hid('customerName', nm); hid('customerPhone', ph); hid('moquiSessionToken', TK);
-                if (selectedPartyId) hid('customerPartyId', selectedPartyId);
-                hid('upfrontAmount', paidNow.toFixed(2));
-                hid('creditDays',daysInp.value);hid('termsReason',document.getElementById('credit-terms-reason').value);
-                if (paidNow > 0) hid('upfrontMethod', document.getElementById('credit-upfront-method').value);
-                confirmCatalogTender().then(function(){
-                    hid('catalogRevision', catalogRevision);
-                    f.querySelector('[name="transactionId"]').value = TX;
-                    f.querySelector('[name="moquiSessionToken"]').value = TK;
-                    return window.PosFreeItems.ensure(TX, TK);
-                }).then(function(){
-                    document.body.appendChild(f);f.submit();
-                }).catch(function(error){updateDuePreview();btn.disabled=false;btn.textContent='Complete Credit Sale';showToast(error.message, '#c62828');});
+                if (btn.disabled) return;
+                var creditTx = TX;
+                var creditTotal = Number(lastPay);
+                var fields = new URLSearchParams({customerName:nm,customerPhone:ph,upfrontAmount:paidNow.toFixed(2),
+                    creditDays:daysInp.value,termsReason:document.getElementById('credit-terms-reason').value});
+                if (selectedPartyId) fields.set('customerPartyId', selectedPartyId);
+                if (paidNow > 0) fields.set('upfrontMethod', document.getElementById('credit-upfront-method').value);
+                btn.disabled = true; btn.textContent = 'Saving…';
+                window._posCompleteTender('Terminal/completeCredit', fields, 'Credit', creditTx, creditTotal,
+                    function() { ov.remove(); }, function(error) { duePreview.textContent = error.message; })
+                    .finally(function() { btn.disabled = false; btn.textContent = 'Complete Credit Sale'; });
             });
         };
 
@@ -4838,14 +4770,29 @@ window.posToggleFullscreen = function() {
         // using the same QZ/iframe pipeline when a session is active.
         window._posPrintReceipt = printReceipt;
 
-        function approvedPaymentFetch(url, options) {
+        function assertTenderReady(expectedTx, expectedTotal) {
+            if (!navigator.onLine || window._posOffline?.active?.())
+                throw new Error('Connection changed. Close this dialog to continue with the saved cart.');
+            if (!af.isConnected || !TX || TX !== expectedTx)
+                throw new Error('The active bill changed. Close this dialog and review the cart.');
+            if (expectedTotal != null && Math.round(Number(lastPay) * 100) !== Math.round(expectedTotal * 100))
+                throw new Error('The bill total changed. Close this dialog and review the cart.');
+        }
+
+        function approvedPaymentFetch(url, options, expectedTx, expectedTotal) {
             return confirmCatalogTender().then(function() {
+                assertTenderReady(expectedTx, expectedTotal);
                 options.body.set('transactionId', TX);
                 options.body.set('catalogRevision', catalogRevision);
                 options.body.set('taxOn', TO);
                 options.body.set('moquiSessionToken', TK);
                 return window.PosFreeItems.ensure(TX, TK);
-            }).then(function() { return fetch(url, options); })
+            }).then(function() {
+                assertTenderReady(expectedTx, expectedTotal);
+                return fetch(url, options).catch(function() {
+                    throw new Error('Payment could not be confirmed. Check History before trying again.');
+                });
+            })
                 .then(function(r) { return r.json().catch(function() { return null; }); })
                 .then(function(d) {
                     if (!d || !d.priceReview) return d;
@@ -4855,6 +4802,79 @@ window.posToggleFullscreen = function() {
                     });
                 });
         }
+
+        var tenderCommitPending = false;
+        var acknowledgedTenderTx = null;
+        window._posCompleteTender = async function(url, fields, method, expectedTx, expectedTotal, onSaved, onError) {
+            if (tenderCommitPending || document.getElementById('posPayConfirmOverlay')) return false;
+            if (expectedTx && expectedTx === acknowledgedTenderTx) {
+                showToast('This bill is already saved. Open History to view or print it.');
+                return false;
+            }
+            tenderCommitPending = true;
+            var terminal = document.getElementById('pos-terminal-root');
+            var wasInert = terminal?.inert;
+            var taxOn = TO, data;
+            if (terminal) terminal.inert = true;
+            try {
+                assertTenderReady(expectedTx, expectedTotal);
+                var params = new URLSearchParams(fields);
+                params.set('sessionId', SI);
+                params.set('salesModeId', SM);
+                params.set('wantJson', '1');
+                data = await approvedPaymentFetch(url, {method:'POST',body:params,credentials:'same-origin'}, expectedTx, expectedTotal);
+                if (!data || !data.success) throw new Error(data?.error || 'Payment could not be confirmed. Check History before trying again.');
+                acknowledgedTenderTx = expectedTx;
+            } catch (error) {
+                if (onError) onError(error); else showToast(error.message, '#c62828');
+                return false;
+            } finally {
+                if (!data?.success) {
+                    tenderCommitPending = false;
+                    if (terminal) terminal.inert = wasInert;
+                }
+            }
+            var billNum = data.bill?.number;
+            // The offline workspace can still be acquiring its lease. Do not seed it from a saved bill.
+            if (TX === expectedTx) TX = '';
+            var cartTransaction = af.elements.transactionId;
+            if (cartTransaction?.value === expectedTx) cartTransaction.value = '';
+            try { if (onSaved) onSaved(); }
+            catch (error) { console.warn('Could not close the saved payment entry.', error); }
+            try { resetCompletedCart(); }
+            catch (error) {
+                console.warn('Could not refresh the cart after saving a bill.', error);
+                showToast('Bill saved. Refresh the terminal before starting another bill.', '#b45309');
+            }
+            try { await window._posOffline?.onlineSaleSaved?.(expectedTx); }
+            catch (error) { console.warn('Could not clear the device copy of the saved bill.', error); }
+            finally {
+                tenderCommitPending = false;
+                if (terminal) terminal.inert = wasInert;
+            }
+            if (billNum) {
+                try {
+                    PosTillDialogs.openReceiptChoice(method, Number(data.summary?.total ?? expectedTotal), function(shouldPrint) {
+                        // Close the receipt choice before the existing printer setup or browser print opens.
+                        if (shouldPrint) setTimeout(function() {
+                            printReceipt(expectedTx, billNum, taxOn, false, data.receiptUnavailable ? null : data);
+                        }, 0);
+                    }, {billNumber:billNum,change:Number(data.change || 0)});
+                } catch (error) {
+                    showToast('Bill ' + billNum + ' saved. Open History to print the receipt.', '#b45309');
+                }
+            } else showToast('Bill saved. Open History to view its number or print the receipt.');
+            fetchScreen({}).then(function(doc) {
+                extractHeldInfo(doc);
+                updateHeldBadge();
+                var token = doc.querySelector('input[name="moquiSessionToken"]');
+                if (token && token.value) TK = token.value;
+                swapGrid(doc);
+                syncCompletedBillSummary(doc);
+                appendRecallIfNeeded();
+            }).catch(function() {});
+            return true;
+        };
 
         /* --- Cart AJAX --- */
         function post(params, signal) {
@@ -6190,21 +6210,25 @@ window.posToggleFullscreen = function() {
             smRoot.addEventListener(type,function() { if (cartFrame) renderCart(lastCartData); },true);
         });
         var paymentPanelPending = false;
+        function loadPaymentCart() {
+            if (lastCartData && lastCartData.success) return Promise.resolve();
+            return post({action:'refresh',transactionId:TX}).then(function(data) {
+                if (!data || !data.success) throw new Error('Could not verify the bill. Please retry payment.');
+                renderCart(data);
+            });
+        }
+        function preparePaymentCart() {
+            return OPT.whenIdle().then(function() {
+                return refreshCatalog(true);
+            }).then(loadPaymentCart);
+        }
         function openPaymentPanel(builder, onOpen) {
             if (paymentPanelPending) return;
             var taxError = taxModeError();
             if (taxError) { showToast(taxError,'#c62828'); return; }
             paymentPanelPending = true;
             smRoot.setAttribute('aria-busy','true');
-            OPT.whenIdle().then(function() {
-                return refreshCatalog(true);
-            }).then(function() {
-                if (lastCartData && lastCartData.success) return;
-                return post({action:'refresh',transactionId:TX}).then(function(data) {
-                    if (!data || !data.success) throw new Error('Could not verify the bill. Please retry payment.');
-                    renderCart(data);
-                });
-            }).then(function() {
+            preparePaymentCart().then(function() {
                 if (!af.isConnected || !lastCartData || !lastCartData.items.length) return;
                 smRoot.innerHTML = builder();
                 if (onOpen) onOpen();
@@ -6315,64 +6339,27 @@ window.posToggleFullscreen = function() {
                     .catch(function() { try { location.reload(); } catch (e) {} });
             }
             if (act.indexOf('payAndComplete') !== -1 && act.indexOf('splitPayAndComplete') === -1) {
-                e.preventDefault();
-                // This capture listener runs before the form's native confirmation
-                // handler. Gate first, then re-enter once through requestSubmit().
-                e.stopPropagation();
-                if (/posPayCash|posPayDigital/.test(form.getAttribute('onsubmit') || '') && form.dataset.posPaymentConfirmed !== '1') {
-                    if (paymentPanelPending) return;
+                e.preventDefault(); e.stopPropagation();
+                if (form.matches('.pos-pay-form')) {
+                    if (paymentPanelPending || document.getElementById('posPayConfirmOverlay')) return;
                     var method = form.querySelector('[name="paymentMethod"]').value;
                     var paymentTx = TX;
                     paymentPanelPending = true;
                     OPT.whenIdle().then(function() { return refreshCatalog(true); }).then(function() {
                         if (!af.isConnected || !TX || TX !== paymentTx) return;
                         form = currentPaymentForm(form);
-                        var gate = method === 'Cash' ? window.posPayCash : window.posPayDigital;
-                        if (gate(form) !== false) {
-                            form.dataset.posPaymentConfirmed = '1';
-                            submitPosPaymentForm(form);
-                        }
+                        var tenderTx = TX;
+                        return loadPaymentCart().then(function() {
+                            assertTenderReady(tenderTx);
+                            form = currentPaymentForm(form);
+                            form.querySelector('[name=transactionId]').value = TX;
+                            form.querySelector('[name=amount]').value = lastPay;
+                            (method === 'Cash' ? window.posPayCash : window.posPayDigital)(form);
+                        });
                     }).catch(function(error) { showToast(error.message, '#c62828'); })
                       .finally(function() { paymentPanelPending = false; });
-                    return;
                 }
-                delete form.dataset.posPaymentConfirmed;
-                var fd = new FormData(form);
-                fd.set('transactionId', TX); fd.set('sessionId', SI);
-                fd.set('salesModeId', SM); fd.set('moquiSessionToken', TK);
-                fd.set('wantJson', '1'); // get the print-receipt data back in the same response
-                var method = fd.get('paymentMethod') || 'Cash';
-                var paidAmt = fd.get('amount') || '0';
-                var shouldPrint = method !== 'UPI' || fd.get('skipReceipt') !== 'Y';
-                var savedTx = TX;
-                var btn = form.querySelector('button');
-                if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
-                approvedPaymentFetch(form.action, {method: 'POST', body: new URLSearchParams(fd), credentials: 'same-origin'})
-                    .then(function(d) {
-                        if (!d || !d.success) throw new Error((d && d.error) || 'Payment failed');
-                        var billNum = d.bill && d.bill.number || '';
-                        showToast('✔ Sale Complete' + (billNum ? ' — ' + billNum : '') + ' — ' + CS + fmt(paidAmt) + ' ' + method.toUpperCase());
-                        if (shouldPrint) printReceipt(savedTx, billNum, TO, false, d.receiptUnavailable ? null : d);
-                        resetCompletedCart();
-                        return fetchScreen({});
-                    })
-                    .then(function(doc) {
-                        if (!doc) return;
-                        extractHeldInfo(doc);
-                        updateHeldBadge();
-                        var ntk = doc.querySelector('input[name="moquiSessionToken"]');
-                        if (ntk && ntk.value) TK = ntk.value;
-                        // Only refresh catalog/header metadata: a new bill may already be active.
-                        swapGrid(doc);
-                        syncCompletedBillSummary(doc);
-                        appendRecallIfNeeded();
-                        var bn = document.querySelector('.pos-header [style*="background:#e65100"]') || document.querySelector('.pos-header [style*="background: rgb(230, 81, 0)"]');
-                        if (bn) bn.textContent = 'BILL- 0';
-                    })
-                    .catch(function(err) {
-                        showToast('Payment error: ' + err.message, '#c62828');
-                        if (btn) { btn.disabled = false; btn.style.opacity = ''; }
-                    });
+                return;
             }
             if (act.indexOf('splitPayAndComplete') !== -1) {
                 e.preventDefault();
@@ -6380,46 +6367,8 @@ window.posToggleFullscreen = function() {
                     showToast('Check the split amounts before completing the bill.', '#c62828');
                     return;
                 }
-                var fd = new FormData(form);
-                fd.set('transactionId', TX); fd.set('sessionId', SI);
-                fd.set('salesModeId', SM); fd.set('moquiSessionToken', TK);
-                fd.set('wantJson', '1'); // get the print-receipt data back in the same response
-                var cAmt = Number(fd.get('cashAmount') || 0);
-                var dAmt = Number(fd.get('cardAmount') || 0);
-                var uAmt = Number(fd.get('upiAmount') || 0);
-                var splitParts = [];
-                if (cAmt > 0) splitParts.push(CS + fmt(cAmt) + ' Cash');
-                if (dAmt > 0) splitParts.push(CS + fmt(dAmt) + ' Card');
-                if (uAmt > 0) splitParts.push(CS + fmt(uAmt) + ' UPI');
-                var savedTx = TX;
-                var btn = form.querySelector('button[type="submit"]');
-                if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.textContent = 'Processing...'; }
-                approvedPaymentFetch(form.action, {method: 'POST', body: new URLSearchParams(fd), credentials: 'same-origin'})
-                    .then(function(d) {
-                        if (!d || !d.success) throw new Error((d && d.error) || 'Split payment failed');
-                        var billNum = d.bill && d.bill.number || '';
-                        showToast('✔ Sale Complete' + (billNum ? ' — ' + billNum : '') + ' — ' + splitParts.join(' + '));
-                        printReceipt(savedTx, billNum, TO, false, d.receiptUnavailable ? null : d);
-                        resetCompletedCart();
-                        return fetchScreen({});
-                    })
-                    .then(function(doc) {
-                        if (!doc) return;
-                        extractHeldInfo(doc);
-                        updateHeldBadge();
-                        var ntk = doc.querySelector('input[name="moquiSessionToken"]');
-                        if (ntk && ntk.value) TK = ntk.value;
-                        // Only refresh catalog/header metadata: a new bill may already be active.
-                        swapGrid(doc);
-                        syncCompletedBillSummary(doc);
-                        appendRecallIfNeeded();
-                        var bn = document.querySelector('.pos-header [style*="background:#e65100"]') || document.querySelector('.pos-header [style*="background: rgb(230, 81, 0)"]');
-                        if (bn) bn.textContent = 'BILL- 0';
-                    })
-                    .catch(function(err) {
-                        showToast('Split payment error: ' + err.message, '#c62828');
-                        if (btn) { btn.style.opacity = ''; btn.textContent = 'Confirm split'; PosTillDialogs.updateSplit(form.closest('.pos-split-panel'), lastPay); }
-                    });
+                var fields = new FormData(form);
+                window._posCompleteTender(form.action, fields, 'Split', TX, Number(lastPay));
             }
         }, true);
 
@@ -6481,47 +6430,10 @@ window.posToggleFullscreen = function() {
                 if (ci) { ci.value = amt; ci.dispatchEvent(new Event('input', {bubbles: true})); }
             }
             if (e.target.closest('.pos-cash-confirm')) {
-                var ci = smRoot.querySelector('.pos-cash-input');
-                var received = Number(ci ? ci.value : 0);
-                if (received < lastPay) return;
-                var change = received - lastPay;
-                var billNum = lastTxnNum || '';
-                var savedTx = TX;
-                var btn = e.target.closest('.pos-cash-confirm');
-                btn.disabled = true; btn.style.opacity = '0.6'; btn.textContent = 'Processing...';
-                var params = new URLSearchParams();
-                params.set('transactionId', TX); params.set('sessionId', SI);
-                params.set('paymentMethod', 'Cash'); params.set('amount', String(lastPay));
-                params.set('salesModeId', SM); params.set('customerPhone', '');
-                params.set('moquiSessionToken', TK);
-                params.set('wantJson', '1'); // get the print-receipt data back in the same response
-                approvedPaymentFetch('Terminal/payAndComplete', {method: 'POST', body: params, credentials: 'same-origin'})
-                    .then(function(d) {
-                        if (!d || !d.success) throw new Error((d && d.error) || 'Payment failed');
-                        var toastMsg = '✔ Sale Complete — BILL-' + billNum + ' — ' + CS + fmt(lastPay) + ' CASH';
-                        if (change > 0) toastMsg += ' (Change: ' + CS + fmt(change) + ')';
-                        showToast(toastMsg);
-                        printReceipt(savedTx, billNum, TO, false, d.receiptUnavailable ? null : d);
-                        resetCompletedCart();
-                        return fetchScreen({});
-                    })
-                    .then(function(doc) {
-                        if (!doc) return;
-                        extractHeldInfo(doc);
-                        updateHeldBadge();
-                        var ntk = doc.querySelector('input[name="moquiSessionToken"]');
-                        if (ntk && ntk.value) TK = ntk.value;
-                        // Only refresh catalog/header metadata: a new bill may already be active.
-                        swapGrid(doc);
-                        syncCompletedBillSummary(doc);
-                        appendRecallIfNeeded();
-                        var bn = document.querySelector('.pos-header [style*="background:#e65100"]') || document.querySelector('.pos-header [style*="background: rgb(230, 81, 0)"]');
-                        if (bn) bn.textContent = 'BILL- 0';
-                    })
-                    .catch(function(err) {
-                        showToast('Payment error: ' + err.message, '#c62828');
-                        if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.textContent = '💰 CONFIRM PAYMENT'; }
-                    });
+                if (!PosTillDialogs.updateCash(smRoot, lastPay)) return;
+                var received = Number(smRoot.querySelector('.pos-cash-input').value);
+                var fields = new URLSearchParams({paymentMethod:'Cash',amount:received.toFixed(2)});
+                window._posCompleteTender('Terminal/payAndComplete', fields, 'Cash', TX, Number(lastPay));
             }
         });
 

@@ -40,13 +40,12 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
   await page.locator('#pos-pay-cash').click();
   await page.locator('#pos-cash-received').fill('250');
   await page.locator('.pos-cash-confirm').click();
-  await page.getByRole('dialog',{name:'Sale saved on this device'}).waitFor();
-  await page.locator('#posOfflineDialog .ofl-cancel').click();
+  await page.locator('#posPaySave').click();
+  await page.locator('#posPayConfirmOverlay').waitFor({state:'hidden'});
   await page.evaluate(()=>window._posAjax('POS_QA_A_P5',200,'Disposable POS A P5'));
   await page.locator('#pos-pay-card').click();
-  await page.locator('#posPayConfOk').click();
-  await page.getByRole('dialog',{name:'Sale saved on this device'}).waitFor();
-  await page.locator('#posOfflineDialog .ofl-cancel').click();
+  await page.locator('#posPaySave').click();
+  await page.locator('#posPayConfirmOverlay').waitFor({state:'hidden'});
   const saved = (await stored()).queue;
   check('two offline sample bills are durable before closing',saved.length===2,saved);
   check('billing row omits workspace and pending review text',await page.locator('#pos-offline-banner').count()===0);

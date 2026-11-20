@@ -15,12 +15,23 @@ async function run(){for(const engine of (process.env.POS_CASH_BROWSERS||'chrome
  try{for(const dark of [false,true])for(const due of [247,118]){
   const p=await browser.newPage({viewport:{width:800,height:900}}),name=`${engine} ${dark?'dark':'light'} due ${due}`;
   try{
-   await p.setContent('<body><input id="rate" value="30"><form id="cash"><input name="amount" type="hidden" value="'+due+'"></form></body>');
+   await p.setContent('<body><input id="rate" value="30"><form id="cash"><input name="transactionId" type="hidden" value="QA_DRAFT"><input name="amount" type="hidden" value="'+due+'"></form></body>');
    await p.addStyleTag({content:css});await p.evaluate(d=>document.body.classList.toggle('body--dark',d),dark);
    await p.addScriptTag({content:shared});
    await p.evaluate(d=>document.body.insertAdjacentHTML('beforeend',window.PosTillDialogs.cashMarkup(d)),due);
    await p.addScriptTag({content:source.slice(start,end)});
-   await p.evaluate(()=>{const f=document.getElementById('cash');f.addEventListener('submit',e=>{e.preventDefault();window.submits=(window.submits||0)+1;});document.getElementById('rate').focus();window.posPayCash(f);});
+   await p.evaluate(()=>{
+    window.tenders=[];window.choices=[];
+    window._posCompleteTender=async(url,fields,method,transactionId,total,onSaved)=>{
+     const received=Number(fields.get('amount'));
+     const billNumber='QA-BILL-'+(window.tenders.length+1);
+     window.tenders.push({received,method,transactionId,total});
+     onSaved();
+     window.PosTillDialogs.openReceiptChoice(method,total,print=>window.choices.push(print),{billNumber,change:received-total});
+     return true;
+    };
+    document.getElementById('rate').focus();window.posPayCash(document.getElementById('cash'));
+   });
    if(!await p.locator('#posCashTenderOverlay').evaluate(el=>el.matches(':modal'))||await p.evaluate(()=>document.activeElement.id)!=='posCashRecv')throw Error('Cash dialog did not take modal focus');
    await p.keyboard.type('525');if(await p.locator('#rate').inputValue()!=='30')throw Error('Cash keystrokes changed the background Rate');
    await p.keyboard.press('Escape');if(await p.locator('#posCashTenderOverlay').count())throw Error('Escape did not close Cash');
@@ -39,10 +50,19 @@ async function run(){for(const engine of (process.env.POS_CASH_BROWSERS||'chrome
    await p.locator('#posCashExact').click();if(Number(await p.locator('#posCashRecv').inputValue())!==due)throw Error('Exact amount');
    await p.locator('.posCashDeno[data-deno="50"]').click();if(Number(await p.locator('#posCashRecv').inputValue())!==due+50)throw Error('Denomination');
    await p.screenshot({path:path.join(out,engine+'-'+(dark?'dark':'light')+'-'+due+'.png')});
-   await p.locator('#posCashConfirm').click();if(!await p.evaluate(d=>window.submits===1&&Number(document.querySelector('#cash [name=amount]').value)===d+50,due))throw Error('Confirmation did not preserve tender');
-   await p.evaluate(d=>{const f=document.getElementById('cash');delete f.dataset.posPaymentConfirmed;f.querySelector('[name=amount]').value=d;window.posPayCash(f);},due);
+   await p.locator('#posCashConfirm').click();
+   const chooser=p.locator('#posPayConfirmOverlay');await chooser.waitFor();
+   if(!await p.evaluate(d=>{const tender=window.tenders[0];return window.tenders.length===1&&tender.received===d+50&&
+    tender.total===d&&tender.method==='Cash'&&tender.transactionId==='QA_DRAFT'&&window.choices.length===0;},due))throw Error('Completion did not preserve the saved cash tender');
+   if(!(await chooser.innerText()).includes('QA-BILL-1')||await p.locator('#posCashTenderOverlay').count())throw Error('Completion did not replace the cash entry with its bill number');
+   await p.keyboard.press('ArrowRight');await p.keyboard.press('Enter');
+   await chooser.waitFor({state:'hidden'});
+   if(!await p.evaluate(()=>window.choices.length===1&&window.choices[0]&&window.tenders.length===1))throw Error('Save & print applied more than one action');
+   await p.evaluate(()=>window.posPayCash(document.getElementById('cash')));
    await p.locator('#posCashExact').focus();await p.keyboard.press('Enter');
-   if(!await p.evaluate(d=>window.submits===2&&Number(document.querySelector('#cash [name=amount]').value)===d,due))throw Error('Enter on Exact did not confirm payment');
+   await chooser.waitFor();await p.keyboard.press('Enter');await chooser.waitFor({state:'hidden'});
+   if(!await p.evaluate(d=>{const tender=window.tenders[1];return window.tenders.length===2&&tender.received===d&&tender.total===d&&
+    window.choices.length===2&&!window.choices[1];},due))throw Error('Enter on Exact did not preserve the saved cash tender');
    results.push({name,passed:true,version:browser.version()});
   }catch(e){results.push({name,passed:false,error:e.message});}finally{await p.close();}
  }}finally{await browser.close();fs.writeFileSync(path.join(out,'report.json'),JSON.stringify(results,null,2));}

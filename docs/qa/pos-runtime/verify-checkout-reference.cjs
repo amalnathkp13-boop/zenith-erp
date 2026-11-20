@@ -69,11 +69,6 @@ module.exports=async function({a,foreign,base,check,q,invoke,post,out}) {
    if(key==='F6') await page.locator('.pos-split-cancel').click();
    else { const close=page.locator(selector).getByRole('button',{name:/cancel|close/i}).first(); if(await close.count())await close.click();else await page.keyboard.press('Escape'); }
   }
-  for(const [key,method] of [['F3','Card'],['F5','UPI']]) {
-   await page.locator('.pos-cart-heading h2').click();await page.keyboard.press(key);await page.locator('#posPayConfirmOverlay').waitFor();
-   check(key+' opens '+method+' confirmation without payment',(await page.locator('#posPayConfirmOverlay').innerText()).includes(method)&&q(`SELECT * FROM pos_payment WHERE transaction_id='${cart.transactionId}'`).length===0);
-   await page.locator('#posPayConfCancel').click();
-  }
   await page.locator('.nb-customer-picker').click();await page.locator('#posCustomerOverlay').waitFor();
   check('Walk-in customer opens the existing customer picker',await page.locator('#posCustomerOverlay').isVisible());
   await page.locator('#cust-close').click();

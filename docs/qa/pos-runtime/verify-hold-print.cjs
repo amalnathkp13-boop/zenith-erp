@@ -58,6 +58,7 @@ module.exports=async({a,base,check,q,invoke,post})=>{
   await page.locator('#pos-pay-cash').click();
   await page.locator('#posCashRecv,.pos-cash-input').fill('100');
   await page.locator('#posCashConfirm,.pos-cash-confirm').click();
+  await page.locator('#posPaySavePrint').click();
   await page.waitForFunction(()=>document.getElementById('pos-cart-count')?.textContent==='0');
   const issued=q(`SELECT status_id,customer_party_id,payable_amount FROM pos_transaction WHERE transaction_id='${namedDraft}'`)[0];
   closingCash=String(issued.payable_amount);
