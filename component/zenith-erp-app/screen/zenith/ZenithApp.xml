@@ -375,7 +375,7 @@
             html_stylesheets.add('/zenithstatic/css/pos-daily-summary-reference.css?v=2')
             html_stylesheets.add('/zenithstatic/css/main-dashboard.css?v=14')
             html_stylesheets.add('/zenithstatic/css/pricing-history.css?v=1')
-            html_stylesheets.add('/zenithstatic/css/stock-transfers.css?v=1')
+            html_stylesheets.add('/zenithstatic/css/stock-transfers.css?v=2')
             html_stylesheets.add('/zenithstatic/css/stock-levels.css?v=2')
             html_stylesheets.add('/zenithstatic/css/expiry-risk.css?v=3')
             html_stylesheets.add('/zenithstatic/css/stock-adjustments.css?v=7')
@@ -1390,7 +1390,7 @@
             <link rel="stylesheet" href="/zenithstatic/css/pos-daily-summary-reference.css?v=2"/>
             <link rel="stylesheet" href="/zenithstatic/css/main-dashboard.css?v=14"/>
             <link rel="stylesheet" href="/zenithstatic/css/pricing-history.css?v=1"/>
-            <link rel="stylesheet" href="/zenithstatic/css/stock-transfers.css?v=1"/>
+            <link rel="stylesheet" href="/zenithstatic/css/stock-transfers.css?v=2"/>
             <link rel="stylesheet" href="/zenithstatic/css/stock-levels.css?v=2"/>
             <link rel="stylesheet" href="/zenithstatic/css/expiry-risk.css?v=3"/>
             <link rel="stylesheet" href="/zenithstatic/css/stock-adjustments.css?v=7"/>

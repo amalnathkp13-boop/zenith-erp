@@ -70,7 +70,7 @@ const balance = (product, facility) => Number(query(`SELECT coalesce(sum(quantit
         const remark = 'Disposable transfer check ' + Date.now();
         const created = await writer.post(base + '/apps/zenith/Inventory/NewStockTransfer/createTransfer', {
             form: {moquiSessionToken: token, fromFacilityId: 'POS_QA_A_FAC', toFacilityId: receiver,
-                remarks: remark}, maxRedirects: 0
+                remarks: remark, ewayBillChoice: 'N'}, maxRedirects: 0
         });
         assert(created.status() < 400, `Transfer creation returned ${created.status()}`);
         const transfer = query(`SELECT stock_transfer_id, status_id FROM stock_transfer WHERE remarks=${quoted(remark)} AND organization_party_id='POS_QA_A'`)[0];
