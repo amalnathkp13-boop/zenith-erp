@@ -31,7 +31,12 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
   };
   const count = () => page.locator('#pos-held-wrap .nb-cnt').innerText();
   const offline = async () => {await context.setOffline(true);await page.waitForFunction(() => window._posOffline?.active()&&!window._posOffline.paused());};
-  const online = async () => {await context.setOffline(false);await page.waitForFunction(() => window._posOffline&&!window._posOffline.active());await page.evaluate(() => window._posOffline.cacheHeldBills());};
+  const online = async () => {
+   await context.setOffline(false);
+   await page.waitForFunction(() => window._posOffline&&!window._posOffline.active());
+   // Finish restoring the cart before simulating the next network loss.
+   await page.evaluate(async () => {await window._posOffline.sync();await window._posOffline.cacheHeldBills();});
+  };
   try {
    await page.goto(base+'/apps/zenith/pos/Terminal?sessionId='+session.sessionId+'&taxOn=N');
    await page.waitForFunction(() => !!window._posOffline?.lookup('POS_QA_A_P18'));
