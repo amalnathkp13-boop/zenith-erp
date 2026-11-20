@@ -1,5 +1,5 @@
 const {randomUUID}=require('node:crypto');
-module.exports=async function({a,base,check,q,invoke,post,out}) {
+module.exports=async function({a,base,check,q,invoke,post,out,cleanupInvoke=invoke}) {
  const terminalId='POS_QA_RECOVERY_'+randomUUID().slice(0,8);
  await post('PosTerminals','createTerminal',{terminalId,terminalName:'Disposable checkout recovery',facilityId:'POS_QA_A_FAC',stateCode:'33',isActive:'Y'});
  const {sessionId}=await invoke('open',{terminalId,openingCash:'0'});
@@ -9,6 +9,7 @@ module.exports=async function({a,base,check,q,invoke,post,out}) {
  const lines=()=>q(`SELECT unit_price,quantity,manual_price FROM pos_transaction_item WHERE transaction_id='${transactionId}' ORDER BY item_seq_id`);
  const api=async params=>(await post('Terminal','ajaxCart',{sessionId,transactionId,taxOn:'N',...params})).json();
  const terminal=base+'/apps/zenith/pos/Terminal?sessionId='+sessionId+'&taxOn=N';
+ let primaryError;
  try {
   for(const [productId,quantity,price] of [['POS_QA_A_P18','0.25','240'],['POS_QA_A_P5','4','146'],['POS_QA_A_NOWS','0.75','100'],['POS_QA_A_BREAK','0.2','140']]) {
    await invoke('add',{transactionId,productId,quantity,taxOn:'N'});
@@ -127,12 +128,15 @@ module.exports=async function({a,base,check,q,invoke,post,out}) {
   const row=q(`SELECT status_id,is_credit,payable_amount FROM pos_transaction WHERE transaction_id='${transactionId}'`)[0];
   check('Credit submits with the refreshed token and correct balance',issued.status()===302&&row.status_id==='PtCompleted'&&row.is_credit==='Y'&&Number(row.payable_amount)===100);
  } catch(error) {
+  primaryError=error;
   console.error('Checkout recovery browser:',(await page.locator('body').innerText()).slice(-1300));
   if(out)await page.screenshot({path:require('node:path').join(out,'held-checkout-failure.png')});
   throw error;
  } finally {
   await page.close();
-  if(q(`SELECT status_id FROM pos_transaction WHERE transaction_id='${transactionId}'`)[0]?.status_id==='PtCreated')await invoke('void',{transactionId});
-  await invoke('close',{sessionId,closingCash:'0'});
+  try {
+   if(q(`SELECT status_id FROM pos_transaction WHERE transaction_id='${transactionId}'`)[0]?.status_id==='PtCreated')await cleanupInvoke('void',{transactionId});
+   await cleanupInvoke('close',{sessionId,closingCash:'0'});
+  } catch(error) {if(!primaryError)throw error;console.error('Checkout recovery cleanup:',error.message);}
  }
 };

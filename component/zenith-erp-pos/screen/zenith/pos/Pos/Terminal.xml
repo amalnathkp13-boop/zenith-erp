@@ -358,18 +358,21 @@
             if (!(drafts instanceof List) || drafts.size()>100) {
                 ec.web.response.setStatus(400); return
             }
-            def syncedIds = [], failures = []
+            def syncedIds = [], failures = [], heldSources = [:]
             drafts.eachWithIndex { draft, index ->
                 try {
                     if (!(draft instanceof Map) || draft.sessionId!=request.sessionId) throw new IllegalArgumentException('The held bill belongs to a different session.')
                     def result = ec.service.sync().name('zenith.pos.PosOfflineServices.import#WorkspaceSale')
                         .parameters([terminalId:request.terminalId,sale:draft,holdOnly:true]).call()
-                    if (!ec.message.hasError() && result.offlineId) syncedIds.add(result.offlineId)
+                    if (!ec.message.hasError() && result.offlineId) {
+                        syncedIds.add(result.offlineId)
+                        if (result.heldSource) heldSources[result.offlineId]=result.heldSource
+                    }
                     else failures.add([index:index,error:ec.message.errorsString ?: 'This held bill remains saved on this device.'])
                 } catch (Exception error) { failures.add([index:index,error:error.message ?: 'This held bill remains saved on this device.']) }
                 ec.message.clearErrors()
             }
-            ec.web.sendJsonResponse([syncedIds:syncedIds,failures:failures])
+            ec.web.sendJsonResponse([syncedIds:syncedIds,heldSources:heldSources,failures:failures])
         ]]></script></actions>
         <default-response type="none"/>
     </transition>
@@ -2299,6 +2302,11 @@
                         ec.web.sendJsonResponse(revision ?: [success:false,error:ec.message.errorsString ?: 'Bill revision could not be saved.'])
                         return
                     } else if (action == 'listHeld') {
+                        def access = ec.service.sync().name('zenith.pos.PosAccessServices.assert#PosAccess')
+                            .parameter('sessionId',sessionId).call()
+                        if (!sessionId || !access?.allowed) { ec.web.sendJsonError(403,'Select an authorized POS session.',null);return }
+                        def heldSession = ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',sessionId)
+                            .condition('organizationPartyId',access.organizationPartyId).one()
                         def heldList = ec.entity.find("zenith.erp.pos.PosHeldTransaction")
                             .condition("sessionId", sessionId).condition("statusId", "PhHeld")
                             .orderBy("-holdTime").list()
@@ -2306,12 +2314,14 @@
                         def heldTotal = 0 as BigDecimal
                         heldList.each { ht ->
                             def itemsList = []
+                            def savedItems = []
                             def htTotal = (ht.subtotal ?: 0) as BigDecimal
                             heldTotal += htTotal
                             if (ht.itemsJson) {
                                 try {
                                     def parsed = new groovy.json.JsonSlurper().parseText(ht.itemsJson)
                                     if (parsed instanceof List) {
+                                        savedItems = parsed
                                         def names = displayNames(parsed)
                                         parsed.each { pi ->
                                             itemsList.add([name: names[pi.productId] ?: pi.productId ?: '', qty: pi.quantity ?: 0])
@@ -2324,7 +2334,23 @@
                                 def cp = ec.entity.find("mantle.party.Person").condition("partyId", ht.customerPartyId).one()
                                 if (cp) custName = [(cp.firstName ?: ''), (cp.lastName ?: '')].findAll{it}.join(' ')
                             }
-                            heldResult.add([heldId: ht.heldId, subtotal: htTotal,
+                            def sourceId = savedItems ? savedItems[0].sourceTransactionId : null
+                            def source = sourceId ? ec.entity.find('zenith.erp.pos.PosTransaction')
+                                .condition('transactionId',sourceId).condition('organizationPartyId',access.organizationPartyId)
+                                .condition('sessionId',sessionId).condition('statusId','PtHeld').one() : null
+                            def workspace = source ? [draftId:'server-held:'+ht.heldId,serverHeldId:ht.heldId,
+                                sourceHeldId:ht.heldId,sourceTransactionId:sourceId,
+                                sourceRevision:ec.service.sync().name('zenith.pos.PosOfflineServices.get#DraftRevision').parameter('transactionId',sourceId).call().revision,
+                                sessionId:sessionId,terminalId:heldSession.terminalId,heldAt:ht.holdTime.time,
+                                mode:source.salesModeId,taxOn:(source.totalTaxAmount ?: 0)>0 ? 'Y' : 'N',
+                                originState:source.originRegionGeoId,destinationState:source.destinationRegionGeoId,
+                                customer:source.customerPartyId || source.customerName ? [partyId:source.customerPartyId,
+                                    name:source.customerName,phone:source.customerPhone,
+                                    creditDays:source.customerPartyId ? ec.entity.find('mantle.party.Party').condition('partyId',source.customerPartyId).one()?.creditDays : null,
+                                    state:source.destinationRegionGeoId] : null,
+                                items:savedItems.collect { item -> [productId:item.productId,name:item.productName,
+                                    qty:item.quantity,price:item.unitPrice,mode:item.salesModeId ?: source.salesModeId,discount:item.discountPercent ?: 0] }] : null
+                            heldResult.add([heldId: ht.heldId, subtotal: htTotal, workspace:workspace,
                                 holdTime: ec.l10n.format(ht.holdTime, 'hh:mm a'),
                                 reason: ht.holdReason ?: '', customer: custName ?: 'Walk-In',
                                 itemCount: itemsList.size(), items: itemsList])

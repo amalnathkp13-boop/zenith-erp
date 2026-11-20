@@ -66,13 +66,13 @@
 
     <widgets>
         <!-- Warranty Policies -->
-        <container style="row items-center justify-between q-mb-lg zsec-hdr">
+        <container style="row items-center justify-between q-mb-lg z-warranty-hero">
             <container>
                 <label text="Warranty Policies" type="h4" style="text-weight-bold q-my-none"/>
                 <label text="Set up what's covered and for how long, then register warranties for the items you sell." type="p" style="text-grey-7 text-caption q-mb-none"/>
             </container>
             <section name="createPolicy_write"><condition><expression>modCanWrite</expression></condition><widgets>
-            <container-dialog id="CreatePolicy" button-text="Add Policy" type="success">
+            <container-dialog id="CreatePolicy" button-text="Add Policy" type="primary">
                 <form-single name="CreatePolicyForm" transition="createPolicy">
                     <field name="policyName"><default-field title="Name"><text-line size="20"/></default-field></field>
                     <field name="warrantyTypeEnumId"><default-field title="Type">
@@ -95,7 +95,8 @@
             </widgets></section>
         </container>
 
-        <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-lg q-mb-lg">
+        <container style="z-warranty-section"><label text="Policies" type="h5" style="text-weight-bold q-my-none"/></container>
+        <container style="z-warranty-list q-mb-lg">
             <form-list name="PoliciesForm" list="policies" transition="updatePolicy">
                 <field name="warrantyPolicyId"><default-field><hidden/></default-field></field>
                 <field name="policyName"><default-field title="Name"><text-line size="24"/></default-field></field>
@@ -109,14 +110,20 @@
                     <default-field title=""><label text="" type="span"/></default-field>
                 </field>
             </form-list>
+            <section name="NoPolicies" condition="!isCsv &amp;&amp; !policies"><widgets>
+                <container style="z-warranty-empty">
+                    <label text="No warranty policies yet." type="p" style="z-warranty-empty-title"/>
+                    <label text="Use Add Policy to set up coverage for your products." type="p" style="z-warranty-empty-copy"/>
+                </container>
+            </widgets></section>
         </container>
 
         <!-- Warranty Registrations -->
-        <container style="row items-center justify-between q-mb-md zsec-hdr">
+        <container style="row items-center justify-between zsec-hdr z-warranty-section">
             <label text="Registered Warranties" type="h5" style="text-weight-bold q-my-none"/>
             <section name="regWarranty_write"><condition><expression>modCanWrite</expression></condition><widgets>
-            <container-dialog id="RegWarranty" button-text="Register Warranty" type="info">
-                <form-single name="RegForm" transition="registerWarranty">
+            <container-dialog id="RegWarranty" button-text="Register Warranty" type="primary">
+                <form-single name="RegisterWarrantyForm" transition="registerWarranty">
                     <field name="warrantyPolicyId"><default-field title="Policy">
                         <drop-down><entity-options key="${warrantyPolicyId}" text="${policyName}">
                             <entity-find entity-name="zenith.erp.sales.WarrantyPolicy">
@@ -143,7 +150,7 @@
             </widgets></section>
         </container>
 
-        <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-lg q-mb-lg">
+        <container style="z-warranty-list q-mb-lg">
             <form-list name="RegForm" list="registrations" skip-form="true" show-csv-button="true">
                 <field name="warrantyRegId"><default-field title="Reg #"><display/></default-field></field>
                 <field name="customerPartyId"><default-field title="Customer">
@@ -170,13 +177,19 @@
                 </default-field></field>
 
             </form-list>
+            <section name="NoRegistrations" condition="!isCsv &amp;&amp; !registrations"><widgets>
+                <container style="z-warranty-empty">
+                    <label text="No registered warranties yet." type="p" style="z-warranty-empty-title"/>
+                    <label text="Use Register Warranty to add coverage for a sold product." type="p" style="z-warranty-empty-copy"/>
+                </container>
+            </widgets></section>
         </container>
 
         <!-- Claims -->
-        <container style="q-mb-md">
+        <container style="z-warranty-section">
             <label text="Warranty Claims" type="h5" style="text-weight-bold q-my-none"/>
         </container>
-        <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-lg">
+        <container style="z-warranty-list">
             <form-list name="ClaimsForm" list="claims" skip-form="true" show-csv-button="true">
                 <field name="claimId"><default-field title="Claim #"><display/></default-field></field>
                 <field name="warrantyRegId"><default-field title="Registration"><display/></default-field></field>
@@ -187,6 +200,12 @@
                 </default-field></field>
                 <field name="statusId"><default-field title="Status"><display text="${ec.entity.find('moqui.basic.StatusItem').condition('statusId', statusId).useCache(true).one()?.description ?: statusId}"/></default-field></field>
             </form-list>
+            <section name="NoClaims" condition="!isCsv &amp;&amp; !claims"><widgets>
+                <container style="z-warranty-empty">
+                    <label text="No warranty claims yet." type="p" style="z-warranty-empty-title"/>
+                    <label text="Claims will appear here once they are filed." type="p" style="z-warranty-empty-copy"/>
+                </container>
+            </widgets></section>
         </container>
 
         <!-- ZE-SALES-025 (SL-085): gate the Add-Policy Extended fields on Extendable=Yes. The create service
