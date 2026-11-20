@@ -124,16 +124,22 @@ class ReceivingTables(HTMLParser):
     def __init__(self):
         super().__init__()
         self.cells = {"FindPendingReceiptsList_table": [], "IncomingGrnList_table": []}
+        self.draft_review_ids = set()
         self.active = None
         self.tag = None
         self.depth = 0
 
     def handle_starttag(self, tag, attrs):
-        table_id = dict(attrs).get("id")
+        attrs = dict(attrs)
+        table_id = attrs.get("id")
         if table_id in self.cells:
             self.active, self.tag, self.depth = table_id, tag, 1
         elif self.active and tag == self.tag:
             self.depth += 1
+        if self.active == "IncomingGrnList_table" and tag in ("a", "m-link"):
+            target = urllib.parse.urlsplit(attrs.get("href", ""))
+            if target.path.endswith("/Purchase/GoodsReceiptDetail"):
+                self.draft_review_ids.update(urllib.parse.parse_qs(target.query).get("grnId", []))
 
     def handle_endtag(self, tag):
         if self.active and tag == self.tag:
@@ -146,13 +152,15 @@ class ReceivingTables(HTMLParser):
             self.cells[self.active].append(data.strip())
 
 
-def receiving_tables(order_id):
+def receiving_tables(order_id, draft_review_id=None):
     for shell, suffix in (("apps", ""), ("qapps", ".qvt")):
         args = urllib.parse.urlencode({"orderId": order_id, "orderId_op": "equals"})
         path = f"/{shell}/zenith/Inventory/FindReceipt{suffix}?{args}"
         parser = ReceivingTables()
         with user[0].open(BASE + path, timeout=120) as response:
             parser.feed(response.read().decode())
+        if draft_review_id:
+            assert draft_review_id in parser.draft_review_ids, f"Missing review link to GRN {draft_review_id} on {shell}"
         yield parser.cells["FindPendingReceiptsList_table"], parser.cells["IncomingGrnList_table"]
 
 
@@ -218,8 +226,9 @@ user = session("purchase.pricing.qa")
 viewer = session("purchase.pricing.viewer")
 before_billing = fingerprint()
 before_stock = quantity()
-for _, deliveries in receiving_tables("PP_QA_PO_A"):
-    assert "PP_QA_GRN_A" in deliveries and "Needs review" in deliveries and "Receive delivery" not in deliveries
+for _, deliveries in receiving_tables("PP_QA_PO_A", draft_review_id="PP_QA_GRN_A"):
+    assert "PP_QA_GRN_A" in deliveries and "Needs review" in deliveries
+    assert "Review GRN" in deliveries and "Review delivery" not in deliveries
 for orders, deliveries in receiving_tables("PP_QA_PO_B"):
     assert "PP_QA_PO_B" not in orders and "PP_QA_GRN_B" not in deliveries
 primary_po = invoke("createPo", vendorPartyId="PP_QA_SUPPLIER_A")["orderId"]
@@ -229,9 +238,9 @@ invoke("addPoLine", orderId=primary_po, productId="PP_QA_PRODUCT_A",
        quantity="2", unitAmount="100", itemDescription="Disposable receipt arithmetic control")
 item = query(f"SELECT ORDER_ITEM_SEQ_ID FROM ORDER_ITEM WHERE ORDER_ID='{primary_po}'")[0]["order_item_seq_id"]
 grn = invoke("create", purchaseOrderId=primary_po, receiptDate="2026-01-02")["grnId"]
-for orders, deliveries in receiving_tables(primary_po):
+for orders, deliveries in receiving_tables(primary_po, draft_review_id=grn):
     assert primary_po in orders and "Open" in orders and "Awaiting approval" in orders and "Receive Stock" not in orders
-    assert grn in deliveries and "Draft" in deliveries and "Receive delivery" not in deliveries
+    assert grn in deliveries and "Draft" in deliveries and "Review GRN" in deliveries and "Review delivery" not in deliveries
 invoke("receive", orderId=primary_po, orderItemSeqId=item, facilityId="PP_QA_A_STORE", quantityAccepted="1", denied=True)
 invoke("details", grnId=grn, facilityId="PP_QA_A_STORE", vendorInvoiceNumber="QA-INVOICE")
 invoke("line", grnId=grn, orderItemSeqId=item, plannedQuantity="2", unitAmount="100")
@@ -242,16 +251,16 @@ invoke("updatePo", orderId=primary_po, statusId="OrderPlaced")
 assert row("order_header", "order_id", primary_po)["status_id"] in ("OrderApproved", "OrderPlaced")
 if row("order_header", "order_id", primary_po)["status_id"] == "OrderPlaced":
     invoke("updatePo", orderId=primary_po, statusId="OrderApproved")
-for orders, deliveries in receiving_tables(primary_po):
+for orders, deliveries in receiving_tables(primary_po, draft_review_id=grn):
     assert primary_po in orders and "Receive Stock" in orders
-    assert grn in deliveries and "Receive delivery" not in deliveries
+    assert grn in deliveries and "Review GRN" in deliveries and "Review delivery" not in deliveries
 invoke("submit", grnId=grn)
 invoke("submit", grnId=grn)
 assert quantity() == before_stock
 assert Decimal(invoke("reserved", orderId=primary_po)["reservedByItem"][item]) == 2
 assert row("goods_receipt_note", "grn_id", grn)["status_id"] == "GrnPending"
 for orders, deliveries in receiving_tables(primary_po):
-    assert primary_po not in orders and grn in deliveries and "Receive delivery" in deliveries
+    assert primary_po not in orders and grn in deliveries and "Review delivery" in deliveries and "Review GRN" not in deliveries
 print("PASS draft/approval/submit creates incoming quantities without changing stock", flush=True)
 
 invoke("details", grnId=grn, facilityId="PP_QA_B_STORE", denied=True)
@@ -288,7 +297,17 @@ invoke("receive", **receipt, denied=True)
 assert quantity() == before_stock + 1
 asset = row("asset", "asset_id", received["assetId"])
 assert Decimal(asset["valuation_rate"]) == 100 and asset["acquire_cost_uom_id"] == "INR"
-invoke("receive", **{**receipt, "grnReceivedBefore": "1"})
+review_path = "/zenith/Inventory/ReceiveInventory"
+review_query = "?" + urllib.parse.urlencode({"orderId": primary_po, "grnId": grn})
+for shell, suffix in (("apps", ""), ("qapps", ".qvt")):
+    with user[0].open(f"{BASE}/{shell}{review_path}{suffix}{review_query}", timeout=120) as response:
+        review_page = response.read().decode()
+    assert "Review goods" in review_page and "Verify and receive" in review_page
+    assert f"/{shell}{review_path}/receiveItem" in review_page
+verification = form_inputs("/apps" + review_path + review_query, "receiveItem")
+assert verification["grnId"] == grn and verification["orderItemSeqId"] == item
+assert Decimal(verification["grnReceivedBefore"]) == 1 and Decimal(verification["quantityAccepted"]) == 1
+post(user, "/apps" + review_path + "/receiveItem", verification)
 assert quantity() == before_stock + 2
 assert row("goods_receipt_note", "grn_id", grn)["status_id"] == "GrnReceived"
 invoke("receive", **{**receipt, "grnReceivedBefore": "2"}, denied=True)

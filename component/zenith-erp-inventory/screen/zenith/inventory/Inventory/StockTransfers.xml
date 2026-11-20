@@ -132,8 +132,8 @@
         <section name="StockTransfersInteractive" condition="!stockTransferExport"><widgets>
         <container id="stockTransfers">
             <container style="st-page-head">
-                <container><label text="Stock Transfers" type="h3"/><label text="Move stock from one store/warehouse to another. Create a transfer, &quot;Ship&quot; it (stock leaves the sender), then &quot;Receive&quot; it (stock arrives at the receiver)." type="p"/></container>
-                <section name="NewTransferWrite" condition="invCanWrite &amp;&amp; transferOrg != '_NA_'"><widgets><link url="../NewStockTransfer" text="New Transfer" icon="fa fa-plus" btn-type="primary" style="z-solid st-new-transfer"/></widgets></section>
+                <container><label text="Stock Transfers" type="h3"/><label text="Track warehouse transfers from draft through receipt." type="p"/></container>
+                <section name="NewTransferWrite" condition="invCanWrite &amp;&amp; transferOrg != '_NA_'"><widgets><link url="../NewStockTransfer" text="New transfer" icon="fa fa-plus" btn-type="primary" style="z-solid st-new-transfer"/></widgets></section>
             </container>
             <section name="NoTransferOrganization" condition="transferOrg == '_NA_'"><widgets><label text="Select an organization to view or create stock transfers." type="p" style="st-notice"/></widgets></section>
             <render-mode><text type="html,qvt,vuet" template="true"><![CDATA[
@@ -156,7 +156,7 @@
                 </form>
             ]]></text></render-mode>
             <container style="st-stock-card">
-                <render-mode><text type="html,qvt,vuet"><![CDATA[<div class="st-card-head"><h2><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="6" height="7" rx="1"/><rect x="15" y="3" width="6" height="7" rx="1"/><rect x="3" y="14" width="6" height="7" rx="1"/><path d="M18 14v7m-3-4 3-3 3 3"/></svg>Stock Transfers</h2></div>]]></text></render-mode>
+                <render-mode><text type="html,qvt,vuet"><![CDATA[<div class="st-card-head"><h2><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="6" height="7" rx="1"/><rect x="15" y="3" width="6" height="7" rx="1"/><rect x="3" y="14" width="6" height="7" rx="1"/><path d="M18 14v7m-3-4 3-3 3 3"/></svg>Transfer register</h2></div>]]></text></render-mode>
                 <container style="st-native-list">
             <form-list name="TransferListForm" list="transferList" skip-form="true" header-dialog="true"
                        show-csv-button="true" show-page-size="true">
@@ -172,6 +172,7 @@
                             def actions = statusId == 'StxDraft' ? [[name:'shipTransfer', label:'Ship', confirm:'Ship this transfer? Stock will leave the sender.'],[name:'deleteTransfer',label:'Delete draft',confirm:'Delete this draft transfer and its product lines?']] :
                                 (statusId == 'StxInTransit' ? [[name:'receiveTransfer',label:'Receive',confirm:'Receive this transfer? The actual quantities will be added to the receiver.']] : [])
                             for (action in actions) {
+                                if (action.name == 'shipTransfer' && ewayBillRequired == 'Y') continue // Use the dispatch form in the E-way bill column.
                                 transferActionsHtml += "<form method='post' class='st-action-form' action='" + pagePath + '/' + action.name + "' data-confirm='" + esc(action.confirm) + "'><input type='hidden' name='moquiSessionToken' value='" + esc(ec.web.sessionToken) + "'><input type='hidden' name='stockTransferId' value='" + esc(stockTransferId) + "'>"
                                 for (key in ['quickSearch','pageSize','fromFacilityId','toFacilityId','transferNumber','transferNumber_op','transferDate_from','transferDate_thru','orderByField']) {
                                     def value = ec.web.requestParameters[key]
@@ -203,10 +204,13 @@
                 </field>
                 <field name="totalValue">
                     <header-field title="Value" show-order-by="true"/>
-                    <default-field><display text="${totalValue != null ? ec.l10n.format(totalValue, '#,##0.00') : '—'}"/></default-field>
+                    <default-field><display text="${totalValue != null ? '₹' + zinr.inr(ec.l10n.format(totalValue, '#,##0.00')) : '—'}"/></default-field>
                 </field>
                 <field name="ewayBillRequired">
-                    <default-field title="E-Way"><display/></default-field>
+                    <conditional-field condition="invCanWrite &amp;&amp; statusId == 'StxDraft' &amp;&amp; ewayBillRequired == 'Y'" title="E-way bill">
+                        <label text="Required" style="st-ewb-required" type="span"/><link url="../EditStockTransfer" parameter-map="[stockTransferId:stockTransferId]" link-type="anchor" text="Prepare dispatch" style="st-dispatch-link"/>
+                    </conditional-field>
+                    <default-field title="E-way bill"><label text="${ewayBillNumber ?: (ewayBillRequired == 'Y' ? 'Required' : 'Not required')}"/></default-field>
                 </field>
                 <field name="statusId">
                     <header-field title="Status">
@@ -218,7 +222,7 @@
                         </drop-down>
                     </header-field>
                     <!-- Reference labels preserve the underlying lifecycle status IDs. -->
-                    <default-field><label type="span" text="${statusId == 'StxDraft' ? 'Pending' : (statusId == 'StxReceived' ? 'StxReceived' : (ec.entity.find('moqui.basic.StatusItem').condition('statusId', statusId).useCache(true).one()?.description ?: statusId))}" style="st-status ${(statusId == 'StxReceived') ? 'st-status-green' : (statusId == 'StxInTransit' ? 'st-status-blue' : 'st-status-red')}"/></default-field>
+                    <default-field><label type="span" text="${statusId == 'StxDraft' ? 'Pending' : (statusId == 'StxReceived' ? 'Received' : (ec.entity.find('moqui.basic.StatusItem').condition('statusId', statusId).useCache(true).one()?.description ?: statusId))}" style="st-status ${(statusId == 'StxReceived') ? 'st-status-green' : (statusId == 'StxInTransit' ? 'st-status-blue' : 'st-status-red')}"/></default-field>
                 </field>
                 <field name="dispatchLogistics">
                     <conditional-field condition="sri.renderMode in ['csv','xlsx']" title="Logistics &amp; Tax">

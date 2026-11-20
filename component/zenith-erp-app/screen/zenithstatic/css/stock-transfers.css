@@ -14,12 +14,8 @@ body.zq-nav:has(#stockTransfers) .q-page {padding:0!important;min-height:calc(10
 #stockTransfers .st-page-head p {font-size:13px!important;color:var(--text-secondary)!important;margin:0!important;line-height:1.5;}
 body:has(#stockTransfers) #stockTransfers .st-new-transfer {display:inline-flex;align-items:center;justify-content:center;gap:9px;min-width:144px;height:42px;padding:0 16px;border:0!important;border-radius:var(--radius-sm);background:var(--primary)!important;color:var(--white)!important;font:600 12.5px Inter,sans-serif;box-shadow:none!important;white-space:nowrap;text-decoration:none;}
 body:has(#stockTransfers) #stockTransfers .st-new-transfer:hover,#stockTransfers .stk-search-go:hover {background:var(--primary-dark)!important;}
-#stockTransfers .stk-row {display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:16px;margin-bottom:24px;}
-#stockTransfers .stk-card {display:flex;align-items:center;gap:16px;min-width:0;height:88px;padding:16px;border:1px solid var(--border);border-radius:var(--radius);box-shadow:none;background:var(--blue-bg);}
-#stockTransfers .stk-green {background:var(--green-bg);}
-#stockTransfers .stk-violet {background:var(--primary-light);}
-#stockTransfers .stk-red {background:var(--red-bg);}
-#stockTransfers .stk-amber {background:var(--orange-bg);}
+#stockTransfers .stk-row {display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1px;margin-bottom:18px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;}
+#stockTransfers .stk-card {display:flex;align-items:center;gap:12px;min-width:0;padding:20px 16px;background:var(--white);border:0;border-radius:0;box-shadow:none;}
 #stockTransfers .stk-ic {display:flex;align-items:center;justify-content:center;width:52px;height:52px;flex:0 0 52px;border-radius:16px;background:color-mix(in srgb,var(--blue) 8%,transparent);color:var(--blue);}
 #stockTransfers .stk-green .stk-ic {background:color-mix(in srgb,var(--green) 8%,transparent);color:var(--green-text);}
 #stockTransfers .stk-violet .stk-ic {background:color-mix(in srgb,var(--primary) 8%,transparent);color:var(--primary);}
@@ -29,13 +25,13 @@ body:has(#stockTransfers) #stockTransfers .st-new-transfer:hover,#stockTransfers
 #stockTransfers .stk-txt {min-width:0;}
 #stockTransfers .stk-lab {display:block;font-size:11.5px;font-weight:500;color:var(--text-primary);margin-bottom:5px;}
 #stockTransfers .stk-val {display:block;font-size:28px;font-weight:700;color:var(--text-primary);line-height:1.2;letter-spacing:-.5px;}
-#stockTransfers .sup-searchrow {display:flex;align-items:center;gap:20px;min-height:86px;padding:18px 16px;margin:0 0 22px;border:1px solid var(--border);border-radius:var(--radius);background:var(--white);}
+#stockTransfers .sup-searchrow {display:flex;align-items:center;gap:10px;padding:0;margin:0 0 18px;}
 #stockTransfers .sup-search {display:flex;align-items:center;gap:12px;flex:1;max-width:744px;height:44px;padding:0 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--white);}
 #stockTransfers .sup-search-ico {flex:0 0 18px;color:var(--text-primary);}
 #stockTransfers .sup-search-input {min-width:0;flex:1;width:100%;height:100%;border:0!important;background:transparent!important;outline:0;font:500 14px Inter,sans-serif;color:var(--text-primary);box-shadow:none!important;margin:0;}
 #stockTransfers .sup-search-input::placeholder {color:var(--text-secondary);opacity:1;}
 #stockTransfers .stk-search-go,#stockTransfers .st-filter {display:inline-flex;align-items:center;justify-content:center;gap:9px;height:42px;padding:0 18px;border:1px solid var(--primary);border-radius:var(--radius-sm);background:var(--primary);color:var(--white);font:600 13px Inter,sans-serif;cursor:pointer;}
-#stockTransfers .st-filter {margin-left:16px;min-width:106px;background:var(--white);color:var(--primary);}
+#stockTransfers .st-filter {min-width:100px;background:var(--white);border-color:var(--border);color:var(--text-primary);}
 #stockTransfers .st-stock-card {border:1px solid var(--border);border-radius:var(--radius);background:var(--white);padding:0 16px 20px;min-width:0;}
 #stockTransfers .st-card-head {display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:64px;flex-wrap:wrap;}
 #stockTransfers .st-card-head h2 {display:flex;align-items:center;gap:12px;font:700 20px/1.3 Inter,sans-serif;margin:0;color:var(--text-primary);}
@@ -58,16 +54,16 @@ body:has(#stockTransfers) #stockTransfers .st-new-transfer:hover,#stockTransfers
 #stockTransfers .st-enhanced #TransferListForm_table .thead>:is(tr,.tr):not(:last-child),#stockTransfers .st-enhanced #TransferListForm_table>thead>tr:not(:last-child) {display:none!important;}
 #stockTransfers .q-table__container {border:0!important;box-shadow:none!important;margin:0!important;}
 #stockTransfers .q-pa-xs {padding:0!important;}
-#stockTransfers #TransferListForm_table {margin:0!important;border:0!important;width:100%!important;min-width:1120px;table-layout:fixed;border-collapse:collapse;box-shadow:none!important;}
+#stockTransfers #TransferListForm_table {margin:0!important;border:0!important;width:100%!important;min-width:920px;table-layout:auto;border-collapse:collapse;box-shadow:none!important;}
 #stockTransfers #TransferListForm_table :is(.th,th) {height:46px;background:var(--bg)!important;color:var(--text-primary)!important;font-size:11.5px!important;font-weight:600!important;padding:12px 16px!important;border:0!important;border-bottom:1px solid var(--border)!important;white-space:nowrap;}
 #stockTransfers #TransferListForm_table :is(.td,td) {height:52px;padding:12px 16px!important;background:var(--white)!important;color:var(--text-primary);font-size:12.5px!important;font-weight:500;border:0!important;border-bottom:1px solid var(--border)!important;vertical-align:middle;}
 #stockTransfers #TransferListForm_table :is(.tbody>.tr:last-child>.td,tbody>tr:last-child>td) {border-bottom:0!important;}
 #stockTransfers #TransferListForm_table :is(.th,th):nth-child(1) {width:10%;}
 #stockTransfers #TransferListForm_table :is(.th,th):nth-child(2) {width:10%;}
-#stockTransfers #TransferListForm_table :is(.th,th):nth-child(3) {width:21%;}
-#stockTransfers #TransferListForm_table :is(.th,th):nth-child(4) {width:19%;}
-#stockTransfers #TransferListForm_table :is(.th,th):nth-child(5) {width:7%;}
-#stockTransfers #TransferListForm_table :is(.th,th):nth-child(6) {width:6%;}
+#stockTransfers #TransferListForm_table :is(.th,th):nth-child(3) {width:15%;}
+#stockTransfers #TransferListForm_table :is(.th,th):nth-child(4) {width:15%;}
+#stockTransfers #TransferListForm_table :is(.th,th):nth-child(5) {width:10%;}
+#stockTransfers #TransferListForm_table :is(.th,th):nth-child(6) {width:13%;}
 #stockTransfers #TransferListForm_table :is(.th,th):nth-child(7) {width:11%;}
 #stockTransfers #TransferListForm_table :is(.th,th):nth-child(8) {width:13%;}
 #stockTransfers #TransferListForm_table :is(.th,th):nth-child(9) {width:3%;padding:12px 4px!important;}
@@ -76,6 +72,8 @@ body:has(#stockTransfers) #stockTransfers .st-new-transfer:hover,#stockTransfers
 #stockTransfers .st-status {display:inline-block;white-space:nowrap;padding:4px 8px;border-radius:5px;font-size:11.5px!important;font-weight:500;}
 #stockTransfers .st-status-green {color:var(--green-text)!important;background:var(--green-bg)!important;}
 #stockTransfers .st-status-blue {color:var(--blue)!important;background:var(--blue-bg)!important;}
+#stockTransfers .st-ewb-required {display:block;font-weight:600;}
+#stockTransfers .st-dispatch-link {font-size:12px;color:var(--primary);white-space:nowrap;}
 #stockTransfers .st-status-red {color:var(--red-text)!important;background:var(--red-bg)!important;}
 #stockTransfers .st-native-logistics {display:none!important;}
 #stockTransfers .st-row-menu {position:relative;}
@@ -151,3 +149,73 @@ body:not(.zq-nav):has(#stockTransfers) #content>.inner>.container-fluid {padding
 
 @media(max-width:600px) {#stockTransfers .stk-row {grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}#stockTransfers .stk-card:nth-child(3) {grid-column:1/-1;}#stockTransfers .sup-searchrow {flex-wrap:wrap;}#stockTransfers .sup-search {flex-basis:100%;max-width:none;}#stockTransfers .st-pagination {width:100%;margin:0 0 12px;}#stockTransfers .st-page-info {width:100%;margin:0;}#stockTransfers .st-card-head {padding-top:16px;gap:10px;}#stockTransfers .st-stock-card {padding:0 12px 16px;}#stockTransfers .stk-val {font-size:26px;}}
 body.body--dark:has(#stockTransfers),body.z-dark:has(#stockTransfers) {--bg:#161B26;--white:#1E2533;--border:#344052;--text-primary:#F3F4F6;--text-secondary:#BAC2D0;--text-muted:#94A3B8;--primary-light:#302345;--blue-bg:#172E45;--green-bg:#13382D;--green-text:#6EE7B7;--red-bg:#43232B;--red-text:#FDA4AF;--orange-bg:#392C18;}
+
+
+/* The creation and detail work areas share one set of panel, field and spacing rules. */
+.st-workspace {
+  --st-surface: #fff;
+  --st-ink: #20263a;
+  --st-muted: #596479;
+  --st-line: #dfe3ed;
+  --st-wash: #f6f7fb;
+  --st-accent: #633bc4;
+  color: var(--st-ink);
+  margin: 0 auto;
+  padding: clamp(14px, 2.2vw, 30px);
+  max-width: 1170px;
+  width: 100%;
+  box-sizing: border-box;
+}
+#stockTransferNew {max-width: 900px;}
+.st-workspace > a:first-child {font-size: 13px; font-weight: 600;}
+.st-page-title {margin: 22px 0 20px;}
+.st-page-title h1, #stockTransferDetail .st-detail-summary h5 {
+  margin: 0 0 6px !important;
+  color: var(--st-ink) !important;
+  font-size: clamp(23px, 2.6vw, 32px) !important;
+  font-weight: 700; line-height: 1.2; letter-spacing: -.03em;
+}
+.st-page-title p {color: var(--st-muted); margin: 0; font-size: 14px;}
+.st-workspace .st-panel, #stockTransferDetail .zenith-card {
+  background: var(--st-surface) !important; border: 1px solid var(--st-line);
+  border-radius: 14px !important; box-shadow: 0 2px 8px rgba(31,27,59,.04) !important;
+}
+.st-entry {padding: 0; overflow: hidden;}
+.st-entry fieldset {display:block; min-width:0; margin:0; border:0; padding:20px clamp(16px,3vw,30px);}
+.st-entry fieldset + fieldset {border-top:1px solid var(--st-line);}
+.st-entry legend {float:left; width:100%; border:0; margin:0 0 16px; color:var(--st-ink); line-height:1.35; font-family:inherit; font-size:17px; font-weight:700;}
+.st-input-pair {display:grid; clear:both; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px;}
+.st-entry label {display:flex; flex-direction:column; gap:7px; color:var(--st-ink); font-size:13px; font-weight:600; margin:0;}
+.st-entry input:not([type=hidden]), .st-entry select, .st-entry textarea {
+  display:block; box-sizing:border-box; width:100%; min-width:0; min-height:43px;
+  padding:10px 12px; margin:0; border:1px solid var(--st-line); border-radius:8px;
+  background:var(--st-surface); color:var(--st-ink); line-height:1.4; font-family:inherit; font-size:14px; font-weight:400;
+}
+.st-entry select:invalid, .st-entry textarea::placeholder {color:var(--st-muted);}
+.st-entry textarea {resize:vertical;}
+.st-entry :is(input,select,textarea,button,a):focus-visible {outline:3px solid var(--st-accent); outline-offset:2px;}
+.st-entry small {font-size:12px; font-weight:400; line-height:1.4; color:var(--st-muted);}
+.st-entry .st-entry-notes {margin-top:18px;}
+.st-bill-field {display:flex;flex-direction:column;gap:7px;}
+.st-entry-notes span small {margin-left:6px;}
+.st-entry-actions {display:flex; justify-content:flex-end; align-items:center; gap:16px; padding:14px clamp(16px,3vw,30px); background:var(--st-wash); border-top:1px solid var(--st-line);}
+.st-entry-actions a {color:var(--st-muted); font-weight:600;}
+.st-entry-actions button {padding:11px 20px; border:0; border-radius:8px; background:var(--st-accent); color:white; font-family:inherit; font-weight:600; cursor:pointer;}
+.st-entry-actions button:hover {filter:brightness(.9);}
+#stockTransferDetail .st-detail-summary, #stockTransferDetail .zenith-card {margin:14px 0; padding:clamp(16px,2.2vw,24px);}
+#stockTransferDetail .st-detail-summary > .row {display:flex; align-items:flex-start; justify-content:space-between; gap:12px;}
+#stockTransferDetail .st-detail-summary > .row > .column {flex:1;}
+#stockTransferDetail .st-route-summary {display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; margin:16px 0 0; padding-top:16px; border-top:1px solid var(--st-line);}
+#stockTransferDetail .st-route-summary p {margin:0;}
+#stockTransferDetail .st-route-summary p:first-child {color:var(--st-muted) !important; font-size:12px;}
+#stockTransferDetail .st-route-summary p + p {color:var(--st-ink) !important; font-weight:600;}
+#stockTransferDetail #transfer-dispatch {border-inline-start:3px solid var(--st-accent);}
+#stockTransferDetail .zenith-card :is(h5,h6) {color:var(--st-ink) !important;}
+#stockTransferDetail .zst-draft-actions {display:flex; gap:10px; flex-wrap:wrap; margin:16px 0;}
+body:is(.body--dark,.z-dark) .st-workspace {--st-surface:#202431;--st-ink:#eef1f7;--st-muted:#bdc5d8;--st-line:#41495b;--st-wash:#292e3e;--st-accent:#8057de;color-scheme:dark;}
+@media(max-width:650px) {
+  .st-input-pair {grid-template-columns:1fr;gap:14px;}
+  #stockTransferDetail .st-route-summary {grid-template-columns:repeat(2,minmax(0,1fr));}
+  #stockTransfers .stk-row {gap:1px;}
+  .st-page-title {margin:16px 0;}
+}

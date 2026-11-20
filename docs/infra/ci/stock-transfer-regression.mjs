@@ -37,7 +37,7 @@ async function session(user='stock.transfer.audit') {
 const writer=await session();
 async function create(params={}) {
  const before=count('stock_transfer',"organization_party_id='STFIX_ORG'");
- const result=await writer.post('NewStockTransfer','createTransfer',{fromFacilityId:'STFIX_A',toFacilityId:'STFIX_B',remarks:'STFIX audit',...params});
+ const result=await writer.post('NewStockTransfer','createTransfer',{fromFacilityId:'STFIX_A',toFacilityId:'STFIX_B',remarks:'STFIX audit',ewayBillChoice:'N',...params});
  const location=result.response.headers.get('location');
  const id=location && new URL(location,base).searchParams.get('stockTransferId');
  if(id && transfer(id)?.organization_party_id==='STFIX_ORG' && count('stock_transfer',"organization_party_id='STFIX_ORG'")>before) { created.push(id);return id; }
@@ -51,6 +51,12 @@ async function add(id,quantity,params={}) {
 const ship=id=>writer.post('StockTransfers','shipTransfer',{stockTransferId:id});
 const receive=id=>writer.post('StockTransfers','receiveTransfer',{stockTransferId:id});
 try {
+ for(const choice of ['', 'invalid']) assert.equal(await create({ewayBillChoice:choice}),null);
+ const manual=await create({ewayBillChoice:'Y'});await add(manual,'1');
+ check('A selected e-way bill survives recalculation below the threshold',()=>{assert.equal(transfer(manual).eway_bill_choice,'Y');assert.equal(transfer(manual).eway_bill_required,'Y');});
+ await ship(manual);assert.equal(transfer(manual).status_id,'StxDraft');
+ await writer.post('EditStockTransfer','editHeader',{stockTransferId:manual,ewayBillChoice:'N'});
+ assert.equal(transfer(manual).eway_bill_required,'N');
  const first=await create({organizationPartyId:'STFIX_OTHER',statusId:'StxReceived',totalValue:'100000',ewayBillRequired:'N'});
  assert(first,'Creation succeeds');
  check('Creation ignores forged owner, status and totals',()=>{const t=transfer(first);assert.equal(t.organization_party_id,'STFIX_ORG');assert.equal(t.status_id,'StxDraft');assert.equal(Number(t.total_value),0);assert.equal(t.transfer_number,first);});
@@ -76,7 +82,7 @@ try {
  await writer.request('/qapps/zenith/Inventory/StockTransfers/shipTransfer',{stockTransferId:first}); await ship(first);
  check('Shipping moves stock once and preserves reservations',()=>{assert.equal(transfer(first).status_id,'StxInTransit');assert.equal(balance('STFIX_P','STFIX_A'),7.5);assert.equal(balance('STFIX_P','STFIX_A','available_to_promise_total'),5.5);});
  await writer.post('EditStockTransfer','deleteItem',{stockTransferId:first,transferItemSeqId:seq}); await add(first,'1');
- await writer.post('EditStockTransfer','editHeader',{stockTransferId:first,fromFacilityId:'STFIX_B',toFacilityId:'STFIX_A'});
+ await writer.post('EditStockTransfer','editHeader',{stockTransferId:first,fromFacilityId:'STFIX_B',toFacilityId:'STFIX_A',ewayBillChoice:'N'});
  check('Shipped lines and header cannot be changed',()=>{assert.equal(count('stock_transfer_item',`stock_transfer_id=${quote(first)}`),1);assert.equal(transfer(first).from_facility_id,'STFIX_A');});
  for(const quantityReceived of ['-1','8']) await writer.post('EditStockTransfer','setReceivedQty',{stockTransferId:first,transferItemSeqId:seq,quantityReceived});
  check('Receipt underflow and overage rejected',()=>assert.equal(line(first,seq).quantity_received,null));
@@ -101,7 +107,7 @@ try {
  const a=await create();const b=await create();await add(a,'3');await add(b,'3');await Promise.all([ship(a),ship(b)]);
  check('Concurrent transfers cannot consume the same free stock',()=>{assert.equal([transfer(a).status_id,transfer(b).status_id].filter(s=>s==='StxInTransit').length,1);assert.equal(balance('STFIX_P','STFIX_A'),3.5);assert.equal(balance('STFIX_P','STFIX_A','available_to_promise_total'),1.5);});
  assert.equal(sql("select preference_value from user_preference where user_id='STFIX_USER' and preference_key='ACTIVE_ORGANIZATION'"),'STFIX_ORG','Writer organization after stock checks');
- const viewer=await session('stock.transfer.viewer'); await viewer.post('NewStockTransfer','createTransfer',{fromFacilityId:'STFIX_A',toFacilityId:'STFIX_B'});await viewer.post('StockTransfers','shipTransfer',{stockTransferId:b});
+ const viewer=await session('stock.transfer.viewer'); await viewer.post('NewStockTransfer','createTransfer',{fromFacilityId:'STFIX_A',toFacilityId:'STFIX_B',ewayBillChoice:'N'});await viewer.post('StockTransfers','shipTransfer',{stockTransferId:b});
  check('View-only users cannot create or ship',()=>assert.equal(created.length,count('stock_transfer',"organization_party_id='STFIX_ORG'")));
  await writer.post('StockTransfers','deleteTransfer',{stockTransferId:'STFIX_FOREIGN'});
  check('Cross-organization transfer actions are denied even for admin',()=>assert(transfer('STFIX_FOREIGN')));
@@ -135,19 +141,32 @@ try {
  sql("update facility set facility_gstin='29-LOCAL-TEST',gst_state_code='29' where facility_id='STFIX_A'; update facility set facility_gstin='33-LOCAL-TEST',gst_state_code='33' where facility_id='STFIX_B';");
  const interstate=await create();await add(interstate,'0.5');await ship(interstate);
  check('Derived E-Way requirement blocks shipping without logistics',()=>{assert.equal(transfer(interstate).eway_bill_required,'Y');assert.equal(transfer(interstate).status_id,'StxDraft');assert.equal(balance('STFIX_P','STFIX_A'),3.5);});
- await writer.post('StockTransfers','updateTransfer',{stockTransferId:interstate,transporterGstin:'LOCAL-TEST-ONLY',vehicleNumber:'LOCAL-TEST-VAN'});await ship(interstate);
+ const dispatchDetails={stockTransferId:interstate,transporterGstin:'LOCAL-TEST-ONLY',vehicleNumber:'LOCAL-TEST-VAN'};
+ await writer.post('StockTransfers','updateTransfer',dispatchDetails);
+ await ship(interstate);
+ await writer.post('EditStockTransfer','shipTransfer',{...dispatchDetails,ewayBillNumber:'not-an-ebn'});
+ check('Logistics alone or a malformed EBN cannot dispatch stock',()=>{assert.equal(transfer(interstate).status_id,'StxDraft');assert.equal(transfer(interstate).eway_bill_number,null);assert.equal(balance('STFIX_P','STFIX_A'),3.5);});
+ for(const [shell,suffix] of [['apps',''],['qapps','.qvt']]) {
+  const page=await writer.request('/'+shell+'/zenith/Inventory/EditStockTransfer'+suffix+'?stockTransferId='+interstate);
+  assert(page.text.includes('https://ewaybillgst.gov.in/') && page.text.includes('Confirm dispatch') && page.text.includes('LOCAL-TEST-VAN'));
+ }
+ // Local format-only fixture. No bill is issued or sent to a government service.
+ const testEbn=String(created.indexOf(interstate)+1).padStart(12,'0');
+ await writer.post('EditStockTransfer','shipTransfer',{stockTransferId:interstate,ewayBillNumber:testEbn});
+ await ship(interstate);
+ check('Dispatch records the supplied EBN and moves the goods once',()=>{assert.equal(transfer(interstate).eway_bill_number,testEbn);assert.equal(balance('STFIX_P','STFIX_A'),3);});
  check('Inter-state invoice remains scoped and unissued',()=>{const t=transfer(interstate);assert.equal(t.status_id,'StxInTransit');assert(t.igst_invoice_id);const invoice=row('invoice',`invoice_id=${quote(t.igst_invoice_id)}`);assert.equal(invoice.from_party_id,'STFIX_ORG');assert.equal(invoice.to_party_id,'STFIX_ORG');assert.equal(invoice.status_id,'InvoiceInProcess');assert.equal(count('invoice_item',`invoice_id=${quote(t.igst_invoice_id)}`),1);});
  const protectedDraft=await create();sql("insert into invoice (invoice_id,invoice_type_enum_id,status_id,from_party_id,to_party_id,invoice_date) values ('STFIX_ISSUED','InvoiceSales','InvoiceSent','STFIX_ORG','STFIX_ORG',CURRENT_TIMESTAMP);");
  sql(`update stock_transfer set igst_invoice_id='STFIX_ISSUED' where stock_transfer_id=${quote(protectedDraft)}`);
  await writer.post('StockTransfers','deleteTransfer',{stockTransferId:protectedDraft});
  check('Deleting a draft cannot cancel a linked issued invoice',()=>{assert(transfer(protectedDraft));assert.equal(row('invoice',"invoice_id='STFIX_ISSUED'").status_id,'InvoiceSent');});
  const manager=await session('stock.transfer.manager');
- const own=await manager.post('NewStockTransfer','createTransfer',{fromFacilityId:'STFIX_A',toFacilityId:'STFIX_B'});
+ const own=await manager.post('NewStockTransfer','createTransfer',{fromFacilityId:'STFIX_A',toFacilityId:'STFIX_B',ewayBillChoice:'N'});
  const managerId=new URL(own.response.headers.get('location'),base).searchParams.get('stockTransferId');
  check('Inventory manager can create within their organization',()=>assert.equal(transfer(managerId)?.organization_party_id,'STFIX_ORG'));created.push(managerId);
  const otherCount=count('stock_transfer',"organization_party_id='STFIX_OTHER'");
  await manager.request('/apps/setPreference',{preferenceKey:'ACTIVE_ORGANIZATION',preferenceValue:'STFIX_OTHER'});
- await manager.post('NewStockTransfer','createTransfer',{fromFacilityId:'STFIX_FOREIGN',toFacilityId:'STFIX_A'});
+ await manager.post('NewStockTransfer','createTransfer',{fromFacilityId:'STFIX_FOREIGN',toFacilityId:'STFIX_A',ewayBillChoice:'N'});
  check('Forged active organization cannot bypass membership',()=>assert.equal(count('stock_transfer',"organization_party_id='STFIX_OTHER'"),otherCount));
  console.log(JSON.stringify({passed:checks.length,created},null,2));
 } finally {

@@ -19,9 +19,9 @@ const openAudit=require('./client.cjs');
   await reject('Inventory: batch expiry cannot precede manufacturing','receipt.create',{productId:'AUDIT_QA_BATCH',facilityId:from,quantityAccepted:'1',batchNumber:'AUDITLOT',manufacturingDate:'2026-10-20',expiryDate:'2026-10-19'});
   await pass('Inventory: valid batch receipt preserves lot dates','receipt.create',{productId:'AUDIT_QA_BATCH',facilityId:from,quantityAccepted:'5',batchNumber:'AUDITLOT',manufacturingDate:'2026-10-20',expiryDate:'2027-10-20',valuationRate:'3'});
   check('Inventory: failed receipts preserve existing stock',stock()===10&&stock('AUDIT_QA_BATCH')===5);
-  await reject('Transfers: same warehouse rejected','transfer.create',{fromFacilityId:from,toFacilityId:from});
-  await reject('Transfers: foreign destination rejected','transfer.create',{fromFacilityId:from,toFacilityId:'AUDIT_QA_FAC_B'});
-  const st=await pass('Transfers: own draft persisted','transfer.create',{fromFacilityId:from,toFacilityId:to,organizationPartyId:'AUDIT_QA_B',statusId:'StxReceived'});
+  await reject('Transfers: same warehouse rejected','transfer.create',{ewayBillChoice:'N',fromFacilityId:from,toFacilityId:from});
+  await reject('Transfers: foreign destination rejected','transfer.create',{ewayBillChoice:'N',fromFacilityId:from,toFacilityId:'AUDIT_QA_FAC_B'});
+  const st=await pass('Transfers: own draft persisted','transfer.create',{ewayBillChoice:'N',fromFacilityId:from,toFacilityId:to,organizationPartyId:'AUDIT_QA_B',statusId:'StxReceived'});
   const id=st.stockTransferId;
   if(id){
    check('Transfers: forged owner and status ignored',record('stock_transfer','stock_transfer_id',id)?.organization_party_id===org&&record('stock_transfer','stock_transfer_id',id)?.status_id==='StxDraft');
@@ -39,7 +39,7 @@ const openAudit=require('./client.cjs');
    await reject('Transfers: repeated receipt cannot duplicate stock','transfer.receive',{stockTransferId:id});
    check('Transfers: repeat operations preserve balances',stock()===10&&stock(product,from)===7&&stock(product,to)===3);
   }
-  const over=await pass('Transfers: separate oversell draft can be reviewed','transfer.create',{fromFacilityId:from,toFacilityId:to});
+  const over=await pass('Transfers: separate oversell draft can be reviewed','transfer.create',{ewayBillChoice:'N',fromFacilityId:from,toFacilityId:to});
   if(over.stockTransferId){
    await pass('Transfers: pending large line persists before shipment','transfer.add',{stockTransferId:over.stockTransferId,productId:product,quantity:'100'});
    await reject('Transfers: insufficient stock cannot ship','transfer.ship',{stockTransferId:over.stockTransferId});
