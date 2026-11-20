@@ -109,12 +109,27 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
   check('card waits for the first weighted item to be saved', await page.locator('#posPayConfirmOverlay').count() === 0);
   releaseAdd();
   const newId = (await (await newBill).json()).transactionId;
-  await page.locator('#posPayConfirmOverlay').waitFor();
-  check('card confirms the saved half-unit amount on the same new bill',
-   (await page.locator('#posPayConfirmOverlay').innerText()).includes('50') &&
-   Number(q(`SELECT payable_amount FROM pos_transaction WHERE transaction_id='${newId}'`)[0].payable_amount) === 50);
-  await page.locator('#posPayConfCancel').click();
-  await invoke('void', {transactionId:newId});
+  const cardPopup = page.locator('#posPayConfirmOverlay');
+  await cardPopup.waitFor();
+  if (await cardPopup.getByRole('heading', {name:'Payment Complete',exact:true}).count()) {
+   const bill = q(`SELECT transaction_number,payable_amount,status_id FROM pos_transaction WHERE transaction_id='${newId}'`)[0];
+   const payments = q(`SELECT payment_method,amount FROM pos_payment WHERE transaction_id='${newId}'`);
+   const receipt = (await invoke('receipt', {transactionId:newId})).receipt;
+   const billRef = receipt?.bill?.number;
+   check('card completes the saved half-unit on the same new bill with one ₹50 payment',
+    bill?.status_id === 'PtCompleted' && Number(bill.payable_amount) === 50 && payments.length === 1 &&
+    payments[0].payment_method === 'Card' && Number(payments[0].amount) === 50 &&
+    !!billRef && billRef === bill.transaction_number && (await cardPopup.innerText()).includes(`Bill ${billRef} is saved`),
+    {bill,payments,billRef});
+   await cardPopup.getByRole('button', {name:'Save',exact:true}).click();
+   await cardPopup.waitFor({state:'hidden'});
+  } else {
+   check('card confirms the saved half-unit amount on the same new bill',
+    (await cardPopup.innerText()).includes('50') &&
+    Number(q(`SELECT payable_amount FROM pos_transaction WHERE transaction_id='${newId}'`)[0].payable_amount) === 50);
+   await page.locator('#posPayConfCancel').click();
+   await invoke('void', {transactionId:newId});
+  }
 
   if(out)await page.screenshot({path:path.join(out,'cashier-entry.png')});
  }finally{releaseAdd();await page.close();await invoke('close',{sessionId:session.sessionId,closingCash:'0'});}
