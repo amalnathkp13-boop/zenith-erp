@@ -4445,3 +4445,37 @@ body.body--dark .expenses-filter-bar input[type="date"] { color-scheme:dark; }
 #bl-filter-form{display:block!important}
 #bl-search-wrap:focus-within{box-shadow:0 0 0 2px #A78BFA}
 #bl-search-input::placeholder{color:#6B7280;opacity:1}
+
+/* Warranty workspace: calm hierarchy, flat tables, and readable empty states. */
+.z-warranty-hero { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; position:relative; min-height:92px; padding:4px 0 16px 64px; gap:12px; }
+.z-warranty-hero::before { content:"verified_user"; display:block!important; position:absolute; top:4px; left:2px; font:40px/1 "Material Icons"; color:var(--z-primary); }
+.z-warranty-hero h4 { color:var(--z-text-main); font-size:clamp(25px,2.3vw,32px); letter-spacing:-.025em; line-height:1.2; }
+.z-warranty-hero p { display:block; margin-top:5px; color:var(--z-text-muted)!important; font-size:14px!important; }
+.z-warranty-hero :is(.q-btn,.btn) { min-height:44px; padding:0 18px; border:0!important; border-radius:8px!important; background:#6D28D9!important; color:#fff!important; }
+.z-warranty-hero .q-btn::before { border:0!important; }
+#content:has(.z-warranty-hero) { background:var(--z-bg-card)!important; }
+#content .z-warranty-hero button.btn-primary:not(#ai-copilot-toggle) { background:#6D28D9!important; color:#fff!important; border:0!important; }
+.z-warranty-hero button i,.z-warranty-section button i { font-size:0!important; }
+.z-warranty-hero button i::before,.z-warranty-section button i::before { content:"+"!important; font:20px/1 sans-serif; }
+.z-warranty-hero button .q-icon,.z-warranty-section button .q-icon { min-width:18px; margin-right:8px!important; }
+.z-warranty-section { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; min-height:50px; padding:8px 16px; border-radius:8px 8px 0 0; background:color-mix(in srgb,var(--z-primary) 10%,var(--z-bg-card)); }
+.z-warranty-section h5 { margin:0; color:var(--z-primary-hover); font-size:20px; line-height:1.3; }
+.z-warranty-section :is(.q-btn,.btn) { min-height:36px; border-radius:7px!important; background:var(--z-bg-card)!important; color:var(--z-primary)!important; }
+.z-warranty-section .q-btn::before { border-color:var(--z-primary)!important; }
+.z-warranty-list { max-width:100%; overflow-x:auto; }
+.z-warranty-list :is(.q-table__container,.table-scroll-wrapper) { margin:0!important; border:0!important; border-radius:0!important; box-shadow:none!important; background:transparent!important; }
+.z-warranty-list :is(table,.table.q-table) { width:100%; margin:0; border-collapse:collapse; border-spacing:0; border-radius:0!important; background:transparent!important; }
+.z-warranty-list :is(thead,.thead) { background:transparent!important; }
+.z-warranty-list :is(th,.th) { padding:13px 16px!important; border:0!important; border-bottom:1px solid var(--z-border)!important; color:var(--z-text-main); font-weight:600; white-space:nowrap; }
+.z-warranty-list :is(td,.td) { padding:12px 16px!important; border-bottom:1px solid var(--z-border)!important; color:var(--z-text-main); vertical-align:middle; }
+.z-warranty-list :is(tbody,.tbody) :is(tr,.tr):last-child :is(td,.td) { border-bottom:0!important; }
+.z-warranty-list #PoliciesForm_table .tbody .td:first-child .q-field { padding-left:0!important; margin:0; width:100%; }
+.z-warranty-list #PoliciesForm_table .tbody .td:first-child .q-field__label { display:none!important; }
+.z-warranty-empty { min-height:136px; padding:24px 12px 30px; border-bottom:1px solid var(--z-border); text-align:center; }
+.z-warranty-empty::before { content:"inventory_2"; display:block; margin-bottom:7px; color:var(--z-accent); font:34px/1 "Material Icons"; }
+.z-warranty-empty-title { margin:0 0 3px; color:var(--z-text-main); font-weight:600; }
+.z-warranty-empty-copy { margin:0; color:var(--z-text-muted); font-size:13px; }
+@media (max-width:600px) {
+  .z-warranty-hero { padding-left:0; padding-top:50px; }
+  .z-warranty-section { padding:10px 12px; }
+}
