@@ -56,7 +56,7 @@ async function run(){for(const engine of (process.env.POS_CASH_BROWSERS||'chrome
     tender.total===d&&tender.method==='Cash'&&tender.transactionId==='QA_DRAFT'&&window.choices.length===0;},due))throw Error('Completion did not preserve the saved cash tender');
    if(!(await chooser.innerText()).includes('QA-BILL-1')||await p.locator('#posCashTenderOverlay').count())throw Error('Completion did not replace the cash entry with its bill number');
    await p.keyboard.press('ArrowRight');await p.keyboard.press('Enter');
-   await chooser.waitFor({state:'hidden'});
+   await chooser.waitFor({state:'detached'});
    if(!await p.evaluate(()=>window.choices.length===1&&window.choices[0]&&window.tenders.length===1))throw Error('Save & print applied more than one action');
    await p.evaluate(()=>window.posPayCash(document.getElementById('cash')));
    await p.locator('#posCashExact').focus();await p.keyboard.press('Enter');
