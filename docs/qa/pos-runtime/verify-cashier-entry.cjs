@@ -6,7 +6,7 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
  const session=await invoke('open',{terminalId,openingCash:'0'});
  const page=await a.c.newPage();page.setDefaultTimeout(15000);page.on('dialog',dialog=>dialog.dismiss());
  let transactionId, releaseAdd;
- const addReply = new Promise(resolve => { releaseAdd = resolve; });
+ let addReply = new Promise(resolve => { releaseAdd = resolve; });
  try{
   await page.goto(`${base}/apps/zenith/pos/Terminal?sessionId=${session.sessionId}&taxOn=N`,{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>typeof window._posAjax==='function');
@@ -47,9 +47,7 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
     result.success && Number(line.quantity) === expected && Number(line.line_total) === Number((Number(line.unit_price) * expected).toFixed(2)), line);
    await page.waitForFunction(qty => Number(document.querySelector('#posSumQty')?.textContent) === qty, expected);
   }
-  await page.keyboard.press('ArrowUp');
-  await page.waitForTimeout(250);
-  observe('product selection focuses quantity',await page.locator('.aj-qi').evaluate(el=>el===document.activeElement));
+  await quantity.focus();
   await page.locator('.aj-qi').evaluate(el=>el.setSelectionRange(0,0));
   await page.keyboard.press('ArrowLeft');
   observe('Left from the start of quantity focuses rate',await page.locator('.aj-p').evaluate(el=>el===document.activeElement));
@@ -98,6 +96,25 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
   await invoke('pay',{transactionId:discounted.transactionId,paymentMethod:'Card',amount:'144'});await invoke('complete',{transactionId:discounted.transactionId});
   const explicit=(await invoke('receipt',{transactionId:discounted.transactionId})).receipt;
   observe('You Saved includes only the explicit discount, without adding a manual-rate difference',Number(explicit.saving)===16&&Number(explicit.summary.total)===144,explicit);
+
+  await page.goto(`${base}/apps/zenith/pos/Terminal?sessionId=${session.sessionId}&taxOn=N&freshSale=Y`);
+  await page.waitForFunction(() => typeof window._posAjax === 'function');
+  addReply = new Promise(resolve => { releaseAdd = resolve; });
+  const newBill = page.waitForResponse(r => r.url().endsWith('/ajaxCart') &&
+   new URLSearchParams(r.request().postData()).get('action') === 'addItem');
+  await page.locator('.pos-product-grid form:has(input[name=productId][value=POS_QA_A_P18]) button').click();
+  await page.waitForFunction(() => document.activeElement.matches('.aj-qi'));
+  await page.keyboard.type('.500');
+  await page.locator('#pos-pay-card').click();
+  check('card waits for the first weighted item to be saved', await page.locator('#posPayConfirmOverlay').count() === 0);
+  releaseAdd();
+  const newId = (await (await newBill).json()).transactionId;
+  await page.locator('#posPayConfirmOverlay').waitFor();
+  check('card confirms the saved half-unit amount on the same new bill',
+   (await page.locator('#posPayConfirmOverlay').innerText()).includes('50') &&
+   Number(q(`SELECT payable_amount FROM pos_transaction WHERE transaction_id='${newId}'`)[0].payable_amount) === 50);
+  await page.locator('#posPayConfCancel').click();
+  await invoke('void', {transactionId:newId});
 
   if(out)await page.screenshot({path:path.join(out,'cashier-entry.png')});
  }finally{releaseAdd();await page.close();await invoke('close',{sessionId:session.sessionId,closingCash:'0'});}

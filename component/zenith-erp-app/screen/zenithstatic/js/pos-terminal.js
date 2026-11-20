@@ -5393,6 +5393,7 @@ window.posToggleFullscreen = function() {
                     return;
                 }
                 inflight = true;
+                var creatingCart = !TX && op.action === 'addItem' ? lc() : null;
                 requestCart(paramsFor(op)).then(function(d) {
                     inflight = false;
                     q.shift();
@@ -5409,6 +5410,8 @@ window.posToggleFullscreen = function() {
                         fail(d && d.error || 'The bill edit could not be saved.');
                         return;
                     }
+                    // A first-item quantity edit or tender can already be using this draft.
+                    if (creatingCart) creatingCart.transactionId = d.transactionId;
                     if (d.transactionId && d.transactionId !== TX) { realByTmp = {}; TX = d.transactionId; }
                     if (window._posOffline) {
                         window._posOffline.remember(d);
@@ -5465,6 +5468,7 @@ window.posToggleFullscreen = function() {
                 enqueue({ action: 'addItem', pid: pid, price: price, mode: SM || '', addQty: 1, ts: newTs, lineKey: pid + '|' + (SM || '') });
             }
             function doQty(seq, newQty) {
+                seq = realSeq(seq);
                 newQty = Number(newQty);
                 var ln = bySeq(seq);
                 // A quantity edit must NEVER delete the line — a decimal/cleared/0 value that
@@ -5665,9 +5669,9 @@ window.posToggleFullscreen = function() {
         }
         window._posWaitForEdits = function(form) {
             if (!OPT._drainPending()) return false;
-            var paymentTx = TX;
+            var paymentCart = lastCartData || {transactionId:TX};
             OPT.whenIdle().then(function() {
-                if (af.isConnected && TX && TX === paymentTx) submitPosPaymentForm(currentPaymentForm(form));
+                if (af.isConnected && TX && TX === paymentCart.transactionId) submitPosPaymentForm(currentPaymentForm(form));
             }).catch(function(error) { showToast(error.message, '#c62828'); });
             return true;
         };
@@ -6333,10 +6337,10 @@ window.posToggleFullscreen = function() {
                 if (/posPayCash|posPayDigital/.test(form.getAttribute('onsubmit') || '') && form.dataset.posPaymentConfirmed !== '1') {
                     if (paymentPanelPending) return;
                     var method = form.querySelector('[name="paymentMethod"]').value;
-                    var paymentTx = TX;
+                    var paymentCart = lastCartData || {transactionId:TX};
                     paymentPanelPending = true;
                     OPT.whenIdle().then(function() { return refreshCatalog(true); }).then(function() {
-                        if (!af.isConnected || !TX || TX !== paymentTx) return;
+                        if (!af.isConnected || !TX || TX !== paymentCart.transactionId) return;
                         form = currentPaymentForm(form);
                         var gate = method === 'Cash' ? window.posPayCash : window.posPayDigital;
                         if (gate(form) !== false) {
