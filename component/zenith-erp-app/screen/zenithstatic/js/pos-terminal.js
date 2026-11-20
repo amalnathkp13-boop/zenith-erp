@@ -678,7 +678,7 @@ window._posOffline = (function () {
         });
     }
     function cacheCatalog() {
-        if (!storageReady || localEditing) return Promise.resolve(0);
+        if (!storageReady || localEditing || !afScope?.isConnected) return Promise.resolve(0);
         if (catalogRefresh) return catalogRefresh;
         var request = new AbortController();
         var deadline = setTimeout(function () { request.abort(); }, 12000);
@@ -1286,8 +1286,11 @@ window._posOffline = (function () {
             return (syncTask || Promise.resolve()).then(sync).then(function () { return !active(); });
         });
     }
+    function hasUnsyncedHolds() {
+        return sessionHolds().some(function (bill) { return !bill.serverHeldId; });
+    }
     function canUseOnlineHeldPicker() {
-        return !disconnected() && !serverDraftPaused && !sessionHolds().some(function (bill) { return !bill.serverHeldId; });
+        return !disconnected() && !serverDraftPaused && !hasUnsyncedHolds();
     }
     var heldCacheTask, heldCacheVersion = 0;
     // Keep server holds on the device too; only unacknowledged local holds need uploading.
@@ -2024,7 +2027,7 @@ window._posOffline = (function () {
         return true;
     }
     function sessionClosed() {
-        if (!db || sessionHolds().length || (draft && draft.items.length)) return Promise.resolve();
+        if (!db || hasUnsyncedHolds() || (draft && draft.items.length)) return Promise.resolve();
         return getQueue().then(function (pending) {
             if (pending.some(function (sale) { return sale.sessionId === tCtx().sessionId; })) return;
             return Promise.all([stateWrite('draft:' + scope, null), stateWrite('snapshot:' + scope, null)]);
@@ -2035,7 +2038,7 @@ window._posOffline = (function () {
         if (localEditing) await sync();
         if (draft?.restoreRequest) throw Error('Wait for the server to confirm the saved cart before closing the session.');
         var sessionId = tCtx().sessionId;
-        return localEditing || sessionHolds().length > 0 || (await getQueue()).some(function (sale) {
+        return localEditing || hasUnsyncedHolds() || (await getQueue()).some(function (sale) {
             return sale.sessionId === sessionId;
         });
     }
@@ -2072,7 +2075,7 @@ window._posOffline = (function () {
                 holds.forEach(function (bill) { bill.draftId = bill.draftId || crypto.randomUUID(); });
                 if (!snapshot) snapshot = saved[1] || null;
                 storageReady = true;
-                if (draft || sessionHolds().some(function (bill) { return !bill.serverHeldId; }) || disconnected()) begin();
+                if (draft || hasUnsyncedHolds() || disconnected()) begin();
                 connectionChanged();
             })
             .catch(function () {

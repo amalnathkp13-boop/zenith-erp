@@ -38,6 +38,7 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
    await page.locator('.nb-modes__btn').click();await page.locator('[data-pos-layout="'+layout+'"]').click();
    await waitCache(2);
    check(layout+' caches both online held bills with complete source identities',(await held()).every(bill => bill.serverHeldId&&bill.sourceRevision&&bill.items.length===1));
+   check(layout+' keeps the online close path when all held bills are already on the server',!(await page.evaluate(() => window._posOffline.needsDeferredClose())));
    for (let round=0;round<2;round++) {
     await offline();
     check(layout+' online holds retain the same count offline, round '+round,await count()==='2');
