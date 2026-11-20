@@ -15,20 +15,23 @@ module.exports=async function({a,base,check,q,invoke,out}) {
   for(const method of ['Cash','Card','UPI']) for(const receiptChoice of ['Save','Save and print']) {
    const cart=await invoke('cart',{sessionId:session.sessionId});await invoke('add',{transactionId:cart.transactionId,productId:'POS_QA_A_P18',quantity:'1'});
    await page.goto(`${base}/apps/zenith/pos/Terminal?sessionId=${session.sessionId}&transactionId=${cart.transactionId}&taxOn=Y`);
-   const button=page.locator('#pos-pay-'+method.toLowerCase()),overlay=page.locator('#posCashTenderOverlay');
+   const button=page.locator('#pos-pay-'+method.toLowerCase());
+   const overlay=page.locator('#posCashTenderOverlay,.pos-cash-panel').filter({visible:true});
+   const received=overlay.locator('#posCashRecv,.pos-cash-input');
+   const confirmCash=overlay.locator('#posCashConfirm,.pos-cash-confirm');
    const before=posts;
    if(method==='Cash') {
     await button.click();await overlay.waitFor();
     check('opening Cash leaves the bill unpaid',posts===before&&ledger(cart.transactionId).status_id!=='PtCompleted'&&payments(cart.transactionId).length===0);
-    await overlay.getByRole('button',{name:'Cancel',exact:true}).click();await overlay.waitFor({state:'hidden'});
+    await overlay.locator('#posCashCancel,.pos-cash-cancel').click();await overlay.waitFor({state:'hidden'});
     check('Cash Cancel preserves the unpaid cart',posts===before&&payments(cart.transactionId).length===0);
     await button.click();await overlay.waitFor();
-    await overlay.locator('#posCashRecv').fill('100');check('short cash cannot be confirmed',await overlay.locator('#posCashConfirm').isDisabled());
-    await overlay.locator('#posCashRecv').fill('200');await page.screenshot({path:path.join(out,'cash-confirmation-before-payment.png')});
+    await received.fill('100');check('short cash cannot be confirmed',await confirmCash.isDisabled());
+    await received.fill('200');await page.screenshot({path:path.join(out,'cash-confirmation-before-payment.png')});
    }
    const today=Number(await page.locator('#pos-today-bills').innerText());
    const response=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('/payAndComplete'));
-   if(method==='Cash') await overlay.locator('#posCashConfirm').click();
+   if(method==='Cash') await confirmCash.click();
    else if(receiptChoice==='Save') {
     await page.locator('.pos-cart-heading h2').click();
     await page.keyboard.press(method==='Card'?'F3':'F5');
