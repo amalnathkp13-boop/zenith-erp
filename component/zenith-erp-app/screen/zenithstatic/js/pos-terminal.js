@@ -2201,7 +2201,11 @@ window._posOffline = (function () {
                 if (!active() || !e.target.matches('.pos-cart .aj-mode,.pos-cart .aj-p,.pos-cart .aj-qi')) return;
                 e.stopImmediatePropagation();
                 if (e.target.matches('.aj-mode')) edit({action:'setItemMode',seq:e.target.dataset.seq,mode:e.target.value});
-                else render();
+                else {
+                    // Input already saved the edit. A full render on blur removes the next click target.
+                    var line = cart.find(function (item) { return String(item.seq) === e.target.dataset.seq; });
+                    if (line) e.target.value = e.target.matches('.aj-p') ? line.price : line.qty;
+                }
             },
             true,
         );
