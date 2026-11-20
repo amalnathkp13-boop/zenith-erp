@@ -19,7 +19,7 @@ const catalog = label => JSON.stringify({success:true,products:[{productId:'CATA
     const browser = await chromium.launch({headless: true,
         executablePath: process.env.POS_QA_CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe'});
     try {
-        for (const name of ['search-order', 'category-order', 'network-failure', 'http-failure', 'cache-reuse']) {
+        for (const name of ['search-order', 'preview-order', 'category-order', 'network-failure', 'http-failure', 'cache-reuse']) {
             const context = await browser.newContext({viewport: {width: 1366, height: 768}, serviceWorkers: 'block'});
             await context.request.get(base+'/apps/zenith/pos/Terminal',{
                 headers:{Authorization:'Basic '+Buffer.from('pos.qa:moqui').toString('base64')}
@@ -48,11 +48,31 @@ const catalog = label => JSON.stringify({success:true,products:[{productId:'CATA
                         contentType: 'application/json', body: catalog(slow ? 'old' : 'latest')});
                     if (slow || name.includes('failure')) finished.resolve();
                 });
-                if (name === 'search-order') {
+                if (name === 'search-order' || name === 'preview-order') {
                     await page.evaluate(() => { window._gridSearch('old'); });
                     await bounded(requested.promise);
-                    await page.evaluate(() => { window._gridSearch('latest'); });
-                    await page.locator('[data-product-id="CATALOG_PROOF_latest"]').waitFor({state:'attached'});
+                    let term = 'latest';
+                    const grid = page.locator('.pos-product-grid');
+                    if (name === 'preview-order') {
+                        term = await grid.evaluate(el => {
+                            const id = el.querySelector('form[data-search-code]').elements.productId.value;
+                            const search = document.getElementById('cartInlineSearch');
+                            search.value = id;
+                            search.dispatchEvent(new Event('input', {bubbles:true}));
+                            clearTimeout(window._gridSyncTimer); // Deliver the old response before the next grid request.
+                            return id;
+                        });
+                        await page.waitForFunction(query => document.querySelector('.pos-product-grid')?.dataset.searchPreview === query, term);
+                        release.resolve(); await bounded(finished.promise);
+                        await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+                        const ids = await grid.locator('.pos-card-stock').evaluateAll(cards => cards.map(card => card.dataset.productId));
+                        assert.ok(ids.includes(term) && !ids.includes('CATALOG_PROOF_old'), 'The newer preview stays visible during debounce');
+                    }
+                    await page.evaluate(query => window._gridSearch(query), term);
+                    const currentStock = grid.locator('[data-product-id="CATALOG_PROOF_latest"]');
+                    await currentStock.waitFor({state:'attached'});
+                    assert.equal(await currentStock.textContent(), 'Stock: not tracked');
+                    assert.equal(await grid.getAttribute('data-search-preview'), null);
                     release.resolve(); await bounded(finished.promise);
                     await page.waitForTimeout(150);
                     assert.equal(await page.locator('[data-product-id="CATALOG_PROOF_latest"]').count(), 1,
@@ -69,11 +89,13 @@ const catalog = label => JSON.stringify({success:true,products:[{productId:'CATA
                 } else if(name==='cache-reuse'){
                     await page.evaluate(()=>window._gridSearch(''));
                     await page.evaluate(()=>window._gridSearch('changed'));
+                    await page.evaluate(()=>window._posPreviewSearchGrid([], 'uncached'));
+                    await page.locator('.pos-product-grid[data-search-preview="uncached"]').waitFor({state:'attached'});
                     await page.locator('.pos-cat-strip a').filter({hasText:/ALL ITEMS/i}).click();
                     await bounded(requested.promise);
                     const state=await page.locator('.pos-product-grid').evaluate(grid=>({
                         cached:!!grid.querySelector('[data-product-id="CATALOG_PROOF_cached-all"]'),
-                        usable:getComputedStyle(grid).pointerEvents!=='none'
+                        usable:getComputedStyle(grid).pointerEvents!=='none' && !grid.dataset.searchPreview
                     }));
                     release.resolve();await bounded(finished.promise);
                     assert.ok(state.cached&&state.usable,'Repeated All Items navigation must restore the refreshed cache before the network replies');
