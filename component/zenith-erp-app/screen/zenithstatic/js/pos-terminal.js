@@ -669,7 +669,7 @@ window._posOffline = (function () {
         catalog = {};
         catalogIndex = (settings.products || []).map(function (p) {
             catalog[p.productId] = p;
-            return { product:p, text:[p.name, p.barcode, p.productId].join(' ').toLowerCase() };
+            return { product:p, text:[p.name, p.barcode, p.productId].join('\n').toLowerCase() };
         });
     }
     function loadCatalog() {
@@ -678,10 +678,11 @@ window._posOffline = (function () {
         });
     }
     function cacheCatalog() {
-        if (localEditing) return Promise.resolve(0);
+        if (!storageReady || localEditing) return Promise.resolve(0);
         if (catalogRefresh) return catalogRefresh;
         var request = new AbortController();
         var deadline = setTimeout(function () { request.abort(); }, 12000);
+        var revision = afScope.dataset.catalogRevision;
         catalogRefresh = fetch('Terminal/exportPosCatalog', {
             signal:request.signal,
             method:'POST', headers:{ 'Content-Type':'application/json' },
@@ -700,6 +701,7 @@ window._posOffline = (function () {
                     name:p.productName || p.productId, price:Number(p.listPrice || 0), uom:p.uom || '',
                 });
             });
+            config.searchRevision = revision || afScope.dataset.catalogRevision;
             return stateWrite('config:' + scope, config).then(function () {
                 installCatalog(config);
                 var form = document.getElementById('cartInlineAddForm');
@@ -723,6 +725,7 @@ window._posOffline = (function () {
         }).catch(function (error) { transportFailure(error); return 0; }).finally(function () {
             clearTimeout(deadline);
             catalogRefresh = null;
+            if (revision && revision !== afScope.dataset.catalogRevision && !disconnected()) return cacheCatalog();
         });
         return catalogRefresh;
     }
@@ -1093,10 +1096,21 @@ window._posOffline = (function () {
         begin();
     }
     function add(pid) { edit({action:'addItem',pid:pid}); }
-    function search(term, respectWordBoundary) {
+    function search(term, online) {
         var raw = String(term || '').toLowerCase();
         var terms = raw.trim().split(/\s+/);
-        if (respectWordBoundary && terms.length === 1 && /\s$/.test(raw)) terms[0] += ' ';
+        if (online) {
+            var phrase = raw.trimStart().replace(/\s+/g, ' ');
+            var prefixes = [], others = [];
+            for (var entry of catalogIndex) {
+                var p = entry.product;
+                if (!Object.hasOwn(settings.gridStockTracking, p.productId)) continue;
+                if (entry.text.startsWith(phrase)) prefixes.push(p);
+                else if (others.length < 50 && entry.text.includes(phrase)) others.push(p);
+                if (prefixes.length === 50) break;
+            }
+            return prefixes.concat(others).slice(0, 50);
+        }
         if (!terms[0]) return [];
         var found = [];
         for (var i = 0; i < catalogIndex.length && found.length < 50; i++) {
@@ -1123,7 +1137,7 @@ window._posOffline = (function () {
         var products = matches.slice(offset, offset + 60).map(function (p) {
             var rate = (p.prices || {})[mode];
             var price = rate ? rate.price : p.price;
-            return {productId:p.productId, name:p.name, price:price || 0,
+            return {productId:p.productId, name:p.name, pseudoId:p.barcode, price:price || 0, pricePending:price == null,
                 priceText:price == null ? '₹0 · Enter price' : '₹' + amount.format(price),
                 stockText:stock && stock[p.productId] === false ? 'Stock: not tracked' : 'Stock: unavailable'};
         });
@@ -2247,7 +2261,7 @@ window._posOffline = (function () {
             true,
         );
     }
-    setTimeout(boot, 1500);
+    setTimeout(boot, 0);
     return {
         boot: boot,
         active: active,
@@ -2281,6 +2295,7 @@ window._posOffline = (function () {
         cacheCatalog: cacheCatalog,
         searchSuggestions: function (term, mode) {
             var onlinePreview = !!mode;
+            if (onlinePreview && (!settings.gridStockTracking || settings.searchRevision !== afScope?.dataset.catalogRevision)) return [];
             mode = mode || (draft && draft.mode);
             return search(term, onlinePreview).map(function (product) {
                 var rate = (product.prices || {})[mode];
@@ -5586,6 +5601,8 @@ window.posToggleFullscreen = function() {
             data.products.forEach(function(p) {
                 var form = doc.createElement('form'); form.method='post'; form.action='Terminal/addItem';
                 form.style.cssText='margin:0;display:contents';
+                form.dataset.searchCode = p.pseudoId || '';
+                form.dataset.pricePending = String(!!p.pricePending);
                 Object.entries({sessionId:SI, transactionId:TX, productId:p.productId, unitPrice:p.price,
                     addQty:1, catId:params.catId || '', taxOn:TO, salesModeId:SM, moquiSessionToken:TK}).forEach(function(pair) {
                     var input=doc.createElement('input');input.type='hidden';input.name=pair[0];input.value=pair[1];form.appendChild(input);
@@ -5599,7 +5616,7 @@ window.posToggleFullscreen = function() {
                 button.append(title,price,stock);form.appendChild(button);grid.appendChild(form);
             });
             if(data.hasMore){var more=doc.createElement('button');more.type='button';more.className='pos-load-more';more.dataset.nextOffset=data.nextOffset;more.textContent='Load more products';more.style.cssText='grid-column:1/-1;padding:12px;border:1px solid #A78BFA;border-radius:8px;background:#fff;color:#6D28D9;font-weight:700;cursor:pointer';grid.appendChild(more);}
-            if(!data.products.length){var empty=doc.createElement('div');empty.style.cssText='grid-column:1/-1;text-align:center;padding:60px 20px;color:#999';empty.textContent='No products found';grid.appendChild(empty);}
+            if(!data.products.length){var empty=doc.createElement('div');empty.style.cssText='grid-column:1/-1;text-align:center;padding:60px 20px;color:#999';empty.textContent=data.emptyText || 'No products found';grid.appendChild(empty);}
             doc.body.appendChild(grid); return doc;
         }
 
@@ -5617,9 +5634,15 @@ window.posToggleFullscreen = function() {
                 }).finally(function() { clearTimeout(deadline); });
         }
 
-        function swapGrid(doc) {
+        function swapGrid(doc, previewTerm) {
             var next=doc.querySelector('.pos-product-grid'), grid=document.querySelector('.pos-product-grid');
-            if(next && grid) grid.replaceChildren.apply(grid, Array.from(next.childNodes));
+            if (!next || !grid) return;
+            if (previewTerm) grid.dataset.searchPreview = previewTerm;
+            else {
+                delete grid.dataset.searchPreview;
+                delete grid.dataset.catalogStale;
+            }
+            grid.replaceChildren.apply(grid, Array.from(next.childNodes));
         }
 
         /* --- Cart event delegation --- */
@@ -5802,14 +5825,47 @@ window.posToggleFullscreen = function() {
         }, true);
 
         /* --- Product Grid Search: AJAX --- */
-        var catalogVersion = 0, catalogAbort, lastCatalogCategory = CATID;
+        var catalogVersion = 0, catalogAbort, catalogTerm, catalogMode, lastCatalogCategory = CATID;
+        var gridPrice = new Intl.NumberFormat('en-IN',{maximumFractionDigits:2});
+        window._posPreviewSearchGrid = function(rows, term) {
+            var grid = document.querySelector('.pos-product-grid');
+            if (!grid || !term) return;
+            if (catalogTerm !== term || catalogMode !== SM) {
+                // Invalidate the old response as soon as the cashier types the next term.
+                ++catalogVersion;
+                if (catalogAbort) catalogAbort.abort();
+                catalogTerm = term;
+                catalogMode = SM;
+            } else if (!grid.dataset.searchPreview) return;
+            var version = catalogVersion;
+            // Paint the dropdown first and skip tile builds overtaken by the next keystroke.
+            requestAnimationFrame(function() {
+                setTimeout(function() {
+                    if (version !== catalogVersion || !grid.isConnected) return;
+                    var products = rows.slice(0,12).map(function(row) {
+                        return {productId:row.productId, name:row.productName, pseudoId:row.pseudoId,
+                            price:row.mrpAmount, pricePending:row.pricePending,
+                            priceText:row.pricePending ? '₹0 · Enter price' : '₹' + gridPrice.format(row.mrpAmount),
+                            stockText:row.stockText || 'Checking stock…'};
+                    });
+                    swapGrid(productGridDocument({products:products, emptyText:'Searching products…'}, {}), term);
+                    grid.setAttribute('aria-busy','true');
+                }, 0);
+            });
+        };
         function loadCatalog(params, cachedGrid) {
             var version = ++catalogVersion;
+            catalogTerm = params.searchTerm || '';
+            catalogMode = SM;
             if (catalogAbort) catalogAbort.abort();
             catalogAbort = new AbortController();
             var grid = document.querySelector('.pos-product-grid');
             if (grid) {
-                if (cachedGrid) grid.innerHTML = cachedGrid;
+                if (cachedGrid) {
+                    delete grid.dataset.searchPreview;
+                    delete grid.dataset.catalogStale;
+                    grid.innerHTML = cachedGrid;
+                }
                 grid.setAttribute('aria-busy', 'true');
             }
             return fetchCatalog(params, catalogAbort).then(function(doc) {
@@ -5821,6 +5877,13 @@ window.posToggleFullscreen = function() {
                 lastCatalogCategory = CATID;
             }).catch(function(error) {
                 if (version !== catalogVersion) return;
+                if (grid && grid.dataset.searchPreview) {
+                    var stocks = grid.querySelectorAll('.pos-card-stock');
+                    stocks.forEach(function(card) {
+                        if (card.textContent === 'Checking stock…') card.textContent = 'Stock: unavailable';
+                    });
+                    if (!stocks.length) grid.firstElementChild.textContent = 'Could not load product results. Try searching again.';
+                }
                 CATID = lastCatalogCategory;
                 var root = document.getElementById('pos-terminal-root');
                 if (root) root.dataset.checkoutCategory = CATID || '';
@@ -5911,15 +5974,18 @@ window.posToggleFullscreen = function() {
                     throw new Error(data && (data.error || (data.errors || []).join(' ')) || 'Could not verify product prices. Try again.');
                 if (!af.isConnected) return data;
                 catalogRevision = data.revision;
+                af.dataset.catalogRevision = catalogRevision;
                 if (data.changed) {
                     syncCatalogModes(data.modes || []);
                     __allGridCache = null;
+                    var grid = document.querySelector('.pos-product-grid');
+                    if (previous && grid) grid.dataset.catalogStale = 'true';
                     var search = document.getElementById('cartInlineSearch');
                     if (search && search.value.trim()) {
                         window._gridSearch(search.value);
                         search.dispatchEvent(new CustomEvent('input', {detail:{catalogRefresh:true}}));
                     } else window._gridSearch('');
-                    if (previous && window._posOffline) window._posOffline.cacheCatalog();
+                    if (window._posOffline) window._posOffline.cacheCatalog();
                 }
                 if (checkedTx && (data.cartChanged || (previous && data.changed))) catalogDirtyTx = checkedTx;
                 if (!TX || catalogDirtyTx !== TX || taxModePending || cartRequest || OPT._drainPending() ||
@@ -6544,9 +6610,35 @@ window.posToggleFullscreen = function() {
         var dt, aidx = -1, keyTimes = [], searchVersion = 0, searchAbort, gridSearchActive = false;
         if (si.dataset.posSearchBound) return;
         si.dataset.posSearchBound = 'true';
-        function resetSearch() {
+        // Keep lookup results inside this terminal document. Mode or catalog changes discard their prices.
+        var recent = new Map(), recentScope, tileRows = [], tileFirst, tileLast;
+        function terminalOf(form) {
+            return JSON.stringify(['posOrganizationPartyId', 'posTerminalId', 'sessionId'].map(function (key) {
+                return form?.elements[key]?.value || '';
+            }));
+        }
+        var boundTerminal = terminalOf(document.getElementById('cartInlineAddForm'));
+        function scopeOf(form) {
+            return JSON.stringify([terminalOf(form), form.elements.salesModeId.value, form.dataset.catalogRevision || '']);
+        }
+        function visibleProducts(grid, mode) {
+            if (!grid || grid.dataset.catalogStale) return [];
+            if (!grid.dataset.searchPreview && (tileFirst !== grid.firstElementChild || tileLast !== grid.lastElementChild)) {
+                tileFirst = grid.firstElementChild;
+                tileLast = grid.lastElementChild;
+                tileRows = Array.from(grid.querySelectorAll('form[data-search-code]'), function (card) {
+                    return {productId:card.elements.productId.value, productName:card.querySelector('button div').textContent,
+                        pseudoId:card.dataset.searchCode, mrpAmount:Number(card.elements.unitPrice.value),
+                        pricePending:card.dataset.pricePending === 'true', mode:card.elements.salesModeId.value,
+                        stockText:card.querySelector('.pos-card-stock')?.textContent};
+                });
+            }
+            return tileRows.filter(function (row) { return row.mode === mode; });
+        }
+        function resetSearch(keepGrid) {
             ++searchVersion;
-            clearTimeout(dt); clearTimeout(window._gridSyncTimer);
+            clearTimeout(dt);
+            if (!keepGrid) clearTimeout(window._gridSyncTimer);
             if (searchAbort) searchAbort.abort();
             dd.replaceChildren(); dd.style.display = 'none'; aidx = -1;
         }
@@ -6585,15 +6677,44 @@ window.posToggleFullscreen = function() {
             }
             var form = document.getElementById('cartInlineAddForm');
             if (!form) return;
-            var local = offline ? offline.searchSuggestions(text, form.elements.salesModeId.value) : [];
-            if (local.length) renderResults(local, text, version);
+            var mode = form.elements.salesModeId.value, scope = scopeOf(form);
             var grid = document.querySelector('.pos-product-grid');
+            if (scope !== recentScope || event.detail?.catalogRefresh) {
+                recent.clear();
+                tileRows = []; tileFirst = tileLast = undefined;
+                recentScope = scope;
+            }
+            var term = text.trimStart().replace(/\s+/g, ' ').toLowerCase();
+            var cached = recent.get(term), fresh = cached && cached.expires > Date.now();
+            var local;
+            if (fresh) local = cached.rows;
+            else {
+                var matches = new Map();
+                var sameTerminal = terminalOf(form) === boundTerminal;
+                var tiles = sameTerminal ? visibleProducts(grid, mode) : [];
+                tiles.forEach(function (p) {
+                    if ([p.productName, p.pseudoId, p.productId].some(function (v) { return v.toLowerCase().includes(term); })) matches.set(p.productId, p);
+                });
+                if (sameTerminal && offline) offline.searchSuggestions(text, mode).forEach(function (p) {
+                    if (!matches.has(p.productId)) matches.set(p.productId, p);
+                });
+                local = Array.from(matches.values()).sort(function (a, b) {
+                    return Number(b.productName.toLowerCase().startsWith(term)) - Number(a.productName.toLowerCase().startsWith(term)) ||
+                        a.productName.localeCompare(b.productName) || a.productId.localeCompare(b.productId);
+                }).slice(0, 60);
+            }
+            if (local.length) renderResults(local, text, version);
             if (event.detail?.catalogRefresh) gridSearchActive = true;
             else if (window._gridSearch && grid && grid.getClientRects().length) {
+                if (window._posPreviewSearchGrid) {
+                    gridSearchActive = true;
+                    window._posPreviewSearchGrid(local, text);
+                }
                 window._gridSyncTimer = setTimeout(function() {
-                    if (version === searchVersion) { gridSearchActive = true; window._gridSearch(text); }
-                }, 450);
+                    if (si.isConnected && si.value === text && scopeOf(form) === scope) { gridSearchActive = true; window._gridSearch(text); }
+                }, 120);
             }
+            if (fresh) return;
             dt = setTimeout(function() {
                 var lookup = new URLSearchParams({term:text,
                     salesModeId:form.elements.salesModeId.value, moquiSessionToken:form.elements.moquiSessionToken.value});
@@ -6606,15 +6727,19 @@ window.posToggleFullscreen = function() {
                     if (!r.ok) throw new Error('Product search unavailable');
                     return r.json();
                 }).then(function(rows) {
-                    if (!Array.isArray(rows) || version !== searchVersion || aidx >= 0) return;
-                    renderResults(rows, text, version);
+                    if (!Array.isArray(rows) || version !== searchVersion || scopeOf(form) !== scope || !si.isConnected) return;
+                    if (rows.length) {
+                        if (recent.size >= 40) recent.delete(recent.keys().next().value);
+                        recent.set(term, {rows:rows, expires:Date.now() + 30000});
+                    }
+                    if (aidx < 0) renderResults(rows, text, version);
                 }).catch(function() {
                     if (!local.length && version === searchVersion && si.value === text) {
                         dd.textContent = 'Could not load product results. Try searching again.';
                         dd.style.display = 'block';
                     }
                 }).finally(function() { clearTimeout(deadline); });
-            }, 100);
+            }, local.length ? 100 : 35);
         });
         si.addEventListener('keydown', function(e) {
             if (e.isComposing || e.ctrlKey || e.altKey || e.metaKey) return;
@@ -6642,9 +6767,14 @@ window.posToggleFullscreen = function() {
                 resetGridSearch();
                 keyTimes = [];
             }
-            else if (e.key === 'Escape') { resetSearch(); }
+            else if (e.key === 'Escape') { resetSearch(true); }
             for (var i = 0; i < items.length; i++) items[i].style.background = (i === aidx) ? '#e8f5e9' : '#fff';
             if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && items[aidx]) items[aidx].scrollIntoView({block:'nearest'});
+        });
+        dd.addEventListener('pointerdown', function(e) {
+            var item = e.target.closest('.cart-dd-item');
+            // Keep the chosen row under the pointer until click, just as for arrow-key selection.
+            if (item && e.button === 0) aidx = Array.prototype.indexOf.call(dd.children, item);
         });
         dd.addEventListener('click', function(e) {
             var item = e.target.closest('.cart-dd-item');
@@ -6656,7 +6786,7 @@ window.posToggleFullscreen = function() {
                 return;
             }
         });
-        document.addEventListener('click', function(e) { if (!si.contains(e.target) && !dd.contains(e.target)) resetSearch(); });
+        document.addEventListener('click', function(e) { if (!si.contains(e.target) && !dd.contains(e.target)) resetSearch(true); });
     }
     initCartSearch();
 })();

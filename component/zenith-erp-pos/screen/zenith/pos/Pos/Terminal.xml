@@ -109,7 +109,7 @@
                 def price=prices.containsKey(product.productId) ? prices[product.productId] : product.mrpAmount
                 def pricePending=price==null
                 def stock=page.gridCardStock[product.productId] ?: [:]
-                [productId:product.productId,name:product.productName ?: product.pseudoId ?: '',price:price ?: 0,pricePending:pricePending,
+                [productId:product.productId,pseudoId:product.pseudoId ?: '',name:product.productName ?: product.pseudoId ?: '',price:price ?: 0,pricePending:pricePending,
                     priceText:pricePending ? '₹0 · Enter price' : '₹'+ec.l10n.format(price,'#,##0.##'),
                     stockText:!stock.tracked ? 'Stock: not tracked' : stock.quantity!=null ? 'Stock: '+ec.l10n.format(stock.quantity,'#,##0.###') : 'Stock: unavailable']
             }
@@ -4723,7 +4723,7 @@ window.sendWhatsAppWithPdf=function() {
 
 
 
-                    <form method="post" action="Terminal/addItem" style="margin:0;display:contents">
+                    <form method="post" action="Terminal/addItem" data-search-code="${((p.pseudoId)!'')?html}" data-price-pending="${_blk?c}" style="margin:0;display:contents">
 
 
 
