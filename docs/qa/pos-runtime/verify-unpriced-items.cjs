@@ -130,11 +130,11 @@ module.exports = async function ({a, base, check, q, invoke, post}) {
   await pos.locator('#pos-pay-cash').click();
   await pos.locator('.pos-cash-quick').first().click();
   await pos.locator('.pos-cash-confirm').click();
-  await pos.getByRole('dialog',{name:'Sale saved on this device'}).waitFor();
+  await pos.locator('#posPaySave').click();
+  await pos.locator('#posPayConfirmOverlay').waitFor({state:'hidden'});
   const queued = (await pos.evaluate(() => window._posOffline.getQueue()))[0];
   check('POS queues the offline sale with the cashier rate',
    queued?.items[0].productId === productId && Number(queued.items[0].price) === 40);
-  await pos.locator('#posOfflineDialog .ofl-cancel').click();
   const syncResponse = pos.waitForResponse(r => r.url().endsWith('/syncOfflineTransactions'));
   await a.c.setOffline(false);
   const sync = await (await syncResponse).json();

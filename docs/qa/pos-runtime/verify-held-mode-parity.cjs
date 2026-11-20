@@ -88,8 +88,8 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
    await page.locator('.aj-qi').waitFor();
    check(layout+' synced offline hold survives a reload and another disconnect',await count()==='1'&&await page.locator('#posSumTotal').innerText()===expected&&await page.locator('.aj-qi').inputValue()==='3');
    await page.locator('#pos-pay-cash').click();await page.locator('#pos-cash-received').fill('200');await page.locator('.pos-cash-confirm').click();
-   await page.getByRole('dialog',{name:'Sale saved on this device'}).waitFor();
-   await page.locator('#posOfflineDialog .ofl-cancel').click();
+   await page.locator('#posPaySave').click();
+   await page.locator('#posPayConfirmOverlay').waitFor({state:'hidden'});
    await online();await page.waitForFunction(async () => !(await window._posOffline.getQueue()).length);await waitCache(1);
    const completed=q("SELECT transaction_id,paid_amount,payable_amount FROM pos_transaction WHERE session_id='"+session.sessionId+"' AND status_id='PtCompleted'");
    check(layout+' offline recall and payment completes the original bill exactly once',completed.length===1&&sources.includes(completed[0].transaction_id)&&Number(completed[0].payable_amount)===165);

@@ -419,15 +419,40 @@
             <service-call name="zenith.pos.PosServices.check#PosSalesModeOrgRules" out-map="_mr"
                           in-map="[transactionId:transactionId, assumeCustomerAttached:true]"/>
             <if condition="_mr.blocked">
-                <script>ec.message.addError(_mr.reason)</script>
+                <script><![CDATA[
+                    if (ec.web.requestParameters.wantJson) ec.web.sendJsonResponse([success:false, error:_mr.reason])
+                    else ec.message.addError(_mr.reason)
+                ]]></script>
                 <return/>
             </if>
             <service-call name="zenith.pos.PosServices.complete#PosTransactionCredit"
                           in-map="[transactionId:transactionId, customerName:customerName, customerPhone:customerPhone,
                                    customerPartyId:customerPartyId, upfrontAmount:upfrontAmount, upfrontMethod:upfrontMethod, creditDays:creditDays, termsReason:termsReason]"/>
+            <script><![CDATA[
+                if (ec.web.requestParameters.wantJson) {
+                    if (ec.message.hasError()) {
+                        def error = ec.message.errorsString; ec.message.clearErrors()
+                        ec.web.sendJsonResponse([success:false, error:error])
+                    } else {
+                        def receipt = null
+                        try {
+                            receipt = ec.service.sync().name('zenith.pos.PosServices.get#PosReceiptData').parameter('transactionId', transactionId).call()?.receipt
+                        } catch (Throwable ignored) { /* the credit sale is already completed */ }
+                        def saved = receipt?.success ? null : ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId', transactionId).one()
+                        ec.web.sendJsonResponse(receipt?.success ? receipt :
+                            [success:true, receiptUnavailable:true, bill:[number:saved?.transactionNumber], transactionId:transactionId])
+                    }
+                }
+            ]]></script>
         </actions>
+        <conditional-response type="none">
+            <condition><expression>ec.web.requestParameters.wantJson</expression></condition>
+        </conditional-response>
         <conditional-response url="." parameter-map="[sessionId:sessionId, transactionId:transactionId, taxOn:taxOn, salesModeId:salesModeId]">
             <condition><expression>_catalogReview.notice || ec.message.hasError()</expression></condition>
+        </conditional-response>
+        <conditional-response url="." parameter-map="[sessionId:sessionId, freshSale:'Y', taxOn:taxOn, salesModeId:salesModeId]">
+            <condition><expression>ec.web.requestParameters.skipReceipt == 'Y'</expression></condition>
         </conditional-response>
         <default-response url="." parameter-map="[sessionId:sessionId, lastCompletedId:transactionId]"/>
     </transition>
@@ -516,7 +541,9 @@
                         } else {
                             // Sale DID complete; we just could not build the receipt here. Report success
                             // (so the client never retries/double-charges) and let it fetch the receipt the normal way.
-                            ec.web.sendJsonResponse([success:true, receiptUnavailable:true, transactionId:transactionId])
+                            def saved = ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId', transactionId).one()
+                            ec.web.sendJsonResponse([success:true, receiptUnavailable:true, transactionId:transactionId,
+                                bill:[number:saved?.transactionNumber], change:saved?.changeAmount ?: 0])
                         }
                     }
                 }
@@ -532,7 +559,7 @@
             <condition><expression>_catalogReview.notice || ec.message.hasError()</expression></condition>
         </conditional-response>
         <conditional-response url="." parameter-map="[sessionId:sessionId, freshSale:'Y', taxOn:taxOn, salesModeId:salesModeId]">
-            <condition><expression>paymentMethod == 'UPI' &amp;&amp; ec.web.requestParameters.skipReceipt == 'Y'</expression></condition>
+            <condition><expression>ec.web.requestParameters.skipReceipt == 'Y'</expression></condition>
         </conditional-response>
         <default-response url="." parameter-map="[sessionId:sessionId, lastCompletedId:transactionId]"/>
 
@@ -1265,7 +1292,9 @@
                         } else {
                             // Sale DID complete; we just could not build the receipt here. Report success
                             // (so the client never retries/double-charges) and let it fetch the receipt the normal way.
-                            ec.web.sendJsonResponse([success:true, receiptUnavailable:true, transactionId:transactionId])
+                            def saved = ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId', transactionId).one()
+                            ec.web.sendJsonResponse([success:true, receiptUnavailable:true, transactionId:transactionId,
+                                bill:[number:saved?.transactionNumber], change:saved?.changeAmount ?: 0])
                         }
                     }
                 }
