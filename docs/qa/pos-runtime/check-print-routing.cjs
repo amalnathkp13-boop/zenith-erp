@@ -28,7 +28,10 @@ function harness({missing = false, fullscreen = false} = {}) {
     vm.runInContext(qzSource, context);
     vm.runInContext(source.slice(start, source.indexOf('function buildReceiptHtml', start)), context);
     const render = source.indexOf('function printReceipt(', start);
-    vm.runInContext(source.slice(render, source.indexOf('function approvedPaymentFetch', render)), context);
+    const printExport = 'window._posPrintReceipt = printReceipt;';
+    const renderEnd = source.indexOf(printExport, render);
+    assert(render >= 0 && renderEnd > render, 'Could not locate the POS receipt router');
+    vm.runInContext(source.slice(render, renderEnd + printExport.length), context);
     context.buildReceiptHtml = () => '<html><body>Disposable receipt';
     context.iframePrint = (...args) => browser.push(args);
     context.offerBrowserPrint = (...args) => offers.push(args);
