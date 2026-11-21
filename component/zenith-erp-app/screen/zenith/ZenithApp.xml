@@ -361,7 +361,7 @@
             html_stylesheets.add('/zenithstatic/css/accounting-dashboard-reference.css?v=1')
             html_stylesheets.add('/zenithstatic/css/edit-customer-group.css?v=1')
             html_stylesheets.add('/zenithstatic/css/contacts-reference.css?v=1')
-            html_stylesheets.add('/zenithstatic/css/crm-experience.css?v=6')
+            html_stylesheets.add('/zenithstatic/css/crm-experience.css?v=7')
             html_stylesheets.add('/zenithstatic/css/sales-dashboard-reference.css?v=1')
             html_stylesheets.add('/zenithstatic/css/sales-invoice-detail.css?v=1')
             html_stylesheets.add('/zenithstatic/css/pricing-price-lists.css?v=1')
@@ -402,7 +402,7 @@
             footer_scripts.add('/zenithstatic/js/purchase-job-work.js?v=1')
             footer_scripts.add('/zenithstatic/js/purchase-vendor-bills.js?v=1')
             footer_scripts.add('/zenithstatic/js/z-listchrome.js?v=5')
-            footer_scripts.add('/zenithstatic/js/crm-pipeline.js?v=1')
+            footer_scripts.add('/zenithstatic/js/crm-pipeline.js?v=2')
             footer_scripts.add('/zenithstatic/js/crm-tracking.js?v=1')
             footer_scripts.add('/zenithstatic/js/pricing-history.js?v=1')
             footer_scripts.add('/zenithstatic/js/pos-product-pricing.js?v=2')
@@ -1379,7 +1379,7 @@
             <link rel="stylesheet" href="/zenithstatic/css/edit-customer-group.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/sales-dashboard-reference.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/sales-invoice-detail.css?v=1"/>
-            <link rel="stylesheet" href="/zenithstatic/css/crm-experience.css?v=6"/>
+            <link rel="stylesheet" href="/zenithstatic/css/crm-experience.css?v=7"/>
             <link rel="stylesheet" href="/zenithstatic/css/pricing-price-lists.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/pos-credit-history.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/purchase-rfq.css?v=2"/>

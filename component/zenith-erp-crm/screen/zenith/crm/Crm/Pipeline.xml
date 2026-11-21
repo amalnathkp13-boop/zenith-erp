@@ -27,6 +27,10 @@
         <set field="defaultPeriod" value="month"/>
         <set field="throughToday" from="cohort != null"/>
         <script location="component://zenith-erp-crm/script/CrmPeriod.groovy"/>
+        <entity-find entity-name="mantle.sales.opportunity.SalesOpportunityStage" list="stages">
+            <order-by field-name="sequenceNum"/></entity-find>
+        <!-- The Stage finder posts a stable ID; older bookmarked searches may contain the stage description. -->
+        <set field="stageSearch" from="stageName &amp;&amp; stages.any { it.opportunityStageId == stageName } ? [stageName:null, opportunityStageId:stageName] : [:]"/>
         <script><![CDATA[
             import org.moqui.entity.EntityCondition as EC
             def factory = ec.entity.conditionFactory
@@ -49,12 +53,10 @@
         ]]></script>
         <entity-find entity-name="zenith.erp.crm.OpportunityListView" list="summaryOppList">
             <search-form-inputs default-order-by="stageSequence,-estimatedAmount" skip-fields="organizationPartyId"
-                                input-fields-map="ec.context + [pageIndex:null, pageSize:null]" paginate="false"/>
+                                input-fields-map="ec.context + stageSearch + [pageIndex:null, pageSize:null]" paginate="false"/>
             <econdition-object field="dealCohortCondition"/>
             <econdition field-name="organizationPartyId" from="(crmOrganization.activeOrgId ?: '_NA_') ?: '__NO_ORGANIZATION__'"/>
         </entity-find>
-        <entity-find entity-name="mantle.sales.opportunity.SalesOpportunityStage" list="stages">
-            <order-by field-name="sequenceNum"/></entity-find>
         <entity-find entity-name="zenith.erp.crm.CrmStageSetting" list="stageSettings">
             <econdition field-name="organizationPartyId" from="(crmOrganization.activeOrgId ?: '_NA_') ?: '__NO_ORGANIZATION__'"/>
         </entity-find>
@@ -63,11 +65,12 @@
             stages = stages.collect { stage ->
                 def setting = byId[stage.opportunityStageId]
                 [opportunityStageId:stage.opportunityStageId,
-                 description:setting?.displayName ?: stage.description,
-                 sequenceNum:setting?.sequenceNum ?: stage.sequenceNum,
+                 description:setting?.displayName ?: stage.description ?: stage.opportunityStageId,
+                 sequenceNum:setting?.sequenceNum != null ? setting.sequenceNum : stage.sequenceNum,
                  isActive:setting?.isActive ?: 'Y']
             }.sort { it.sequenceNum ?: 0 }
             openStages = stages.findAll { !['SoClosedWon','SoClosedLost'].contains(it.opportunityStageId) && it.isActive == 'Y' }
+            stageLabels = stages.collectEntries { [(it.opportunityStageId):it.description] }
         ]]></script>
         <entity-find entity-name="zenith.erp.crm.CrmActivity" list="opportunityActivities">
             <econdition field-name="organizationPartyId" from="(crmOrganization.activeOrgId ?: '_NA_') ?: '__NO_ORGANIZATION__'"/>
@@ -109,18 +112,29 @@
             closingValue = totalsByCurrency(closingRows, amount)
             wonRows = boardRows.findAll { it.opportunityStageId == 'SoClosedWon' && inPeriod(it.wonDate) }
             wonValue = totalsByCurrency(wonRows, amount)
-            boardStages = stages.findAll { !['SoClosedWon', 'SoClosedLost'].contains(it.opportunityStageId) }.collect { stage ->
-                def deals = openRows.findAll { it.opportunityStageId == stage.opportunityStageId }
-                [id:stage.opportunityStageId, name:stage.description, deals:deals, count:deals.size(), value:totalsByCurrency(deals, amount)]
+            def dealsByStage = openRows.groupBy { it.opportunityStageId }
+            boardStages = []
+            stages.findAll { !(it.opportunityStageId in ['SoClosedWon', 'SoClosedLost']) }.each { stage ->
+                def deals = dealsByStage[stage.opportunityStageId] ?: []
+                if (stage.isActive == 'Y' || deals) {
+                    boardStages << [id:stage.opportunityStageId, name:stage.description, active:stage.isActive == 'Y',
+                                    deals:deals, count:deals.size(), value:totalsByCurrency(deals, amount)]
+                }
+            }
+            if (dealsByStage[null]) {
+                def deals = dealsByStage[null]
+                boardStages << [id:null, name:'No stage assigned', active:false, deals:deals,
+                                count:deals.size(), value:totalsByCurrency(deals, amount)]
             }
             nextActivityByOpportunity = [:]
             opportunityActivities.each { activity ->
-                if (activity.salesOpportunityId && !nextActivityByOpportunity.containsKey(activity.salesOpportunityId))
+                if (activity.salesOpportunityId && activity.dueDate && !nextActivityByOpportunity.containsKey(activity.salesOpportunityId))
                     nextActivityByOpportunity[activity.salesOpportunityId] = activity.dueDate
             }
         ]]></script>
         <entity-find entity-name="zenith.erp.crm.OpportunityListView" list="oppList">
-            <search-form-inputs default-order-by="stageSequence,-estimatedAmount" skip-fields="organizationPartyId"/>
+            <search-form-inputs default-order-by="stageSequence,-estimatedAmount" skip-fields="organizationPartyId"
+                                input-fields-map="ec.context + stageSearch"/>
             <econdition-object field="dealCohortCondition"/>
             <econdition field-name="salesOpportunityId" operator="in" from="boardRows*.salesOpportunityId ?: ['__NO_MATCH__']" ignore="!ownerId &amp;&amp; !searchText"/>
             <econdition field-name="organizationPartyId" from="(crmOrganization.activeOrgId ?: '_NA_') ?: '__NO_ORGANIZATION__'"/>
@@ -165,12 +179,12 @@
                 </drop-down></default-field></field>
                 <field name="searchText"><default-field title="Search"><text-line size="24" default-value="${searchText}"/></default-field></field>
                 <field name="submitButton"><default-field title=" "><submit text="Filter"/></default-field></field>
-                <field name="resetButton"><default-field title=" "><link url="." text="Reset"/></default-field></field>
+                <field name="resetButton"><default-field title=" "><link url="." text="Reset" parameter-map="[cohort:'', period:'', ownerId:'', searchText:'']"/></default-field></field>
                 <field-layout><field-row><field-ref name="period"/><field-ref name="ownerId"/><field-ref name="searchText"/><field-ref name="submitButton"/><field-ref name="resetButton"/></field-row></field-layout>
             </form-single>
         </container>
         <container style="zcrm-period zcrm-saved-views">
-            <section-iterate name="PipelineSavedViews" list="savedFilters" entry="saved"><widgets><link url="." text="${saved.filterName}" parameter-map="new groovy.json.JsonSlurper().parseText(saved.filterJson)"/></widgets></section-iterate>
+            <section-iterate name="PipelineSavedViews" list="savedFilters" entry="saved"><widgets><link link-type="anchor" url="." text="${saved.filterName}" parameter-map="new groovy.json.JsonSlurper().parseText(saved.filterJson)"/></widgets></section-iterate>
             <section name="SavePipelineView" condition="modCanWrite &amp;&amp; !cohort"><widgets><form-single name="SavePipelineFilter" transition="saveView">
                 <field name="screenName"><default-field><hidden default-value="Pipeline"/></default-field></field>
                 <field name="period"><default-field><hidden default-value="${period}"/></default-field></field>
@@ -189,18 +203,22 @@
         <section name="OpenDealBoard" condition="cohort != 'won'"><widgets>
         <container style="zcrm-board" id="pipeline-board">
             <section-iterate name="crmPipelineStages" list="boardStages" entry="column"><widgets>
-                <container style="zcrm-board-column" id="crm-stage-${column.id}">
-                    <container style="zcrm-board-stage-head"><label text="${column.name}" type="h4"/><label text="${column.count} deals · ${column.value}" type="span"/></container>
+                <container style="zcrm-board-column ${column.active ? 'zcrm-drop-target' : ''}" id="crm-stage-${column.id ?: 'unassigned'}">
+                    <label text="${column.id ?: ''}" style="zcrm-drag-key hidden"/>
+                    <container style="zcrm-board-stage-head"><label text="${column.name}" type="h4"/><label text="${column.count} ${column.count == 1 ? 'deal' : 'deals'} · ${column.value}" type="span"/>
+                        <label condition="column.id &amp;&amp; !column.active" text="Inactive stage" style="zcrm-muted"/>
+                    </container>
                     <section name="EmptyStage" condition="column.deals.isEmpty()"><widgets><label text="No opportunities in this stage" type="p" style="zcrm-board-empty"/></widgets></section>
                     <section-iterate name="crmStageDeals" list="column.deals" entry="deal"><widgets>
                         <container style="zcrm-deal-card" id="crm-deal-${deal.salesOpportunityId}">
+                            <label text="${deal.salesOpportunityId}" style="zcrm-drag-key hidden"/>
                             <link url="../EditOpportunity" text="${deal.opportunityName}" parameter-map="[salesOpportunityId:deal.salesOpportunityId]"/>
                             <label text="${deal.accountName ?: 'No account'}" type="span" style="zcrm-muted"/>
                             <label text="${deal.currencyUomId ?: 'Unspecified currency'} ${ec.l10n.format(deal.estimatedAmount ?: 0, '#,##0.00')}" type="strong" style="zcrm-deal-amount"/>
-                            <label text="${deal.estimatedCloseDate ? ec.l10n.format(deal.estimatedCloseDate, 'dd MMM yyyy') : 'No close date'}" type="span" style="zcrm-muted"/>
+                            <label text="${deal.estimatedCloseDate ? 'Expected close: ' + ec.l10n.format(deal.estimatedCloseDate, 'dd MMM yyyy') : 'No close date'}" type="span" style="zcrm-muted"/>
                             <label text="Source: ${deal.leadSourceId ?: 'Unknown'}" type="span" style="zcrm-muted"/>
                             <label text="Next activity: ${nextActivityByOpportunity[deal.salesOpportunityId] ? ec.l10n.format(nextActivityByOpportunity[deal.salesOpportunityId], 'dd MMM yyyy') : 'None scheduled'}" type="span" style="zcrm-muted"/>
-                            <container style="zcrm-deal-foot"><label text="${deal.assignedToUserId ?: 'Unassigned'}" type="span"/><label text="${deal.estimatedProbability != null ? (deal.estimatedProbability * 100).intValue() : 0}%" type="span"/></container>
+                            <container style="zcrm-deal-foot"><label text="${deal.assignedToUserId ?: 'Unassigned'}" type="span"/><label text="${deal.estimatedProbability != null ? (deal.estimatedProbability * 100).intValue() : 0}% probability" type="span"/></container>
                         </container>
                     </widgets></section-iterate>
                 </container>
@@ -209,8 +227,9 @@
         </widgets></section>
         <section name="DragStageWrite" condition="modCanWrite"><widgets><container style="zcrm-drag-form">
             <form-single name="DragStageForm" transition="advanceStage">
-                <field name="salesOpportunityId"><default-field><hidden/></default-field></field>
-                <field name="opportunityStageId"><default-field><hidden/></default-field></field>
+                <!-- Qapps omits hidden widgets from the DOM. These bound inputs are inside the hidden drag form. -->
+                <field name="salesOpportunityId"><default-field><text-line/></default-field></field>
+                <field name="opportunityStageId"><default-field><text-line/></default-field></field>
                 <field name="submitButton"><default-field><submit/></default-field></field>
             </form-single>
         </container></widgets></section>
@@ -253,7 +272,7 @@
                             <list-options list="stages" key="${opportunityStageId}" text="${description}"/>
                         </drop-down>
                     </header-field>
-                    <default-field><display/></default-field>
+                    <default-field><display text="${stageLabels[opportunityStageId] ?: stageName}"/></default-field>
                 </field>
                 <field name="estimatedCloseDate">
                     <header-field title="Close Date" show-order-by="true"><date-find/></header-field>
