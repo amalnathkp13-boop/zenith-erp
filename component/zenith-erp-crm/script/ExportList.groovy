@@ -23,8 +23,11 @@ currentScreen.rootSection.actions.run(ec)
 def records = ec.context[dataset]
 def rows = records.collect { record ->
     names.collect { field ->
-        def value = field == 'expectedRevenue' && dataset == 'oppList' ?
-                (record.estimatedAmount ?: 0G) * (record.estimatedProbability ?: 0G) : record[field]
+        def value = record[field]
+        if (dataset == 'oppList') {
+            if (field == 'expectedRevenue') value = (record.estimatedAmount ?: 0G) * (record.estimatedProbability ?: 0G)
+            if (field == 'stageName') value = ec.context.stageLabels[record.opportunityStageId] ?: value
+        }
         // Spreadsheet applications may interpret user-provided text as a formula in a CSV.
         if (format == 'csv' && value instanceof CharSequence && value.toString() ==~ /(?s)^\s*[=+@-].*/) return "'" + value
         return value

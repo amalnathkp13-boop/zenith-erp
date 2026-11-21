@@ -14,7 +14,7 @@
             def org = (crmOrganization.activeOrgId ?: '_NA_')
             dashboardError = null
             leadRows = []; opportunityRows = []; activityRows = []; myWork = []
-            stageRows = []; stageSummary = [:]; sourceSummary = [:]
+            stageRows = []; sourceSummary = [:]
             leadStatusNames = [LeadNew:'New', LeadContacted:'Contacted', LeadQualified:'Qualified', LeadConverted:'Converted', LeadLost:'Lost']
             leadCount = 0; qualifiedCount = 0; qualifiedRate = 0; openOpportunityCount = 0
             pipelineValue = 0G; weightedValue = 0G; wonValue = 0G
@@ -34,8 +34,11 @@
                         sourceSummary[source] = (sourceSummary[source] ?: 0) + 1
                     }
 
-                    stageRows = ec.entity.find('mantle.sales.opportunity.SalesOpportunityStage').orderBy('sequenceNum').list()
-                    def allOpps = ec.entity.find('zenith.erp.crm.OpportunityListView').condition('organizationPartyId', org).list()
+                    def stages = ec.entity.find('mantle.sales.opportunity.SalesOpportunityStage').orderBy('sequenceNum').list()
+                    def settings = ec.entity.find('zenith.erp.crm.CrmStageSetting').condition('organizationPartyId', org)
+                        .list().collectEntries { [(it.opportunityStageId):it] }
+                    def allOpps = ec.entity.find('zenith.erp.crm.OpportunityListView').condition('organizationPartyId', org)
+                        .selectFields(['salesOpportunityId','opportunityStageId','estimatedCloseDate','wonDate','currencyUomId','estimatedAmount','estimatedProbability']).list()
                     opportunityRows = allOpps.findAll { row -> !periodStart || (row.estimatedCloseDate && row.estimatedCloseDate >= periodStart && row.estimatedCloseDate < periodEnd) }
                     def totals = { rows, weighted = false ->
                         rows.groupBy { it.currencyUomId ?: 'Unspecified' }.sort().collect { code, deals ->
@@ -44,10 +47,15 @@
                         }.join(' / ') ?: '—'
                     }
                     def byStage = opportunityRows.groupBy { it.opportunityStageId }
-                    stageRows.each { stage ->
+                    stageRows = stages.collect { stage ->
+                        def config = settings[stage.opportunityStageId]
                         def deals = byStage[stage.opportunityStageId] ?: []
-                        stageSummary[stage.opportunityStageId] = [count:deals.size(), value:totals(deals)]
-                    }
+                        [description:config?.displayName ?: stage.description, sequence:config?.sequenceNum != null ? config.sequenceNum : stage.sequenceNum,
+                         count:deals.size(), value:totals(deals)]
+                    }.sort { it.sequence ?: 0 }
+                    if (byStage[null]) stageRows << [description:'No stage assigned', count:byStage[null].size(), value:totals(byStage[null])]
+                    def maxCount = stageRows.collect { it.count }.max() ?: 0
+                    stageRows.each { row -> row.percent = maxCount ? Math.round(row.count * 100.0 / maxCount) : 0 }
                     def open = opportunityRows.findAll { !(it.opportunityStageId in ['SoClosedWon','SoClosedLost']) }
                     openOpportunityCount = open.size()
                     pipelineValue = totals(open)
@@ -78,7 +86,7 @@
                 } catch (Exception e) {
                     dashboardError = 'CRM data could not be loaded. Please retry or contact support.'
                     leadRows = []; opportunityRows = []; activityRows = []; myWork = []
-                    stageRows = []; stageSummary = [:]; sourceSummary = [:]
+                    stageRows = []; sourceSummary = [:]
                     leadCount = 0; qualifiedCount = 0; qualifiedRate = 0; openOpportunityCount = 0
                     pipelineValue = 0G; weightedValue = 0G; wonValue = 0G
                     activityCount = 0; followupDueCount = 0; unassignedLeads = 0; unattendedLeads = 0; closingSoon = 0; overdueRows = []
@@ -96,74 +104,72 @@
                 sourceOffset = index == sources.size() - 1 ? 100G : sourceOffset + (source.count * 100G / leadCount)
                 "${sourceColors[index % sourceColors.size()]} ${String.format(java.util.Locale.US, '%.2f', start.doubleValue())}% ${String.format(java.util.Locale.US, '%.2f', sourceOffset.doubleValue())}%"
             }.join(', ')
-            maxStageCount = stageSummary.values().collect { it.count }.max() ?: 0
-            stageRows.each { stage ->
-                def bucket = stageSummary[stage.opportunityStageId]
-                bucket.barLevel = maxStageCount ? Math.max(1, Math.round(bucket.count * 10.0 / maxStageCount)) : 0
-            }
         ]]></script>
     </actions>
     <widgets>
-        <container style="zcrm-period">
-            <label text="${dateRangeLabel}" type="span" style="zcrm-date-range"/>
-            <link url="." text="Today" parameter-map="[period:'today']" style="${period == 'today' ? 'zcrm-period-active' : ''}"/>
-            <link url="." text="This week" parameter-map="[period:'week']" style="${period == 'week' ? 'zcrm-period-active' : ''}"/>
-            <link url="." text="This month" parameter-map="[period:'month']" style="${period == 'month' ? 'zcrm-period-active' : ''}"/>
-            <link url="." text="All time" parameter-map="[period:'all']" style="${period == 'all' ? 'zcrm-period-active' : ''}"/>
-            <label text="Showing: ${periodLabel}" type="span"/>
-        </container>
         <container style="zcrm-intro zcrm-dash-head">
-            <container style="zcrm-heading-icon"><label text="▥" type="span"/></container>
-            <container><label text="CRM Dashboard" type="h3"/>
-                <label text="Leads, opportunities and follow-ups from your active organization." type="p"/></container>
-            <link url="../CrmSettings" text="⚙ CRM Settings" condition="modCanWrite &amp;&amp; (ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN'))"/>
+            <label text="CRM Dashboard" type="h3"/>
+            <link link-type="anchor" url="../CrmSettings" text="CRM Settings" condition="modCanWrite &amp;&amp; (ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN'))"/>
+        </container>
+        <container style="zcrm-period zcrm-date-filter">
+            <label text="${dateRangeLabel}" type="span" style="zcrm-date-range"/>
+            <link link-type="anchor" url="." text="Today" parameter-map="[period:'today']" style="${period == 'today' ? 'zcrm-period-active' : ''}"/>
+            <link link-type="anchor" url="." text="This week" parameter-map="[period:'week']" style="${period == 'week' ? 'zcrm-period-active' : ''}"/>
+            <link link-type="anchor" url="." text="This month" parameter-map="[period:'month']" style="${period == 'month' ? 'zcrm-period-active' : ''}"/>
+            <link link-type="anchor" url="." text="All time" parameter-map="[period:'all']" style="${period == 'all' ? 'zcrm-period-active' : ''}"/>
+            <label text="Showing: ${periodLabel}" type="span"/>
         </container>
         <section name="crmMissingOrg" condition="!hasActiveOrg"><widgets>
             <container style="zcrm-empty"><label text="Select an organization to view its CRM dashboard." type="p"/></container>
         </widgets></section>
         <section name="crmDashboardError" condition="dashboardError"><widgets>
-            <container style="zcrm-error"><label text="${dashboardError}" type="p"/><link url="." text="Retry"/></container>
+            <container style="zcrm-error"><label text="${dashboardError}" type="p"/><link link-type="anchor" url="." text="Retry" parameter-map="[period:period]"/></container>
         </widgets></section>
         <section name="crmDashboardData" condition="hasActiveOrg &amp;&amp; !dashboardError"><widgets>
             <container style="zcrm-metrics zcrm-dashboard-metrics">
-                <container style="zcrm-metric zcrm-tone-purple"><label text="New leads" type="span"/><label text="${leadCount}" type="h4"/><label text="Created during this period" type="span" style="zcrm-muted"/><link url="../Leads" text="View leads" parameter-map="[period:period,cohort:'created']"/></container>
-                <container style="zcrm-metric zcrm-tone-green"><label text="Qualified rate" type="span"/><label text="${qualifiedRate}%" type="h4"/><label text="${qualifiedCount} of ${leadCount} leads qualified or converted" type="span" style="zcrm-muted"/><link url="../Leads" text="View qualified and converted leads" parameter-map="[period:period,cohort:'qualified']"/></container>
-                <container style="zcrm-metric zcrm-tone-orange"><label text="Weighted pipeline" type="span"/><label text="${weightedValue}" type="h4"/><label text="Open deals closing in range" type="span" style="zcrm-muted"/><link url="../Pipeline" text="View open deals" parameter-map="[period:period,cohort:'open']"/></container>
-                <container style="zcrm-metric zcrm-tone-blue"><label text="Open pipeline value" type="span"/><label text="${pipelineValue}" type="h4"/><label text="${openOpportunityCount} open opportunities" type="span" style="zcrm-muted"/><link url="../Pipeline" text="View open deals" parameter-map="[period:period,cohort:'open']"/></container>
-                <container style="zcrm-metric zcrm-tone-orange"><label text="Overdue activities" type="span"/><label text="${followupDueCount}" type="h4"/><label text="Scheduled past due time" type="span" style="zcrm-muted"/><link url="../Activities" text="View activities" parameter-map="[view:'overdue']"/></container>
-                <container style="zcrm-metric zcrm-tone-green"><label text="Closed-won deal value" type="span"/><label text="${wonValue}" type="h4"/><label text="Closed won in range" type="span" style="zcrm-muted"/><link url="../Pipeline" text="View won deals" parameter-map="[period:period,cohort:'won']"/></container>
+                <container style="zcrm-metric"><label text="New leads" type="span"/><label text="${leadCount}" type="h4"/><label text="Created during this period" type="span" style="zcrm-muted"/><link link-type="anchor" url="../Leads" text="View leads" parameter-map="[period:period,cohort:'created']"/></container>
+                <container style="zcrm-metric"><label text="Qualified rate" type="span"/><label text="${qualifiedRate}%" type="h4"/><label text="${qualifiedCount} of ${leadCount} leads qualified or converted" type="span" style="zcrm-muted"/><link link-type="anchor" url="../Leads" text="View qualified leads" parameter-map="[period:period,cohort:'qualified']"/></container>
+                <container style="zcrm-metric"><label text="Weighted pipeline" type="span"/><label text="${weightedValue}" type="h4"/><label text="Open deals closing in range" type="span" style="zcrm-muted"/><link link-type="anchor" url="../Pipeline" text="View open deals" parameter-map="[period:period,cohort:'open']"/></container>
+                <container style="zcrm-metric"><label text="Open pipeline value" type="span"/><label text="${pipelineValue}" type="h4"/><label text="${openOpportunityCount} open opportunities" type="span" style="zcrm-muted"/><link link-type="anchor" url="../Pipeline" text="View open deals" parameter-map="[period:period,cohort:'open']"/></container>
+                <container style="zcrm-metric ${followupDueCount ? 'zcrm-overdue' : ''}"><label text="Overdue activities" type="span"/><label text="${followupDueCount}" type="h4"/><label text="Currently past their due time" type="span" style="zcrm-muted"/><link link-type="anchor" url="../Activities" text="View activities" parameter-map="[view:'overdue']"/></container>
+                <container style="zcrm-metric"><label text="Closed-won deal value" type="span"/><label text="${wonValue}" type="h4"/><label text="Closed won in range" type="span" style="zcrm-muted"/><link link-type="anchor" url="../Pipeline" text="View won deals" parameter-map="[period:period,cohort:'won']"/></container>
             </container>
-            <container style="zcrm-panel"><container style="zcrm-panel-head">
-                <label text="My follow-ups due" type="h5"/>
-                <link url="../Activities" text="Open queue" parameter-map="[view:'mywork']"/>
-                <link url="../Workflows" text="Manage follow-up rules" condition="modCanWrite &amp;&amp; (ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN')) &amp;&amp; (!customRoleNavigation || roleNavSections?.any { section -> section.screens?.any { it.id == '/Crm/Workflows' } })"/>
-            </container>
-                <section name="NoWorkDue" condition="myWork.isEmpty()"><widgets>
-                    <label text="You have no outstanding follow-ups due through today." type="p" style="zcrm-empty"/>
-                </widgets></section>
-                <section-iterate name="MyDueWork" list="myWork" entry="task"><widgets>
-                    <container style="zcrm-breakdown-row">
-                        <link url="../ActivityDetail" text="${task.subject}" parameter-map="[activityId:task.activityId]"/>
-                        <label text="${task.activityType} · ${task.priority ?: 'Normal'}" type="span"/>
-                        <label text="${task.dueDate &lt; ec.user.nowTimestamp ? 'Overdue' : 'Due today'} · ${ec.l10n.format(task.dueDate,'dd MMM HH:mm')}" type="span"/>
-                    </container>
-                </widgets></section-iterate>
-            </container>
-            <container style="zcrm-grid">
-                <container style="zcrm-panel zcrm-chart-panel"><container style="zcrm-panel-head"><label text="Pipeline by stage" type="h5"/><link url="../Pipeline" text="View pipeline" parameter-map="[period:period]"/></container>
+            <container style="zcrm-grid zcrm-dashboard-body">
+                <container style="zcrm-panel"><container style="zcrm-panel-head">
+                    <label text="My follow-ups due" type="h5"/>
+                    <link link-type="anchor" url="../Activities" text="Open queue" parameter-map="[view:'mywork']"/>
+                    <link link-type="anchor" url="../Workflows" text="Manage follow-up rules" condition="modCanWrite &amp;&amp; (ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN')) &amp;&amp; (!customRoleNavigation || roleNavSections?.any { section -> section.screens?.any { it.id == '/Crm/Workflows' } })"/>
+                </container>
+                    <section name="NoWorkDue" condition="myWork.isEmpty()"><widgets>
+                        <label text="You’re caught up through today." type="p" style="zcrm-empty"/>
+                    </widgets></section>
+                    <section-iterate name="MyDueWork" list="myWork" entry="task"><widgets>
+                        <container style="zcrm-breakdown-row">
+                            <link link-type="anchor" url="../ActivityDetail" text="${task.subject}" parameter-map="[activityId:task.activityId]"/>
+                            <label text="${task.activityType} · ${task.priority ?: 'Normal'}" type="span"/>
+                            <label text="${task.dueDate &lt; ec.user.nowTimestamp ? 'Overdue' : 'Due today'} · ${ec.l10n.format(task.dueDate,'dd MMM HH:mm')}" type="span"/>
+                        </container>
+                    </widgets></section-iterate>
+                </container>
+                <container style="zcrm-panel"><container style="zcrm-panel-head"><label text="Recent leads" type="h5"/><link link-type="anchor" url="../Leads" text="All leads" parameter-map="[period:period,cohort:'created']"/></container>
+                    <section name="noRecentLeads" condition="recentLeads.isEmpty()"><widgets><label text="No leads created in this period." type="p" style="zcrm-empty"/></widgets></section>
+                    <section-iterate name="crmRecentLeads" list="recentLeads" entry="recentLead"><widgets><container style="zcrm-breakdown-row"><link link-type="anchor" url="../EditLead" text="${recentLead.firstName} ${recentLead.lastName ?: ''}" parameter-map="[leadId:recentLead.leadId]"/><label text="${recentLead.companyName ?: recentLead.sourceName ?: 'No company'} · ${leadStatusNames[recentLead.statusId] ?: 'Unknown status'} · ${recentLead.assignedToUserId ?: 'Unassigned'}" type="span" style="zcrm-muted"/><label text="${ec.l10n.format(recentLead.createdDate, 'dd MMM yyyy')}" type="span" style="zcrm-muted"/></container></widgets></section-iterate>
+                </container>
+                <container style="zcrm-panel zcrm-chart-panel"><container style="zcrm-panel-head"><label text="Pipeline by stage" type="h5"/><link link-type="anchor" url="../Pipeline" text="View pipeline" parameter-map="[period:period]"/></container>
                     <section name="noStages" condition="opportunityRows.isEmpty()"><widgets><label text="No opportunities are expected to close in this date range." type="p" style="zcrm-empty"/></widgets></section>
                     <section name="hasStages" condition="!opportunityRows.isEmpty()"><widgets>
                         <container style="zcrm-stage-chart">
                             <section-iterate name="crmStages" list="stageRows" entry="stage"><widgets>
-                                <container style="zcrm-chart-column"><label text="${stageSummary[stage.opportunityStageId].count}" type="strong"/>
-                                    <container style="zcrm-chart-track"><container style="zcrm-chart-bar zcrm-level-${stageSummary[stage.opportunityStageId].barLevel}"/></container>
-                                    <label text="${stage.description}" type="span"/><label text="${stageSummary[stage.opportunityStageId].value}" type="span" style="zcrm-muted"/>
+                                <container style="zcrm-chart-column"><label text="${stage.count}" type="strong"/>
+                                    <label text="${stage.description}" type="span" style="zcrm-stage-label"/>
+                                    <label text="${stage.value}" type="span" style="zcrm-stage-value"/>
+                                    <render-mode><text type="html,qvt"><![CDATA[<div class="zcrm-chart-track" aria-hidden="true"><div class="zcrm-chart-bar" style="width:${stage.percent}%"></div></div>]]></text></render-mode>
                                 </container>
                             </widgets></section-iterate>
                         </container>
                     </widgets></section>
                 </container>
-                <container style="zcrm-panel zcrm-source-panel"><container style="zcrm-panel-head"><label text="Lead sources" type="h5"/><link url="../Leads" text="View leads" parameter-map="[period:period,cohort:'created']"/></container>
+                <container style="zcrm-panel zcrm-source-panel"><container style="zcrm-panel-head"><label text="Lead sources" type="h5"/><link link-type="anchor" url="../Leads" text="View leads" parameter-map="[period:period,cohort:'created']"/></container>
                     <section name="noSources" condition="sources.isEmpty()"><widgets><label text="No leads were created in this date range." type="p" style="zcrm-empty"/></widgets></section>
                     <section name="hasSources" condition="!sources.isEmpty()"><widgets>
                         <container style="zcrm-source-layout">
@@ -172,19 +178,17 @@
                         </container>
                     </widgets></section>
                 </container>
-                <container style="zcrm-panel"><container style="zcrm-panel-head"><label text="Activities &amp; follow-ups" type="h5"/><link url="../Activities" text="View activities"/></container>
+                <container style="zcrm-panel zcrm-activity-summary"><container style="zcrm-panel-head"><label text="Activities &amp; follow-ups" type="h5"/><link link-type="anchor" url="../Activities" text="View activities"/></container>
                     <container style="zcrm-breakdown-row"><label text="Activities logged" type="span"/><label text="${activityCount}" type="strong"/></container>
                     <container style="zcrm-breakdown-row"><label text="Overdue scheduled activities" type="span"/><label text="${followupDueCount}" type="strong"/></container>
-                    <container style="zcrm-breakdown-row"><link url="../Leads" text="Unassigned leads" parameter-map="[ownership:'unassigned',period:'all']"/><label text="${unassignedLeads}" type="strong"/></container>
+                    <container style="zcrm-breakdown-row"><link link-type="anchor" url="../Leads" text="Unassigned leads" parameter-map="[ownership:'unassigned',period:'all']"/><label text="${unassignedLeads}" type="strong"/></container>
                     <container style="zcrm-breakdown-row"><label text="Leads without a scheduled activity" type="span"/><label text="${unattendedLeads}" type="strong"/></container>
                     <container style="zcrm-breakdown-row"><label text="Opportunities closing in 7 days" type="span"/><label text="${closingSoon}" type="strong"/></container>
-                    <section-iterate name="crmOverdueActions" list="overdueRows" entry="overdue"><widgets><container style="zcrm-breakdown-row"><link url="../ActivityDetail" text="${overdue.subject}" parameter-map="[activityId:overdue.activityId]"/><label text="${ec.l10n.format(overdue.dueDate, 'dd MMM yyyy')}" type="span"/></container></widgets></section-iterate>
-                    <section name="noActivities" condition="recentActivities.isEmpty()"><widgets><label text="No activities logged in this date range. Log a call or meeting to start a history." type="p" style="zcrm-empty"/></widgets></section>
-                    <section-iterate name="crmRecentActivities" list="recentActivities" entry="act"><widgets><container style="zcrm-breakdown-row"><label text="${act.activityType}: ${act.subject}" type="span"/><label text="${ec.l10n.format(act.activityDate, 'dd MMM yyyy')}" type="span" style="zcrm-muted"/></container></widgets></section-iterate>
+                    <section-iterate name="crmOverdueActions" list="overdueRows" entry="overdue"><widgets><container style="zcrm-breakdown-row"><link link-type="anchor" url="../ActivityDetail" text="${overdue.subject}" parameter-map="[activityId:overdue.activityId]"/><label text="${ec.l10n.format(overdue.dueDate, 'dd MMM yyyy')}" type="span"/></container></widgets></section-iterate>
                 </container>
-                <container style="zcrm-panel"><container style="zcrm-panel-head"><label text="Recent leads" type="h5"/><link url="../Leads" text="All leads" parameter-map="[period:period,cohort:'created']"/></container>
-                    <section name="noRecentLeads" condition="recentLeads.isEmpty()"><widgets><label text="No leads created in this date range. Add a lead from the Leads page." type="p" style="zcrm-empty"/></widgets></section>
-                    <section-iterate name="crmRecentLeads" list="recentLeads" entry="recentLead"><widgets><container style="zcrm-breakdown-row"><link url="../EditLead" text="${recentLead.firstName} ${recentLead.lastName ?: ''}" parameter-map="[leadId:recentLead.leadId]"/><label text="${recentLead.companyName ?: recentLead.sourceName ?: 'No company'} · ${leadStatusNames[recentLead.statusId] ?: 'Unknown status'} · ${recentLead.assignedToUserId ?: 'Unassigned'}" type="span" style="zcrm-muted"/><label text="${ec.l10n.format(recentLead.createdDate, 'dd MMM yyyy')}" type="span" style="zcrm-muted"/></container></widgets></section-iterate>
+                <container style="zcrm-panel"><container style="zcrm-panel-head"><label text="Recent activities" type="h5"/></container>
+                    <section name="noActivities" condition="recentActivities.isEmpty()"><widgets><label text="No activities logged in this period." type="p" style="zcrm-empty"/></widgets></section>
+                    <section-iterate name="crmRecentActivities" list="recentActivities" entry="act"><widgets><container style="zcrm-breakdown-row"><link link-type="anchor" url="../ActivityDetail" text="${act.activityType}: ${act.subject}" parameter-map="[activityId:act.activityId]"/><label text="${ec.l10n.format(act.activityDate, 'dd MMM yyyy')}" type="span" style="zcrm-muted"/></container></widgets></section-iterate>
                 </container>
             </container>
         </widgets></section>
