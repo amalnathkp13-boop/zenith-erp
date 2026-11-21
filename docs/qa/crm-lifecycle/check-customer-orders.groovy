@@ -62,3 +62,4 @@ try {
 } finally {
     Moqui.destroyActiveExecutionContextFactory()
 }
+System.exit(0)
