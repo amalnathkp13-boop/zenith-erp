@@ -211,8 +211,8 @@
                         <img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onload="zChart(this,function(){(function(){
                             new ApexCharts(document.querySelector('#taxLiabChart'),{
                                 chart:{type:'area',height:230,toolbar:{show:false},fontFamily:'Inter,sans-serif',sparkline:{enabled:false}},
-                                series:[{name:'Tax',data:${liabValsJson}}],
-                                xaxis:{categories:${liabLabelsJson},tickAmount:6,labels:{style:{colors:'#9CA3AF',fontSize:'11px'}},axisBorder:{show:false},axisTicks:{show:false}},
+                                series:[{name:'Tax',data:${liabValsJson?html}}],
+                                xaxis:{categories:${liabLabelsJson?html},tickAmount:6,labels:{style:{colors:'#9CA3AF',fontSize:'11px'}},axisBorder:{show:false},axisTicks:{show:false}},
                                 yaxis:{labels:{style:{colors:'#9CA3AF',fontSize:'11px'},formatter:function(v){return Math.round(v);}}},
                                 stroke:{curve:'smooth',width:2,colors:['#F59E0B']},
                                 fill:{type:'gradient',gradient:{shadeIntensity:1,opacityFrom:.35,opacityTo:.02,stops:[0,100]},colors:['#F59E0B']},
@@ -234,7 +234,7 @@
                         <img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onload="zChart(this,function(){(function(){
                             new ApexCharts(document.querySelector('#taxTypeChart'),{
                                 chart:{type:'donut',height:210,fontFamily:'Inter,sans-serif'},
-                                series:${byTypeSeries},
+                                series:${byTypeSeries?html},
                                 labels:['SGST','CGST','IGST','Other / Cess'],
                                 colors:['#7C3AED','#2563EB','#10B981'],
                                 stroke:{width:0},
