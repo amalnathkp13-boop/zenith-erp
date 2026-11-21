@@ -103,7 +103,7 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
   let tenders=0;for(let i=0;i<30;i++){tenders=Number(q("SELECT count(*) AS n FROM pos_payment WHERE reference_number IN ('OFFLINE:"+split.offlineId+"','OFFLINE:"+split.offlineId+":QA-UPI-REF')")[0].n);if(tenders===2)break;await new Promise(r=>setTimeout(r,200));}
   check('split offline sync stores both tender rows',tenders===2,{tenders});
   for(const mutation of [{organizationPartyId:'POS_QA_B'},{userId:'ANOTHER_USER'},{terminalId:'POS_QA_B_TERM1'},{items:[{...first.items[0],productId:'POS_QA_B_P18'}]}]){
-   const invalid={...first,...mutation,offlineId:'REJECT-'+Date.now()+'-'+Math.random()};
+   const invalid={...first,sourceTransactionId:null,sourceRevision:null,checkoutAttemptId:null,...mutation,offlineId:'REJECT-'+Date.now()+'-'+Math.random()};
    const result=await invoke('offline',{terminalId,transactions:JSON.stringify([JSON.stringify(invalid)])});
    check('offline replay rejects a changed ownership boundary '+Object.keys(mutation)[0],result.failedCount===1&&!result.syncedIds?.length,result);
   }
@@ -193,14 +193,18 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
   await page.unroute('**/Terminal/**');
   const conflict=await invoke('cart',{sessionId:session.sessionId,reuseOpenCart:false});await invoke('add',{transactionId:conflict.transactionId,productId:'POS_QA_A_P18',quantity:'1',taxOn:'N'});
   const before=q("SELECT payable_amount,status_id FROM pos_transaction WHERE transaction_id='"+conflict.transactionId+"'")[0];
-  const rejected=await invoke('offline',{terminalId,transactions:JSON.stringify([JSON.stringify({...first,offlineId:'CONFLICT-'+Date.now(),sourceTransactionId:conflict.transactionId,sourceRevision:'stale'})])});
-  check('changed server draft is not overwritten by a queued offline sale',rejected.failedCount===1&&JSON.stringify(q("SELECT payable_amount,status_id FROM pos_transaction WHERE transaction_id='"+conflict.transactionId+"'")[0])===JSON.stringify(before),rejected);
-  const overpaid={...first,sourceTransactionId:null,sourceRevision:null,offlineId:'CASH-CHANGE-'+Date.now(),change:11,payments:[{method:'Cash',amount:200}]};
+  const changedSale={...first,checkoutAttemptId:null,offlineId:'CONFLICT-'+Date.now(),sourceTransactionId:conflict.transactionId,sourceRevision:'stale'};
+  const recovered=await invoke('offline',{terminalId,transactions:JSON.stringify([JSON.stringify(changedSale)])});
+  const [recovery]=q(`SELECT created_transaction_id FROM pos_offline_transaction WHERE terminal_id='${terminalId}' AND transaction_data_json LIKE '%${changedSale.offlineId}%'`);
+  check('a valid queued sale creates a separate bill without overwriting the changed server draft',
+   recovered.syncedIds?.includes(changedSale.offlineId)&&recovery?.created_transaction_id!==conflict.transactionId&&
+   !!recovery?.created_transaction_id&&JSON.stringify(q("SELECT payable_amount,status_id FROM pos_transaction WHERE transaction_id='"+conflict.transactionId+"'")[0])===JSON.stringify(before),recovered);
+  const overpaid={...first,sourceTransactionId:null,sourceRevision:null,checkoutAttemptId:null,offlineId:'CASH-CHANGE-'+Date.now(),change:11,payments:[{method:'Cash',amount:200}]};
   const cashResult=await invoke('offline',{terminalId,transactions:JSON.stringify([JSON.stringify(overpaid)])});
   check('offline cash over-tender imports with an exact change amount',cashResult.syncedIds?.includes(overpaid.offlineId),cashResult);
   let cashRow;for(let i=0;i<30;i++){cashRow=q("SELECT p.amount,t.change_amount FROM pos_payment p JOIN pos_transaction t ON t.transaction_id=p.transaction_id WHERE p.reference_number='OFFLINE:"+overpaid.offlineId+"'")[0];if(cashRow)break;await new Promise(r=>setTimeout(r,200));}
   check('cash received and change remain auditable after sync',Number(cashRow?.amount)===200&&Number(cashRow?.change_amount)===11,cashRow);
-  const separateModes={...first,sourceTransactionId:null,sourceRevision:null,offlineId:'TWO-MODES-'+Date.now(),change:0,items:[{...first.items[0],qty:1,price:100,mode:'RETAIL'},{...first.items[0],qty:1,price:100,mode:'WHOLESALE'}],taxAmount:36,total:236,payments:[{method:'Cash',amount:236}]};
+  const separateModes={...first,sourceTransactionId:null,sourceRevision:null,checkoutAttemptId:null,offlineId:'TWO-MODES-'+Date.now(),change:0,items:[{...first.items[0],qty:1,price:100,mode:'RETAIL'},{...first.items[0],qty:1,price:100,mode:'WHOLESALE'}],taxAmount:36,total:236,payments:[{method:'Cash',amount:236}]};
   const modeResult=await invoke('offline',{terminalId,transactions:JSON.stringify([JSON.stringify(separateModes)])});
   check('equal-price lines in different modes sync successfully',modeResult.syncedIds?.includes(separateModes.offlineId),modeResult);
   let modeRows=[];for(let i=0;i<30;i++){modeRows=q("SELECT i.sales_mode_id FROM pos_transaction_item i JOIN pos_offline_transaction o ON o.created_transaction_id=i.transaction_id WHERE o.transaction_data_json LIKE '%"+separateModes.offlineId+"%'");if(modeRows.length===2)break;await new Promise(r=>setTimeout(r,200));}

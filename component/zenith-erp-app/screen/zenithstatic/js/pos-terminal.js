@@ -758,6 +758,84 @@ window._posOffline = (function () {
             });
         });
     }
+    function writeCheckoutAttempt(sale, stage, reconcileOnly) {
+        return ensureDb().then(function (d) {
+            if (!d) throw Error('Cannot safely save this payment on the device. Check browser storage and try again.');
+            return new Promise(function (resolve, reject) {
+                var transaction = d.transaction('queue', 'readwrite');
+                var queue = transaction.objectStore('queue');
+                var request = stage ? queue.getAll() : queue.get(sale.offlineId);
+                var duplicate = false;
+                request.onsuccess = function () {
+                    if (stage) {
+                        duplicate = request.result.some(function (saved) {
+                            return saved.userId === sale.userId && saved.sessionId === sale.sessionId &&
+                                saved.sourceTransactionId === sale.sourceTransactionId;
+                        });
+                        if (!duplicate) queue.add(sale);
+                    } else if (request.result) {
+                        var saved = request.result;
+                        delete saved.checkoutPendingUntil;
+                        if (reconcileOnly) saved.checkoutReconcileOnly = true;
+                        queue.put(saved);
+                    }
+                };
+                transaction.oncomplete = function () {
+                    if (duplicate) reject(Error('A payment for this bill is already waiting to sync. Check History before trying again.'));
+                    else resolve();
+                };
+                transaction.onerror = transaction.onabort = function () {
+                    reject(transaction.error || Error('The saved payment could not be updated.'));
+                };
+            });
+        });
+    }
+    async function stageOnlineTender(method, params, source) {
+        if (!source?.sourceRevision || !source.items?.length || !orgId || !tCtx().terminalId)
+            throw Error('Could not capture the current bill for payment recovery. Refresh the bill and try again.');
+        var bill = newDraft();
+        bill.mode = params.get('salesModeId') || bill.mode;
+        bill.taxOn = params.get('taxOn');
+        setDraftSource(bill, source);
+        bill.items.forEach(function (item, index) {
+            item.mode = source.items[index].mode || '';
+            item.tax = Number(source.items[index].tax || 0);
+            item.total = Number(source.items[index].total || 0);
+        });
+        var payments = [];
+        if (method === 'Credit') {
+            var phone = params.get('customerPhone');
+            var partyId = params.get('customerPartyId');
+            var creditDays = params.get('creditDays');
+            var selected = (settings.customers || []).find(function (customer) { return customer.partyId === partyId; });
+            bill.customer = {partyId:partyId,name:params.get('customerName'),phone:phone,
+                state:selected?.state,creditDays:creditDays ? Number(creditDays) : null,termsReason:params.get('termsReason')};
+            var upfront = Number(params.get('upfrontAmount') || 0);
+            if (upfront > 0) payments.push({method:params.get('upfrontMethod'),amount:upfront});
+        } else if (method === 'Split') {
+            ['Cash','Card','UPI'].forEach(function (kind) {
+                var key = kind.toLowerCase();
+                var amount = Number(params.get(key + 'Amount') || 0);
+                var reference = params.get(key + 'Ref');
+                if (amount > 0) payments.push(reference ? {method:kind,amount:amount,reference:reference} : {method:kind,amount:amount});
+            });
+        } else {
+            var reference = params.get('referenceNumber');
+            payments.push(reference ? {method:method,amount:Number(params.get('amount')),reference:reference} : {method:method,amount:Number(params.get('amount'))});
+        }
+        var total = Number(source.pay);
+        var cashOnly = payments.length === 1 && payments[0].method === 'Cash' && method !== 'Credit';
+        var change = cashOnly ? money(Math.max(0,payments[0].amount + Number(source.paid || 0) - total)) : 0;
+        // The importer accounts cash-only split over-tender as cash, preserving the actual drawer change.
+        var sale = makeQueuedSale(change > 0 && cashOnly ? 'Cash' : method, payments, bill, {
+            pay:total,tax:Number(source.tax),sub:Number(source.sub),disc:Number(source.disc),round:Number(source.round)
+        }, change);
+        if (!sale.userId || !sale.sessionId) throw Error('Sign in again before completing a payment.');
+        sale.checkoutWasOnline = true;
+        sale.checkoutPendingUntil = Date.now() + 45000;
+        await writeCheckoutAttempt(sale, true);
+        return sale;
+    }
     function getQueue() {
         return ensureDb().then(function (d) {
             if (!d) return [];
@@ -833,18 +911,18 @@ window._posOffline = (function () {
         }
         if (db) stateWrite('snapshot:' + scope, snapshot).catch(function () {});
     }
-    function setDraftSource(bill) {
-        bill.sourceTransactionId = snapshot.transactionId;
-        bill.sourceRevision = snapshot.sourceRevision;
-        bill.originState = snapshot.originState;
-        bill.destinationState = snapshot.destinationState;
-        bill.items = snapshot.items.map(function (item) {
+    function setDraftSource(bill, source = snapshot) {
+        bill.sourceTransactionId = source.transactionId;
+        bill.sourceRevision = source.sourceRevision;
+        bill.originState = source.originState;
+        bill.destinationState = source.destinationState;
+        bill.items = source.items.map(function (item) {
             return {productId:item.pid,seq:item.seq,name:item.name,printName:item.printName,
                 qty:Number(item.qty),price:Number(item.price),mode:item.mode || bill.mode,
                 uom:item.uom,discount:Number(item.disc || 0)};
         });
-        bill.customer = snapshot.customer ? {partyId:snapshot.customerPartyId,name:snapshot.customer,
-            phone:snapshot.customerPhone,creditDays:snapshot.customerCreditDays,state:snapshot.destinationState} : null;
+        bill.customer = source.customer ? {partyId:source.customerPartyId,name:source.customer,
+            phone:source.customerPhone,creditDays:source.customerCreditDays,state:source.destinationState} : null;
         return bill;
     }
     function draftContent(bill) {
@@ -1649,39 +1727,49 @@ window._posOffline = (function () {
         if (error) { toast(error, '#c62828'); return; }
         try {
             var sale = await pay(method, payments, bill, entry);
-            var choice = window.PosTillDialogs.openReceiptChoice(method, sale.total, function (print) {
-                if (print) setTimeout(function () {
-                    try { printReceipt(sale); }
-                    catch (error) { toast('Bill saved. Reprint it from Bill History.', '#b45309'); }
-                }, 0);
-            }, {billNumber:sale.offlineId,change:sale.change,offline:true});
-            if (choice) choice.addEventListener('close', resumeOnline, {once:true});
-            if (!disconnected()) sync();
+            showQueuedReceipt(sale, method);
         } catch (error) {
             if (entry?.isConnected) tenderError(entry, error.message);
             else toast(error.message, '#c62828');
         }
     }
-    async function pay(method, payments, bill, entry) {
-        var t = totals(bill),
-            sale = Object.assign(copy(bill), {
-                version: 2,
-                offlineId: 'OFL-' + crypto.randomUUID(),
-                userId: settings.userId,
-                organizationPartyId: orgId,
-                store: Object.assign({}, settings.store, method === 'Credit' ? settings.creditReceiptText : null),
-                receiptOptions: settings.receiptOptions?.[method === 'Credit' ? 'credit' : 'normal'],
-                total: t.pay,
-                taxAmount: t.tax,
-                subtotal: t.sub,
-                discountTotal: t.disc,
-                roundOff: t.round,
-                paymentMethod: method,
-                change: method === 'Cash' ? money(payments[0].amount - t.pay) : 0,
-                payments: payments,
-                ts: new Date().toISOString(),
-            });
+    function showQueuedReceipt(sale, method) {
+        lastLocalAmount = sale.total;
+        var choice = window.PosTillDialogs.openReceiptChoice(method, sale.total, function (print) {
+            if (print) setTimeout(function () {
+                try { printReceipt(sale); }
+                catch (error) { toast('Bill saved. Reprint it from Bill History.', '#b45309'); }
+            }, 0);
+        }, {billNumber:sale.offlineId,change:sale.change,offline:true});
+        if (choice) choice.addEventListener('close', resumeOnline, {once:true});
+        if (!disconnected()) sync();
+    }
+    function makeQueuedSale(method, payments, bill, t, change) {
+        var offlineId = 'OFL-' + crypto.randomUUID();
+        var sale = Object.assign(copy(bill), {
+            version: 2,
+            offlineId: offlineId,
+            checkoutAttemptId: offlineId,
+            userId: (document.getElementById('pos-offline-user') || {}).value || settings.userId,
+            organizationPartyId: orgId,
+            store: Object.assign({}, settings.store, method === 'Credit' ? settings.creditReceiptText : null),
+            receiptOptions: settings.receiptOptions?.[method === 'Credit' ? 'credit' : 'normal'],
+            total: t.pay,
+            taxAmount: t.tax,
+            subtotal: t.sub,
+            discountTotal: t.disc,
+            roundOff: t.round,
+            paymentMethod: method,
+            change: change,
+            payments: payments,
+            ts: new Date().toISOString(),
+        });
         delete sale.onlineBaseline;
+        return sale;
+    }
+    async function pay(method, payments, bill, entry) {
+        var amounts = totals(bill);
+        var sale = makeQueuedSale(method, payments, bill, amounts, method === 'Cash' ? money(payments[0].amount - amounts.pay) : 0);
         payPending = true;
         try {
             await writeTail;
@@ -1856,6 +1944,7 @@ window._posOffline = (function () {
         syncTask = recoverLegacy()
             .then(getQueue)
             .then(function (q) {
+                q = q.filter(function (sale) { return !sale.checkoutPendingUntil || sale.checkoutPendingUntil <= Date.now(); });
                 if (!q.length) return 0;
                 var token = document.querySelector('[name=moquiSessionToken]');
                 return fetch('Terminal/syncOfflineTransactions', {
@@ -1867,7 +1956,9 @@ window._posOffline = (function () {
                         moquiSessionToken: token && token.value,
                         terminalId: tCtx().terminalId,
                         transactions: q.map(function (s) {
-                            return JSON.stringify(s);
+                            var payload = Object.assign({}, s);
+                            delete payload.checkoutPendingUntil;
+                            return JSON.stringify(payload);
                         }),
                     }),
                 })
@@ -1890,6 +1981,13 @@ window._posOffline = (function () {
                         return removeSynced(ack)
                             .then(function () {
                                 return acknowledgeLegacy(ack, q);
+                            })
+                            .then(function () {
+                                return Promise.all(q.filter(function (sale) {
+                                    return sale.checkoutWasOnline && ack.includes(sale.offlineId);
+                                }).map(function (sale) {
+                                    return window._posAcknowledgeRecoveredCheckout?.(sale.sourceTransactionId).catch(function () {});
+                                }));
                             })
                             .then(function () {
                                 ack.forEach(function (id) { rejectedSales.delete(id); });
@@ -2271,6 +2369,10 @@ window._posOffline = (function () {
         render: render,
         customerPicker: customerPicker,
         onlineSaleSaved: onlineSaleSaved,
+        stageOnlineTender: stageOnlineTender,
+        releaseCheckoutAttempt: function (sale, reconcileOnly) { return writeCheckoutAttempt(sale, false, reconcileOnly); },
+        discardCheckoutAttempt: function (sale) { return removeSynced([sale.offlineId]); },
+        showQueuedReceipt: showQueuedReceipt,
         discount: function () { if (begin()) discountDialog(); },
         printReceipt: printReceipt,
         remember: remember,
@@ -4779,32 +4881,83 @@ window.posToggleFullscreen = function() {
                 throw new Error('The bill total changed. Close this dialog and review the cart.');
         }
 
-        function approvedPaymentFetch(url, options, expectedTx, expectedTotal) {
-            return confirmCatalogTender().then(function() {
-                assertTenderReady(expectedTx, expectedTotal);
-                options.body.set('transactionId', TX);
-                options.body.set('catalogRevision', catalogRevision);
-                options.body.set('taxOn', TO);
-                options.body.set('moquiSessionToken', TK);
-                return window.PosFreeItems.ensure(TX, TK);
-            }).then(function() {
-                assertTenderReady(expectedTx, expectedTotal);
-                return fetch(url, options).catch(function() {
-                    throw new Error('Payment could not be confirmed. Check History before trying again.');
+        async function approvedPaymentFetch(url, options, expectedTx, expectedTotal, method) {
+            await confirmCatalogTender();
+            assertTenderReady(expectedTx, expectedTotal);
+            await window.PosFreeItems.ensure(TX, TK);
+            assertTenderReady(expectedTx, expectedTotal);
+            var source = lastCartData;
+            if (!source?.sourceRevision || source.transactionId !== expectedTx) {
+                source = await post({action:'refresh',transactionId:expectedTx}, AbortSignal.timeout(15000));
+            }
+            if (!source?.success || source.transactionId !== expectedTx || Number(source.pay) !== expectedTotal)
+                throw Error('The bill total changed. Review the cart before taking payment.');
+            assertTenderReady(expectedTx, expectedTotal);
+            options.body.set('transactionId', expectedTx);
+            options.body.set('catalogRevision', catalogRevision);
+            options.body.set('taxOn', TO);
+            options.body.set('moquiSessionToken', TK);
+            var offline = window._posOffline;
+            var sale = await offline.stageOnlineTender(method, options.body, source);
+            options.body.set('checkoutAttemptId', sale.checkoutAttemptId);
+            options.body.set('sourceRevision', sale.sourceRevision);
+            options.body.set('checkoutSnapshot', JSON.stringify(Object.assign({}, sale, {checkoutPendingUntil:undefined})));
+            async function queueAfterTransportFailure(error) {
+                await offline.releaseCheckoutAttempt(sale, false);
+                offline.transportFailure(error).catch(function() {});
+                return {success:true, queuedSale:sale};
+            }
+            // The staged attempt survives browser termination. While this request is running only
+            // this tab may send it, then delivery is reconciled by the same checkout identity.
+            if (!navigator.onLine || offline.active()) return queueAfterTransportFailure(new TypeError('Connection lost'));
+            var response, signal = AbortSignal.timeout(20000);
+            try { response = await fetch(url, Object.assign({signal:signal}, options)); }
+            catch (error) { return queueAfterTransportFailure(error); }
+            if (response.status === 408 || response.status >= 500) {
+                var error = Error('Payment response unavailable'); error.posGateway = true;
+                return queueAfterTransportFailure(error);
+            }
+            if ([401,403].includes(response.status) || (response.redirected && /\/Login(?:[/?#]|$)/i.test(response.url))) {
+                await offline.releaseCheckoutAttempt(sale, false);
+                throw Error('Payment is saved on this device. Sign in again to sync it.');
+            }
+            var result;
+            try { result = await response.json(); }
+            catch (error) {
+                if (signal.aborted || error.name === 'AbortError' || error.name === 'TypeError') return queueAfterTransportFailure(error);
+            }
+            if (response.ok && result?.success === true) {
+                await offline.discardCheckoutAttempt(sale).catch(function(error) {
+                    console.warn('A completed payment will be acknowledged again during sync.', error);
                 });
-            })
-                .then(function(r) { return r.json().catch(function() { return null; }); })
-                .then(function(d) {
-                    if (!d || !d.priceReview) return d;
-                    catalogDirtyTx = TX;
-                    return refreshCatalog(true).catch(function() {}).then(function() {
-                        throw new Error(d.error || 'Product prices changed. Review the current total before taking payment.');
-                    });
-                });
+                return result;
+            }
+            if (response.ok && result?.success === false) {
+                await offline.discardCheckoutAttempt(sale);
+                if (!result.priceReview) return result;
+                catalogDirtyTx = TX;
+                await refreshCatalog(true).catch(function() {});
+                throw Error(result.error || 'Product prices changed. Review the current total before taking payment.');
+            }
+            // An unexpected application response is not permission to create a sale offline.
+            // Retain it so sync can find an exact committed attempt without sending a second tender.
+            await offline.releaseCheckoutAttempt(sale, true);
+            offline.sync();
+            throw Error('Payment could not be confirmed. The attempt is kept in History for review.');
         }
 
         var tenderCommitPending = false;
         var acknowledgedTenderTx = null;
+        window._posAcknowledgeRecoveredCheckout = async function(transactionId) {
+            if (!transactionId) return;
+            if (TX === transactionId) {
+                acknowledgedTenderTx = transactionId;
+                TX = '';
+                af.elements.transactionId.value = '';
+                resetCompletedCart(true);
+            }
+            await window._posOffline.onlineSaleSaved(transactionId);
+        };
         window._posCompleteTender = async function(url, fields, method, expectedTx, expectedTotal, onSaved, onError) {
             if (tenderCommitPending || document.getElementById('posPayConfirmOverlay')) return false;
             if (expectedTx && expectedTx === acknowledgedTenderTx) {
@@ -4822,7 +4975,7 @@ window.posToggleFullscreen = function() {
                 params.set('sessionId', SI);
                 params.set('salesModeId', SM);
                 params.set('wantJson', '1');
-                data = await approvedPaymentFetch(url, {method:'POST',body:params,credentials:'same-origin'}, expectedTx, expectedTotal);
+                data = await approvedPaymentFetch(url, {method:'POST',body:params,credentials:'same-origin'}, expectedTx, expectedTotal, method);
                 if (!data || !data.success) throw new Error(data?.error || 'Payment could not be confirmed. Check History before trying again.');
                 acknowledgedTenderTx = expectedTx;
             } catch (error) {
@@ -4852,7 +5005,9 @@ window.posToggleFullscreen = function() {
                 tenderCommitPending = false;
                 if (terminal) terminal.inert = wasInert;
             }
-            if (billNum) {
+            if (data.queuedSale) {
+                window._posOffline.showQueuedReceipt(data.queuedSale, method);
+            } else if (billNum) {
                 try {
                     PosTillDialogs.openReceiptChoice(method, Number(data.summary?.total ?? expectedTotal), function(shouldPrint) {
                         // Close the receipt choice before the existing printer setup or browser print opens.

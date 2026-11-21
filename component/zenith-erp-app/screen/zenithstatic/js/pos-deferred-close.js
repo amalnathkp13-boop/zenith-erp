@@ -1,4 +1,4 @@
-/* Durable POS close requests. Confirmed bills are acknowledged before their drawer is closed. */
+/* Durable POS offline queues and close requests for the signed-in organization and cashier. */
 (function () {
     if (window.PosDeferredClose) return;
     var running;
@@ -92,6 +92,29 @@
         if (!response.ok) throw Error('Connection unavailable. The saved session will retry automatically.');
         return response.json();
     }
+    function readyToSync(sale) { return !sale.checkoutPendingUntil || sale.checkoutPendingUntil <= Date.now(); }
+    async function postSales(who, terminalId, sales) {
+        assertIdentity(who);
+        var result = await post('syncOfflineTransactions', {terminalId:terminalId, transactions:sales.map(function (sale) {
+            var payload = Object.assign({}, sale);
+            delete payload.checkoutPendingUntil;
+            return JSON.stringify(payload);
+        })});
+        assertIdentity(who);
+        var sent = new Set(sales.map(function (sale) { return sale.offlineId; }));
+        var acknowledged = new Set((Array.isArray(result.syncedIds) ? result.syncedIds : []).filter(function (id) {
+            return sent.has(id);
+        }));
+        if (acknowledged.size) {
+            await write(function (tx) {
+                acknowledged.forEach(function (id) { tx.objectStore('queue').delete(id); });
+            });
+            window.dispatchEvent(new Event('posofflinesynced'));
+            if (window._posOffline?.acknowledgeLegacy)
+                await window._posOffline.acknowledgeLegacy(Array.from(acknowledged), sales);
+        }
+        return {acknowledged:acknowledged,failures:result.failures || []};
+    }
     async function reconcile(request) {
         var who = identity();
         var sales = (await read('queue')).filter(function (sale) {
@@ -99,24 +122,16 @@
                 (!sale.organizationPartyId || sale.organizationPartyId === who.organization) && (!sale.userId || sale.userId === who.user);
         });
         if (sales.length) {
-            assertIdentity(who);
-            var result = await post('syncOfflineTransactions', {terminalId:request.terminalId, transactions:sales.map(function (sale) { return JSON.stringify(sale); })});
-            assertIdentity(who);
-            var acknowledged = new Set(Array.isArray(result.syncedIds) ? result.syncedIds : []);
-            await write(function (tx) {
-                sales.forEach(function (sale) { if (acknowledged.has(sale.offlineId)) tx.objectStore('queue').delete(sale.offlineId); });
-            });
-            if (acknowledged.size) window.dispatchEvent(new Event('posofflinesynced'));
-            if (window._posOffline && window._posOffline.acknowledgeLegacy)
-                await window._posOffline.acknowledgeLegacy(Array.from(acknowledged), sales);
-            var outstanding = sales.filter(function (sale) { return !acknowledged.has(sale.offlineId); });
+            var ready = sales.filter(readyToSync);
+            var result = ready.length ? await postSales(who, request.terminalId, ready) : {acknowledged:new Set(),failures:[]};
+            var outstanding = sales.filter(function (sale) { return !result.acknowledged.has(sale.offlineId); });
             if (outstanding.length) {
                 request.failures = {};
-                (result.failures || []).forEach(function (failure) {
-                    var sale = sales[failure.index];
-                    if (sale && !acknowledged.has(sale.offlineId)) request.failures[sale.offlineId] = failure.error;
+                result.failures.forEach(function (failure) {
+                    var sale = ready[failure.index];
+                    if (sale && !result.acknowledged.has(sale.offlineId)) request.failures[sale.offlineId] = failure.error;
                 });
-                request.error = (result.failures || []).map(function (failure) { return failure.error; }).filter(Boolean).join(' ') || 'Saved bills are waiting to sync.';
+                request.error = result.failures.map(function (failure) { return failure.error; }).filter(Boolean).join(' ') || 'Saved bills are waiting to sync.';
                 return;
             }
         }
@@ -128,14 +143,34 @@
         delete request.error;
         delete request.failures;
     }
+    async function flushOpenSales(who, closingSessions) {
+        // The visible terminal syncs its own queue and updates its bill state. Other terminals
+        // still sync automatically if the cashier moves to another screen, shop, or drawer.
+        var currentTerminal = window._posOffline && document.querySelector('#cartInlineAddForm [name=posTerminalId]')?.value;
+        var grouped = new Map();
+        (await read('queue')).forEach(function (sale) {
+            if (!sale || !sale.terminalId || !sale.sessionId || !sale.offlineId || !readyToSync(sale) ||
+                sale.terminalId === currentTerminal || closingSessions.has(sale.sessionId) ||
+                sale.organizationPartyId !== who.organization || sale.userId !== who.user) return;
+            if (!grouped.has(sale.terminalId)) grouped.set(sale.terminalId, []);
+            grouped.get(sale.terminalId).push(sale);
+        });
+        for (var group of grouped) {
+            assertIdentity(who);
+            try { await postSales(who, group[0], group[1]); }
+            catch (error) { /* keep this terminal's queue for the next reachable attempt */ }
+        }
+    }
     async function process() {
         var who = identity();
         if (!who || !navigator.onLine) return;
         var rows = await read('state', IDBKeyRange.bound('session-close:', 'session-close:\uffff'));
+        var closingSessions = new Set();
         for (var row of rows) {
             var request = row.value;
             if (!row.key.startsWith('session-close:') || !request || request.syncedAt ||
                 request.organizationPartyId !== who.organization || request.userId !== who.user) continue;
+            closingSessions.add(request.sessionId);
             try { await reconcile(request); }
             catch (error) { request.error = error.message; }
             // Do not write another tenant's response if the active organization changed during the request.
@@ -144,6 +179,7 @@
             await write(function (tx) { tx.objectStore('state').put({key:row.key, value:request}); });
             notify(request);
         }
+        await flushOpenSales(who, closingSessions);
     }
     function flush() {
         if (running) return running;

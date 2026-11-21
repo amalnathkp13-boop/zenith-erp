@@ -161,6 +161,7 @@
         <field name="organizationPartyId" type="id"/>
         <field name="salesModeId" type="id"/>
         <field name="transactionNumber" type="text-short"/>
+        <field name="checkoutAttemptId" type="text-short"><description>Durable browser checkout identity shared by an online payment and its reconnect retry.</description></field>
         <field name="transactionType" type="text-short"/>
         <field name="entryDate" type="date-time"><description>When the sale/cart was started (created)</description></field>
         <field name="completedDate" type="date-time"><description>When the sale was closed/finalized (status set to PtCompleted)</description></field>
@@ -192,6 +193,7 @@
         <relationship type="one" related="zenith.erp.pos.PosSession"/>
         <relationship type="one" title="PosTransaction" related="moqui.basic.StatusItem"/>
         <index name="POS_TRANSACTION_DAY"><index-field name="organizationPartyId"/><index-field name="statusId"/><index-field name="completedDate"/></index>
+        <index name="POS_CHECKOUT_ATTEMPT" unique="true"><index-field name="organizationPartyId"/><index-field name="checkoutAttemptId"/></index>
         <seed-data>
             <moqui.basic.StatusType statusTypeId="PosTransaction" description="POS Transaction"/>
             <moqui.basic.StatusItem statusId="PtCreated" statusTypeId="PosTransaction" description="Created" sequenceNum="1"/>

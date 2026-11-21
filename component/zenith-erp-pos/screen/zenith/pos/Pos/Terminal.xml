@@ -403,6 +403,34 @@
 
     <transition name="completeCredit" begin-transaction="true">
         <actions>
+            <service-call name="zenith.pos.PosOfflineServices.claim#CheckoutAttempt" out-map="_checkoutAttempt"
+                          in-map="[transactionId:transactionId,checkoutAttemptId:checkoutAttemptId,sourceRevision:sourceRevision,checkoutSnapshot:checkoutSnapshot]"/>
+            <if condition="_checkoutAttempt.checkoutRejection">
+                <script><![CDATA[
+                    if (ec.web.requestParameters.wantJson) ec.web.sendJsonResponse([success:false,error:_checkoutAttempt.checkoutRejection])
+                    else ec.message.addError(_checkoutAttempt.checkoutRejection)
+                ]]></script>
+                <return/>
+            </if>
+            <if condition="ec.message.hasError()">
+                <script><![CDATA[
+                    def error=ec.message.errorsString
+                    ec.transaction.setRollbackOnly('POS checkout identity rejected',null)
+                    if (ec.web.requestParameters.wantJson) { ec.message.clearErrors(); ec.web.sendJsonResponse([success:false,error:error]) }
+                ]]></script>
+                <return/>
+            </if>
+            <if condition="_checkoutAttempt.completedTransactionId">
+                <script><![CDATA[
+                    def result=ec.service.sync().name('zenith.pos.PosServices.get#PosReceiptData')
+                        .parameter('transactionId',_checkoutAttempt.completedTransactionId).call()?.receipt
+                    def saved=result?.success ? null : ec.entity.find('zenith.erp.pos.PosTransaction')
+                        .condition('transactionId',_checkoutAttempt.completedTransactionId).one()
+                    ec.web.sendJsonResponse(result?.success ? result : [success:true,receiptUnavailable:true,
+                        transactionId:_checkoutAttempt.completedTransactionId,bill:[number:saved?.transactionNumber],change:saved?.changeAmount ?: 0])
+                ]]></script>
+                <return/>
+            </if>
             <service-call name="zenith.pos.ProductModePricingServices.check#CatalogTender" out-map="_catalogReview"
                           in-map="[transactionId:transactionId,seenRevision:catalogRevision,taxOn:taxOn]"/>
             <if condition="ec.message.hasError()"><return/></if>
@@ -428,10 +456,15 @@
             <service-call name="zenith.pos.PosServices.complete#PosTransactionCredit"
                           in-map="[transactionId:transactionId, customerName:customerName, customerPhone:customerPhone,
                                    customerPartyId:customerPartyId, upfrontAmount:upfrontAmount, upfrontMethod:upfrontMethod, creditDays:creditDays, termsReason:termsReason]"/>
+            <if condition="checkoutAttemptId &amp;&amp; !ec.message.hasError()">
+                <service-call name="update#zenith.erp.pos.PosTransaction" in-map="[transactionId:transactionId,checkoutAttemptId:checkoutAttemptId]"/>
+            </if>
             <script><![CDATA[
                 if (ec.web.requestParameters.wantJson) {
                     if (ec.message.hasError()) {
-                        def error = ec.message.errorsString; ec.message.clearErrors()
+                        def error = ec.message.errorsString
+                        ec.transaction.setRollbackOnly('POS credit checkout rejected',null)
+                        ec.message.clearErrors()
                         ec.web.sendJsonResponse([success:false, error:error])
                     } else {
                         def receipt = null
@@ -449,7 +482,7 @@
             <condition><expression>ec.web.requestParameters.wantJson</expression></condition>
         </conditional-response>
         <conditional-response url="." parameter-map="[sessionId:sessionId, transactionId:transactionId, taxOn:taxOn, salesModeId:salesModeId]">
-            <condition><expression>_catalogReview.notice || ec.message.hasError()</expression></condition>
+            <condition><expression>_catalogReview?.notice || ec.message.hasError()</expression></condition>
         </conditional-response>
         <conditional-response url="." parameter-map="[sessionId:sessionId, freshSale:'Y', taxOn:taxOn, salesModeId:salesModeId]">
             <condition><expression>ec.web.requestParameters.skipReceipt == 'Y'</expression></condition>
@@ -462,6 +495,34 @@
 
 
         <actions>
+            <service-call name="zenith.pos.PosOfflineServices.claim#CheckoutAttempt" out-map="_checkoutAttempt"
+                          in-map="[transactionId:transactionId,checkoutAttemptId:checkoutAttemptId,sourceRevision:sourceRevision,checkoutSnapshot:checkoutSnapshot]"/>
+            <if condition="_checkoutAttempt.checkoutRejection">
+                <script><![CDATA[
+                    if (ec.web.requestParameters.wantJson) ec.web.sendJsonResponse([success:false,error:_checkoutAttempt.checkoutRejection])
+                    else ec.message.addError(_checkoutAttempt.checkoutRejection)
+                ]]></script>
+                <return/>
+            </if>
+            <if condition="ec.message.hasError()">
+                <script><![CDATA[
+                    def error=ec.message.errorsString
+                    ec.transaction.setRollbackOnly('POS checkout identity rejected',null)
+                    if (ec.web.requestParameters.wantJson) { ec.message.clearErrors(); ec.web.sendJsonResponse([success:false,error:error]) }
+                ]]></script>
+                <return/>
+            </if>
+            <if condition="_checkoutAttempt.completedTransactionId">
+                <script><![CDATA[
+                    def result=ec.service.sync().name('zenith.pos.PosServices.get#PosReceiptData')
+                        .parameter('transactionId',_checkoutAttempt.completedTransactionId).call()?.receipt
+                    def saved=result?.success ? null : ec.entity.find('zenith.erp.pos.PosTransaction')
+                        .condition('transactionId',_checkoutAttempt.completedTransactionId).one()
+                    ec.web.sendJsonResponse(result?.success ? result : [success:true,receiptUnavailable:true,
+                        transactionId:_checkoutAttempt.completedTransactionId,bill:[number:saved?.transactionNumber],change:saved?.changeAmount ?: 0])
+                ]]></script>
+                <return/>
+            </if>
             <service-call name="zenith.pos.ProductModePricingServices.check#CatalogTender" out-map="_catalogReview"
                           in-map="[transactionId:transactionId,seenRevision:catalogRevision,taxOn:taxOn]"/>
             <if condition="ec.message.hasError()"><return/></if>
@@ -521,6 +582,10 @@
 
                           in-map="[transactionId:transactionId]"/>
 
+            <if condition="checkoutAttemptId &amp;&amp; !ec.message.hasError()">
+                <service-call name="update#zenith.erp.pos.PosTransaction" in-map="[transactionId:transactionId,checkoutAttemptId:checkoutAttemptId]"/>
+            </if>
+
 
 
             <script><![CDATA[
@@ -528,7 +593,9 @@
                 // data straight from the payment response (no separate receiptData round-trip).
                 if (ec.web.requestParameters.wantJson) {
                     if (ec.message.hasError()) {
-                        def _em = ec.message.errorsString; ec.message.clearErrors()
+                        def _em = ec.message.errorsString
+                        ec.transaction.setRollbackOnly('POS checkout rejected',null)
+                        ec.message.clearErrors()
                         ec.web.sendJsonResponse([success:false, error:_em])
                     } else {
                         def _rcpt = null
@@ -556,7 +623,7 @@
             <condition><expression>ec.web.requestParameters.wantJson</expression></condition>
         </conditional-response>
         <conditional-response url="." parameter-map="[sessionId:sessionId, transactionId:transactionId, taxOn:taxOn, salesModeId:salesModeId]">
-            <condition><expression>_catalogReview.notice || ec.message.hasError()</expression></condition>
+            <condition><expression>_catalogReview?.notice || ec.message.hasError()</expression></condition>
         </conditional-response>
         <conditional-response url="." parameter-map="[sessionId:sessionId, freshSale:'Y', taxOn:taxOn, salesModeId:salesModeId]">
             <condition><expression>ec.web.requestParameters.skipReceipt == 'Y'</expression></condition>
@@ -1147,6 +1214,34 @@
 
 
         <actions>
+            <service-call name="zenith.pos.PosOfflineServices.claim#CheckoutAttempt" out-map="_checkoutAttempt"
+                          in-map="[transactionId:transactionId,checkoutAttemptId:checkoutAttemptId,sourceRevision:sourceRevision,checkoutSnapshot:checkoutSnapshot]"/>
+            <if condition="_checkoutAttempt.checkoutRejection">
+                <script><![CDATA[
+                    if (ec.web.requestParameters.wantJson) ec.web.sendJsonResponse([success:false,error:_checkoutAttempt.checkoutRejection])
+                    else ec.message.addError(_checkoutAttempt.checkoutRejection)
+                ]]></script>
+                <return/>
+            </if>
+            <if condition="ec.message.hasError()">
+                <script><![CDATA[
+                    def error=ec.message.errorsString
+                    ec.transaction.setRollbackOnly('POS checkout identity rejected',null)
+                    if (ec.web.requestParameters.wantJson) { ec.message.clearErrors(); ec.web.sendJsonResponse([success:false,error:error]) }
+                ]]></script>
+                <return/>
+            </if>
+            <if condition="_checkoutAttempt.completedTransactionId">
+                <script><![CDATA[
+                    def result=ec.service.sync().name('zenith.pos.PosServices.get#PosReceiptData')
+                        .parameter('transactionId',_checkoutAttempt.completedTransactionId).call()?.receipt
+                    def saved=result?.success ? null : ec.entity.find('zenith.erp.pos.PosTransaction')
+                        .condition('transactionId',_checkoutAttempt.completedTransactionId).one()
+                    ec.web.sendJsonResponse(result?.success ? result : [success:true,receiptUnavailable:true,
+                        transactionId:_checkoutAttempt.completedTransactionId,bill:[number:saved?.transactionNumber],change:saved?.changeAmount ?: 0])
+                ]]></script>
+                <return/>
+            </if>
             <service-call name="zenith.pos.ProductModePricingServices.check#CatalogTender" out-map="_catalogReview"
                           in-map="[transactionId:transactionId,seenRevision:catalogRevision,taxOn:taxOn]"/>
             <if condition="ec.message.hasError()"><return/></if>
@@ -1272,6 +1367,10 @@
 
                           in-map="[transactionId:transactionId]"/>
 
+            <if condition="checkoutAttemptId &amp;&amp; !ec.message.hasError()">
+                <service-call name="update#zenith.erp.pos.PosTransaction" in-map="[transactionId:transactionId,checkoutAttemptId:checkoutAttemptId]"/>
+            </if>
+
 
 
             <script><![CDATA[
@@ -1279,7 +1378,9 @@
                 // data straight from the payment response (no separate receiptData round-trip).
                 if (ec.web.requestParameters.wantJson) {
                     if (ec.message.hasError()) {
-                        def _em = ec.message.errorsString; ec.message.clearErrors()
+                        def _em = ec.message.errorsString
+                        ec.transaction.setRollbackOnly('POS checkout rejected',null)
+                        ec.message.clearErrors()
                         ec.web.sendJsonResponse([success:false, error:_em])
                     } else {
                         def _rcpt = null
@@ -1307,7 +1408,7 @@
             <condition><expression>ec.web.requestParameters.wantJson</expression></condition>
         </conditional-response>
         <conditional-response url="." parameter-map="[sessionId:sessionId, transactionId:transactionId, taxOn:taxOn, salesModeId:salesModeId]">
-            <condition><expression>_catalogReview.notice || ec.message.hasError()</expression></condition>
+            <condition><expression>_catalogReview?.notice || ec.message.hasError()</expression></condition>
         </conditional-response>
         <default-response url="." parameter-map="[sessionId:sessionId, lastCompletedId:transactionId]"/>
 
