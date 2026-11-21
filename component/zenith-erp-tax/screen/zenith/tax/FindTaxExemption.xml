@@ -271,4 +271,5 @@
         ]]></text></render-mode>
         </widgets></section>
     </widgets>
+    <!-- ci: throwaway change proving staging-acceptance auto-selects the Tax verify on a tax-path PR (follows #285); this PR is closed, not merged -->
 </screen>
