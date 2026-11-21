@@ -135,6 +135,39 @@ jobs:
           echo "POS_QA_ENABLED=$enabled" >> "$GITHUB_ENV"
           if [ "$enabled" = true ]; then echo 'CONTACTS_PROFILE=pos' >> "$GITHUB_ENV"; fi
 
+      - name: Select Sales/Tax verification for billing/tax changes
+        # Closes the CI blind spot where a Sales or Tax PR could go green without its module logic
+        # being exercised (the default PR run path-filters those verifies off). Auto-enable the Sales
+        # and/or Tax profile when the change touches those paths — on a PR, or on a post-merge push to
+        # master — exactly as the POS step above does for POS. Independent flags (not the single
+        # CONTACTS_PROFILE) so a change touching BOTH runs both. Explicit `workflow_dispatch` of the
+        # sales/tax profile still works. Each flag only turns on when the module's own QA harness is
+        # present in the source, so older branches without it stay dormant.
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          sales=false; tax=false
+          if [ "$CONTACTS_PROFILE" = sales ]; then sales=true; fi
+          if [ "$CONTACTS_PROFILE" = tax ]; then tax=true; fi
+          if [ "$EVENT_NAME" = pull_request ] || [ "$EVENT_NAME" = push ]; then
+            files="$RUNNER_TEMP/billing-changed-files.txt"
+            if [ "$EVENT_NAME" = pull_request ]; then
+              gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --jq '.[].filename' > "$files"
+            else
+              gh api "repos/$GITHUB_REPOSITORY/compare/$BEFORE_SHA...$GITHUB_SHA" --jq '.files[].filename' > "$files" 2>/dev/null || : > "$files"
+            fi
+            if [ -f "$CONTACTS_QA_SOURCE_DIR/docs/qa/sales-runtime/verify-runtime.cjs" ] && \
+               grep -Eq '^(component/zenith-erp-sales/|docs/qa/sales-runtime/)' "$files"; then sales=true; fi
+            if [ -f "$CONTACTS_QA_SOURCE_DIR/docs/qa/tax-runtime/ui.cjs" ] && \
+               grep -Eq '^(component/zenith-erp-tax/|docs/qa/tax-runtime/)' "$files"; then tax=true; fi
+          fi
+          echo "SALES_QA_ENABLED=$sales" >> "$GITHUB_ENV"
+          echo "TAX_QA_ENABLED=$tax" >> "$GITHUB_ENV"
+          echo "auto-verify -> sales: $sales | tax: $tax"
+
       - name: Download the clean staging image
         run: gh release download "$IMAGE_RELEASE" --repo "$GITHUB_REPOSITORY" --pattern "$IMAGE_ASSET" --dir "$RUNNER_TEMP"
 
@@ -158,7 +191,7 @@ jobs:
           docker tag "$loaded" zetaerp-moqui:staging
 
       - name: Enable guarded disposable Tax harness
-        if: github.event_name == 'workflow_dispatch' && inputs.contacts_profile == 'tax'
+        if: env.TAX_QA_ENABLED == 'true'
         run: |
           python3 - "$COMPOSE" "$RUNNER_TEMP/tax-compose.yml" <<'PY'
           import sys
@@ -265,7 +298,7 @@ jobs:
         # so the 'sales' verification profile can drive Sales flows. Dispatch-only + sales-gated, and it
         # reads from the candidate checkout, so it needs `candidate_sha=<a branch that has
         # docs/qa/sales-runtime/>` (e.g. the Sales PR) — dormant on normal PR/push runs.
-        if: github.event_name == 'workflow_dispatch' && inputs.contacts_profile == 'sales'
+        if: env.SALES_QA_ENABLED == 'true'
         run: |
           set -euo pipefail
           QA_DIR="$CONTACTS_QA_SOURCE_DIR/docs/qa/sales-runtime"
@@ -286,7 +319,7 @@ jobs:
           docker cp "$RUNNER_TEMP/sales-parent.xml" "$CID:/opt/moqui/runtime/component/zenith-erp-sales/screen/zenith/sales.xml"
 
       - name: Install disposable Tax verification helper
-        if: github.event_name == 'workflow_dispatch' && inputs.contacts_profile == 'tax'
+        if: env.TAX_QA_ENABLED == 'true'
         run: |
           set -euo pipefail
           QA_DIR="$CONTACTS_QA_SOURCE_DIR/docs/qa/tax-runtime"
@@ -487,7 +520,10 @@ jobs:
         run: |
           set -euo pipefail
           npm init -y >/dev/null 2>&1
-          if [ "$CONTACTS_PROFILE" = none ]; then npm i puppeteer@23 --no-save
+          # Playwright (WebKit/mobile) is needed by the module verifies; install it whenever a module
+          # profile is active, whether chosen by dispatch (CONTACTS_PROFILE) or auto-selected by path.
+          if [ "$CONTACTS_PROFILE" = none ] && [ "${SALES_QA_ENABLED:-false}" != true ] && [ "${TAX_QA_ENABLED:-false}" != true ] && [ "${POS_QA_ENABLED:-false}" != true ]; then
+            npm i puppeteer@23 --no-save
           else npm i puppeteer@23 playwright@1.62.1 --no-save; fi
 
       - name: Render smoke (both surfaces)
@@ -612,7 +648,7 @@ jobs:
       - name: Verify Sales functions, isolation and responsive UI
         # Reconciled from PR #23: runs the Sales QA suite against the running app. Dispatch-only +
         # sales-gated; drive it with `candidate_sha=<Sales PR head>`.
-        if: github.event_name == 'workflow_dispatch' && inputs.contacts_profile == 'sales'
+        if: env.SALES_QA_ENABLED == 'true'
         env:
           SALES_QA_BASE: http://localhost:8080
           SALES_QA_OUT: ${{ runner.temp }}/sales-profile
@@ -625,16 +661,16 @@ jobs:
           node "$CONTACTS_QA_SOURCE_DIR/docs/qa/sales-runtime/verify-runtime.cjs"
 
       - name: Save Sales verification evidence
-        if: always() && github.event_name == 'workflow_dispatch' && inputs.contacts_profile == 'sales'
+        if: always() && env.SALES_QA_ENABLED == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: sales-${{ inputs.candidate_sha }}
+          name: sales-${{ inputs.candidate_sha || github.sha }}
           path: ${{ runner.temp }}/sales-profile
           if-no-files-found: error
           retention-days: 14
 
       - name: Verify Tax services, persistence, isolation and both UI shells
-        if: github.event_name == 'workflow_dispatch' && inputs.contacts_profile == 'tax'
+        if: env.TAX_QA_ENABLED == 'true'
         env:
           TAX_QA_BASE: http://localhost:8080
           TAX_QA_OUT: ${{ runner.temp }}/tax-profile
@@ -648,10 +684,10 @@ jobs:
           docker exec -i "$DBID" psql -U moqui -d moqui -v ON_ERROR_STOP=1 < "$CONTACTS_QA_SOURCE_DIR/docs/qa/tax-runtime/assert.sql"
 
       - name: Save Tax verification evidence
-        if: always() && github.event_name == 'workflow_dispatch' && inputs.contacts_profile == 'tax'
+        if: always() && env.TAX_QA_ENABLED == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: tax-${{ inputs.candidate_sha }}
+          name: tax-${{ inputs.candidate_sha || github.sha }}
           path: ${{ runner.temp }}/tax-profile
           if-no-files-found: error
           retention-days: 14
@@ -696,7 +732,7 @@ jobs:
       - name: Assert Sales disposable database teardown
         # Reconciled from PR #23: after tear-down, prove no staging container/volume remains (the DB
         # lives in a tmpfs disposable container). Dispatch-only + sales-gated.
-        if: always() && github.event_name == 'workflow_dispatch' && inputs.contacts_profile == 'sales'
+        if: always() && env.SALES_QA_ENABLED == 'true'
         run: |
           set -euo pipefail
           PROJECT=$(docker compose -f "$COMPOSE" config --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["name"])')
@@ -706,16 +742,16 @@ jobs:
           printf '{"candidate":"%s","containersRemaining":0,"volumesRemaining":0,"databaseStorage":"removed with disposable tmpfs container"}\n' "$CANDIDATE_SHA" > "$RUNNER_TEMP/sales-cleanup/teardown.json"
 
       - name: Save Sales teardown proof
-        if: always() && github.event_name == 'workflow_dispatch' && inputs.contacts_profile == 'sales'
+        if: always() && env.SALES_QA_ENABLED == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: sales-teardown-${{ inputs.candidate_sha }}
+          name: sales-teardown-${{ inputs.candidate_sha || github.sha }}
           path: ${{ runner.temp }}/sales-cleanup
           if-no-files-found: error
           retention-days: 14
 
       - name: Assert Tax disposable teardown
-        if: always() && github.event_name == 'workflow_dispatch' && inputs.contacts_profile == 'tax'
+        if: always() && env.TAX_QA_ENABLED == 'true'
         run: |
           set -euo pipefail
           PROJECT=$(docker compose -f "$COMPOSE" config --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["name"])')
@@ -725,10 +761,10 @@ jobs:
           printf '{"candidate":"%s","containersRemaining":0,"volumesRemaining":0}\n' "$CANDIDATE_SHA" > "$RUNNER_TEMP/tax-cleanup/teardown.json"
 
       - name: Save Tax teardown proof
-        if: always() && github.event_name == 'workflow_dispatch' && inputs.contacts_profile == 'tax'
+        if: always() && env.TAX_QA_ENABLED == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: tax-teardown-${{ inputs.candidate_sha }}
+          name: tax-teardown-${{ inputs.candidate_sha || github.sha }}
           path: ${{ runner.temp }}/tax-cleanup
           if-no-files-found: error
           retention-days: 14
