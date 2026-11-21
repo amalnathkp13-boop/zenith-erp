@@ -18,6 +18,7 @@
     // per-module sub-nav tabs — [moduleTitle, 'segment:label', …]; href = /qapps/zenith/<mount>/<segment>
     // (POS Terminal → /apps billing surface). Mirrors the /apps #z-subnav route map.
     var SUBNAV = {
+        '/Hr': ['HR', 'Dashboard:Dashboard', 'Directory:Employees', 'Attendance:Attendance', 'Leave:Leave', 'Salary:Salary & Payslips', 'Reports:Reports', 'Settings:Settings'],
         '/Contacts': ['Contacts', 'ContactsDashboard:Dashboard', 'FindContact:All Contacts', 'Customers:Customers', 'Vendors:Suppliers', 'CustomerGroups:Customer Groups', 'MergeContacts:Merge'],
         '/sales': ['Sales', 'SalesDashboard:Dashboard', 'FindQuotation:Quotations', 'FindOrder:Orders', 'FindDeliveryChallan:Delivery Challans', 'FindInvoice:Invoices', 'FindCreditNote:Credit / Debit Notes', 'PosSalesRegister:POS Sales', 'WarrantyPolicies:Warranty', 'Commissions:Commissions', 'SalesForecast:Forecast'],
         '/Purchase': ['Purchase', 'GoodsReceipt:Goods Receipt (GRN)', 'FindPurchaseOrder:Purchase Orders', 'FindPurchaseInvoice:Vendor Bills (ITC)', 'CreatePurchaseInvoice:Log Vendor Bill', 'PurchaseInvoices:Purchase Invoices', 'PurchaseReturns:Purchase Returns', 'JobWorkChallan:Job Work Challan', 'RfqList:RFQs', 'Gstr2bRecon:GSTR-2B Recon', 'VendorEvaluation:Vendor Evaluation'],
@@ -69,6 +70,11 @@
         } catch (_) { return []; }
     }
 
+    function hasHrWorkspace() {
+        var config = document.getElementById('zenith-saas-cfg');
+        return config && config.getAttribute('data-hr-workspace') === 'true';
+    }
+
     function screenHref(path) {
         return (path === '/pos/Terminal' || path === '/kot/CreditBills' ? '/apps/zenith' : '/qapps/zenith') + path;
     }
@@ -89,6 +95,7 @@
             { mod: 'pricing', match: '/pricing', icon: 'sell', label: 'Pricing', href: '/qapps/zenith/pricing/PricingDashboard' }
         ] },
         { head: 'OPERATIONS', items: [
+            { mod: 'hr', match: '/Hr', icon: 'people_outline', label: 'HR', href: '/qapps/zenith/Hr/Dashboard' },
             { mod: 'inventory', match: '/Inventory', icon: 'inventory_2', label: 'Inventory', href: '/qapps/zenith/Inventory/InventoryDashboard' },
             { mod: 'manufacturing', match: '/manufacturing', icon: 'precision_manufacturing', label: 'Manufacturing', href: '/qapps/zenith/manufacturing/WorkOrders' },
             { mod: 'project', match: '/project', icon: 'folder_open', label: 'Projects', href: '/qapps/zenith/project' },
@@ -163,6 +170,7 @@
         categories.forEach(function (grp) {
             if (grp.head) { var h = el('div', 'zqs-cat', grp.head); scroll.appendChild(h); }
             grp.items.forEach(function (it) {
+                if (it.mod === 'hr' && !hasHrWorkspace()) return;
                 var a = el('a', 'zqs-link'); a.href = it.href;
                 if (it.mod) a.setAttribute('data-mod', it.mod);
                 a.setAttribute('data-match', it.match);
@@ -441,6 +449,7 @@
             DASHBOARDS.forEach(function (d) {
                 if (d[3] && mods && mods.indexOf(d[3]) < 0) return;   // module not in the tenant's plan → skip
                 var a = el('a', 'zqsub-tab', d[0]); a.href = d[1];
+                if (d[3] === 'hr' && hasHrWorkspace()) a.href = screenHref('/Hr/Dashboard');
                 a.setAttribute('data-match', d[2]);
                 var on = (d[2] === '/') ? (rel === '/' || rel === '/Dashboard') : (rel.indexOf(d[2]) === 0);
                 if (on) a.classList.add('on');
@@ -453,7 +462,7 @@
         var roleSection = sections && sections.find(function (item) { return rel === item.mount || rel.indexOf(item.mount + '/') === 0; });
         var key = sections ? roleSection && roleSection.mount : '/' + (rel.split('/')[1] || '');
         subBar.innerHTML = '';
-        if (!key || (!roleSection && !SUBNAV[key])) { subBar.classList.remove('show'); document.body.classList.remove('zq-has-subnav'); syncHeaderLayout(); document.dispatchEvent(new Event('zc:subnav-updated')); return; }
+        if (!key || (!roleSection && (!SUBNAV[key] || (key === '/Hr' && !hasHrWorkspace())))) { subBar.classList.remove('show'); document.body.classList.remove('zq-has-subnav'); syncHeaderLayout(); document.dispatchEvent(new Event('zc:subnav-updated')); return; }
         var mount = key.slice(1);
         subBar.setAttribute('data-mod', mount);  // ZE-CONTACTS-DS: lets CSS scope the active-tab pill to Contacts only
         // ZE-NAV-ALIAS: a detail/edit screen (menu-include=false, e.g. EditStockTransfer) shares no URL prefix with its
@@ -472,6 +481,11 @@
         function addTab(match, label) {
             var a = el('a', 'zqsub-tab', label);
             a.href = screenHref(match);
+            if (match === '/Hr/Leave') {
+                var count = el('span', 'hr-leave-count');
+                count.hidden = true;
+                a.appendChild(count);
+            }
             a.setAttribute('data-match', match);
             if ((relA === match || relA.indexOf(match + '/') === 0) && match.length > alen) { active = a; alen = match.length; }
             subBar.appendChild(a);

@@ -1,4 +1,46 @@
 /* Shared module tab customization; the regular ERP shell owns the header and sidebar. */
+/* HR's tabs live in the shared navigation, outside the workspace's shadow root. */
+#content > .inner:has(#zc-hr-workspace) { padding-top:0; }
+#content .container-fluid:has(> #zc-hr-workspace) { padding-inline:0; }
+.q-page-container.q-ma-sm:has(#zc-hr-workspace) { margin:0; }
+#content:has(#zc-hr-workspace), .q-page:has(#zc-hr-workspace) { background:#f8f9fc; }
+:is(#z-subnav:has(.zsub-grp.show[data-match="/Hr"]), #zq-subnav.show[data-mod="Hr"]) {
+    --hr-tab-size:14px; --hr-tab-padding:17px;
+    min-height:54px; border-bottom-color:#e5d9ff;
+    font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+:is(#z-subnav .zsub-grp[data-match="/Hr"], #zq-subnav[data-mod="Hr"]) :is(.zsub-tab,.zqsub-tab) {
+    display:flex; align-items:center; align-self:stretch; justify-content:center; gap:7px;
+    padding:0 var(--hr-tab-padding); border-radius:7px 7px 0 0; border-bottom:3px solid transparent;
+    color:#605a7c; font-size:var(--hr-tab-size); font-weight:550;
+}
+:is(#z-subnav .zsub-grp[data-match="/Hr"], #zq-subnav[data-mod="Hr"]) :is(.zsub-tab,.zqsub-tab).on {
+    background:#f6f2ff; border-bottom-color:#8b3dff; color:#7c3aed; font-weight:650;
+}
+:is(#z-subnav .zsub-grp[data-match="/Hr"], #zq-subnav[data-mod="Hr"]) :is(.zsub-title,.zqsub-title) {
+    display:flex; align-items:center; justify-content:center; min-width:68px; padding:0 18px;
+    font-size:14px; font-weight:650; letter-spacing:normal; color:#4c4574;
+}
+@media (max-width:1180px) {
+    :is(#z-subnav:has(.zsub-grp.show[data-match="/Hr"]), #zq-subnav.show[data-mod="Hr"]) {
+        --hr-tab-size:13px; --hr-tab-padding:14px;
+    }
+}
+@media (max-width:760px) {
+    .q-page-container.q-ma-sm:has(#zc-hr-workspace) { margin:0!important; padding-right:0!important; }
+    .q-page:has(#zc-hr-workspace) { padding-top:0!important; }
+    :is(#z-subnav:has(.zsub-grp.show[data-match="/Hr"]), #zq-subnav.show[data-mod="Hr"]) {
+        --hr-tab-size:12px; --hr-tab-padding:13px;
+    }
+    :is(#z-subnav .zsub-grp[data-match="/Hr"], #zq-subnav[data-mod="Hr"]) :is(.zsub-title,.zqsub-title) {
+        min-width:49px; padding:0 12px; font-size:12px;
+    }
+}
+.hr-leave-count:not([hidden]) {
+    display:inline-flex; justify-content:center; align-items:center;
+    min-width:18px; height:18px; padding:1px 5px; border-radius:9px;
+    background:#f0e9fc; color:#7c3aed; font-size:10px; line-height:16px;
+}
 #z-subnav.show, #zq-subnav.show { align-items:stretch; overflow:visible; }
 /* Bootstrap 3 .show uses !important; keep the classic tab row flex as well. */
 #z-subnav.show { display:flex !important; }

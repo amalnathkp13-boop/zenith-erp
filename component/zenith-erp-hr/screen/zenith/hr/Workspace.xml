@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
+        require-authentication="true" default-menu-title="HR">
+    <transition name="readWorkspace" method="get" read-only="true" begin-transaction="false">
+        <actions><script><![CDATA[
+            ec.web.response.setHeader('Cache-Control', 'private, no-store')
+            ec.web.sendJsonResponse(ec.service.sync().name('zenith.hr.WorkspaceServices.load#Workspace').call())
+        ]]></script></actions>
+        <default-response type="none"/>
+    </transition>
+    <transition name="saveWorkspace" method="post" require-session-token="true">
+        <actions><script><![CDATA[
+            ec.web.response.setHeader('Cache-Control', 'private, no-store')
+            def result = ec.service.sync().name('zenith.hr.WorkspaceServices.save#Workspace')
+                .parameters([revision:revision, workspace:workspace, message:message]).call()
+            ec.web.sendJsonResponse(result)
+        ]]></script></actions>
+        <default-response type="none"/>
+    </transition>
+    <actions><script><![CDATA[
+        ec.web.response.setHeader('Cache-Control', 'private, no-store')
+        if (!ec.service.sync().name('zenith.hr.WorkspaceServices.get#WorkspaceAccess').call().allowed) {
+            def uri = ec.web.request.requestURI
+            def shell = uri.startsWith('/qapps/') ? '/qapps' : '/apps'
+            // Existing links to the module root still open the legacy dashboard for limited HR roles.
+            def target = uri ==~ /.*\/Hr\/?/ ? '/zenith/Hr/HrDashboard' : '/zenith/AccessDenied'
+            sri.sendRedirectAndStopRender(shell + target)
+            return
+        }
+        def pages = [Dashboard:'dashboard', Directory:'employees', Attendance:'attendance', Leave:'leave',
+                     Salary:'payroll', Reports:'reports', Settings:'settings']
+        hrPage = pages[sri.screenUrlInfo.fullPathNameList.last()] ?: 'dashboard'
+    ]]></script></actions>
+    <widgets><render-mode>
+        <text type="html,qvt" location="component://zenith-erp-hr/template/hr/Workspace.html.ftl" template="true"/>
+    </render-mode></widgets>
+</screen>

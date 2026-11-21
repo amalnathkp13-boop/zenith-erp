@@ -348,7 +348,7 @@
             html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=313')
             html_stylesheets.add('/zenithstatic/css/users-access.css?v=2')
             html_stylesheets.add('/zenithstatic/css/sidebar-manager.css?v=3')
-            html_stylesheets.add('/zenithstatic/css/subnav-manager.css?v=3')
+            html_stylesheets.add('/zenithstatic/css/subnav-manager.css?v=4')
             html_stylesheets.add('/zenithstatic/css/my-subscription-reference.css?v=1')
             html_stylesheets.add('/zenithstatic/css/saas-admin.css?v=4')
             html_stylesheets.add('/zenithstatic/css/product-catalog.css?v=3')
@@ -392,7 +392,7 @@
             html_stylesheets.add('https://fonts.googleapis.com/icon?family=Material+Icons')
             if (footer_scripts == null) footer_scripts = []
             footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=14')
-            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=58')
+            footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=59')
             footer_scripts.add('/zenithstatic/js/profile-menu.js?v=1')
             footer_scripts.add('/zenithstatic/js/pos-deferred-close.js?v=' + ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-deferred-close.js').getLastModified())
             footer_scripts.add('/zenithstatic/js/sidebar-manager.js?v=3')
@@ -626,6 +626,8 @@
                 _navShow[module] = !context.navRestricted || navigation.moduleIds.contains(module)
             }
             context.navShow = _navShow
+            context.showHrWorkspace = _navShow.hr && ec.factory.componentBaseLocations.containsKey('zenith-erp-hr') &&
+                ec.service.sync().name('zenith.hr.WorkspaceServices.get#WorkspaceAccess').disableAuthz().call().allowed
             context.navCatSalesCrm = (_navShow['sales'] || _navShow['purchase'] || _navShow['crm'] || _navShow['pos'] || _navShow['kot'] || _navShow['pricing'])
             context.navCatFinance = (_navShow['accounting'] || _navShow['payroll'] || _navShow['expenses'] || _navShow['tax'])
 
@@ -739,7 +741,7 @@
              caused admin/cashier menus to flash Super-Admin items). A plain type="html" block renders only
              on /apps; type="html,qvt" renders on BOTH, so the hidden config div is available in either shell. -->
         <render-mode><text type="html,qvt"><![CDATA[
-            <div id="zenith-saas-cfg" data-role-scope="${(roleNavJson!'{}')?html}" style="display:none" data-nav-restricted="${(navRestricted!false)?c}" data-tenant="${(isSaasTenant!false)?c}" data-all="${(saasHasAllAccess!false)?c}" data-pos-only="${(posOnlyUser!false)?c}" data-is-admin="${(canManageSettings!false)?c}" data-super="${(isSuperAdmin!false)?c}" data-org-name="${(zTopOrgName!'')?html}" data-user-name="${((ec.user.userAccount.userFullName)!(ec.user.username)!'')?html}" data-modules='${saasVisibleModulesJson!saasAllowedModulesJson!"[]"}'></div>
+            <div id="zenith-saas-cfg" data-hr-workspace="${(showHrWorkspace!false)?c}" data-role-scope="${(roleNavJson!'{}')?html}" style="display:none" data-nav-restricted="${(navRestricted!false)?c}" data-tenant="${(isSaasTenant!false)?c}" data-all="${(saasHasAllAccess!false)?c}" data-pos-only="${(posOnlyUser!false)?c}" data-is-admin="${(canManageSettings!false)?c}" data-super="${(isSuperAdmin!false)?c}" data-org-name="${(zTopOrgName!'')?html}" data-user-name="${((ec.user.userAccount.userFullName)!(ec.user.username)!'')?html}" data-modules='${saasVisibleModulesJson!saasAllowedModulesJson!"[]"}'></div>
             <!-- ZE-SHOP: shop switcher data (rendered server-side to avoid attribute-escaping pitfalls in shop names). -->
             <div id="z-shopdata" style="display:none" data-multishop="${(hasMultiShop!false)?c}" data-restricted="${(shopAccessRestricted!false)?c}" data-shop-name="${(activeShopName!'')?html}" data-active="${(activeShopId!'')?html}" data-token="${(ec.web.sessionToken)!''}"><#if shopList??><#list shopList as s><i data-id="${(s.id!'')?html}" data-name="${(s.name!'')?html}"></i></#list></#if></div>
             <div id="pos-sync-context" hidden data-organization="${(ec.user.getPreference('ACTIVE_ORGANIZATION')!'')?html}" data-user="${(ec.user.userId!'')?html}" data-token="${(ec.web.sessionToken!'')?html}"></div>
@@ -924,6 +926,7 @@
             <#if (navShow['kot'])!false><a class="zs-link" data-mod="kot" data-match="/kot" href="/apps/zenith/kot"><span class="material-icons">restaurant</span><span class="t">KOT</span></a></#if>
             <#if (navShow['pricing'])!true><a class="zs-link" data-mod="pricing" data-match="/pricing" href="/apps/zenith/pricing/PricingDashboard"><span class="material-icons">sell</span><span class="t">Pricing</span></a></#if>
             <div class="zs-cat" data-cat="2">OPERATIONS</div>
+            <#if showHrWorkspace!false><a class="zs-link" data-mod="hr" data-match="/Hr" href="/apps/zenith/Hr/Dashboard"><span class="material-icons">people_outline</span><span class="t">HR</span></a></#if>
             <#if (navShow['inventory'])!true><a class="zs-link" data-mod="inventory" data-match="/Inventory" href="/apps/zenith/Inventory/InventoryDashboard"><span class="material-icons">inventory_2</span><span class="t">Inventory</span></a></#if>
             <#if (navShow['manufacturing'])!true><a class="zs-link" data-mod="manufacturing" data-match="/manufacturing" href="/apps/zenith/manufacturing/WorkOrders"><span class="material-icons">precision_manufacturing</span><span class="t">Manufacturing</span></a></#if>
             <#if (navShow['project'])!true><a class="zs-link" data-mod="project" data-match="/project" href="/apps/zenith/project"><span class="material-icons">folder_open</span><span class="t">Projects</span></a></#if>
@@ -965,7 +968,7 @@
             <#if (navShow['inventory'])!true><a class="zsub-tab" data-mod="inventory" data-match="/Inventory" href="/apps/zenith/Inventory/InventoryDashboard">Inventory</a></#if>
             <#if (navShow['accounting'])!true><a class="zsub-tab" data-mod="accounting" data-match="/Accounting" href="/apps/zenith/Accounting/AcctgDashboard">Accounting</a></#if>
             <#if (navShow['contacts'])!true><a class="zsub-tab" data-mod="contacts" data-match="/Contacts" href="/apps/zenith/Contacts/ContactsDashboard">Contacts</a></#if>
-            <#if (navShow['hr'])!true><a class="zsub-tab" data-mod="hr" data-match="/Hr" href="/apps/zenith/Hr/HrDashboard">HR</a></#if>
+            <#if (navShow['hr'])!true><a class="zsub-tab" data-mod="hr" data-match="/Hr" href="/apps/zenith/Hr/<#if showHrWorkspace!false>Dashboard<#else>HrDashboard</#if>">HR</a></#if>
             <#if (navShow['tax'])!true><a class="zsub-tab" data-mod="tax" data-match="/tax/TaxDashboard" href="/apps/zenith/tax/TaxDashboard">Tax</a></#if>
             <#if (navShow['pricing'])!true><a class="zsub-tab" data-mod="pricing" data-match="/pricing/PricingDashboard" href="/apps/zenith/pricing/PricingDashboard">Pricing</a></#if>
             <#if (navShow['barcode'])!true><a class="zsub-tab" data-mod="barcode" data-match="/barcode/BarcodeDashboard" href="/apps/zenith/barcode/BarcodeDashboard">Barcode</a></#if>
@@ -1062,6 +1065,21 @@
             <a class="zsub-tab" data-match="/kot/WaiterManagement" href="/apps/zenith/kot/WaiterManagement">Waiters</a>
             <@posSubnavTabs module="kot"/>
           </div>
+]]></text></render-mode>
+        <render-mode><text type="html"><![CDATA[
+]]></text></render-mode>
+        <render-mode><text type="html" template="true"><![CDATA[
+          <#if showHrWorkspace!false>
+          <div class="zsub-grp" data-match="/Hr"><span class="zsub-title">HR</span>
+            <a class="zsub-tab" data-match="/Hr/Dashboard" href="/apps/zenith/Hr/Dashboard">Dashboard</a>
+            <a class="zsub-tab" data-match="/Hr/Directory" href="/apps/zenith/Hr/Directory">Employees</a>
+            <a class="zsub-tab" data-match="/Hr/Attendance" href="/apps/zenith/Hr/Attendance">Attendance</a>
+            <a class="zsub-tab" data-match="/Hr/Leave" href="/apps/zenith/Hr/Leave">Leave<span class="hr-leave-count" hidden></span></a>
+            <a class="zsub-tab" data-match="/Hr/Salary" href="/apps/zenith/Hr/Salary">Salary &amp; Payslips</a>
+            <a class="zsub-tab" data-match="/Hr/Reports" href="/apps/zenith/Hr/Reports">Reports</a>
+            <a class="zsub-tab" data-match="/Hr/Settings" href="/apps/zenith/Hr/Settings">Settings</a>
+          </div>
+          </#if>
 ]]></text></render-mode>
         <render-mode><text type="html"><![CDATA[
           <div class="zsub-grp" data-match="/Inventory"><span class="zsub-title">Inventory</span>

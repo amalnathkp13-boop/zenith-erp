@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
+    <service verb="get" noun="WorkspaceAccess" authenticate="true" transaction="ignore">
+        <out-parameters><parameter name="allowed" type="Boolean"/><parameter name="includePayroll" type="Boolean"/></out-parameters>
+        <actions><script><![CDATA[
+            allowed = false; includePayroll = false
+            if (!ec.user.userId) return
+            def administrator = ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN')
+            boolean payrollGrant = administrator
+            if (!administrator) {
+                def scope = ec.service.sync().name('zenith.base.RoleAccessServices.get#AssignedRoleScope').disableAuthz().call()
+                def grants = scope.legacyWriteModules ?: []
+                if (!scope.restricted) {
+                    def groups = (ec.user.userGroupIdSet ?: []) as List
+                    if (!groups) return
+                    grants = ec.entity.find('moqui.security.ArtifactAuthz').condition('userGroupId','in',groups)
+                        .condition('artifactGroupId','in',['Z_HR','Z_PAYROLL']).condition('authzActionEnumId','AUTHZA_ALL')
+                        .condition('authzTypeEnumId','in',['AUTHZT_ALLOW','AUTHZT_ALWAYS']).disableAuthz().useCache(true).list()
+                        .collect { it.artifactGroupId.substring(2).toLowerCase() }
+                }
+                def screens = scope.selections?.hr ?: []
+                if (!grants.containsAll(['hr','payroll']) &&
+                        !['Dashboard','Directory','Attendance','Leave','Salary','Reports','Settings'].every { screens.contains('/Hr/' + it) }) return
+                payrollGrant = grants.contains('payroll') || scope.legacyModules?.contains('payroll') ||
+                        (scope.selections?.payroll ?: []).contains('/payroll/PayrollRuns')
+            }
+            def scopeOrg = ec.service.sync().name('zenith.base.RoleAccessServices.get#RoleOrganization').disableAuthz().call().organizationPartyId
+            if (!scopeOrg || scopeOrg != ec.user.getPreference('ACTIVE_ORGANIZATION')) return
+            boolean payrollInPlan = true
+            if (ec.entity.isEntityDefined('zenith.erp.saas.SaasTenant')) {
+                def tenants = ec.entity.find('zenith.erp.saas.SaasTenant').condition('organizationPartyId',scopeOrg).disableAuthz().limit(2).list()
+                if (tenants.size() > 1) return
+                def tenant = tenants ? tenants[0] : null
+                if (tenant) {
+                    if (!(tenant.statusId in ['SaasTenantActive','SaasTenantTrial'])) return
+                    def plan = ec.entity.find('zenith.erp.saas.SaasPlanModule').condition('planId',tenant.planId)
+                        .disableAuthz().useCache(true).list()*.moduleId.collect { it.toLowerCase() }
+                    if (!plan.contains('all') && !plan.contains('hr')) return
+                    payrollInPlan = plan.contains('all') || plan.contains('payroll')
+                }
+            }
+            allowed = true; includePayroll = payrollInPlan && payrollGrant
+        ]]></script></actions>
+    </service>
+    <service verb="load" noun="Workspace" authenticate="true">
+        <out-parameters>
+            <parameter name="success" type="Boolean"/><parameter name="error"/>
+            <parameter name="state" type="Map"/><parameter name="revision"/><parameter name="today"/>
+        </out-parameters>
+        <actions>
+            <service-call name="zenith.hr.WorkspaceServices.get#WorkspaceAccess" out-map="permission"/>
+            <if condition="!permission.allowed"><set field="success" from="false"/><set field="error" value="Select an organization with HR management access."/><return/></if>
+            <script><![CDATA[
+                def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
+                def loaded = ec.resource.script('component://zenith-erp-hr/script/ReadWorkspace.groovy', null, [org:org,lockRows:false,includePayroll:permission.includePayroll])
+                state = loaded.state; revision = loaded.revision; today = loaded.today; success = true
+            ]]></script>
+        </actions>
+    </service>
+    <service verb="save" noun="Workspace" authenticate="true">
+        <in-parameters><parameter name="revision" required="true"/><parameter name="workspace" required="true" allow-html="any"/><parameter name="message"/></in-parameters>
+        <out-parameters>
+            <parameter name="success" type="Boolean"/><parameter name="conflict" type="Boolean"/><parameter name="error"/>
+            <parameter name="state" type="Map"/><parameter name="revision"/><parameter name="today"/>
+        </out-parameters>
+        <actions>
+            <service-call name="zenith.hr.WorkspaceServices.get#WorkspaceAccess" out-map="permission"/>
+            <if condition="!permission.allowed"><set field="success" from="false"/><set field="error" value="Select an organization with HR management access."/><return/></if>
+            <script><![CDATA[
+                success = false
+                def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
+                // Serialize the very first save too: the organization exists before it has workspace settings.
+                if (!ec.entity.find('mantle.party.Organization').condition('partyId',org).disableAuthz().forUpdate(true).one()) {
+                    error = 'Organization not found.'; return
+                }
+                def current = ec.resource.script('component://zenith-erp-hr/script/ReadWorkspace.groovy', null, [org:org,lockRows:true,includePayroll:permission.includePayroll])
+                if (revision != current.revision) {
+                    conflict = true; error = 'HR records changed. Reload the workspace and try your edit again.'; return
+                }
+                def data
+                try { data = new groovy.json.JsonSlurper().parseText(workspace) }
+                catch (groovy.json.JsonException ignored) { error = 'Invalid HR records.'; return }
+                try {
+                    ec.resource.script('component://zenith-erp-hr/script/ValidateWorkspace.groovy',null,
+                        [next:data,previous:current.state,today:current.today,payrollPeriods:current.payrollPeriods])
+                } catch (IllegalArgumentException invalid) { error = invalid.message; return }
+                ec.resource.script('component://zenith-erp-hr/script/WriteWorkspace.groovy', null,
+                    [org:org,next:data,current:current,description:(message ?: 'Updated HR records.').take(250)])
+                def loaded = ec.resource.script('component://zenith-erp-hr/script/ReadWorkspace.groovy', null, [org:org,lockRows:false,includePayroll:permission.includePayroll])
+                state = loaded.state; revision = loaded.revision; today = loaded.today; success = true
+            ]]></script>
+        </actions>
+    </service>
+</services>
