@@ -372,6 +372,8 @@
         open:['zenith.pos.PosServices.open#PosSession',['terminalId','openingCash']],
         kitchenSend:['zenith.pos.KotServices.create#KitchenOrderTicket',['posTransactionId','items']],
         close:['zenith.pos.PosServices.close#PosSession',['sessionId','closingCash']],
+        orphanVoid:['zenith.pos.PosServices.void#OrphanedPosCarts',['olderThanHours']],
+        idleSweep:['zenith.pos.PosServices.sweep#IdlePosSessions',[]],
         cart:['zenith.pos.PosServices.create#PosTransaction',['sessionId','transactionType','customerName','destinationRegionGeoId','reuseOpenCart']],
         add:['zenith.pos.PosServices.add#PosTransactionItem',['transactionId','productId','quantity','unitPrice','discountPercent','salesModeId','taxOn']],
         remove:['zenith.pos.PosServices.remove#PosTransactionItem',['transactionId','itemSeqId']],
@@ -410,6 +412,7 @@
     if (params.items instanceof String) params.items=new groovy.json.JsonSlurper().parseText(params.items)
     def result=ec.service.sync().name(call[0]).parameters(params).call()
     def publicResult=[:]
+    ['voidedCount','closedCount'].each { if(result?.containsKey(it))publicResult[it]=result[it] }
     ['wastageId','duplicate','productId','created','weighingScaleConfigId','sessionId','transactionId','itemSeqId','paymentId','heldId','cashEntryId','cashMgmtId','returnId','invoiceId','skipped','outstanding','fullyPaid','paidAmount','synced','syncedCount','syncedIds','failedCount','failed','errors','receipt','receiptData','products','customers','catalogJson','success'].each { if(result?.containsKey(it))publicResult[it]=result[it] }
     def errors=ec.message.hasError() ? [ec.message.getErrorsString()] : []
     ec.message.clearErrors()
@@ -424,10 +427,39 @@
         ec.web.response.setStatus(403);ec.web.sendJsonResponse([denied:true]);return
     }
     def minutes=(ec.web.parameters.minutes ?: '61').toString()
-    if (!['5','55','61'].contains(minutes)) {ec.web.response.setStatus(400);ec.web.sendJsonResponse([denied:true]);return}
-    session.lastActivityDate=new java.sql.Timestamp(ec.user.nowTimestamp.time-minutes.toLong()*60L*1000L)
+    if (!['5','55','59','61'].contains(minutes)) {ec.web.response.setStatus(400);ec.web.sendJsonResponse([denied:true]);return}
+    def remaining=ec.web.parameters.remainingSeconds?.toString()
+    if (remaining && !['3','5','10','15','20'].contains(remaining)) {ec.web.response.setStatus(400);return}
+    session.lastActivityDate=new java.sql.Timestamp(ec.user.nowTimestamp.time-(remaining ? 3600000L-remaining.toLong()*1000L : minutes.toLong()*60L*1000L))
     session.update()
     ec.web.sendJsonResponse([backdated:true])
+]]></script></actions><default-response type="none"/></transition>
+<transition name="idleRetainedClock" method="post"><actions><script><![CDATA[
+    def session=ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',ec.web.parameters.sessionId).one()
+    if (System.getProperty('pos.qa.disposable')!='true' || ec.user.username!='pos.qa' ||
+        session?.organizationPartyId!='POS_QA_A' || !session.terminalId?.startsWith('QA_IDLE_WORK_') ||
+        session.statusId!='PsClosed' || session.closeReason!='IdleUnverifiedCash') {ec.web.response.setStatus(403);return}
+    session.set('closeDate',new java.sql.Timestamp(ec.user.nowTimestamp.time-25L*3600000L)).update()
+    ec.web.sendJsonResponse([backdated:true])
+]]></script></actions><default-response type="none"/></transition>
+<transition name="idleLegacyClock" method="post"><actions><script><![CDATA[
+    def session=ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',ec.web.parameters.sessionId).one()
+    def minutes=ec.web.parameters.minutes?.toString()
+    if (System.getProperty('pos.qa.disposable')!='true' || ec.user.username!='pos.qa' ||
+        session?.organizationPartyId!='POS_QA_A' || !session.terminalId?.startsWith('QA_IDLE_WORK_') ||
+        session.statusId!='PsOpen' || !(minutes in ['5','61'])) {ec.web.response.setStatus(403);return}
+    session.setAll([lastActivityDate:null,openDate:new java.sql.Timestamp(ec.user.nowTimestamp.time-minutes.toLong()*60000L)]).update()
+    ec.web.sendJsonResponse([backdated:true])
+]]></script></actions><default-response type="none"/></transition>
+<transition name="idleQrFixture" method="post"><actions><script><![CDATA[
+    def tx=ec.entity.find('zenith.erp.pos.PosTransaction').condition('transactionId',ec.web.parameters.transactionId).one()
+    def session=tx ? ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',tx.sessionId).one() : null
+    def status=ec.web.parameters.statusId?.toString()
+    if (System.getProperty('pos.qa.disposable')!='true' || ec.user.username!='pos.qa' || tx?.organizationPartyId!='POS_QA_A' ||
+        !session?.terminalId?.startsWith('QA_IDLE_WORK_') || tx.statusId!='PtCreated' || !(status in ['QpPending','QpConfirmed','QpFailed'])) {ec.web.response.setStatus(403);return}
+    ec.entity.makeValue('zenith.erp.pos.PosQrPayment').setAll([qrPaymentId:'QA_IDLE_'+tx.transactionId,
+        transactionId:tx.transactionId,organizationPartyId:'POS_QA_A',amount:tx.payableAmount,statusId:status]).createOrUpdate()
+    ec.web.sendJsonResponse([updated:true])
 ]]></script></actions><default-response type="none"/></transition>
 <transition name="legacyCartStates"><actions><script><![CDATA[
     if (System.getProperty('pos.qa.disposable')!='true' || ec.user.username!='pos.qa') {

@@ -66,5 +66,7 @@ module.exports=async function({a,foreign,base,check,q,invoke,post,out}){
  }
 
  await require('./verify-idle-boundaries.cjs')({a,base,check,q,invoke,post,out,loggedOutSweep});
+ await require('./verify-idle-preserved-work.cjs')({a,base,check,q,invoke,post});
+ await require('./verify-idle-live-browser.cjs')({a,base,check,q,invoke,post,out});
 
 };

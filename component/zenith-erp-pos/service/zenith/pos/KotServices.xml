@@ -36,7 +36,7 @@
             <parameter name="includeHandoffNotice" type="Boolean"/></in-parameters>
         <out-parameters>
             <parameter name="session" type="Map"/><parameter name="terminal" type="Map"/>
-            <parameter name="sessionClosed" type="Boolean"/><parameter name="handoffUserId"/>
+            <parameter name="sessionClosed" type="Boolean"/><parameter name="handoffUserId"/><parameter name="closeReason"/>
             <parameter name="billSummary" type="Map"/>
         </out-parameters>
         <actions>
@@ -58,6 +58,7 @@
                     if(includeHandoffNotice) {
                         sessionClosed=true
                         handoffUserId=row.handoffUserId
+                        closeReason=row.closeReason
                     } else ec.message.addError('This billing session is closed.')
                     return
                 }

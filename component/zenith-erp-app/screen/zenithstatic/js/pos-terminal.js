@@ -4258,11 +4258,12 @@ window.posToggleFullscreen = function() {
         var heldCount = 0;
         var catalogRevision = '', catalogCheck = null, catalogDirtyTx = '';
 
-        // Keep this till open while the billing workspace is mounted.
+        // Poll session status separately from trusted cashier activity.
         if (window.__posIdleCleanup) window.__posIdleCleanup();
         var idleAbort = new AbortController();
         var lastGestureAt = Date.now();
         var lastTouchSentAt = 0;
+        var lastActivitySentAt = 0, idleCloseTimer, touchVersion = 0;
         var lastDayCheckAt = 0;
         var dayRefreshPending = false;
         var dayBadge = document.getElementById('pos-today-bills');
@@ -4270,18 +4271,32 @@ window.posToggleFullscreen = function() {
         var dayFormatter;
         try { if (dayBadge) dayFormatter = new Intl.DateTimeFormat('en-US', {timeZone:dayBadge.dataset.timeZone,
             year:'numeric',month:'2-digit',day:'2-digit'}); } catch (_) {}
-        function sendSessionTouch() {
-            if (!SI || handedOff || Date.now() - lastTouchSentAt < 10000) return;
-            lastTouchSentAt = Date.now();
+        function sendSessionTouch(activity = false, force = false) {
+            if (!SI || handedOff || !af.isConnected) return;
+            var now = Date.now();
+            if (!force && now - (activity ? lastActivitySentAt : lastTouchSentAt) < (activity ? 5000 : 10000)) return;
+            lastTouchSentAt = now;
+            if (activity) lastActivitySentAt = now;
+            var version = ++touchVersion;
             fetch(location.pathname.replace(/\/+$/, '') + '/touchSession', {method:'POST', credentials:'same-origin',
                 headers:{'Content-Type':'application/x-www-form-urlencoded'},
-                body:new URLSearchParams({sessionId:SI, moquiSessionToken:TK})})
+                body:new URLSearchParams({sessionId:SI, activity:activity ? 'Y' : 'N', moquiSessionToken:TK})})
                 .then(function(response){ return response.json(); })
                 .then(function(result){
-                    if (!af.isConnected || !result.handoffUserId) return;
-                    handedOff = true;
-                    window.__posIdleCleanup();
-                    PosTillDialogs.showHandoff(result.handoffUserId, function(){ location.assign('/apps/zenith/pos/Dashboard'); });
+                    if (!af.isConnected || !result.success) return;
+                    if (result.open === false) {
+                        handedOff = true;
+                        window.__posIdleCleanup();
+                        if (result.handoffUserId) PosTillDialogs.showHandoff(result.handoffUserId, function(){ location.assign('/apps/zenith/pos/Dashboard'); });
+                        else if (result.closeReason === 'IdleUnverifiedCash' || result.closeReason === 'IdleReviewed')
+                            PosTillDialogs.showIdleClose(function(){ location.assign('/apps/zenith/pos/Terminal?chooseTerminal=Y'); });
+                        else location.assign('/apps/zenith/pos/Terminal?chooseTerminal=Y');
+                        return;
+                    }
+                    if (version !== touchVersion) return;
+                    clearTimeout(idleCloseTimer);
+                    if (Number.isFinite(result.idleCloseAfterMs))
+                        idleCloseTimer = setTimeout(function(){ sendSessionTouch(false, true); }, Math.max(1000, result.idleCloseAfterMs));
                 }).catch(function(){});
         }
         function maintainBillingScreen() {
@@ -4304,7 +4319,7 @@ window.posToggleFullscreen = function() {
         function onCashierGesture(e) {
             if (!e.isTrusted || !af.isConnected) return;
             lastGestureAt = Date.now();
-            sendSessionTouch();
+            sendSessionTouch(true);
         }
         ['pointerdown','keydown','touchstart','wheel'].forEach(function(type) {
             document.addEventListener(type,onCashierGesture,{capture:true,passive:true,signal:idleAbort.signal});
@@ -4314,7 +4329,7 @@ window.posToggleFullscreen = function() {
         },{signal:idleAbort.signal});
         window.addEventListener('focus', pollCatalog, {signal:idleAbort.signal});
         var idleInterval = setInterval(function(){ maintainBillingScreen(); pollCatalog(); },10000);
-        window.__posIdleCleanup = function(){ idleAbort.abort(); clearInterval(idleInterval); };
+        window.__posIdleCleanup = function(){ idleAbort.abort(); clearInterval(idleInterval); clearTimeout(idleCloseTimer); };
         sendSessionTouch();
 
         // --- Auto-update: reload the open terminal to the newest deploy, but ONLY when idle ----------

@@ -55,6 +55,7 @@
             <!-- Resume or hand off only the selected terminal. Other counters may still be billing. -->
             <entity-find entity-name="zenith.erp.pos.PosSession" list="existingOpen" limit="1">
                 <econdition field-name="terminalId" from="terminalId"/>
+                <econdition field-name="organizationPartyId" from="_posAccess.organizationPartyId"/>
                 <econdition field-name="statusId" value="PsOpen"/>
             </entity-find>
             <if condition="existingOpen &amp;&amp; existingOpen[0].operatorPartyId == ec.user.userAccount?.partyId">
@@ -76,7 +77,7 @@
                         .orderBy('transactionId') }
                     def carts = openCarts().forUpdate(true).list()
                     active = ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',active.sessionId).forUpdate(true).one()
-                    if (active.statusId != 'PsOpen') return
+                    if (active.statusId != 'PsOpen') { existingOpen=[]; return }
                     if (openCarts().selectField('transactionId').list()*.transactionId != carts*.transactionId) {
                         ec.message.addError('Billing changed while opening the terminal. Please try again.'); return
                     }
@@ -96,32 +97,60 @@
                 ]]></script>
                 <if condition="ec.message.hasError()"><return/></if>
             </if>
+            <set field="idleRetainedWork" from="[]"/>
+            <if condition="!existingOpen"><script><![CDATA[
+                // Reopening the same counter recovers unpaid work retained by automatic closure.
+                // Lock carts before their old drawer, matching checkout and the idle sweep.
+                def draftSessions = ec.entity.find('zenith.erp.pos.PosTransactionView')
+                    .condition([terminalId:terminalId,organizationPartyId:_posAccess.organizationPartyId])
+                    .condition('statusId','in',['PtCreated','PtHeld']).selectField('sessionId').distinct(true).list()*.sessionId
+                def retained = draftSessions ? ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId','in',draftSessions)
+                    .condition([terminalId:terminalId,organizationPartyId:_posAccess.organizationPartyId,statusId:'PsClosed'])
+                    .condition('closeReason','in',['IdleUnverifiedCash','IdleReviewed']).orderBy('sessionId').list() : []
+                for (previous in retained) {
+                    def carts = ec.entity.find('zenith.erp.pos.PosTransaction').condition('sessionId',previous.sessionId)
+                        .condition('statusId','in',['PtCreated','PtHeld']).orderBy('transactionId').forUpdate(true).list()
+                    def source = ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',previous.sessionId).forUpdate(true).one()
+                    if (source.statusId!='PsClosed' || !(source.closeReason in ['IdleUnverifiedCash','IdleReviewed']) ||
+                        source.organizationPartyId!=_posAccess.organizationPartyId || source.terminalId!=terminalId) continue
+                    def currentIds = ec.entity.find('zenith.erp.pos.PosTransaction').condition('sessionId',source.sessionId)
+                        .condition('statusId','in',['PtCreated','PtHeld']).orderBy('transactionId').selectField('transactionId').list()*.transactionId
+                    if (currentIds != carts*.transactionId || carts.any { cart -> cart.transactionNumber || (cart.paidAmount ?: 0)>0 ||
+                        ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId',cart.transactionId).count()>0 ||
+                        ec.entity.find('zenith.erp.pos.PosQrPayment').condition('transactionId',cart.transactionId)
+                            .condition('statusId','in',['QpPending','QpConfirmed']).count()>0 }) continue
+                    idleRetainedWork.add([session:source,carts:carts,reason:'Recovered after automatic session closure'])
+                }
+            ]]></script></if>
             <service-call name="create#zenith.erp.pos.PosSession" out-map="context"
                 in-map="[terminalId:terminalId, organizationPartyId:_openTerminal.organizationPartyId, operatorPartyId:ec.user.userAccount?.partyId,
                          openDate:ec.user.nowTimestamp, lastActivityDate:ec.user.nowTimestamp, idleAutoClose:(_idlePolicy ? _idlePolicy.idleSessionAutoClose : 'N'), openingCash:openingCash,
                          totalSales:0, totalReturns:0, totalTransactions:0, statusId:'PsOpen']"/>
 
-            <if condition="handoffSession &amp;&amp; !ec.message.hasError()"><script><![CDATA[
+            <if condition="(handoffSession || idleRetainedWork) &amp;&amp; !ec.message.hasError()"><script><![CDATA[
                 // Keep issued transactions with the outgoing drawer. Put unpaid work in
                 // the incoming drawer's Hold Bills using the normal hold/recall workflow.
-                ec.entity.find('zenith.erp.pos.PosHeldTransaction').condition('sessionId',handoffSession.sessionId)
-                    .condition('statusId','PhHeld').list().each { it.set('sessionId',sessionId).update() }
-                for (cart in handoffCarts) {
-                    if (cart.statusId == 'PtHeld') {
-                        cart.set('sessionId',sessionId).update()
-                    } else if (ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId',cart.transactionId).count() > 0) {
-                        cart.set('sessionId',sessionId).update()
-                        def held = ec.service.sync().name('zenith.pos.PosServices.hold#Transaction')
-                            .parameters([transactionId:cart.transactionId,holdReason:'Terminal handoff']).call()
-                        if (ec.message.hasError()) return
-                        ec.entity.find('zenith.erp.pos.PosHeldTransaction').condition('heldId',held.heldId).one()
-                            .set('cashierPartyId',handoffSession.operatorPartyId).update()
-                    } else cart.set('statusId','PtVoided').update()
+                def outgoing = handoffSession ? [[session:handoffSession,carts:handoffCarts,reason:'Terminal handoff']] : idleRetainedWork
+                for (work in outgoing) {
+                    ec.entity.find('zenith.erp.pos.PosHeldTransaction').condition('sessionId',work.session.sessionId)
+                        .condition('statusId','PhHeld').forUpdate(true).list().each { it.set('sessionId',sessionId).update() }
+                    for (cart in work.carts) {
+                        if (cart.statusId == 'PtHeld') {
+                            cart.set('sessionId',sessionId).update()
+                        } else if (ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId',cart.transactionId).count() > 0) {
+                            cart.set('sessionId',sessionId).update()
+                            def held = ec.service.sync().name('zenith.pos.PosServices.hold#Transaction')
+                                .parameters([transactionId:cart.transactionId,holdReason:work.reason]).call()
+                            if (ec.message.hasError()) return
+                            ec.entity.find('zenith.erp.pos.PosHeldTransaction').condition('heldId',held.heldId).one()
+                                .set('cashierPartyId',work.session.operatorPartyId).update()
+                        } else cart.set('statusId','PtVoided').update()
+                    }
+                    ec.entity.find('zenith.erp.pos.KitchenOrderTicket')
+                        .condition([organizationPartyId:_posAccess.organizationPartyId,terminalId:terminalId,
+                            statusId:'KotDraft',draftSessionId:work.session.sessionId])
+                        .list().each { it.set('draftSessionId',sessionId).update() }
                 }
-                ec.entity.find('zenith.erp.pos.KitchenOrderTicket')
-                    .condition([organizationPartyId:_posAccess.organizationPartyId,terminalId:terminalId,
-                        statusId:'KotDraft',draftSessionId:handoffSession.sessionId])
-                    .list().each { it.set('draftSessionId',sessionId).update() }
             ]]></script></if>
             <!-- Pricing/tax validation belongs to the actual cart line. Optional speculative
                  calculations must not poison or hide a rollback of the newly opened session. -->
@@ -178,29 +207,35 @@
         </actions>
     </service>
 
-    <!-- Report terminal handoff on every billing heartbeat. Lock the drawer only when activity is due. -->
+    <!-- Status polling never counts as cashier input. Check expiry before recording a real gesture. -->
     <service verb="touch" noun="PosSessionActivity">
-        <in-parameters><parameter name="sessionId" required="true"/></in-parameters>
-        <out-parameters><parameter name="open" type="Boolean"/><parameter name="handoffUserId"/></out-parameters>
+        <in-parameters><parameter name="sessionId" required="true"/><parameter name="recordActivity" type="Boolean" default="true"/></in-parameters>
+        <out-parameters><parameter name="open" type="Boolean"/><parameter name="handoffUserId"/><parameter name="closeReason"/><parameter name="idleCloseAfterMs" type="Long"/></out-parameters>
         <actions>
             <service-call name="zenith.pos.PosAccessServices.assert#PosAccess" out-map="_idleAccess" in-map="[sessionId:sessionId]"/>
             <if condition="!_idleAccess.allowed"><return/></if>
-            <entity-find-one entity-name="zenith.erp.pos.PosSession" value-field="_idleSession"/>
-            <if condition="_idleSession?.statusId == 'PsOpen' &amp;&amp; _idleSession.operatorPartyId == ec.user.userAccount?.partyId &amp;&amp; (!_idleSession.lastActivityDate || ec.user.nowTimestamp.time - _idleSession.lastActivityDate.time &gt;= 30000L)">
-                <entity-find-one entity-name="zenith.erp.pos.PosSession" value-field="_idleSession" for-update="true"/>
-                <if condition="_idleSession.statusId == 'PsOpen' &amp;&amp; (!_idleSession.lastActivityDate || ec.user.nowTimestamp.time - _idleSession.lastActivityDate.time &gt;= 30000L)">
-                    <service-call name="update#zenith.erp.pos.PosSession" in-map="[sessionId:sessionId, lastActivityDate:ec.user.nowTimestamp]"/>
-                </if>
+            <service-call name="zenith.pos.PosServices.close#IdlePosSession" in-map="[sessionId:sessionId]" out-map="_idleClose"/>
+            <if condition="_idleClose.closed"><set field="open" from="false"/><set field="closeReason" value="IdleUnverifiedCash"/><return/></if>
+            <entity-find-one entity-name="zenith.erp.pos.PosSession" value-field="_idleSession" for-update="true"/>
+            <if condition="recordActivity &amp;&amp; _idleSession?.statusId == 'PsOpen' &amp;&amp; _idleSession.operatorPartyId == ec.user.userAccount?.partyId">
+                <script>_idleSession.set('lastActivityDate',ec.user.nowTimestamp).update()</script>
             </if>
             <set field="open" from="_idleSession?.statusId == 'PsOpen'"/>
+            <set field="closeReason" from="_idleSession?.closeReason"/>
+            <script><![CDATA[
+                def policy=open ? ec.entity.find('zenith.erp.pos.PosOrgBillingConfig').condition('organizationPartyId',_idleSession.organizationPartyId).one() : null
+                def last=_idleSession?.lastActivityDate ?: _idleSession?.openDate
+                idleCloseAfterMs=policy?.idleSessionAutoClose=='Y' && last && _idleClose.reason!='review_required' ?
+                    Math.max(0L,3600000L-(ec.user.nowTimestamp.time-last.time)) : null
+            ]]></script>
             <if condition="!open &amp;&amp; _idleSession?.operatorPartyId == ec.user.userAccount?.partyId">
                 <set field="handoffUserId" from="_idleSession?.handoffUserId"/>
             </if>
         </actions>
     </service>
 
-    <!-- Close an idle drawer without inventing a cash count. Completed sales and their tenders
-         remain recorded for later review. Held/partially paid carts and refunds still need a cashier. -->
+    <!-- Close an idle drawer without inventing a cash count. Preserve unpaid open/held work
+         for the next shift; unfinished tenders and cash refunds still need a cashier. -->
     <service verb="close" noun="IdlePosSession" authenticate="anonymous-all" transaction="force-new">
         <in-parameters><parameter name="sessionId" required="true"/></in-parameters>
         <out-parameters><parameter name="closed" type="Boolean"/><parameter name="reason"/></out-parameters>
@@ -213,7 +248,7 @@
                 if (!sess || sess.statusId != 'PsOpen') { reason = 'already_closed'; return }
                 def policy=ec.entity.find('zenith.erp.pos.PosOrgBillingConfig').condition('organizationPartyId',sess.organizationPartyId).one()
                 if ((policy ? policy.idleSessionAutoClose : 'N') != 'Y') { reason='disabled'; return }
-                def last = sess.lastActivityDate
+                def last = sess.lastActivityDate ?: sess.openDate
                 if (!last || last.time > ec.user.nowTimestamp.time - 3600000L) { reason = 'still_active'; return }
                 def txns = ec.entity.find('zenith.erp.pos.PosTransaction').condition('sessionId',sessionId)
                     .orderBy('transactionId').forUpdate(true).list()
@@ -221,31 +256,21 @@
                 // so a sale finishing at the idle boundary cannot deadlock with this sweep.
                 sess = ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId',sessionId).forUpdate(true).one()
                 if (sess.statusId != 'PsOpen') { reason='already_closed'; return }
-                if (!sess.lastActivityDate || sess.lastActivityDate.time > ec.user.nowTimestamp.time - 3600000L) { reason='still_active'; return }
+                last = sess.lastActivityDate ?: sess.openDate
+                if (!last || last.time > ec.user.nowTimestamp.time - 3600000L) { reason='still_active'; return }
                 def currentIds=ec.entity.find('zenith.erp.pos.PosTransaction').condition('sessionId',sessionId).selectField('transactionId').list()*.transactionId
                 if (currentIds.toSet() != (txns*.transactionId).toSet()) { reason='still_active'; return }
-                if (txns.any { it.statusId == 'PtHeld' } ||
-                    ec.entity.find('zenith.erp.pos.PosHeldTransaction').condition('sessionId',sessionId).condition('statusId','PhHeld').count()) {
-                    reason = 'held_bill'; return
-                }
-                if (txns.any { !['PtCreated','PtCompleted','PtVoided'].contains(it.statusId) }) return
-                def draftIds = txns.findAll { it.statusId == 'PtCreated' }*.transactionId
-                if (draftIds && ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId','in',draftIds).count()) {
-                    reason = 'open_cart'; return
-                }
-                if (txns.findAll { it.statusId == 'PtCreated' }.any { it.transactionNumber || ((it.paidAmount ?: 0) as BigDecimal) > 0 ||
-                    ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId',it.transactionId).count() > 0 }) return
+                if (txns.any { !['PtCreated','PtHeld','PtCompleted','PtVoided'].contains(it.statusId) }) return
+                if (txns.findAll { it.statusId in ['PtCreated','PtHeld'] }.any { it.transactionNumber || ((it.paidAmount ?: 0) as BigDecimal) > 0 ||
+                    ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId',it.transactionId).count() > 0 ||
+                    ec.entity.find('zenith.erp.pos.PosQrPayment').condition('transactionId',it.transactionId)
+                        .condition('statusId','in',['QpPending','QpConfirmed']).count() > 0 }) return
                 // Existing cash reconciliation does not net cash refunds or paid voids. Require
                 // a cashier to review those shifts instead of presenting a misleading variance.
                 if (txns.findAll { it.statusId == 'PtVoided' }.any { it.transactionNumber || ((it.paidAmount ?: 0) as BigDecimal) > 0 ||
                     ec.entity.find('zenith.erp.pos.PosPayment').condition('transactionId',it.transactionId).count() > 0 }) return
                 def returns = ec.entity.find('zenith.erp.pos.PosReturn').condition('sessionId',sessionId).list()
                 if (returns.any { it.statusId != 'PrCancelled' && (it.statusId != 'PrCompleted' || !it.refundMethod || it.refundMethod == 'Cash') }) return
-                txns.findAll { it.statusId == 'PtCreated' }.each { st ->
-                    ec.entity.find('zenith.erp.pos.PosTransactionItem').condition('transactionId',st.transactionId).deleteAll()
-                    ec.entity.find('zenith.erp.pos.PosItemPriceOverride').condition('transactionId',st.transactionId).deleteAll()
-                    try { st.delete() } catch (Exception e) { st.statusId = 'PtVoided'; st.update() }
-                }
                 sess.statusId = 'PsClosed'
                 sess.closeDate = ec.user.nowTimestamp
                 sess.closeReason = 'IdleUnverifiedCash'
@@ -266,10 +291,16 @@
                 closedCount = 0
                 def configs=ec.entity.find('zenith.erp.pos.PosOrgBillingConfig').list()
                 def optedOrgs=configs.findAll { it.idleSessionAutoClose=='Y' }.collect { it.organizationPartyId }
-                def configuredOrgs=configs.collect { it.organizationPartyId }
                 def cutoff=new java.sql.Timestamp(ec.user.nowTimestamp.time-3600000L)
+                def cf=ec.entity.conditionFactory
+                def EC=org.moqui.entity.EntityCondition
+                def idleDue=cf.makeCondition([
+                    cf.makeCondition('lastActivityDate',EC.LESS_THAN_EQUAL_TO,cutoff),
+                    cf.makeCondition([cf.makeCondition('lastActivityDate',EC.EQUALS,null),
+                        cf.makeCondition('openDate',EC.LESS_THAN_EQUAL_TO,cutoff)],EC.AND)
+                ],EC.OR)
                 def candidates={ -> ec.entity.find('zenith.erp.pos.PosSession').condition('statusId','PsOpen')
-                    .condition('lastActivityDate',org.moqui.entity.EntityCondition.LESS_THAN_EQUAL_TO,cutoff).orderBy('sessionId') }
+                    .condition(idleDue).orderBy('sessionId') }
                 // #129 rework (opt-in gate, restores #102 semantics): sweep ONLY orgs that explicitly
                 // opted in via PosOrgBillingConfig.idleSessionAutoClose='Y'. Orgs with no config row are
                 // NEVER auto-closed (no-config != consent) — MARUTHI and every unconfigured tenant are safe.
@@ -2360,6 +2391,7 @@
                     if (!st.sessionId) return                        // unknown provenance — leave alone
                     def sess = ec.entity.find("zenith.erp.pos.PosSession").condition("sessionId", st.sessionId).one()
                     if (!sess || sess.statusId != 'PsClosed') return // open/live session — a cashier may be mid-sale; NEVER touch
+                    if (sess.closeReason in ['IdleUnverifiedCash','IdleReviewed']) return // retained unpaid work is recovered when this counter reopens
                     if (sess.closeDate == null || sess.closeDate.after(cutoff)) return  // grace period after close
                     def payCount = ec.entity.find("zenith.erp.pos.PosPayment").condition("transactionId", st.transactionId).count()
                     if (payCount > 0 || ((st.paidAmount ?: 0) as BigDecimal) > 0) {

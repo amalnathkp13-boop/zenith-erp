@@ -2615,16 +2615,24 @@
     });
   }
   if(paymentButtons.length) {
-    const keepSessionOpen=()=>{
+    let lastActivitySentAt=0, idleCloseTimer, touchVersion=0;
+    const activityAbort=new AbortController();
+    const keepSessionOpen=(activity=false)=>{
+      activity=activity===true;
       if(!root.isConnected) {
         clearInterval(heartbeat);
+        clearTimeout(idleCloseTimer);
+        activityAbort.abort();
         window.removeEventListener('focus',keepSessionOpen);
         return;
       }
       if(device)claimOfflineOrder();
       if(sessionLost||disconnected())return;
+      if(activity&&Date.now()-lastActivitySentAt<5000)return;
+      if(activity)lastActivitySentAt=Date.now();
+      const version=++touchVersion;
       syncDeviceOrders();
-      request('touchSession',{}).then(({displayEnabled,handoffUserId,open})=>{
+      request('touchSession',{activity:activity?'Y':'N'}).then(({displayEnabled,handoffUserId,open,closeReason,idleCloseAfterMs})=>{
         if(handoffUserId&&root.isConnected) {
           sessionLost=true;
           controls();
@@ -2633,9 +2641,15 @@
         }
         if(open===false&&root.isConnected) {
           sessionLost=true;
+          clearInterval(heartbeat);clearTimeout(idleCloseTimer);activityAbort.abort();
           controls();
           $('order-status').textContent='This billing session has closed. Open KOT Billing again to continue.';
+          if(closeReason==='IdleUnverifiedCash'||closeReason==='IdleReviewed')PosTillDialogs.showIdleClose(()=>location.assign(backLink.href));
           return;
+        }
+        if(version===touchVersion) {
+          clearTimeout(idleCloseTimer);
+          if(Number.isFinite(idleCloseAfterMs))idleCloseTimer=setTimeout(keepSessionOpen,Math.max(1000,idleCloseAfterMs));
         }
         if(typeof displayEnabled!=='boolean'||String(displayEnabled)===cfg.displayEnabled)return;
         cfg.displayEnabled=String(displayEnabled);
@@ -2643,6 +2657,9 @@
       }).catch(()=>{});
     };
     const heartbeat=setInterval(keepSessionOpen,10000);
+    for(const type of ['pointerdown','keydown','touchstart','wheel'])document.addEventListener(type,event=>{
+      if(event.isTrusted)keepSessionOpen(true);
+    },{capture:true,passive:true,signal:activityAbort.signal});
     window.addEventListener('focus',keepSessionOpen);
     keepSessionOpen();
   }
