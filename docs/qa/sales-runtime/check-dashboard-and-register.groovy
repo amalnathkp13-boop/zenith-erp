@@ -46,15 +46,40 @@ try {
             make('mantle.account.invoice.Invoice',[invoiceId:details[0], fromPartyId:org, facilityId:shop, invoiceTypeEnumId:'InvoiceSales',
                     statusId:'InvoiceFinalized', invoiceDate:start, totalTaxableAmount:details[1], invoiceTotal:details[2], roundOffAmount:details[3]])
         }
+        make('mantle.account.invoice.Invoice',[invoiceId:'SRQA_USD', fromPartyId:org, facilityId:shop, currencyUomId:'USD',
+                invoiceTypeEnumId:'InvoiceSales', statusId:'InvoicePmtRecvd', invoiceDate:start, invoiceTotal:60G])
+        make('mantle.account.invoice.Invoice',[invoiceId:'SRQA_EUR', fromPartyId:org, facilityId:shopB, currencyUomId:'EUR',
+                invoiceTypeEnumId:'InvoiceSales', statusId:'InvoiceFinalized', invoiceDate:start, invoiceTotal:70G])
         def bind = new Binding([ec:ec,orgId:org,_activeShop:shop,dayStart:start,dayEndExcl:end,
                 _mixedOrders:[mixedOrderIds:[]],salesSpark:'[]',quotesSpark:'[]',custSpark:'[]',invSpark:'[]'])
+        def selectCurrency = { requested ->
+            def report = ec.resource.script('component://zenith-erp-sales/script/ReportingCurrency.groovy',null,
+                    [reportOrgId:org, reportShopId:bind._activeShop, currencyUomId:requested])
+            report.each { key, value -> bind.setVariable(key, value) }
+            bind.invoiceCurrencyCondition = ec.resource.script('component://zenith-erp-sales/script/ReportingCurrencyCondition.groovy', null,
+                    [currency:report.reportCurrency, includeUnspecified:report.reportCurrency == 'INR'])
+            bind.forecastCurrencyCondition = ec.resource.script('component://zenith-erp-sales/script/ReportingCurrencyCondition.groovy', null,
+                    [currency:report.reportCurrency, includeUnspecified:report.legacyForecastCurrency == report.reportCurrency])
+            assert report.organizationCurrencies.toSet() == ['EUR','INR','USD'].toSet()
+            assert report.legacyForecastCurrency == null
+            report
+        }
+        def options = selectCurrency('EUR')
+        assert options.reportCurrency == 'INR' && options.reportCurrencies.toSet() == ['INR','USD'].toSet()
         summary.binding=bind
         summary.run()
         assert bind.totalSalesAmount == 81.2G && bind.totalInvoices == 6 && bind.salesStatusJson == '[1,4]'
         assert bind.invoiceSummaryFor.call(end, end).revenue == 0G
+        selectCurrency('USD')
+        summary.run()
+        assert bind.totalSalesAmount == 60G && bind.totalInvoices == 1 && bind.salesStatusJson == '[1,0]'
         bind._activeShop=null
+        options = selectCurrency('INR')
+        summary.run()
+        assert options.reportCurrencies.toSet() == ['EUR','INR','USD'].toSet()
         assert bind.invoiceSummaryFor.call(start,end).revenue == 401.3G
         bind._activeShop=shop
+        selectCurrency('INR')
         make('mantle.product.Product',[productId:'SRQA_PRODUCT'])
         make('mantle.product.category.ProductCategory',[productCategoryId:'SRQA_CATEGORY', categoryName:'Synthetic category'])
         make('mantle.product.category.ProductCategoryMember',[productCategoryId:'SRQA_CATEGORY', productId:'SRQA_PRODUCT',fromDate:start])
@@ -63,12 +88,16 @@ try {
         for (id in ['SRQA_BASE','SRQA_PAID','SRQA_DRAFT','SRQA_CANCEL','SRQA_END','SRQA_OTHER_SHOP','SRQA_OTHER_ORG']) {
             make('mantle.account.invoice.InvoiceItem',[invoiceId:id, invoiceItemSeqId:'01', productId:'SRQA_PRODUCT', taxableAmount:10G, totalTaxAmount:1.5G])
         }
+        make('mantle.account.invoice.InvoiceItem',[invoiceId:'SRQA_USD',invoiceItemSeqId:'01',productId:'SRQA_PRODUCT',taxableAmount:8G,totalTaxAmount:1G])
         def categoryLines=ec.entity.find('zenith.erp.sales.InvoiceCategorySalesView').condition('invoiceId','SRQA_BASE')
             .selectFields(['productCategoryId','taxableAmount']).list()
         assert categoryLines.size()==1 && categoryLines[0].productCategoryId=='SRQA_CATEGORY'
         categories.binding=bind
         categories.run()
         assert bind.catValsJson == '[23]' && bind.catNamesJson.contains('Synthetic category')
+        selectCurrency('USD')
+        categories.run()
+        assert bind.catValsJson == '[9]' && bind.catNamesJson.contains('Synthetic category')
         def n = 5
         for (place in [shop,shopB]) {
             make('mantle.facility.Facility',[facilityId:place,ownerPartyId:org,facilityTypeEnumId:'FcTpRetailStore'])

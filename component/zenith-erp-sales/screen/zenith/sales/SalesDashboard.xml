@@ -12,6 +12,7 @@
     <parameter name="dashDateTo"/>
     <parameter name="dateMode"/>
     <parameter name="showSettings"/>
+    <parameter name="currencyUomId"/>
 
     <transition name="viewOrder"><default-response url="../FindOrder"/></transition>
     <transition name="viewCustomer"><default-response url="../../Contacts/Customers"/></transition>
@@ -29,11 +30,11 @@
             def _wk = ['metrics','trend','payments','forecast','recent']
             ec.user.setPreference('SALES_DASH_HIDDEN', _wk.findAll { !context.get('w_' + it) }.join(','))
         ]]></script></actions>
-        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dateMode:dateMode]"/>
+        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dateMode:dateMode, currencyUomId:currencyUomId]"/>
     </transition>
     <transition name="resetDashLayout">
         <actions><script>ec.user.setPreference('SALES_DASH_HIDDEN', null); ec.user.setPreference('SALES_DASH_ORDER', null); ec.user.setPreference('SALES_DASH_SIZE', null)</script></actions>
-        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dateMode:dateMode]"/>
+        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dateMode:dateMode, currencyUomId:currencyUomId]"/>
     </transition>
     <transition name="saveDashOrder" require-session-token="false">
         <actions><script><![CDATA[
@@ -51,12 +52,11 @@
         ]]></script></actions>
         <default-response type="none"/>
     </transition>
-    <transition name="changeDashDate"><default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dateMode:'custom']"/></transition>
+    <transition name="changeDashDate"><default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dateMode:'custom', currencyUomId:currencyUomId]"/></transition>
 
     <actions>
         <service-call name="zenith.sales.SalesAccessServices.get#MixedVendorOrderIds" out-map="_mixedOrders"/>
         <set field="orgId" from="_salesOrgId"/>
-        <set field="currSymbol" value="₹"/>
         <!-- Date range for KPI tiles. An explicit All time selection leaves the bounds empty. -->
         <script><![CDATA[
             def sdf = new java.text.SimpleDateFormat("yyyy-MM-dd")
@@ -108,6 +108,15 @@
         ]]></script>
         <service-call name="zenith.base.ShopServices.get#ActiveShopScope" out-map="salesShopScope"/>
         <set field="_activeShop" from="salesShopScope.activeShopId"/>
+        <set field="currencyInfo" from="ec.resource.script('component://zenith-erp-sales/script/ReportingCurrency.groovy', null,
+                [reportOrgId:orgId, reportShopId:_activeShop, currencyUomId:currencyUomId])"/>
+        <set field="reportCurrency" from="currencyInfo.reportCurrency"/>
+        <set field="reportCurrencies" from="currencyInfo.reportCurrencies"/>
+        <set field="currSymbol" from="currencyInfo.currSymbol"/>
+        <set field="invoiceCurrencyCondition" from="ec.resource.script('component://zenith-erp-sales/script/ReportingCurrencyCondition.groovy', null,
+                [currency:reportCurrency, includeUnspecified:reportCurrency == 'INR'])"/>
+        <set field="forecastCurrencyCondition" from="ec.resource.script('component://zenith-erp-sales/script/ReportingCurrencyCondition.groovy', null,
+                [currency:reportCurrency, includeUnspecified:reportCurrency == currencyInfo.legacyForecastCurrency])"/>
         <script><![CDATA[
             import org.moqui.entity.EntityCondition
             invoiceSummaryFor = { from, until ->
@@ -115,7 +124,7 @@
                         .condition('fromPartyId', orgId ?: '__NO_SALES_ORGANIZATION__')
                         .condition('invoiceTypeEnumId', 'InvoiceSales')
                         .condition('statusId', EntityCondition.NOT_EQUAL, 'InvoiceCancelled')
-                        .selectFields(['statusId', 'invoiceCount', 'grossSum'])
+                        .condition(invoiceCurrencyCondition).selectFields(['statusId', 'invoiceCount', 'grossSum'])
                 if (_activeShop) query.condition('facilityId', _activeShop)
                 if (from) query.condition('invoiceDate', EntityCondition.GREATER_THAN_EQUAL_TO, from)
                 if (until) query.condition('invoiceDate', EntityCondition.LESS_THAN, until)
@@ -139,12 +148,16 @@
 
         <!-- Sales forecast (from the nightly stored forecast) for the dashboard infographic -->
         <set field="fcToday" from="java.sql.Date.valueOf(ec.user.nowTimestamp.toInstant().atZone(ec.user.timeZone.toZoneId()).toLocalDate())"/>
-        <entity-find entity-name="zenith.erp.sales.SalesRevenueForecast" list="fcRows" limit="7">
-            <econdition field-name="organizationPartyId" from="orgId ?: '__NO_SALES_ORGANIZATION__'"/>
-            <econdition field-name="dimension" value="Overall"/>
-            <econdition field-name="periodDate" operator="greater-equals" from="fcToday"/>
-            <order-by field-name="periodDate"/>
-        </entity-find>
+        <set field="fcRows" from="[]"/>
+        <if condition="!_activeShop">
+            <entity-find entity-name="zenith.erp.sales.SalesRevenueForecast" list="fcRows" limit="7">
+                <econdition field-name="organizationPartyId" from="orgId ?: '__NO_SALES_ORGANIZATION__'"/>
+                <econdition field-name="dimension" value="Overall"/>
+                <econdition field-name="periodDate" operator="greater-equals" from="fcToday"/>
+                <econdition-object field="forecastCurrencyCondition"/>
+                <order-by field-name="periodDate"/>
+            </entity-find>
+        </if>
         <script><![CDATA[
             def pts = (fcRows ?: [])
             def fcLabels = []; def fcVals = []
@@ -193,6 +206,7 @@
             <econdition field-name="vendorPartyId" from="_salesOrgId ?: '__NO_SALES_ORGANIZATION__'"/>
             <order-by field-name="-entryDate"/>
         </entity-find>
+        <set field="recentOrderCurrencies" from="recentOrders.collectEntries { [(it.orderId): it.currencyUomId ?: 'INR'] }"/>
         <!-- Real 6-month chart data (org-scoped) + plan-aware related-module flags -->
         <script><![CDATA[
             import org.moqui.entity.EntityCondition
@@ -208,7 +222,7 @@
                 def c2 = (Calendar) c.clone(); c2.add(Calendar.MONTH,1)
                 def end = new java.sql.Timestamp(c2.getTimeInMillis())
                 def month = invoiceSummaryFor(start, end)
-                revArr.add(month.revenue.setScale(0, java.math.RoundingMode.HALF_UP).toPlainString())
+                revArr.add(month.revenue.stripTrailingZeros().toPlainString())
                 invoiceCounts.add(month.paid + month.finalized)
                 monthLabels.add(start.toInstant().atZone(ec.user.timeZone.toZoneId()).format(java.time.format.DateTimeFormatter.ofPattern("MMM yyyy", Locale.ENGLISH)))
                 _spQ.add(ec.entity.find("mantle.order.OrderHeaderAndPart").condition("orderId",EntityCondition.NOT_IN,_mixedOrders.mixedOrderIds ?: ['__NO_MIXED_SALES_ORDER__']).condition("statusId","OrderProposed").condition("vendorPartyId",orgId ?: "__NO_SALES_ORGANIZATION__").condition("entryDate",EntityCondition.GREATER_THAN_EQUAL_TO,start).condition("entryDate",EntityCondition.LESS_THAN,end).count())
@@ -269,7 +283,7 @@
                         .condition("statusId",EntityCondition.IN,["InvoiceFinalized","InvoicePmtRecvd"])
                         .condition("invoiceDate",EntityCondition.GREATER_THAN_EQUAL_TO,_catFrom)
                         .condition("invoiceDate",EntityCondition.LESS_THAN,_catTo)
-                        .selectFields(["productCategoryId","taxableSum","taxSum"])
+                        .condition(invoiceCurrencyCondition).selectFields(["productCategoryId","taxableSum","taxSum"])
                 if (_activeShop) categories.condition("facilityId", _activeShop)
                 def topCategories = categories.list().collect { row ->
                     [id:row.productCategoryId, total:(row.taxableSum ?: 0.0G) + (row.taxSum ?: 0.0G)]
@@ -278,7 +292,7 @@
                         .condition("productCategoryId", EntityCondition.IN, topCategories*.id)
                         .selectFields(["productCategoryId","categoryName"]).list().collectEntries { [(it.productCategoryId):it.categoryName] } : [:]
                 def _cn = topCategories.collect { names[it.id] ?: it.id }
-                def _cv = topCategories.collect { it.total.setScale(0, java.math.RoundingMode.HALF_UP).toPlainString() }
+                def _cv = topCategories.collect { it.total.stripTrailingZeros().toPlainString() }
                 // The chart JSON is inserted into an HTML onload attribute. Encode both JS strings
                 // and the surrounding HTML attribute so category names cannot break chart rendering.
                 catNamesJson = groovy.json.JsonOutput.toJson(_cn).replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
@@ -318,10 +332,19 @@
         <container style="sd-toolbar q-px-lg q-py-md q-mb-md zenith-card bg-white shadow-1 border-radius-lg">
             <render-mode><text type="html,vuet,qvt" template="true"><![CDATA[
               <div class="sd-datebar">
-                <a href="${urlSettings}" class="sd-customize" title="Customize dashboard widgets"><span class="material-icons" aria-hidden="true">tune</span> Customize</a>
-                <details class="zdash-dr"><summary class="zdash-chip zdash-dr-sum${showCustom?string(' on','')}"><span class="material-icons" aria-hidden="true">calendar_today</span> <#if (showCustom!false) && (dashDate!'')?has_content>${dashDate}<#if (dashDateTo!'')?has_content && dashDateTo != dashDate> – ${dashDateTo}</#if><#else>Date range</#if> &#9662;</summary><form method="get" action="." class="zdash-dr-pop"><input type="hidden" name="dateMode" value="custom"/><div class="zdash-dr-row"><span>From</span><input type="date" name="dashDate" value="${dashDate}"/></div><div class="zdash-dr-row"><span>To</span><input type="date" name="dashDateTo" value="${dashDateTo}"/></div><button type="submit" class="zdash-dr-apply">Apply</button></form></details>
-                <div class="sd-presets"><a href="${urlToday}" class="zdash-chip${(presetActive=='today')?string(' on','')}">Today</a><a href="${urlWeek}" class="zdash-chip${(presetActive=='week')?string(' on','')}">This Week</a><a href="${urlMonth}" class="zdash-chip${(presetActive=='month')?string(' on','')}">This Month</a><a href="${urlYear}" class="zdash-chip${(presetActive=='year')?string(' on','')}">This Year</a></div>
-                <details class="sd-more-periods"><summary>More periods</summary><div><a href="${urlAll}" class="zdash-chip${(presetActive=='all' && !showCustom)?string(' on','')}">All time</a><a href="${url30}" class="zdash-chip${(presetActive=='last30')?string(' on','')}">Last 30 days</a></div></details>
+                <#if reportCurrencies?size gt 1>
+                  <form method="get" action="" class="sd-presets">
+                    <input type="hidden" name="dateMode" value="${(dateMode!'')?html}"/>
+                    <input type="hidden" name="dashDate" value="${dashDate?html}"/>
+                    <input type="hidden" name="dashDateTo" value="${dashDateTo?html}"/>
+                    <label>Currency <select name="currencyUomId"><#list reportCurrencies as code><option value="${code?html}"<#if code == reportCurrency> selected</#if>>${code?html}</option></#list></select></label>
+                    <button type="submit" class="zdash-chip">Apply</button>
+                  </form>
+                <#elseif reportCurrency != 'INR'><span>Currency ${reportCurrency?html}</span></#if>
+                <a href="${urlSettings}&amp;currencyUomId=${reportCurrency?url('UTF-8')}" class="sd-customize" title="Customize dashboard widgets"><span class="material-icons" aria-hidden="true">tune</span> Customize</a>
+                <details class="zdash-dr"><summary class="zdash-chip zdash-dr-sum${showCustom?string(' on','')}"><span class="material-icons" aria-hidden="true">calendar_today</span> <#if (showCustom!false) && (dashDate!'')?has_content>${dashDate}<#if (dashDateTo!'')?has_content && dashDateTo != dashDate> – ${dashDateTo}</#if><#else>Date range</#if> &#9662;</summary><form method="get" action="" class="zdash-dr-pop"><input type="hidden" name="currencyUomId" value="${reportCurrency?html}"/><input type="hidden" name="dateMode" value="custom"/><div class="zdash-dr-row"><span>From</span><input type="date" name="dashDate" value="${dashDate}"/></div><div class="zdash-dr-row"><span>To</span><input type="date" name="dashDateTo" value="${dashDateTo}"/></div><button type="submit" class="zdash-dr-apply">Apply</button></form></details>
+                <div class="sd-presets"><a href="${urlToday}&amp;currencyUomId=${reportCurrency?url('UTF-8')}" class="zdash-chip${(presetActive=='today')?string(' on','')}">Today</a><a href="${urlWeek}&amp;currencyUomId=${reportCurrency?url('UTF-8')}" class="zdash-chip${(presetActive=='week')?string(' on','')}">This Week</a><a href="${urlMonth}&amp;currencyUomId=${reportCurrency?url('UTF-8')}" class="zdash-chip${(presetActive=='month')?string(' on','')}">This Month</a><a href="${urlYear}&amp;currencyUomId=${reportCurrency?url('UTF-8')}" class="zdash-chip${(presetActive=='year')?string(' on','')}">This Year</a></div>
+                <details class="sd-more-periods"><summary>More periods</summary><div><a href="${urlAll}&amp;currencyUomId=${reportCurrency?url('UTF-8')}" class="zdash-chip${(presetActive=='all' && !showCustom)?string(' on','')}">All time</a><a href="${url30}&amp;currencyUomId=${reportCurrency?url('UTF-8')}" class="zdash-chip${(presetActive=='last30')?string(' on','')}">Last 30 days</a></div></details>
               </div>
             ]]></text></render-mode>
             <!-- ZE-DATEPICKER: superseded by the compact <details> date-range pill in the chip row; keep the
@@ -347,6 +370,7 @@
                         <field name="dashDate"><default-field><hidden/></default-field></field>
                         <field name="dashDateTo"><default-field><hidden/></default-field></field>
                         <field name="dateMode"><default-field><hidden/></default-field></field>
+                        <field name="currencyUomId"><default-field><hidden default-value="${reportCurrency}"/></default-field></field>
                         <field name="w_metrics"><default-field title="Metrics (Total Sales, Quotes, Customers, Invoices)"><check><option key="Y" text=" "/></check></default-field></field>
                         <field name="w_trend"><default-field title="Revenue &amp; Billed Invoices"><check><option key="Y" text=" "/></check></default-field></field>
                         <field name="w_payments"><default-field title="Issued invoice status"><check><option key="Y" text=" "/></check></default-field></field>
@@ -355,8 +379,8 @@
                         <field name="saveBtn"><default-field title=""><submit text="Save Layout" icon="fa fa-check"/></default-field></field>
                     </form-single>
                     <container style="row q-gutter-sm q-mt-sm">
-                        <link url="resetDashLayout" text="Reset to Default" icon="fa fa-undo" btn-type="warning" parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dateMode:dateMode]"/>
-                        <link url="." text="Close" btn-type="flat" parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dateMode:dateMode]"/>
+                        <link url="resetDashLayout" text="Reset to Default" icon="fa fa-undo" btn-type="warning" parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dateMode:dateMode, currencyUomId:currencyUomId]"/>
+                        <link url="." text="Close" btn-type="flat" parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dateMode:dateMode, currencyUomId:currencyUomId]"/>
                     </container>
                 </container>
             </widgets>
@@ -372,8 +396,8 @@
                     <container style="sd-metric-main">
                         <container style="sd-metric-icon sd-green"><render-mode><text type="html,qvt,vuet"><![CDATA[<span class="material-icons" aria-hidden="true">trending_up</span>]]></text></render-mode></container>
                         <container style="sd-metric-copy">
-                            <label text="Total Sales" type="p" style="text-grey-7 text-uppercase text-weight-bold q-mb-xs"/>
-                            <label text="${currSymbol}${zinr.inr(ec.l10n.format(totalSalesAmount ?: 0, '#,##,##0'))}" type="h4" style="text-dark text-weight-bold q-my-none"/>
+                            <label text="${reportCurrencies.size() > 1 ? 'Total Sales (' + reportCurrency + ')' : 'Total Sales'}" type="p" style="text-grey-7 text-uppercase text-weight-bold q-mb-xs"/>
+                            <label text="${currSymbol}${reportCurrency == 'INR' ? zinr.inr(ec.l10n.format(totalSalesAmount ?: 0, '#,##0.###')) : ec.l10n.format(totalSalesAmount ?: 0, '#,##0.###')}" type="h4" style="text-dark text-weight-bold q-my-none"/>
                         </container>
                         <container style="sd-metric-spark"><render-mode><text type="html,qvt,vuet">${salesSparkHtml}</text></render-mode></container>
                     </container>
@@ -387,7 +411,7 @@
                     <container style="sd-metric-main">
                         <container style="sd-metric-icon sd-orange"><render-mode><text type="html,qvt,vuet"><![CDATA[<span class="material-icons" aria-hidden="true">request_quote</span>]]></text></render-mode></container>
                         <container style="sd-metric-copy">
-                            <label text="Active Quotes" type="p" style="text-grey-7 text-uppercase text-weight-bold q-mb-xs"/>
+                            <label text="${reportCurrencies.size() > 1 ? 'Active Quotes (all currencies)' : 'Active Quotes'}" type="p" style="text-grey-7 text-uppercase text-weight-bold q-mb-xs"/>
                             <label text="${activeQuotes}" type="h4" style="text-dark text-weight-bold q-my-none"/>
                         </container>
                         <container style="sd-metric-spark"><render-mode><text type="html,qvt,vuet">${quotesSparkHtml}</text></render-mode></container>
@@ -417,7 +441,7 @@
                     <container style="sd-metric-main">
                         <container style="sd-metric-icon sd-rose"><render-mode><text type="html,qvt,vuet"><![CDATA[<span class="material-icons" aria-hidden="true">receipt_long</span>]]></text></render-mode></container>
                         <container style="sd-metric-copy">
-                            <label text="Generated Invoices" type="p" style="text-grey-7 text-uppercase text-weight-bold q-mb-xs"/>
+                            <label text="${reportCurrencies.size() > 1 ? 'Generated Invoices (' + reportCurrency + ')' : 'Generated Invoices'}" type="p" style="text-grey-7 text-uppercase text-weight-bold q-mb-xs"/>
                             <label text="${totalInvoices}" type="h4" style="text-dark text-weight-bold q-my-none"/>
                         </container>
                         <container style="sd-metric-spark"><render-mode><text type="html,qvt,vuet">${invSparkHtml}</text></render-mode></container>
@@ -480,7 +504,7 @@
                     var cats = ${catNamesJson};
                     var vals = ${catValsJson};
                     var palette = ['#3B82F6','#10B981','#14B8A6','#F59E0B','#EF4444','#7C3AED'];
-                    var fmtL = function(v){ return '${currSymbol!"$"}' + (v/100000).toFixed(1) + 'L'; };
+                    var fmtL = function(v){ return '${currSymbol!"$"}' + Number(v).toLocaleString(); };
                     new ApexCharts(document.querySelector(&quot;#salesCatChart&quot;), {
                         chart: { type: 'bar', height: 300, toolbar: { show: false }, fontFamily: 'Roboto, sans-serif' },
                         series: [{ name: 'Sales', data: vals }],
@@ -506,7 +530,7 @@
         <container-row>
             <row-col lg="7" md="7" sm="12">
         <!-- Sales Forecast Infographic -->
-        <section name="wForecast" condition="showForecast"><widgets>
+        <section name="wForecast" condition="showForecast &amp;&amp; !_activeShop"><widgets>
         <render-mode><text type="html"><![CDATA[<div class="dash-widget" data-wkey="forecast"><div class="dash-handle" title="Drag to reorder">&#8942;&#8942;</div>]]></text></render-mode>
         <container style="sd-forecast zenith-card bg-white shadow-2 border-radius-lg q-pa-md q-mb-md">
             <container style="row items-center justify-between q-mb-sm">
@@ -514,7 +538,7 @@
                     <label text="What's coming — Sales Forecast" type="h6" style="text-primary text-weight-bold q-my-none"/>
                     <label text="Our best guess of what you'll sell over the next 7 days, learned automatically from your own sales." type="p" style="text-grey-6 text-caption q-mb-none"/>
                 </container>
-                <link url="/apps/zenith/sales/SalesForecast" text="Full forecast" icon="open_in_new" link-type="anchor" style="q-btn q-btn--flat text-indigo-8 text-weight-bold"/>
+                <link url="../SalesForecast" parameter-map="[currencyUomId:reportCurrency]" text="Full forecast" icon="open_in_new" link-type="anchor" style="q-btn q-btn--flat text-indigo-8 text-weight-bold"/>
             </container>
             <section name="FcInfographic">
                 <condition><expression>fcHasData</expression></condition>
@@ -523,8 +547,8 @@
                         <row-col lg="3" md="6">
                             <container style="bg-indigo-1 q-pa-md border-radius-md text-center q-mb-sm">
                                 <label text="Next 7 days" type="p" style="text-grey-7 text-caption text-weight-bold q-mb-xs"/>
-                                <label text="${currSymbol}${zinr.inr(ec.l10n.format(fcNext7 ?: 0,'#,##,##0'))}" type="h5" style="text-indigo-9 text-weight-bolder q-my-none"/>
-                                <label text="about ${currSymbol}${zinr.inr(ec.l10n.format((fcNext7 ?: 0)/7,'#,##,##0'))} a day" type="p" style="text-grey-6 text-caption q-mb-none"/>
+                                <label text="${currSymbol}${reportCurrency == 'INR' ? zinr.inr(ec.l10n.format(fcNext7 ?: 0,'#,##0')) : ec.l10n.format(fcNext7 ?: 0,'#,##0')}" type="h5" style="text-indigo-9 text-weight-bolder q-my-none"/>
+                                <label text="about ${currSymbol}${reportCurrency == 'INR' ? zinr.inr(ec.l10n.format((fcNext7 ?: 0)/7,'#,##0')) : ec.l10n.format((fcNext7 ?: 0)/7,'#,##0')} a day" type="p" style="text-grey-6 text-caption q-mb-none"/>
                             </container>
                         </row-col>
                         <row-col lg="3" md="6">
@@ -608,7 +632,7 @@
                         </field>
                         <field name="grandTotal">
                             <header-field title="Total"/>
-                            <default-field><label text="${currSymbol}${zinr.inr(ec.l10n.format(grandTotal ?: 0, '#,##,##0.00'))}" type="span" style="text-weight-bold text-dark"/></default-field>
+                            <default-field><label text="${recentOrderCurrencies[orderId] == 'INR' ? '₹' + zinr.inr(ec.l10n.format(grandTotal ?: 0, '#,##0.00')) : recentOrderCurrencies[orderId] + ' ' + ec.l10n.format(grandTotal ?: 0, '#,##0.00#')}" type="span" style="text-weight-bold text-dark"/></default-field>
                         </field>
                         <field name="statusId">
                             <header-field title="Status"/>

@@ -6,9 +6,8 @@
     <always-actions>
         <service-call name="zenith.sales.SalesAccessServices.get#AuthorizedActiveOrganization" out-map="_salesScope"/>
         <set field="_salesOrgId" from="_salesScope.activeOrgId"/>
-        <set field="reportOrgId" from="_salesOrgId"/>
-        <set field="reportShopId" from="null"/>
-        <script location="component://zenith-erp-sales/script/ReportingCurrency.groovy"/>
+        <script>ec.context.putAll(ec.resource.script('component://zenith-erp-sales/script/ReportingCurrency.groovy', null,
+                [reportOrgId:_salesOrgId, reportShopId:null, currencyUomId:currencyUomId]))</script>
     </always-actions>
 
 
@@ -210,7 +209,7 @@
                         <container style="column">
                             <label text="Customers · next 7 days" type="p" style="text-grey-7 text-weight-bold text-caption q-mb-none"/>
                             <label text="${ec.l10n.format(fc.next7Traffic ?: 0,'#,##0')}" type="h4" style="text-primary text-weight-bold q-my-none"/>
-                            <label text="spending about ${sym}${zinr.inr(ec.l10n.format(fc.next7Aov ?: 0,'#,##0'))} each visit" type="p" style="text-grey-6 text-caption q-mb-none"/>
+                            <label text="spending about ${sym}${forecastAmount(fc.next7Aov)} each visit" type="p" style="text-grey-6 text-caption q-mb-none"/>
                         </container>
                     </container>
                 </row-col>
