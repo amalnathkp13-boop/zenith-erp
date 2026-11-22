@@ -23,6 +23,14 @@ try {
         def summary = compile(dashboard.find { it.contains('invoiceSummaryFor =') })
         def categories = compile(dashboard.find { it.contains('DashboardCategoryTotals') })
         def register = compile(sections(new File(source,'PosSalesRegister.xml')).find { it.contains('paymentsByTransaction') })
+        def forecast = compile(sections(new File(source,'SalesForecast.xml')).find { it.contains('forecastAmount =') })
+        for (projected in [null, 0G, 70G]) {
+            forecast.binding = new Binding([ec:ec, fc:[projectedNext7:projected, confidencePct:null], noOrg:false,
+                    catList:[], histList:[], reportCurrency:'USD', sym:'$'])
+            forecast.run()
+            assert forecast.binding.hasData == (projected != null)
+            assert forecast.binding.confNice == 'Building up'
+        }
         def make = { entity, fields -> ec.entity.makeValue(entity).setAll(fields).create() }
         def org = 'SRQA_ORG', other = 'SRQA_OTHER', shop = 'SRQA_SHOP', shopB = 'SRQA_SHOP_B'
         for (id in [org, other]) make('mantle.party.Party',[partyId:id,partyTypeEnumId:'PtyOrganization'])
