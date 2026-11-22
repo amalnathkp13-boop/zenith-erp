@@ -414,7 +414,7 @@ jobs:
       - name: Wait for Moqui to respond
         run: |
           for i in $(seq 1 48); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/Login/login || true)
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/Login/login || true)
             [ -n "$code" ] && [ "$code" != "000" ] && { echo "responding ($code) after $i"; exit 0; }
             sleep 5
           done
@@ -432,12 +432,12 @@ jobs:
           echo "=== some organizations ==="; q "SELECT party_id FROM party WHERE party_type_enum_id='PtyOrganization' LIMIT 8;"
           echo "=== parties owned (owner -> count) ==="; q "SELECT owner_party_id, count(*) FROM party WHERE owner_party_id IS NOT NULL GROUP BY owner_party_id ORDER BY 2 DESC LIMIT 8;"
           echo "=== john.doe active-org pref ==="; q "SELECT preference_value FROM user_preference WHERE user_id='EX_JOHN_DOE' AND preference_key='ACTIVE_ORGANIZATION';"
-          echo "=== GET /apps/zenith (authed) ==="; curl -s -o /dev/null -w 'code=%{http_code} redirect=%{redirect_url}\n' -u john.doe:moqui http://localhost:8080/apps/zenith || true
-          echo "=== body snippet ==="; curl -s -u john.doe:moqui http://localhost:8080/apps/zenith | tr '\n' ' ' | head -c 700; echo
+          echo "=== GET /apps/zenith (authed) ==="; curl -s -o /dev/null -w 'code=%{http_code} redirect=%{redirect_url}\n' -u john.doe:moqui http://127.0.0.1:8080/apps/zenith || true
+          echo "=== body snippet ==="; curl -s -u john.doe:moqui http://127.0.0.1:8080/apps/zenith | tr '\n' ' ' | head -c 700; echo
 
       - name: Assert login works (gate)
         run: |
-          code=$(curl -s -o /dev/null -w '%{http_code}' -u john.doe:moqui http://localhost:8080/apps/zenith || true)
+          code=$(curl -s -o /dev/null -w '%{http_code}' -u john.doe:moqui http://127.0.0.1:8080/apps/zenith || true)
           [ "$code" = "200" ] || { echo "::error::login/module access not 200 (got $code) — see diagnostics"; exit 1; }
 
       - name: Assert SaaS pages and tenant-access service resolve
@@ -448,7 +448,7 @@ jobs:
           }
           for route in /apps/zenith/my-subscription /qapps/zenith/my-subscription.qvt \
                        /apps/zenith/saas-admin/PlanAssignments /qapps/zenith/saas-admin/PlanAssignments.qvt; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' -u john.doe:moqui "http://localhost:8080$route" || true)
+            code=$(curl -s -o /dev/null -w '%{http_code}' -u john.doe:moqui "http://127.0.0.1:8080$route" || true)
             [ "$code" = "200" ] || { echo "::error::SaaS route $route returned $code (check SaasAccessServices registration and server logs)"; exit 1; }
           done
 
@@ -479,7 +479,7 @@ jobs:
         # TODO once #14 is merged: add the stronger no-org-empty + forged-?ownerPartyId asserts that
         # #14 fixes (they'd red the current pre-#14 master, so they wait).
         run: |
-          html=$(curl -s -u john.doe:moqui 'http://localhost:8080/apps/zenith/Contacts/FindContact')
+          html=$(curl -s -u john.doe:moqui 'http://127.0.0.1:8080/apps/zenith/Contacts/FindContact')
           echo "$html" | grep -q 'CITestOnlyInTenantA' || { echo "::error::isolation: Tenant A's own contact is missing (active-org scoping broken, or the pref was stripped)"; exit 1; }
           if echo "$html" | grep -q 'CITestOnlyInTenantB'; then echo "::error::ISOLATION LEAK — Tenant B's contact is visible to Tenant A"; exit 1; fi
           echo "OK — org-isolation holds: Tenant A sees its own contact, not Tenant B's"
@@ -502,11 +502,11 @@ jobs:
           echo "citest.a username in DB: '$(g "SELECT username FROM user_account WHERE user_id='CITEST_U_A';")'  pw-matches-john: $(g "SELECT (ua.current_password=jd.current_password AND ua.password_salt IS NOT DISTINCT FROM jd.password_salt) FROM user_account ua, user_account jd WHERE ua.user_id='CITEST_U_A' AND jd.username='john.doe';")"
           [ "$(g "SELECT count(*) FROM user_group_member WHERE user_id='CITEST_U_A' AND user_group_id='ADMIN';")" = "0" ] || { echo "::error::test setup: citest.a must NOT be ADMIN (else it skips the non-admin path)"; exit 1; }
           echo "--- diagnostic: citest.a auth + redirect target ---"
-          curl -s -o /dev/null -w 'root: code=%{http_code} redirect=%{redirect_url}\n' -u citest.a:moqui 'http://localhost:8080/apps/zenith' || true
-          curl -s -D - -o /dev/null -u citest.a:moqui 'http://localhost:8080/apps/zenith/Contacts/FindContact' | grep -iE '^(HTTP/|location:)' || true
-          code=$(curl -s -o /dev/null -w '%{http_code}' -u citest.a:moqui 'http://localhost:8080/apps/zenith/Contacts/FindContact')
+          curl -s -o /dev/null -w 'root: code=%{http_code} redirect=%{redirect_url}\n' -u citest.a:moqui 'http://127.0.0.1:8080/apps/zenith' || true
+          curl -s -D - -o /dev/null -u citest.a:moqui 'http://127.0.0.1:8080/apps/zenith/Contacts/FindContact' | grep -iE '^(HTTP/|location:)' || true
+          code=$(curl -s -o /dev/null -w '%{http_code}' -u citest.a:moqui 'http://127.0.0.1:8080/apps/zenith/Contacts/FindContact')
           [ "$code" = "200" ] || { echo "::error::non-admin member citest.a got HTTP $code on FindContact (login failed, or a gate blocked a legit member) — see diagnostic above"; exit 1; }
-          html=$(curl -s -u citest.a:moqui 'http://localhost:8080/apps/zenith/Contacts/FindContact')
+          html=$(curl -s -u citest.a:moqui 'http://127.0.0.1:8080/apps/zenith/Contacts/FindContact')
           echo "$html" | grep -q 'CITestOnlyInTenantA' || { echo "::error::LOCKOUT: a non-admin MEMBER of Tenant A cannot see Tenant A's own contact — the active-org resolver did not recognize its membership (MARUTHI tenant-user lockout risk)"; exit 1; }
           if echo "$html" | grep -q 'CITestOnlyInTenantB'; then echo "::error::ISOLATION LEAK — non-admin member of A sees Tenant B's contact"; exit 1; fi
           echo "OK — non-admin member of Tenant A sees A's contact, not B's (no lockout; isolation holds)"
@@ -529,10 +529,10 @@ jobs:
       - name: Render smoke (both surfaces)
         run: |
           set -o pipefail
-          node docs/infra/ci/smoke.mjs http://localhost:8080 | tee "$RUNNER_TEMP/smoke.txt"
+          node docs/infra/ci/smoke.mjs http://127.0.0.1:8080 | tee "$RUNNER_TEMP/smoke.txt"
 
       - name: POS dashboard, account toolbar and Remember Me regression
-        run: node docs/infra/ci/dashboard-account-regression.mjs http://localhost:8080
+        run: node docs/infra/ci/dashboard-account-regression.mjs http://127.0.0.1:8080
 
       - name: Upload POS dashboard and account toolbar evidence
         if: always()
@@ -591,7 +591,7 @@ jobs:
         # RETAIL/WHOLESALE/EMPLOYEE cash sales + a split tender. Writes <scenario>=<txnId> for the assert.
         env:
           BILLING_OUT: ${{ runner.temp }}/billing_txns.env
-        run: node docs/infra/ci/billing.mjs http://localhost:8080
+        run: node docs/infra/ci/billing.mjs http://127.0.0.1:8080
 
       - name: Assert billing math (DB ground truth vs golden baseline)
         # Tax-exclusive, intra-state CGST+SGST, each component 2dp HALF_UP, payable = round(grand,0).
@@ -624,7 +624,7 @@ jobs:
       - name: Verify POS functions, isolation and responsive UI
         if: env.POS_QA_ENABLED == 'true'
         env:
-          POS_QA_BASE: http://localhost:8080
+          POS_QA_BASE: http://127.0.0.1:8080
           POS_QA_OUT: ${{ runner.temp }}/pos-profile
         run: |
           set -euo pipefail
@@ -650,7 +650,7 @@ jobs:
         # sales-gated; drive it with `candidate_sha=<Sales PR head>`.
         if: env.SALES_QA_ENABLED == 'true'
         env:
-          SALES_QA_BASE: http://localhost:8080
+          SALES_QA_BASE: http://127.0.0.1:8080
           SALES_QA_OUT: ${{ runner.temp }}/sales-profile
         run: |
           set -euo pipefail
@@ -672,7 +672,7 @@ jobs:
       - name: Verify Tax services, persistence, isolation and both UI shells
         if: env.TAX_QA_ENABLED == 'true'
         env:
-          TAX_QA_BASE: http://localhost:8080
+          TAX_QA_BASE: http://127.0.0.1:8080
           TAX_QA_OUT: ${{ runner.temp }}/tax-profile
         run: |
           set -euo pipefail
