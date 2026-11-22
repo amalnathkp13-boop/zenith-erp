@@ -77,6 +77,8 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  if(process.env.POS_QA_FOCUS==='checkout-reference'){await require('./verify-checkout-reference.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='printer-billing-resilience'){await require('./verify-printer-billing-resilience.cjs')({a,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='offline-workspace'){await require('./verify-offline-workspace.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
+ if(process.env.POS_QA_FOCUS==='offline-auto-reconcile'){await require('./verify-offline-auto-reconcile.cjs')({a,foreign,base,check,q,invoke,post});await browser.close();browser=null;return;}
+ if(process.env.POS_QA_FOCUS==='checkout-outbox'){await require('./verify-checkout-outbox.cjs')({a,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='offline-session-close'){await require('./verify-offline-session-close.cjs')({a,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='receipt-designs'){await require('./verify-receipt-designs.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='hold-print'){await require('./verify-hold-print.cjs')({a,base,check,q,invoke,post});await browser.close();browser=null;return;}
@@ -89,6 +91,7 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  if(process.env.POS_QA_FOCUS==='credit-collection-drawers'){await require('./verify-credit-collection-drawers.cjs')({a,base,check,q,invoke,post,account});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='credit-terms'){await require('./verify-credit-terms.cjs')({a,foreign,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='confirmation'){await require('./verify-checkout-confirmation.cjs')({a,base,check,q,invoke,out});await browser.close();browser=null;return;}
+ if(process.env.POS_QA_FOCUS==='payment-complete'){await require('./verify-payment-complete.cjs')({a,base,check,q,invoke,post});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='rate-sync'){await require('./verify-rate-sync.cjs')({a,base,check,q,invoke,post,out});await browser.close();browser=null;return;}
  if(process.env.POS_QA_FOCUS==='terminal-workflows'){
   await require('./verify-free-items.cjs')({browser,base,q,check,out});
@@ -441,6 +444,8 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  // Finish the online cart/hold/close assertions before the offline scenario opens its own session.
  await require('./verify-printer-billing-resilience.cjs')({a,base,check,q,invoke,post,out});
  await require('./verify-offline-workspace.cjs')({a,foreign,base,check,q,invoke,post,out});
+ await require('./verify-offline-auto-reconcile.cjs')({a,foreign,base,check,q,invoke,post});
+ await require('./verify-checkout-outbox.cjs')({a,base,check,q,invoke,post,out});
  await require('./verify-reconnect-checkout.cjs')({a,base,check,q,invoke,post,out});
  await require('./verify-offline-session-close.cjs')({a,base,check,q,invoke,post,out});
  }
@@ -538,7 +543,8 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  check('credit popup reads a positive current bill balance',uiDue>0,{dueText});
  await p.locator('#credit-upfront').fill(uiDue.toFixed(2));await p.locator('#credit-upfront-method').selectOption('Card');
  check('full upfront preview shows zero due',(await p.locator('#credit-due-preview').innerText()).includes('₹0.00'));
- await Promise.all([p.waitForResponse(r=>r.url().includes('/completeCredit')),p.locator('#credit-confirm').click()]);await p.waitForLoadState('networkidle');
+ await Promise.all([p.waitForResponse(r=>r.url().includes('/completeCredit')),p.locator('#credit-confirm').click()]);
+ await p.locator('#posPaySave').click();await p.waitForLoadState('networkidle');
  const paidTx=tx(paid.transactionId),paidPays=rows('pos_payment',`transaction_id='${paid.transactionId}'`);
  check('fully paid credit is recorded once in the current session',paidTx.status_id==='PtCompleted'&&paidTx.is_credit==='Y'&&Number(paidTx.paid_amount)===Number(paidTx.payable_amount)&&Number(paidTx.paid_amount)===uiDue&&paidPays.length===1&&paidPays[0].payment_method==='Card'&&paidPays[0].collection_session_id===creditSession.sessionId,{transaction:paidTx,payments:paidPays});
  const creditList=await post('Terminal','ajaxCart',{action:'creditBills',sessionId:creditSession.sessionId});const list=await creditList.json();
@@ -553,6 +559,7 @@ const rows=(table,where)=>q(`SELECT * FROM ${table} WHERE ${where}`),count=(tabl
  }
  if(process.env.POS_QA_UI_ONLY!=='true') await require('./verify-transactions-csv.cjs')({a,foreign,base,check,q,invoke});
  if(process.env.POS_QA_UI_ONLY!=='true')await require('./verify-checkout-confirmation.cjs')({a,base,check,q,invoke,out});
+ if(process.env.POS_QA_UI_ONLY!=='true')await require('./verify-payment-complete.cjs')({a,base,check,q,invoke,post});
  // Billing has one canonical surface; verify the actual Quasar navigation entry.
  const billingNav=await a.c.newPage();await billingNav.goto(base+'/qapps/zenith/pos/Dashboard',{waitUntil:'domcontentloaded'});
  const billingLink=billingNav.locator('#zq-subnav a[data-match="/pos/Terminal"]');await billingLink.waitFor();

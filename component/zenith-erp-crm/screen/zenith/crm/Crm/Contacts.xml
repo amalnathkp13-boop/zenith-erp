@@ -2,25 +2,48 @@
 <screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         default-menu-title="Contacts" default-menu-index="5">
+    <parameter name="searchText"/>
     <transition-include name="exportList" location="component://zenith-erp-crm/screen/include/CrmExport.xml"/>
 
     <actions>
         <set field="activeOrg" from="(crmOrganization.activeOrgId ?: '_NA_') ?: '__NO_ORGANIZATION__'"/>
         <entity-find-count entity-name="mantle.party.Party" count-field="contactCount"><econdition field-name="ownerPartyId" from="activeOrg"/></entity-find-count>
+        <script><![CDATA[
+            import org.moqui.entity.EntityCondition as EC
+            searchText = searchText?.trim()?.take(100)
+            def factory = ec.entity.conditionFactory
+            def terms = searchText?.tokenize()?.collect { word ->
+                def matches = ['firstName','lastName','organizationName','emailAddress','phoneNumber'].collect { field ->
+                    factory.makeCondition(field, EC.LIKE, '%' + word + '%').ignoreCase()
+                }
+                factory.makeCondition(matches, EC.OR)
+            }
+            contactSearch = terms ? factory.makeCondition(terms, EC.AND) : null
+        ]]></script>
         <entity-find entity-name="zenith.erp.contacts.ContactListView" list="contacts">
-            <search-form-inputs default-order-by="organizationName,firstName" skip-fields="ownerPartyId"/>
+            <search-form-inputs default-order-by="organizationName,firstName,lastName,partyId" skip-fields="ownerPartyId"/>
             <econdition field-name="ownerPartyId" from="activeOrg"/>
+            <econdition-object field="contactSearch"/>
         </entity-find>
     </actions>
     <widgets>
         <container style="zcrm-intro"><label text="Contacts" type="h3"/>
             <label text="People and companies shared with leads, opportunities and activities." type="p"/></container>
-        <container style="zcrm-pipeline-actions"><link url="../goContacts" text="Manage Contacts"/></container>
-        <container style="zcrm-metrics zcrm-reference-metrics">
-            <container style="zcrm-metric"><label text="Contacts in this organization" type="span"/><label text="${contactCount}" type="h4"/><label text="Shared ERP records" type="span" style="zcrm-muted"/></container>
-        </container>
-        <container-box><box-header title="Contact directory"/><box-body>
-            <section name="NoContacts" condition="contacts.isEmpty()"><widgets><label text="No contacts match. Create a contact in the shared Contacts module or clear filters." type="p"/></widgets></section>
+        <container-box><box-header title="Contact directory (${contactCount})"/><box-toolbar>
+            <link url="../goContacts" text="Manage contacts"/>
+        </box-toolbar><box-body>
+            <container style="zcrm-board-toolbar">
+                <render-mode><text type="html,qvt,vuet"><![CDATA[
+                    <form id="SearchCrmContacts" method="get" role="search" class="zcrm-contact-search">
+                        <label for="crm-contact-query">Name, company, email or phone</label>
+                        <input id="crm-contact-query" type="search" name="searchText" maxlength="100"
+                               value="${(searchText!'')?html}" class="form-control"/>
+                        <button type="submit" class="btn btn-primary">Search</button>
+                    </form>
+                ]]></text></render-mode>
+                <link url="." text="Clear filters" parameter-map="[searchText:'']" condition="crmExportFilters"/>
+            </container>
+            <section name="NoContacts" condition="contacts.isEmpty()"><widgets><container style="zcrm-empty"><label text="${contactCount ? 'No contacts match these filters.' : 'No contacts in this organization yet.'}" type="p"/></container></widgets></section>
             <link url="exportList" condition="crmCanExport" text="Export CSV" link-type="anchor" target-window="_blank"
                   parameter-map="crmExportFilters + [dataset:'contacts', format:'csv']"/>
             <link url="exportList" condition="crmCanExport" text="Export XLSX" link-type="anchor" target-window="_blank"
@@ -30,7 +53,7 @@
                 <field name="organizationName"><header-field title="Company"><text-find size="22"/></header-field><default-field><display/></default-field></field>
                 <field name="emailAddress"><header-field title="Email"><text-find size="22"/></header-field><default-field><display/></default-field></field>
                 <field name="phoneNumber"><header-field title="Phone"><text-find size="18"/></header-field><default-field><display/></default-field></field>
-                <field name="partyTypeEnumId"><default-field title="Type"><display/></default-field></field>
+                <field name="partyTypeEnumId"><default-field title="Type"><display-entity entity-name="moqui.basic.Enumeration" key-field-name="enumId" text="${description}"/></default-field></field>
                 <field name="submitButton"><header-field title="Find"><submit/></header-field></field>
             </form-list>
         </box-body></container-box>

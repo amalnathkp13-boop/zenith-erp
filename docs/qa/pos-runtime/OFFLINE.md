@@ -4,7 +4,11 @@ Use a disposable runtime and the synthetic fixtures described in this directory.
 
 `POS_QA_FOCUS=offline-workspace node docs/qa/pos-runtime/verify-runtime.cjs` runs the real billing services, browser disconnect/reconnect, and read-only database assertions. `node docs/qa/pos-runtime/verify-offline-cart.cjs` checks IndexedDB persistence, a second-tab conflict, input validation, partial acknowledgements, and failed sync independently.
 
-The regression was reproduced before the change: disconnecting a populated server cart made it read-only and prevented checkout. The new flow captures a revision of that unpaid draft and completes the same transaction on replay. If its revision, owner, terminal, session, tax, or collected total differs, replay rolls back and leaves the sale on the device.
+The regression was reproduced before the change: disconnecting a populated server cart made it read-only and prevented checkout. The flow captures a revision of that unpaid draft and completes the same transaction on replay. A completed local receipt whose untendered source has changed is recovered as a separate bill without overwriting the changed draft. Ownership, session, tax, collected-total and ambiguous payment conflicts retain the device copy.
+
+Online Cash, Card, UPI, Split and Credit also stage a durable checkout identity before their payment request. The server stores that identity atomically with completion. If a response is lost, automatic replay either acknowledges the exact completed checkout (including its full item and tender facts), or completes the queued receipt once. A connected ERP page also retries ordinary queued bills for the signed-in organization and user, including after leaving the terminal. A fresh in-flight HTTP checkout is excluded until its request settles or its recovery window expires.
+
+`POS_QA_FOCUS=offline-auto-reconcile` verifies stale-source recovery, all tender methods, 20-line preservation and exact-attempt reconciliation against real local services. Older paid-source entries without a shared identity cannot be automatically matched by amount alone; they remain saved until their original bill and payment can be reconciled.
 
 Manual checks:
 
@@ -17,4 +21,4 @@ Manual checks:
 7. Reconnect and verify transaction, invoice, tender rows, tax details, receivable, and stock. Retry the same queued sale: one acknowledgement and one completed transaction. An omitted acknowledgement or a failed HTTP request must leave the sale queued.
 8. Try a foreign shop, product, terminal, user, stale draft revision, or missing session token. The request must not change bills or stock. Same-product equal-price lines in different modes must remain separate.
 
-Keep the device and its browser storage until reconciliation is complete. A closed original session, changed policies/tax, unavailable tax cache, an in-progress server tender, or a stale source draft needs review. Free items and discounts requiring a manager approval remain online approval workflows; no manager PIN or signing private key is cached on the device.
+Keep the device and its browser storage until reconciliation is complete. The original closed session can receive valid late sales and retain its closing details. Changed policies/tax, unavailable tax cache, an unproven server tender, or altered held/draft-only records still need review. Free items and discounts requiring a manager approval remain online approval workflows; no manager PIN or signing private key is cached on the device.

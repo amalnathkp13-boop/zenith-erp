@@ -15,7 +15,8 @@ module.exports=async function({a,base,check,q,invoke,post,out}) {
   await page.goto(`${base}/apps/zenith/pos/Terminal?sessionId=${session.sessionId}&transactionId=${cart.transactionId}&taxOn=Y&salesModeId=RETAIL`);
   await page.locator('#pos-pay-cash').click();await page.locator('#posCashRecv').fill(String(amount));
   const response=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('/payAndComplete'));
-  await page.locator('#posCashConfirm').click();check('cashier checkout returns a completed bill',(await (await response).json()).success===true);
+  await page.locator('#posCashConfirm').click();
+  await page.locator('#posPaySave').click();check('cashier checkout returns a completed bill',(await (await response).json()).success===true);
   for(let i=0;i<100&&record(cart.transactionId).status_id!=='PtCompleted';i++)await page.waitForTimeout(100);
   const saved=record(cart.transactionId);check('last-bill fixture really completed in the ledger',saved.status_id==='PtCompleted'&&Number(saved.payable_amount)===amount&&Number(saved.paid_amount)===amount);
   await page.waitForFunction(value=>document.getElementById('pos-last-completed')?.textContent.trim()===value,'Last amount: '+amount.toFixed(2));

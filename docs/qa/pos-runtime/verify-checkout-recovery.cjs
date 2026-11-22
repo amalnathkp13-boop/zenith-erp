@@ -88,10 +88,20 @@ module.exports=async function({a,base,check,q,invoke,post,out,cleanupInvoke=invo
   const duringTender=await post('PosQaAcceptance','rotateBrowserSession');
   check('browser session can renew while Cash is already open',(await duringTender.json()).rotated);
   a.t=duringTender.headers()['x-csrf-token'];
-  const paid=page.waitForResponse(r=>r.url().endsWith('/payAndComplete'));
+  const paid=page.waitForResponse(r=>r.url().endsWith('/payAndComplete')&&r.request().method()==='POST');
   await cash.locator('.pos-cash-confirm,#posCashConfirm').click();
-  const result=await (await paid).json();
-  check('the old held bill completes once at the saved total',result.success&&payments().length===1&&Number(payments()[0].amount)===747);
+  const response=await paid;
+  const result=await response.json();
+  const completion=page.locator('#posPayConfirmOverlay');
+  await completion.waitFor();
+  const savedBill=q(`SELECT status_id,transaction_number,payable_amount,change_amount FROM pos_transaction WHERE transaction_id='${transactionId}'`)[0];
+  const tender=payments();
+  check('the old held bill completes once at the saved total and records the cash received and change',
+   response.ok()&&result.success===true&&savedBill.status_id==='PtCompleted'&&Number(savedBill.payable_amount)===747&&
+   tender.length===1&&Number(tender[0].amount)===800&&Number(savedBill.change_amount)===53&&Number(result.change)===53&&
+   result.bill?.number===savedBill.transaction_number&&(await completion.innerText()).includes(savedBill.transaction_number),
+   {status:response.status(),success:result.success,savedBill,tender,change:result.change});
+  await completion.locator('#posPaySave').click();
   await page.locator('.pos-cart .aj-p').waitFor({state:'detached'});
   if(out)await page.screenshot({path:require('node:path').join(out,'held-checkout-recovered.png')});
   const beforeHistory=await post('PosQaAcceptance','rotateBrowserSession');
@@ -124,9 +134,10 @@ module.exports=async function({a,base,check,q,invoke,post,out,cleanupInvoke=invo
   a.t=duringCredit.headers()['x-csrf-token'];
   const credit=page.waitForResponse(r=>r.url().endsWith('/completeCredit')&&r.request().method()==='POST');
   await page.locator('#credit-confirm').click();
-  const issued=await credit;
+  await page.locator('#posPaySave').click();
+  const issued=await (await credit).json();
   const row=q(`SELECT status_id,is_credit,payable_amount FROM pos_transaction WHERE transaction_id='${transactionId}'`)[0];
-  check('Credit submits with the refreshed token and correct balance',issued.status()===302&&row.status_id==='PtCompleted'&&row.is_credit==='Y'&&Number(row.payable_amount)===100);
+  check('Credit submits with the refreshed token and correct balance',issued.success===true&&row.status_id==='PtCompleted'&&row.is_credit==='Y'&&Number(row.payable_amount)===100);
  } catch(error) {
   primaryError=error;
   console.error('Checkout recovery browser:',(await page.locator('body').innerText()).slice(-1300));

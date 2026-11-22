@@ -35,6 +35,7 @@ module.exports=async({a,base,check,q,invoke,post,out})=>{
   const pay=page.locator('#posCashConfirm,.pos-cash-confirm');
   await page.locator('#posCashRecv,.pos-cash-input').fill('100');
   await pay.click();
+  await page.locator('#posPaySave').click();
   await page.waitForFunction(()=>document.querySelector('#pos-terminal-root')?.dataset.checkoutCategory===''&&document.getElementById('pos-cart-count')?.textContent==='0');
   check('Successful cash payment resets the next bill to All Items',true);
   const receipt=(await invoke('receipt',{transactionId:bill.transactionId})).receipt;

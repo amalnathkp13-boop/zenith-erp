@@ -31,13 +31,19 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
   };
   const count = () => page.locator('#pos-held-wrap .nb-cnt').innerText();
   const offline = async () => {await context.setOffline(true);await page.waitForFunction(() => window._posOffline?.active()&&!window._posOffline.paused());};
-  const online = async () => {await context.setOffline(false);await page.waitForFunction(() => window._posOffline&&!window._posOffline.active());await page.evaluate(() => window._posOffline.cacheHeldBills());};
+  const online = async () => {
+   await context.setOffline(false);
+   await page.waitForFunction(() => window._posOffline&&!window._posOffline.active());
+   // Finish restoring the cart before simulating the next network loss.
+   await page.evaluate(async () => {await window._posOffline.sync();await window._posOffline.cacheHeldBills();});
+  };
   try {
    await page.goto(base+'/apps/zenith/pos/Terminal?sessionId='+session.sessionId+'&taxOn=N');
    await page.waitForFunction(() => !!window._posOffline?.lookup('POS_QA_A_P18'));
    await page.locator('.nb-modes__btn').click();await page.locator('[data-pos-layout="'+layout+'"]').click();
    await waitCache(2);
    check(layout+' caches both online held bills with complete source identities',(await held()).every(bill => bill.serverHeldId&&bill.sourceRevision&&bill.items.length===1));
+   check(layout+' keeps the online close path when all held bills are already on the server',!(await page.evaluate(() => window._posOffline.needsDeferredClose())));
    for (let round=0;round<2;round++) {
     await offline();
     check(layout+' online holds retain the same count offline, round '+round,await count()==='2');
@@ -88,8 +94,8 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
    await page.locator('.aj-qi').waitFor();
    check(layout+' synced offline hold survives a reload and another disconnect',await count()==='1'&&await page.locator('#posSumTotal').innerText()===expected&&await page.locator('.aj-qi').inputValue()==='3');
    await page.locator('#pos-pay-cash').click();await page.locator('#pos-cash-received').fill('200');await page.locator('.pos-cash-confirm').click();
-   await page.getByRole('dialog',{name:'Sale saved on this device'}).waitFor();
-   await page.locator('#posOfflineDialog .ofl-cancel').click();
+   await page.locator('#posPaySave').click();
+   await page.locator('#posPayConfirmOverlay').waitFor({state:'hidden'});
    await online();await page.waitForFunction(async () => !(await window._posOffline.getQueue()).length);await waitCache(1);
    const completed=q("SELECT transaction_id,paid_amount,payable_amount FROM pos_transaction WHERE session_id='"+session.sessionId+"' AND status_id='PtCompleted'");
    check(layout+' offline recall and payment completes the original bill exactly once',completed.length===1&&sources.includes(completed[0].transaction_id)&&Number(completed[0].payable_amount)===165);

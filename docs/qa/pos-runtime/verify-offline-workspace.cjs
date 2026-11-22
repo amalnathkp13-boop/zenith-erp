@@ -7,6 +7,7 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
  const context=await a.c.browser().newContext({storageState:await a.c.storageState(),viewport:{width:1366,height:768}});
  await context.route('**/qz-tray@*/qz-tray.js',r=>r.fulfill({contentType:'text/javascript',body:'/* No printer in disposable QA. */'}));
  const page=await context.newPage();page.setDefaultTimeout(20000);
+ const receiptChoice=page.locator('#posPayConfirmOverlay');
  try{
   await page.goto(base+'/apps/zenith/pos/Terminal?sessionId='+session.sessionId+'&transactionId='+draft.transactionId+'&taxOn=Y');
   await page.waitForFunction(()=>window._posOffline?.lookup('POS_QA_A_P18')?.taxRate===18);
@@ -63,11 +64,13 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
   await page.screenshot({path:path.join(out,'pos-offline-cash.png')});
   await page.locator('.pos-cash-quick[data-amt="189"]').click();
   await page.locator('#pos-cash-received').press('Enter');
-  await page.getByRole('dialog',{name:'Sale saved on this device'}).waitFor();
+  await receiptChoice.waitFor();
   const first=await page.evaluate(async()=>{const q=await window._posOffline.getQueue();return q[0];});
+  check('offline Cash is durably queued before the receipt choice',!!first?.offlineId&&(await receiptChoice.innerText()).includes(first.offlineId));
+  await receiptChoice.locator('#posPaySave').click();await receiptChoice.waitFor({state:'hidden'});
   check('offline sale is durable with source identity and revision',first?.sourceTransactionId===draft.transactionId&&!!first.sourceRevision&&first.items[0].price===80&&first.items[0].qty===2&&first.taxAmount===28.8,first);
-  await page.locator('#posOfflineDialog .ofl-cancel').click();
   check('completed offline sale clears the live cart',await page.locator('.aj-p').count()===0);
+  check('offline Cash Save does not open the print document',await page.locator('#pos-offline-frame').count()===0);
   await context.setOffline(false);
   await page.waitForFunction(async()=>!(await window._posOffline.getQueue()).length);
   let saved;
@@ -90,16 +93,17 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
   await page.getByRole('button',{name:'Fill remaining with UPI'}).click();
   await page.locator('#pos-split-upi-ref').fill('QA-UPI-REF');
   await page.locator('.pos-split-confirm').click();
-  await page.getByRole('dialog',{name:'Sale saved on this device'}).waitFor();
+  await receiptChoice.waitFor();
   const split=(await page.evaluate(()=>window._posOffline.getQueue()))[0];
+  check('offline Split is durably queued before the receipt choice',!!split?.offlineId&&(await receiptChoice.innerText()).includes(split.offlineId));
+  await receiptChoice.locator('#posPaySave').click();await receiptChoice.waitFor({state:'hidden'});
   check('split checkout records the exact offline payment breakdown and reference',split.payments.length===2&&split.taxOn==='N'&&split.total===90&&
    split.payments.some(payment=>payment.method==='UPI'&&payment.amount===50&&payment.reference==='QA-UPI-REF'),split);
-  await page.locator('#posOfflineDialog .ofl-cancel').click();
   await context.setOffline(false);await page.waitForFunction(async()=>!(await window._posOffline.getQueue()).length);
   let tenders=0;for(let i=0;i<30;i++){tenders=Number(q("SELECT count(*) AS n FROM pos_payment WHERE reference_number IN ('OFFLINE:"+split.offlineId+"','OFFLINE:"+split.offlineId+":QA-UPI-REF')")[0].n);if(tenders===2)break;await new Promise(r=>setTimeout(r,200));}
   check('split offline sync stores both tender rows',tenders===2,{tenders});
   for(const mutation of [{organizationPartyId:'POS_QA_B'},{userId:'ANOTHER_USER'},{terminalId:'POS_QA_B_TERM1'},{items:[{...first.items[0],productId:'POS_QA_B_P18'}]}]){
-   const invalid={...first,...mutation,offlineId:'REJECT-'+Date.now()+'-'+Math.random()};
+   const invalid={...first,sourceTransactionId:null,sourceRevision:null,checkoutAttemptId:null,...mutation,offlineId:'REJECT-'+Date.now()+'-'+Math.random()};
    const result=await invoke('offline',{terminalId,transactions:JSON.stringify([JSON.stringify(invalid)])});
    check('offline replay rejects a changed ownership boundary '+Object.keys(mutation)[0],result.failedCount===1&&!result.syncedIds?.length,result);
   }
@@ -118,16 +122,16 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
   await page.locator('#credit-upfront').fill('6');await page.locator('#credit-days').fill('7');
   check('offline credit uses the online customer and balance fields',
    await page.locator('#credit-due-preview').textContent()==='Balance after this payment: ₹100.00');
-  await page.locator('#credit-confirm').click();await page.getByRole('dialog',{name:'Sale saved on this device'}).waitFor();
+  await page.locator('#credit-confirm').click();await receiptChoice.waitFor();
   const credit=(await page.evaluate(()=>window._posOffline.getQueue()))[0];
+  check('offline Credit is durably queued before the receipt choice',!!credit?.offlineId&&(await receiptChoice.innerText()).includes(credit.offlineId));
+  await receiptChoice.locator('#posPaySavePrint').click();await receiptChoice.waitFor({state:'hidden'});
   check('offline credit retains the customer, term, upfront payment and discounted tax',credit.paymentMethod==='Credit'&&credit.customer.name==='Synthetic Offline Customer'&&
    credit.customer.creditDays===7&&credit.payments[0]?.amount===6&&credit.total===106&&credit.taxAmount===16.2,credit);
-  await page.locator('#oflPrintReceipt').click();
   const printed=await page.locator('#pos-offline-frame').evaluate(f=>f.contentDocument.body.innerText);
   check('offline printable receipt uses standard layout and shows pending sync and the outstanding balance',
    printed.includes('Synthetic Offline Customer')&&printed.includes('Nos')&&printed.includes('16.20')&&/Amount Due\s+100\.00/.test(printed)&&
    printed.includes(credit.offlineId)&&printed.includes('OFFLINE RECEIPT — PENDING SYNC'),{printed});
-  await page.locator('#posOfflineDialog .ofl-cancel').click();
   const creditSync=page.waitForResponse(response=>response.url().endsWith('/syncOfflineTransactions')&&
    response.request().postData()?.includes(credit.offlineId));
   await context.setOffline(false);
@@ -154,10 +158,9 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
    !/could not be synchronized|Checking the saved cart/.test(await page.locator('body').innerText()));
   await page.locator('.aj-q:has-text("+")').click();
   await page.locator('#pos-pay-cash').click();await page.locator('.pos-cash-quick').first().click();await page.locator('.pos-cash-confirm').click();
-  await page.getByRole('dialog',{name:'Sale saved on this device'}).waitFor();
+  await receiptChoice.locator('#posPaySave').click();await receiptChoice.waitFor({state:'hidden'});
   const queued=(await page.evaluate(()=>window._posOffline.getQueue()))[0];
   check('a bill taken during an unreachable ERP is queued with the edited quantity',queued?.items.length===1&&queued.items[0].qty===2,queued);
-  await page.locator('#posOfflineDialog .ofl-cancel').click();
   outage=false;
   await page.locator('#pos-connection-status').filter({hasText:'Online'}).waitFor();
   await page.waitForFunction(async()=>!window._posOffline.active()&&!(await window._posOffline.getQueue()).length);
@@ -171,9 +174,8 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
    await page.evaluate(()=>navigator.onLine)&&await page.locator('.aj-qi').count()===0);
   await page.evaluate(()=>window._posAjax('POS_QA_A_P5',200,'Disposable POS A P5'));
   await page.locator('#pos-pay-cash').click();await page.locator('.pos-cash-quick').first().click();await page.locator('.pos-cash-confirm').click();
-  await page.getByRole('dialog',{name:'Sale saved on this device'}).waitFor();
+  await receiptChoice.locator('#posPaySave').click();await receiptChoice.waitFor({state:'hidden'});
   const idleSale=(await page.evaluate(()=>window._posOffline.getQueue()))[0];
-  await page.locator('#posOfflineDialog .ofl-cancel').click();
   await page.locator('#pos-history-btn').click();
   const history=page.getByRole('dialog',{name:'Bill history'});
   await history.getByText(idleSale.offlineId,{exact:false}).waitFor();
@@ -191,14 +193,18 @@ module.exports=async function({a,base,check,q,invoke,post,out}){
   await page.unroute('**/Terminal/**');
   const conflict=await invoke('cart',{sessionId:session.sessionId,reuseOpenCart:false});await invoke('add',{transactionId:conflict.transactionId,productId:'POS_QA_A_P18',quantity:'1',taxOn:'N'});
   const before=q("SELECT payable_amount,status_id FROM pos_transaction WHERE transaction_id='"+conflict.transactionId+"'")[0];
-  const rejected=await invoke('offline',{terminalId,transactions:JSON.stringify([JSON.stringify({...first,offlineId:'CONFLICT-'+Date.now(),sourceTransactionId:conflict.transactionId,sourceRevision:'stale'})])});
-  check('changed server draft is not overwritten by a queued offline sale',rejected.failedCount===1&&JSON.stringify(q("SELECT payable_amount,status_id FROM pos_transaction WHERE transaction_id='"+conflict.transactionId+"'")[0])===JSON.stringify(before),rejected);
-  const overpaid={...first,sourceTransactionId:null,sourceRevision:null,offlineId:'CASH-CHANGE-'+Date.now(),change:11,payments:[{method:'Cash',amount:200}]};
+  const changedSale={...first,checkoutAttemptId:null,offlineId:'CONFLICT-'+Date.now(),sourceTransactionId:conflict.transactionId,sourceRevision:'stale'};
+  const recovered=await invoke('offline',{terminalId,transactions:JSON.stringify([JSON.stringify(changedSale)])});
+  const [recovery]=q(`SELECT created_transaction_id FROM pos_offline_transaction WHERE terminal_id='${terminalId}' AND transaction_data_json LIKE '%${changedSale.offlineId}%'`);
+  check('a valid queued sale creates a separate bill without overwriting the changed server draft',
+   recovered.syncedIds?.includes(changedSale.offlineId)&&recovery?.created_transaction_id!==conflict.transactionId&&
+   !!recovery?.created_transaction_id&&JSON.stringify(q("SELECT payable_amount,status_id FROM pos_transaction WHERE transaction_id='"+conflict.transactionId+"'")[0])===JSON.stringify(before),recovered);
+  const overpaid={...first,sourceTransactionId:null,sourceRevision:null,checkoutAttemptId:null,offlineId:'CASH-CHANGE-'+Date.now(),change:11,payments:[{method:'Cash',amount:200}]};
   const cashResult=await invoke('offline',{terminalId,transactions:JSON.stringify([JSON.stringify(overpaid)])});
   check('offline cash over-tender imports with an exact change amount',cashResult.syncedIds?.includes(overpaid.offlineId),cashResult);
   let cashRow;for(let i=0;i<30;i++){cashRow=q("SELECT p.amount,t.change_amount FROM pos_payment p JOIN pos_transaction t ON t.transaction_id=p.transaction_id WHERE p.reference_number='OFFLINE:"+overpaid.offlineId+"'")[0];if(cashRow)break;await new Promise(r=>setTimeout(r,200));}
   check('cash received and change remain auditable after sync',Number(cashRow?.amount)===200&&Number(cashRow?.change_amount)===11,cashRow);
-  const separateModes={...first,sourceTransactionId:null,sourceRevision:null,offlineId:'TWO-MODES-'+Date.now(),change:0,items:[{...first.items[0],qty:1,price:100,mode:'RETAIL'},{...first.items[0],qty:1,price:100,mode:'WHOLESALE'}],taxAmount:36,total:236,payments:[{method:'Cash',amount:236}]};
+  const separateModes={...first,sourceTransactionId:null,sourceRevision:null,checkoutAttemptId:null,offlineId:'TWO-MODES-'+Date.now(),change:0,items:[{...first.items[0],qty:1,price:100,mode:'RETAIL'},{...first.items[0],qty:1,price:100,mode:'WHOLESALE'}],taxAmount:36,total:236,payments:[{method:'Cash',amount:236}]};
   const modeResult=await invoke('offline',{terminalId,transactions:JSON.stringify([JSON.stringify(separateModes)])});
   check('equal-price lines in different modes sync successfully',modeResult.syncedIds?.includes(separateModes.offlineId),modeResult);
   let modeRows=[];for(let i=0;i<30;i++){modeRows=q("SELECT i.sales_mode_id FROM pos_transaction_item i JOIN pos_offline_transaction o ON o.created_transaction_id=i.transaction_id WHERE o.transaction_data_json LIKE '%"+separateModes.offlineId+"%'");if(modeRows.length===2)break;await new Promise(r=>setTimeout(r,200));}
