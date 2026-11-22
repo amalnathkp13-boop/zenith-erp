@@ -32,7 +32,8 @@
   const billingPath='/zenith'+(cfg.kotModule==='kot'?'/kot':'/pos/Kitchen')+'/KotBilling';
   const base=shell+billingPath;
   const backLink=root.querySelector('.kg-back');
-  const backCartKey='zenith-kot-back:'+JSON.stringify([cfg.org,cfg.user,cfg.session]);
+  const backCartKey='zenith-kot-back-terminal:'+JSON.stringify([cfg.org,cfg.user,cfg.terminal]);
+  const legacyBackCartKey='zenith-kot-back:'+JSON.stringify([cfg.org,cfg.user,cfg.session]);
   const money=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR'});
   const cardMoney=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',minimumFractionDigits:0});
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -2519,29 +2520,39 @@
     if(e.key===' '&&!e.shiftKey&&canPay()){e.preventDefault();openPayment();}
   }
   document.addEventListener('keydown',shortcut);document.addEventListener('keyup',shortcut);
-  backLink.addEventListener('click',event=>{
-    if(!cart.size)return;
+  function saveBackCart() {
+    if(!cart.size)return true;
     if(busy||unconfirmedOrder) {
-      event.preventDefault();
-      $('order-status').textContent=unconfirmedOrder?unconfirmedMessage:'Wait for the current billing action to finish before leaving.';
-      return;
+      const message=unconfirmedOrder?unconfirmedMessage:'Wait for the current billing action to finish before leaving.';
+      $('order-status').textContent=message;
+      const notice=document.querySelector('#pos-idle-closed p');
+      if(notice)notice.textContent=message;
+      return false;
     }
     try {
       sessionStorage.setItem(backCartKey,JSON.stringify({
         order:{...orderData(),draftId,draftRevision,localOrderId,customer,billingView:grid?'grid':'list'},
         items:[...cart.values()],savedFingerprint
       }));
+      return true;
     } catch {
-      event.preventDefault();
-      $('order-status').textContent='The browser could not save this cart. Hold the bill before leaving.';
+      const message='The browser could not save this cart. Keep this page open to avoid losing the unsent items.';
+      $('order-status').textContent=message;
+      const notice=document.querySelector('#pos-idle-closed p');
+      if(notice)notice.textContent=message;
+      return false;
     }
+  }
+  backLink.addEventListener('click',event=>{
+    if(!saveBackCart())event.preventDefault();
   });
   function restoreBackCart() {
     try {
-      const saved=JSON.parse(sessionStorage.getItem(backCartKey)||'null');
+      const saved=JSON.parse(sessionStorage.getItem(backCartKey)||sessionStorage.getItem(legacyBackCartKey)||'null');
       if(!saved)return false;
       restoreOrder(saved.order,saved);
       sessionStorage.removeItem(backCartKey);
+      sessionStorage.removeItem(legacyBackCartKey);
       return true;
     } catch { return false; }
   }
@@ -2644,7 +2655,10 @@
           clearInterval(heartbeat);clearTimeout(idleCloseTimer);activityAbort.abort();
           controls();
           $('order-status').textContent='This billing session has closed. Open KOT Billing again to continue.';
-          if(closeReason==='IdleUnverifiedCash'||closeReason==='IdleReviewed')PosTillDialogs.showIdleClose(()=>location.assign(backLink.href));
+          if(closeReason==='IdleUnverifiedCash'||closeReason==='IdleReviewed') {
+            PosTillDialogs.showIdleClose(()=>{if(saveBackCart())location.assign(backLink.href);});
+            saveBackCart();
+          }
           return;
         }
         if(version===touchVersion) {

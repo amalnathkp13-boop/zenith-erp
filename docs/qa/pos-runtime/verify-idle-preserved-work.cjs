@@ -81,6 +81,25 @@ module.exports=async function({base,check,q,invoke,post}) {
   check('reopening a reviewed idle drawer recovers its unpaid work exactly once',
    txn(draft.transactionId).session_id===reviewed.sessionId&&txn(held.transactionId).session_id===reviewed.sessionId&&
    Number(q(`SELECT count(*) AS n FROM pos_held_transaction WHERE session_id='${reviewed.sessionId}' AND status_id='PhHeld'`)[0].n)===2);
+  const kotDrawer=await open('kitchen-only');
+  const kotSaved=await (await post('Kitchen/KotBilling','saveDraft',{sessionId:kotDrawer.sessionId,wantJson:'Y',
+   orderType:'Take Away',taxOn:'N',billingView:'grid',
+   itemsJson:JSON.stringify([{productId:'POS_QA_A_P18',quantity:2}])})).json();
+  check('a standalone KOT hold is saved without a POS cart',kotSaved.success&&kotSaved.kotId&&
+   q(`SELECT transaction_id FROM pos_transaction WHERE session_id='${kotDrawer.sessionId}'`).length===0,kotSaved);
+  const kitchen=q(`SELECT * FROM kitchen_order_ticket WHERE kot_id='${kotSaved.kotId}'`)[0];
+  const kitchenLines=q(`SELECT * FROM kot_item WHERE kot_id='${kotSaved.kotId}' ORDER BY kot_item_seq_id`);
+  await expire(kotDrawer.sessionId);
+  const nextKitchen=await reopen(kotDrawer.terminalId);
+  const recoveredKitchen=q(`SELECT * FROM kitchen_order_ticket WHERE kot_id='${kotSaved.kotId}'`)[0];
+  check('a KOT-only held bill follows the reopened counter without a POS draft',
+   recoveredKitchen.draft_session_id===nextKitchen.sessionId&&recoveredKitchen.status_id==='KotDraft'&&
+   recoveredKitchen.order_receipt_json===kitchen.order_receipt_json&&
+   isDeepStrictEqual(q(`SELECT * FROM kot_item WHERE kot_id='${kotSaved.kotId}' ORDER BY kot_item_seq_id`),kitchenLines),
+   {before:kitchen,after:recoveredKitchen,sessionId:nextKitchen.sessionId});
+  const removed=await (await post('Kitchen/KotBilling','deleteDraft',{sessionId:nextKitchen.sessionId,
+   kotId:kotSaved.kotId,wantJson:'Y'})).json();
+  check('standalone KOT fixture cleanup removes only its saved draft',removed.success,removed);
   for(const qrStatus of ['QpPending','QpConfirmed']) {
    const qrDrawer=await open(qrStatus);const bill=await add(qrDrawer.sessionId);
    const seeded=await post('PosQaAcceptance','idleQrFixture',{transactionId:bill.transactionId,statusId:qrStatus});

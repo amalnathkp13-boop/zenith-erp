@@ -63,7 +63,9 @@ deployment claim. Never reuse a database containing customer records.
   at the server deadline. Controlled disposable timestamps exercise the real
   browser timer without waiting an hour. Unpaid open/held bills survive closure,
   overnight cleanup and reopening the same counter; unfinished tenders remain
-  protected. The full idle group also covers the actual scheduled worker when
+  protected. KOT online carts retain manual rates, quantities and layout across
+  the expired session, and storage failure blocks navigation that would lose work.
+  The full idle group also covers the actual scheduled worker when
   `POS_QA_REAL_SCHEDULER=true`.
 - Preserve held sale identity, customer, manual price, line mode and tax toggle.
 - Choose customer place-of-supply before the first line. Once lines or tenders exist,

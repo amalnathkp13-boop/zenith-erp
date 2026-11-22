@@ -104,6 +104,10 @@
                 def draftSessions = ec.entity.find('zenith.erp.pos.PosTransactionView')
                     .condition([terminalId:terminalId,organizationPartyId:_posAccess.organizationPartyId])
                     .condition('statusId','in',['PtCreated','PtHeld']).selectField('sessionId').distinct(true).list()*.sessionId
+                draftSessions.addAll(ec.entity.find('zenith.erp.pos.KitchenOrderTicket')
+                    .condition([terminalId:terminalId,organizationPartyId:_posAccess.organizationPartyId,statusId:'KotDraft'])
+                    .selectField('draftSessionId').distinct(true).list()*.draftSessionId)
+                draftSessions=draftSessions.findAll { it }.unique()
                 def retained = draftSessions ? ec.entity.find('zenith.erp.pos.PosSession').condition('sessionId','in',draftSessions)
                     .condition([terminalId:terminalId,organizationPartyId:_posAccess.organizationPartyId,statusId:'PsClosed'])
                     .condition('closeReason','in',['IdleUnverifiedCash','IdleReviewed']).orderBy('sessionId').list() : []
