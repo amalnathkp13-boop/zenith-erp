@@ -382,7 +382,7 @@ try {
     const cardId = await page.evaluate(name => [...document.querySelectorAll('.zcrm-deal-card')]
       .find(card => card.textContent.includes(name))?.id, name);
     if (!cardId) throw new Error('new opportunity is absent from the board');
-    const dealId = cardId.slice('crm-deal-'.length).replace(/(?:_\d+)+$/, '');
+    const dealId = await page.$eval(`#${cardId} .zcrm-drag-key`, key => key.textContent);
     const before = await page.$eval(`#${cardId}`, card => card.closest('.zcrm-board-column')?.id);
     if (!before?.startsWith('crm-stage-SoProspecting')) throw new Error(`new opportunity started in ${before}`);
     await Promise.all([

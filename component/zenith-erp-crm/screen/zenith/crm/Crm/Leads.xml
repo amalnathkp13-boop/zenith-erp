@@ -20,6 +20,7 @@
 
     <actions>
         <set field="cohort" from="cohort in ['created','qualified'] ? cohort : null"/>
+        <set field="ownership" from="ownership in ['mine','unassigned'] ? ownership : 'all'"/>
         <set field="defaultPeriod" value="all"/>
         <set field="throughToday" from="cohort != null"/>
         <script location="component://zenith-erp-crm/script/CrmPeriod.groovy"/>
@@ -58,7 +59,6 @@
             <econdition field-name="createdDate" operator="less" from="periodEnd" ignore="!periodStart"/>
         </entity-find>
         <service-call name="zenith.crm.CrmServices.get#AssignmentCandidates" in-map="[recordType:'Lead']" out-map="assignment"/>
-        <service-call name="zenith.base.SecurityServices.get#ActiveOrgList" out-map="context"/>
         <set field="_ao" from="(crmOrganization.activeOrgId ?: '_NA_')"/>
         <set field="_hasActiveOrg" from="(_ao != null &amp;&amp; _ao != '_NA_')"/>
         <if condition="_hasActiveOrg"><set field="organizationPartyId" from="_ao"/></if>
@@ -88,22 +88,22 @@
             <label text="${cohort == 'qualified' ? 'Qualified and converted leads' : 'Leads created'} · ${dateRangeLabel}" type="strong"/>
         </container></widgets></section>
         <container style="zcrm-period">
-            <link url="." text="Today" parameter-map="[period:'today',cohort:cohort,ownership:ownership]" style="${period == 'today' ? 'zcrm-period-active' : ''}"/>
-            <link url="." text="This week" parameter-map="[period:'week',cohort:cohort,ownership:ownership]" style="${period == 'week' ? 'zcrm-period-active' : ''}"/>
-            <link url="." text="This month" parameter-map="[period:'month',cohort:cohort,ownership:ownership]" style="${period == 'month' ? 'zcrm-period-active' : ''}"/>
-            <link url="." text="All time" parameter-map="[period:'all',cohort:cohort,ownership:ownership]" style="${period == 'all' ? 'zcrm-period-active' : ''}"/>
+            <link link-type="anchor" url="." text="Today" parameter-map="crmExportFilters + [period:'today',cohort:cohort,ownership:ownership]" style="${period == 'today' ? 'zcrm-period-active' : ''}"/>
+            <link link-type="anchor" url="." text="This week" parameter-map="crmExportFilters + [period:'week',cohort:cohort,ownership:ownership]" style="${period == 'week' ? 'zcrm-period-active' : ''}"/>
+            <link link-type="anchor" url="." text="This month" parameter-map="crmExportFilters + [period:'month',cohort:cohort,ownership:ownership]" style="${period == 'month' ? 'zcrm-period-active' : ''}"/>
+            <link link-type="anchor" url="." text="All time" parameter-map="crmExportFilters + [period:'all',cohort:cohort,ownership:ownership]" style="${period == 'all' ? 'zcrm-period-active' : ''}"/>
         </container>
-        <container style="zcrm-pipeline-actions">
-            <link url="." text="All leads" parameter-map="[ownership:'all',period:period,cohort:cohort]"/>
-            <link url="." text="My leads" parameter-map="[ownership:'mine',period:period,cohort:cohort]"/>
-            <link url="." text="Unassigned" parameter-map="[ownership:'unassigned',period:period,cohort:cohort]"/>
+        <container style="zcrm-period zcrm-ownership">
+            <link link-type="anchor" url="." text="All leads" parameter-map="crmExportFilters + [ownership:'all',period:period,cohort:cohort]" style="${ownership == 'all' ? 'zcrm-period-active' : ''}"/>
+            <link link-type="anchor" url="." text="My leads" parameter-map="crmExportFilters + [ownership:'mine',period:period,cohort:cohort]" style="${ownership == 'mine' ? 'zcrm-period-active' : ''}"/>
+            <link link-type="anchor" url="." text="Unassigned" parameter-map="crmExportFilters + [ownership:'unassigned',period:period,cohort:cohort]" style="${ownership == 'unassigned' ? 'zcrm-period-active' : ''}"/>
             <link url="../ImportLeads" text="Import CSV" condition="modCanWrite"/></container>
         <container style="zcrm-period zcrm-saved-views">
             <section-iterate name="LeadSavedViews" list="savedFilters" entry="saved"><widgets>
-                <link url="." text="${saved.filterName}" parameter-map="new groovy.json.JsonSlurper().parseText(saved.filterJson)"/>
+                <link link-type="anchor" url="." text="${saved.filterName}" parameter-map="new groovy.json.JsonSlurper().parseText(saved.filterJson)"/>
                 <link url="deleteView" text="Remove" parameter-map="[filterId:saved.filterId]" condition="modCanWrite" confirmation="Remove this saved view?"/>
             </widgets></section-iterate>
-            <section name="SaveLeadView" condition="modCanWrite &amp;&amp; !cohort"><widgets><form-single name="SaveLeadFilter" transition="saveView">
+            <section name="SaveLeadView" condition="modCanWrite &amp;&amp; !cohort"><widgets><container-dialog id="SaveLeadViewDialog" button-text="Save view"><form-single name="SaveLeadFilter" transition="saveView">
                 <field name="screenName"><default-field><hidden default-value="Leads"/></default-field></field>
                 <field name="period"><default-field><hidden default-value="${period}"/></default-field></field>
                 <field name="leadSourceId"><default-field><hidden default-value="${leadSourceId ?: ''}"/></default-field></field>
@@ -115,7 +115,7 @@
                 <field name="ownership"><default-field><hidden default-value="${ownership ?: ''}"/></default-field></field>
                 <field name="filterName"><default-field title="Save current filters as"><text-line size="20"/></default-field></field>
                 <field name="submitButton"><default-field title="Save view"><submit/></default-field></field>
-            </form-single></widgets></section>
+            </form-single></container-dialog></widgets></section>
         </container>
         <container style="zcrm-metrics zcrm-lead-metrics">
             <container style="zcrm-metric zcrm-tone-purple"><label text="Total leads" type="span"/><label text="${organizationLeadCount}" type="h4"/><label text="All leads in your organization" type="span" style="zcrm-muted"/></container>
@@ -172,6 +172,41 @@
                     <field name="followUpSubject"><default-field title="First follow-up (optional)"><text-line size="32"/></default-field></field>
                     <field name="followUpDue"><default-field title="Follow-up due"><date-time type="date-time"/></default-field></field>
                     <field name="submitButton"><default-field title="Create Lead"><submit/></default-field></field>
+                    <field-layout>
+                        <field-ref name="organizationPartyId"/>
+                        <field-group title="Contact details" style="zcrm-record-group">
+                            <field-ref name="firstName"/>
+                            <field-ref name="lastName"/>
+                            <field-ref name="companyName"/>
+                            <field-ref name="designation"/>
+                            <field-ref name="email"/>
+                            <field-ref name="mobile"/>
+                            <field-ref name="city"/>
+                            <field-ref name="regionCode"/>
+                            <field-ref name="taxRegistrationNumber"/>
+                        </field-group>
+                        <field-group title="Sales and follow-up" style="zcrm-record-group">
+                            <field-ref name="assignedToUserId"/>
+                            <field-ref name="rating"/>
+                            <field-ref name="estimatedAmount"/>
+                            <field-ref name="description"/>
+                            <field-ref name="followUpSubject"/>
+                            <field-ref name="followUpDue"/>
+                        </field-group>
+                        <field-group title="Source and campaign" style="zcrm-record-group">
+                            <field-ref name="leadSourceId"/>
+                            <field-ref name="sourceDetail"/>
+                            <field-ref name="campaignId"/>
+                            <field-ref name="utmSource"/>
+                            <field-ref name="utmMedium"/>
+                            <field-ref name="utmCampaign"/>
+                            <field-ref name="utmContent"/>
+                            <field-ref name="utmTerm"/>
+                            <field-ref name="landingPageUrl"/>
+                            <field-ref name="allowDuplicate"/>
+                        </field-group>
+                        <field-ref name="submitButton"/>
+                    </field-layout>
                 </form-single>
             </container-dialog>
             </widgets></section>
@@ -231,8 +266,8 @@
                 <field name="utmTerm"><default-field title="UTM Term"><display/></default-field></field>
                 <field name="submitButton"><header-field title="Find"><submit/></header-field></field>
             </form-list>
-            <section name="NoLeads" condition="leadList.isEmpty() &amp;&amp; organizationLeadCount == 0"><widgets><container style="zcrm-empty zcrm-leads-empty"><label text="No leads yet" type="h5"/><label text="Use New Lead above to start tracking potential customers." type="p"/></container></widgets></section>
-            <section name="NoLeadMatches" condition="leadList.isEmpty() &amp;&amp; organizationLeadCount &gt; 0"><widgets><container style="zcrm-empty zcrm-leads-empty"><label text="No leads match this search" type="h5"/><label text="Clear the table filters or try a different term." type="p"/></container></widgets></section>
+            <section name="NoLeads" condition="leadList.isEmpty() &amp;&amp; organizationLeadCount == 0 &amp;&amp; period == 'all'"><widgets><container style="zcrm-empty zcrm-leads-empty"><label text="No leads yet" type="h5"/><label text="Use New Lead to add the first lead." type="p" condition="modCanWrite &amp;&amp; _hasActiveOrg"/></container></widgets></section>
+            <section name="NoLeadMatches" condition="leadList.isEmpty() &amp;&amp; (organizationLeadCount &gt; 0 || period != 'all')"><widgets><container style="zcrm-empty zcrm-leads-empty"><label text="No leads match these filters" type="h5"/><link link-type="anchor" url="." text="Show all leads" parameter-map="crmExportFilters.collectEntries { key, value -> [key, ''] } + [period:'all',ownership:'all']"/></container></widgets></section>
         </box-body></container-box></container>
     </widgets>
 </screen>

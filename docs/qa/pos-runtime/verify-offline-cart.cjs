@@ -22,7 +22,15 @@ const server=http.createServer(async(req,res)=>{
   await page.evaluate(()=>window._posOffline.add('P1'));await page.locator('.aj-p').waitFor();await page.locator('.aj-p').fill('80');
   await context.setOffline(false);await page.reload();await page.locator('.aj-p').waitFor();assert.equal(await page.locator('.aj-p').inputValue(),'80','local draft survives reload even when server restoration is rejected');
   const second=await context.newPage();await second.goto(base+'/apps/zenith/pos/Terminal');await second.waitForFunction(()=>window._posOffline?.paused());assert.match(await second.locator('body').innerText(),/another tab/);await second.close();
-  await context.setOffline(true);await page.locator('.aj-qi').fill('');await page.locator('#pos-pay-cash').click();assert.equal(await page.locator('#pos-cash-received').count(),0,'invalid visible quantity blocks payment');await page.locator('.aj-qi').fill('2');
+  await context.setOffline(true);
+  const qty = page.locator('.aj-qi');
+  for (const incomplete of ['', '.']) {
+   await qty.fill(incomplete);
+   await page.locator('#pos-pay-cash').click();
+   assert.equal(await page.locator('#pos-cash-received').count(),0,'incomplete quantity blocks payment');
+   assert.equal(await qty.inputValue(),incomplete,'cashier can finish the original quantity');
+  }
+  await qty.fill('2');
   await page.locator('#cartInlineSearch').focus();await page.keyboard.press('Space');assert.equal(await page.locator('#pos-pay-cash').evaluate(el=>el===document.activeElement),true);
   await page.keyboard.press('Enter');await page.locator('.pos-cash-quick[data-amt="189"]').click();await page.locator('#pos-cash-received').press('Enter');
   await page.locator('#posPaySave').waitFor();
