@@ -23,7 +23,12 @@ try {
         def summary = compile(dashboard.find { it.contains('invoiceSummaryFor =') })
         def categories = compile(dashboard.find { it.contains('DashboardCategoryTotals') })
         def register = compile(sections(new File(source,'PosSalesRegister.xml')).find { it.contains('paymentsByTransaction') })
-        def forecast = compile(sections(new File(source,'SalesForecast.xml')).find { it.contains('forecastAmount =') })
+        def forecastScreen = new File(source,'SalesForecast.xml')
+        def forecast = compile(sections(forecastScreen).find { it.contains('forecastAmount =') })
+        def symbolField = new XmlSlurper(false, false).parse(forecastScreen).actions.set.find { it.@field.text() == 'sym' }
+        def symbol = compile(symbolField.@from.text())
+        symbol.binding = new Binding([currSymbol:'₹', forecastCurrencyInfo:[currSymbol:'$']])
+        assert symbol.run() == '$'
         for (projected in [null, 0G, 70G]) {
             forecast.binding = new Binding([ec:ec, fc:[projectedNext7:projected, confidencePct:null], noOrg:false,
                     catList:[], histList:[], reportCurrency:'USD', sym:'$'])

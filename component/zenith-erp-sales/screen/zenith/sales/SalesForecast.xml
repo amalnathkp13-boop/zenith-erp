@@ -6,8 +6,10 @@
     <always-actions>
         <service-call name="zenith.sales.SalesAccessServices.get#AuthorizedActiveOrganization" out-map="_salesScope"/>
         <set field="_salesOrgId" from="_salesScope.activeOrgId"/>
-        <script>ec.context.putAll(ec.resource.script('component://zenith-erp-sales/script/ReportingCurrency.groovy', null,
-                [reportOrgId:_salesOrgId, reportShopId:null, currencyUomId:currencyUomId]))</script>
+        <set field="forecastCurrencyInfo" from="ec.resource.script('component://zenith-erp-sales/script/ReportingCurrency.groovy', null,
+                [reportOrgId:_salesOrgId, reportShopId:null, currencyUomId:currencyUomId])"/>
+        <set field="reportCurrency" from="forecastCurrencyInfo.reportCurrency"/>
+        <set field="reportCurrencies" from="forecastCurrencyInfo.reportCurrencies"/>
     </always-actions>
 
 
@@ -35,7 +37,7 @@
             <service-call name="zenith.sales.SalesForecastServices.forecast#CategorySales" out-map="catFc" in-map="[organizationPartyId:org, currencyUomId:reportCurrency, topN:6, horizonDays:14]"/>
             <script><![CDATA[
                 def currencyFilter = ec.resource.script('component://zenith-erp-sales/script/ReportingCurrencyCondition.groovy', null,
-                        [currency:reportCurrency, includeUnspecified:legacyForecastCurrency == reportCurrency])
+                        [currency:reportCurrency, includeUnspecified:forecastCurrencyInfo.legacyForecastCurrency == reportCurrency])
                 histList = ec.entity.find('zenith.erp.sales.SalesRevenueForecast')
                         .condition('organizationPartyId', org).condition('dimension', 'Overall').condition(currencyFilter)
                         .condition('actualAmount', org.moqui.entity.EntityCondition.NOT_EQUAL, null)
@@ -44,7 +46,7 @@
         </if>
         <set field="weeklyList" from="fc?.weeklyPoints ?: []"/>
         <set field="catList" from="catFc?.categories ?: []"/>
-        <set field="sym" from="currSymbol"/>
+        <set field="sym" from="forecastCurrencyInfo.currSymbol"/>
         <set field="currencyOptions" from="reportCurrencies.collect { [code:it] }"/>
         <script><![CDATA[
             forecastAmount = { v ->
