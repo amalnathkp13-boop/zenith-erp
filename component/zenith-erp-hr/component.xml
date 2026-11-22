@@ -6,4 +6,5 @@
     <depends-on name="mantle-usl"/>
     <depends-on name="zenith-erp-base"/>
     <depends-on name="zenith-erp-contacts"/>
+    <depends-on name="zenith-erp-attendance"/>
 </component>

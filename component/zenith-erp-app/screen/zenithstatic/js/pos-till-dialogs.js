@@ -69,13 +69,68 @@
             + '</div>';
     }
 
-    function upiReceiptMarkup(due) {
-        const accent = '#9c27b0';
-        return '<h2 id="pos-upi-title" style="font-size:18px;margin:0 0 12px">Save UPI bill</h2>'
-                + '<p style="color:#444;margin:0 0 18px">UPI payment received: &#8377; ' + due.toFixed(2) + '.</p>'
-                + '<div data-pos-tender-row style="display:flex;gap:10px">'
-                + '<button type="button" id="posPaySave" style="flex:1;padding:14px;border:1px solid #bbb;background:#f5f5f5;color:#444;border-radius:10px;font-weight:700">Save</button>'
-                + '<button type="button" id="posPaySavePrint" style="flex:1;padding:14px;border:0;background:' + accent + ';color:#fff;border-radius:10px;font-weight:800">Save and print</button></div>';
+    function openReceiptChoice(method, due, onChoice, completion) {
+        if (document.getElementById('posPayConfirmOverlay')) return null;
+        const dialog = document.createElement('dialog');
+        dialog.id = 'posPayConfirmOverlay';
+        dialog.setAttribute('aria-labelledby', 'pos-save-bill-title');
+        dialog.setAttribute('aria-describedby', 'pos-save-bill-total');
+        dialog.style.cssText = 'width:640px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);box-sizing:border-box;margin:auto;padding:0;border:0;border-radius:18px;background:white;color:#172033;box-shadow:0 16px 50px rgba(17,24,39,.25);font-family:inherit';
+        const button = 'flex:1;min-width:0;min-height:52px;padding:12px 10px;border-radius:10px;font:inherit;font-weight:700;cursor:pointer;line-height:1.3;';
+        const savedBill = 'Bill ' + completion.billNumber + ' is saved' + (completion.offline ? ' on this device' : '') + '.';
+        const change = Number(completion.change) > 0 ? ' Change given: ' + CS + fmt2(completion.change) + '.' : '';
+        dialog.innerHTML = '<style>'
+            + '#posPayConfirmOverlay::backdrop{background:rgba(31,41,55,.6)}'
+            + '#posPayConfirmOverlay button:disabled{opacity:.65;cursor:wait}'
+            + '#posPayConfirmOverlay button:focus{outline:2px solid #2563eb!important;outline-offset:3px!important;box-shadow:0 0 0 5px #dbeafe}'
+            + 'html:has(#posPayConfirmOverlay[open]) :is(#posCashTenderOverlay,#posCreditOverlay,#posOfflineDialog,.pos-cash-panel,.pos-split-panel),'
+            + 'html:has(#posPayConfirmOverlay[open]) :is(#posCashTenderOverlay,#posOfflineDialog)::backdrop{visibility:hidden}'
+            + '</style>'
+            + '<div style="padding:clamp(20px,4vw,30px);text-align:center">'
+            + '<div aria-hidden="true" style="display:grid;place-items:center;width:56px;height:56px;margin:0 auto 16px;border:1px solid #86d99b;border-radius:50%;background:#e2f7e8;color:#159536;font-size:30px">&#10003;</div>'
+            + '<h2 id="pos-save-bill-title" style="font-size:clamp(24px,4vw,32px);font-weight:750;line-height:1.2;margin:0 0 12px;color:#111827">Payment Complete</h2>'
+            + '<p id="pos-save-bill-total" style="font-size:16px;line-height:1.6;margin:0 0 10px;overflow-wrap:anywhere">' + esc(savedBill + change) + '</p>'
+            + (completion.offline ? '<p style="font-size:14px;color:#64748b;margin:0 0 12px">This bill will sync automatically when the connection returns.</p>' : '')
+            + '<p role="alert" hidden style="font-size:14px;color:#b91c1c;margin:0 0 12px"></p>'
+            + '<div style="display:flex;gap:12px;border-top:1px solid #e2e8f0;padding-top:20px;margin-top:22px">'
+            + '<button type="button" id="posPaySave" autofocus style="' + button + 'border:1px solid #174680;background:#fff;color:#174680">Save</button>'
+            + '<button type="button" id="posPaySavePrint" style="' + button + 'border:1px solid #174680;background:#174680;color:#fff">Save &amp; print</button>'
+            + '</div></div>';
+        const save = dialog.querySelector('#posPaySave');
+        const print = dialog.querySelector('#posPaySavePrint');
+        const error = dialog.querySelector('[role=alert]');
+        let pending = false, completed = false;
+        async function choose(shouldPrint) {
+            if (pending || completed) return;
+            pending = save.disabled = print.disabled = true;
+            error.hidden = true;
+            try {
+                if (await onChoice(shouldPrint) !== false) { completed = true; dialog.close(); }
+            } catch (cause) {
+                error.textContent = cause?.message || 'The bill is saved. Printing could not be started. Try printing from History.';
+                error.hidden = false;
+            } finally {
+                pending = save.disabled = print.disabled = false;
+            }
+        }
+        save.onclick = () => choose(false);
+        print.onclick = () => choose(true);
+        dialog.addEventListener('cancel', event => { if (pending) event.preventDefault(); });
+        dialog.addEventListener('click', event => { if (event.target === dialog && !pending) dialog.close(); });
+        dialog.addEventListener('keydown', event => {
+            if (['ArrowLeft','ArrowRight','Left','Right'].includes(event.key)) {
+                event.preventDefault();
+                if (!pending) (document.activeElement === save ? print : save).focus();
+            } else if (event.key === 'Enter') {
+                event.preventDefault();
+                if (!event.repeat) choose(document.activeElement === print);
+            }
+        });
+        dialog.addEventListener('close', () => dialog.remove(), {once:true});
+        (document.fullscreenElement || document.body).append(dialog);
+        dialog.showModal();
+        save.focus();
+        return dialog;
     }
 
     function splitMarkup(total, formOpen = '', formClose = '') {
@@ -284,5 +339,5 @@
         dialog.showModal();
     }
 
-    window.PosTillDialogs = {cashMarkup, updateCash, digitalMarkup, upiReceiptMarkup, splitMarkup, updateSplit, bindSplit, creditMarkup, openClose, showHandoff};
+    window.PosTillDialogs = {cashMarkup, updateCash, digitalMarkup, openReceiptChoice, splitMarkup, updateSplit, bindSplit, creditMarkup, openClose, showHandoff};
 })();

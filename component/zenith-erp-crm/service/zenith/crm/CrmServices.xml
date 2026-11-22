@@ -1539,6 +1539,10 @@
                 <econdition field-name="ownerPartyId" from="segment.organizationPartyId"/>
             </entity-find>
             <set field="allPartyIds" from="customers*.partyId.unique()" type="List"/>
+            <if condition="criteriaList.any { it.criteriaTypeEnumId in ['SctTotalSpend', 'SctOrderCount'] }">
+                <set field="ordersByCustomer" from="ec.resource.script('component://zenith-erp-crm/script/CustomerOrderMetrics.groovy', null,
+                    [vendorId:segment.organizationPartyId, customerId:null])"/>
+            </if>
             <entity-find entity-name="zenith.erp.crm.Lead" list="convertedLeads">
                 <econdition field-name="organizationPartyId" from="segment.organizationPartyId"/>
                 <econdition field-name="statusId" value="LeadConverted"/>
@@ -1583,43 +1587,20 @@
                             <script>filteredIds.add(addr.partyId)</script>
                         </if>
                     </iterate>
-
-                <else-if condition="crit.criteriaTypeEnumId == 'SctTotalSpend'">
+                </else-if>
+                <else-if condition="crit.criteriaTypeEnumId in ['SctTotalSpend', 'SctOrderCount']">
+                    <set field="metric" from="crit.criteriaTypeEnumId == 'SctOrderCount' ? 'orderCount' : 'partTotal'"/>
+                    <set field="threshold" from="new BigDecimal(crit.fieldValue)"/>
                     <iterate list="allPartyIds" entry="pid">
-                        <entity-find entity-name="mantle.order.OrderHeaderAndPart" list="orders">
-                            <econdition field-name="customerPartyId" from="pid"/>
-                            <econdition field-name="vendorPartyId" from="segment.organizationPartyId"/>
-                            <econdition field-name="statusId" operator="in" value="OrderCompleted,OrderApproved"/>
-                        </entity-find>
-                        <set field="totalSpend" from="BigDecimal.ZERO" type="BigDecimal"/>
-                        <iterate list="orders" entry="ord">
-                            <set field="totalSpend" from="totalSpend + (ord.grandTotal ?: 0)"/>
-                        </iterate>
-                        <set field="threshold" from="new BigDecimal(crit.fieldValue)" type="BigDecimal"/>
-                        <if condition="(crit.operator == 'gte' &amp;&amp; totalSpend &gt;= threshold) ||
-                                       (crit.operator == 'gt' &amp;&amp; totalSpend &gt; threshold) ||
-                                       (crit.operator == 'lte' &amp;&amp; totalSpend &lt;= threshold) ||
-                                       (crit.operator == 'lt' &amp;&amp; totalSpend &lt; threshold)">
+                        <set field="metricValue" from="ordersByCustomer[pid]?.get(metric) ?: 0"/>
+                        <if condition="(crit.operator == 'gte' &amp;&amp; metricValue &gt;= threshold) ||
+                                       (crit.operator == 'gt' &amp;&amp; metricValue &gt; threshold) ||
+                                       (crit.operator == 'lte' &amp;&amp; metricValue &lt;= threshold) ||
+                                       (crit.operator == 'lt' &amp;&amp; metricValue &lt; threshold)">
                             <script>filteredIds.add(pid)</script>
                         </if>
                     </iterate>
-
-                <else-if condition="crit.criteriaTypeEnumId == 'SctOrderCount'">
-                    <iterate list="allPartyIds" entry="pid">
-                        <entity-find-count entity-name="mantle.order.OrderHeaderAndPart" count-field="orderCount">
-                            <econdition field-name="customerPartyId" from="pid"/>
-                            <econdition field-name="vendorPartyId" from="segment.organizationPartyId"/>
-                            <econdition field-name="statusId" operator="in" value="OrderCompleted,OrderApproved"/>
-                        </entity-find-count>
-                        <set field="threshold" from="Integer.parseInt(crit.fieldValue)" type="Integer"/>
-                        <if condition="(crit.operator == 'gte' &amp;&amp; orderCount &gt;= threshold) ||
-                                       (crit.operator == 'gt' &amp;&amp; orderCount &gt; threshold) ||
-                                       (crit.operator == 'lte' &amp;&amp; orderCount &lt;= threshold) ||
-                                       (crit.operator == 'lt' &amp;&amp; orderCount &lt; threshold)">
-                            <script>filteredIds.add(pid)</script>
-                        </if>
-                    </iterate>
-                </else-if></else-if></else-if></if>
+                </else-if></if>
                 <set field="qualifiedPartyIds" from="ruleIndex == 0 ? filteredIds.unique() :
                     ((crit.joinOperator ?: 'AND') == 'OR' ? (qualifiedPartyIds + filteredIds).unique() :
                     qualifiedPartyIds.intersect(filteredIds))"/>
@@ -1672,19 +1653,12 @@
                           in-map="[entityName:'mantle.party.Party', idField:'partyId', idValue:partyId, orgField:'ownerPartyId']"/>
             <if condition="!customerAccess.allowed"><return error="true" message="Customer not found for your organization."/></if>
             <set field="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
-            <entity-find entity-name="mantle.order.OrderHeaderAndPart" list="orders">
-                <econdition field-name="customerPartyId" from="partyId"/>
-                <econdition field-name="vendorPartyId" from="organizationPartyId"/>
-                <econdition field-name="statusId" operator="in" value="OrderCompleted,OrderApproved"/>
-                <order-by field-name="-entryDate"/>
-            </entity-find>
-            <set field="totalOrders" from="orders.size()" type="Integer"/>
-            <set field="totalSpend" from="BigDecimal.ZERO" type="BigDecimal"/>
-            <iterate list="orders" entry="ord">
-                <set field="totalSpend" from="totalSpend + (ord.grandTotal ?: 0)"/>
-            </iterate>
+            <set field="metrics" from="ec.resource.script('component://zenith-erp-crm/script/CustomerOrderMetrics.groovy', null,
+                [vendorId:organizationPartyId, customerId:partyId])[partyId]"/>
+            <set field="totalOrders" from="metrics?.orderCount ?: 0" type="Integer"/>
+            <set field="totalSpend" from="metrics?.partTotal ?: 0" type="BigDecimal"/>
             <set field="avgOrderValue" from="totalOrders ? totalSpend / totalOrders : BigDecimal.ZERO" type="BigDecimal"/>
-            <set field="lastOrderDate" from="orders ? orders[0].entryDate : null"/>
+            <set field="lastOrderDate" from="metrics?.lastOrderDate"/>
             <set field="daysSinceLastOrder" from="lastOrderDate ?
                 ((ec.user.nowTimestamp.time - lastOrderDate.time) / 86400000L).intValue() : null" type="Integer"/>
 

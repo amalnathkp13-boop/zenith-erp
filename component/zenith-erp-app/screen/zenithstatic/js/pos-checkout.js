@@ -49,6 +49,7 @@
     function search(open) {
         var panel = root.querySelector('.pos-cart-search'), input = document.getElementById('cartInlineSearch');
         if (!panel || !input) return;
+        if (open && panel.classList.contains('is-open') && document.activeElement === input) return;
         panel.classList.toggle('is-open', open);
         if (open) {
             var heading=root.querySelector('.pos-cart-heading').getBoundingClientRect();
@@ -79,7 +80,10 @@
     function boot() {
         root = document.querySelector('.pos-checkout-reference'); if (!root || root.dataset.checkoutBound) return;
         root.dataset.checkoutBound = '1';
-        observer = new MutationObserver(schedule); paint(); connection();
+        observer = new MutationObserver(function (changes) {
+            if (changes.some(function (change) { return !change.target.closest('#cartSearchDropdown,.pos-product-grid'); })) schedule();
+        });
+        paint(); connection();
         root.addEventListener('keydown',function(event){
             if(event.target.id==='cartInlineSearch' && (event.key==='Enter'||event.key==='Escape')) setTimeout(function(){search(false);},0);
         },true);

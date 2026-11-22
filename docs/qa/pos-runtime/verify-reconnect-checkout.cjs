@@ -109,15 +109,32 @@ module.exports = async function ({a,base,check,q,invoke,post,out}) {
   await page.locator('#pos-pay-cash').click();
   const cash = page.locator('.pos-cash-panel,#posCashTenderOverlay');
   await cash.locator('.pos-cash-input,#posCashRecv').fill(String(collected));
+  await page.route('**/Terminal/payAndComplete',async route => {
+   const response = await route.fetch();
+   await page.evaluate(() => {
+    Object.defineProperty(navigator,'onLine',{configurable:true,value:false});
+    window.dispatchEvent(new Event('offline'));
+   });
+   await route.fulfill({response});
+  },{times:1});
   const onlinePayment = page.waitForResponse(response => response.url().endsWith('/payAndComplete'));
   await cash.locator('.pos-cash-confirm,#posCashConfirm').click();
   const receipt = await (await onlinePayment).json();
+  const completion = page.locator('#posPayConfirmOverlay');
+  await completion.waitFor();
   await page.locator('.pos-cart .aj-qi').first().waitFor({state:'detached'});
   const recorded = payments();
-  check('the restored cart uses online checkout and records a single exact cash tender',
+  const retainedDuringPayment = await page.evaluate(() => window._posOffline.getQueue());
+  check('a connection drop while the server saves still reports the actual bill and one exact online cash tender',
    receipt.success&&transactions()[0].status_id==='PtCompleted'&&recorded.length===1&&Number(recorded[0].amount)===collected&&
-   !String(recorded[0].reference_number||'').startsWith('OFFLINE:')&&await page.locator('#posOfflineDialog').count()===0,
+   !String(recorded[0].reference_number||'').startsWith('OFFLINE:')&&await page.locator('#posOfflineDialog').count()===0&&
+   (await completion.innerText()).includes(receipt.bill.number)&&!retainedDuringPayment.some(sale=>sale.sessionId===session.sessionId),
    {collected,recorded});
+  await completion.locator('#posPaySave').click();
+  await page.evaluate(() => { delete navigator.onLine;window.dispatchEvent(new Event('online')); });
+  await status.filter({hasText:/^Online$/}).waitFor();
+  check('reconnecting cannot restore or pay the already saved bill again',
+   await page.locator('.pos-cart .aj-qi').count()===0&&transactions().length===1&&payments().length===1);
 
   let closeResult;
   await page.route('**/Terminal/closeSession',async route => {

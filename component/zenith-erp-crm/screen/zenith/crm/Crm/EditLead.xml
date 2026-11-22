@@ -164,6 +164,41 @@
                             <conditional-field name="save_write" condition="leadWrite.allowed" title="Update"><submit/></conditional-field>
                             <default-field title="Update"><label text="You have view-only access — changes are disabled." type="span" style="text-grey-7"/></default-field>
                         </field>
+                        <field-layout>
+                            <field-ref name="leadId"/>
+                            <field-group title="Contact details" style="zcrm-record-group">
+                                <field-ref name="firstName"/>
+                                <field-ref name="lastName"/>
+                                <field-ref name="companyName"/>
+                                <field-ref name="designation"/>
+                                <field-ref name="email"/>
+                                <field-ref name="mobile"/>
+                                <field-ref name="phone"/>
+                                <field-ref name="website"/>
+                            </field-group>
+                            <field-group title="Sales and follow-up" style="zcrm-record-group">
+                                <field-ref name="statusId"/>
+                                <field-ref name="rating"/>
+                                <field-ref name="estimatedAmount"/>
+                                <field-ref name="estimatedCloseDate"/>
+                                <field-ref name="description"/>
+                                <field-ref name="lostReason"/>
+                            </field-group>
+                            <field-group title="Source and campaign" style="zcrm-record-group">
+                                <field-ref name="leadSourceId"/>
+                                <field-ref name="sourceDetail"/>
+                                <field-ref name="campaignId"/>
+                            </field-group>
+                            <field-group title="Address and tax details" style="zcrm-record-group">
+                                <field-ref name="address"/>
+                                <field-ref name="city"/>
+                                <field-ref name="regionCode"/>
+                                <field-ref name="postalCode"/>
+                                <field-ref name="taxRegistrationNumber"/>
+                                <field-ref name="taxIdNumber"/>
+                            </field-group>
+                            <field-ref name="submitButton"/>
+                        </field-layout>
                     </form-single>
                     <label text="Score: ${lead.score ?: 0}/100" type="div" style="text-info"/>
                     <label text="First touch: ${lead.firstTouchSourceId ?: lead.leadSourceId ?: 'Unknown'} · Latest touch: ${lead.latestTouchSourceId ?: lead.leadSourceId ?: 'Unknown'}" type="p"/>

@@ -7,7 +7,14 @@
         <set field="html_title" value="Human Resources"/>
     </always-actions>
 
-    <subscreens default-item="HrDashboard">
+    <subscreens default-item="Dashboard">
+        <subscreens-item name="Dashboard" location="component://zenith-erp-hr/screen/zenith/hr/Workspace.xml" menu-title="Dashboard" menu-index="1"/>
+        <subscreens-item name="Directory" location="component://zenith-erp-hr/screen/zenith/hr/Workspace.xml" menu-title="Employees" menu-index="2"/>
+        <subscreens-item name="Attendance" location="component://zenith-erp-hr/screen/zenith/hr/Workspace.xml" menu-title="Attendance" menu-index="3"/>
+        <subscreens-item name="Leave" location="component://zenith-erp-hr/screen/zenith/hr/Workspace.xml" menu-title="Leave" menu-index="4"/>
+        <subscreens-item name="Salary" location="component://zenith-erp-hr/screen/zenith/hr/Workspace.xml" menu-title="Salary &amp; Payslips" menu-index="5"/>
+        <subscreens-item name="Reports" location="component://zenith-erp-hr/screen/zenith/hr/Workspace.xml" menu-title="Reports" menu-index="6"/>
+        <subscreens-item name="Settings" location="component://zenith-erp-hr/screen/zenith/hr/Workspace.xml" menu-title="Settings" menu-index="7"/>
         <subscreens-item name="HrDashboard" location="component://zenith-erp-hr/screen/zenith/hr/Hr/HrDashboard.xml" menu-title="Dashboard"/>
         <subscreens-item name="MyProfile" location="component://zenith-erp-hr/screen/zenith/hr/Hr/MyProfile.xml" menu-title="My Profile"/>
         <subscreens-item name="MyPayslips" location="component://zenith-erp-hr/screen/zenith/hr/Hr/MyPayslips.xml" menu-title="My Payslips"/>

@@ -70,7 +70,7 @@
                     <field name="timing"><default-field title="Due"><display/></default-field></field>
                     <field name="ruleStatus"><default-field title="Status"><display/></default-field></field>
                     <field name="editRule" hide="!canManageWorkflows"><default-field title="Actions">
-                        <link url="." text="Edit rule" parameter-map="[editStageId:triggerId]"/>
+                        <link link-type="anchor" url="." text="Edit rule" parameter-map="[editStageId:triggerId]"/>
                     </default-field></field>
                 </form-list>
             </widgets></section>
@@ -78,7 +78,7 @@
         <section name="ManageStageWorkflows" condition="canManageWorkflows"><widgets>
             <container-box><box-header title="Set up a follow-up"/><box-body>
                 <container style="zcrm-workflow-templates"><section-iterate name="WorkflowSuggestions" list="suggestions" entry="recipe"><widgets>
-                    <link url="." text="Use template: ${recipe.taskSubject}" parameter-map="[suggestion:recipe.triggerId]"/>
+                    <link link-type="anchor" url="." text="Use template: ${recipe.taskSubject}" parameter-map="[suggestion:recipe.triggerId]"/>
                 </widgets></section-iterate></container>
                 <form-single name="SaveStageWorkflow" map="selectedRule" transition="saveWorkflow">
                     <field name="triggerId"><default-field title="When this happens"><drop-down>

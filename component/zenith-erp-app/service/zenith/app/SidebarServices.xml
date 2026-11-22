@@ -12,7 +12,7 @@
             def modules = [
                 '/Dashboard':null, '/Contacts':'contacts', '/sales':'sales', '/Purchase':'purchase',
                 '/Crm':'crm', '/pos':'pos', '/pos/Terminal':'pos', '/kot':'kot', '/pricing':'pricing',
-                '/Inventory':'inventory', '/manufacturing':'manufacturing', '/project':'project',
+                '/Hr':'hr', '/Inventory':'inventory', '/manufacturing':'manufacturing', '/project':'project',
                 '/Stores':null, '/barcode':'barcode', '/Accounting':'accounting', '/tax':'tax',
                 '/payroll':'payroll', '/expenses':'expenses'
             ]
@@ -48,6 +48,8 @@
                 if (mod == 'kot') return navigation.moduleIds == null || navigation.moduleIds.contains('kot')
                 if (plan != null && !plan.contains('all') && !plan.contains(mod)) return false
                 if (plan != null && !plan.contains('all') && !isAdmin && groups && !navigation.moduleIds.contains(mod)) return false
+                if (id == '/Hr') return ec.factory.componentBaseLocations.containsKey('zenith-erp-hr') &&
+                    ec.service.sync().name('zenith.hr.WorkspaceServices.get#WorkspaceAccess').disableAuthz().call().allowed
                 return true
             }.keySet() as List
         ]]></script></actions>

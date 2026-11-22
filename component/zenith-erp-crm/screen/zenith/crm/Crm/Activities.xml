@@ -135,11 +135,11 @@
             </widgets></section>
         </container>
         <container style="zcrm-period zcrm-reference-period">
-            <link url="." text="This month" parameter-map="[period:'month']" style="${period == 'month' ? 'zcrm-period-active' : ''}"/>
-            <link url="." text="All time" parameter-map="[period:'all']" style="${period == 'all' ? 'zcrm-period-active' : ''}"/>
+            <link link-type="anchor" url="." text="This month" parameter-map="[period:'month']" style="${period == 'month' ? 'zcrm-period-active' : ''}"/>
+            <link link-type="anchor" url="." text="All time" parameter-map="[period:'all']" style="${period == 'all' ? 'zcrm-period-active' : ''}"/>
         </container>
         <container style="zcrm-period zcrm-saved-views">
-            <section-iterate name="ActivitySavedViews" list="savedFilters" entry="saved"><widgets><link url="." text="${saved.filterName}" parameter-map="new groovy.json.JsonSlurper().parseText(saved.filterJson)"/></widgets></section-iterate>
+            <section-iterate name="ActivitySavedViews" list="savedFilters" entry="saved"><widgets><link link-type="anchor" url="." text="${saved.filterName}" parameter-map="new groovy.json.JsonSlurper().parseText(saved.filterJson)"/></widgets></section-iterate>
             <section name="SaveActivityView" condition="modCanWrite"><widgets><form-single name="SaveActivityFilter" transition="saveView">
                 <field name="screenName"><default-field><hidden default-value="Activities"/></default-field></field>
                 <field name="period"><default-field><hidden default-value="${period}"/></default-field></field>
@@ -149,17 +149,17 @@
             </form-single></widgets></section>
         </container>
         <container style="zcrm-period zcrm-reference-period">
-            <link url="." text="All" parameter-map="[view:'all',period:period]" style="${view == 'all' ? 'zcrm-period-active' : ''}"/>
-            <link url="." text="Today" parameter-map="[view:'today']" style="${view == 'today' ? 'zcrm-period-active' : ''}"/>
-            <link url="." text="Overdue" parameter-map="[view:'overdue']" style="${view == 'overdue' ? 'zcrm-period-active' : ''}"/>
-            <link url="." text="Upcoming" parameter-map="[view:'upcoming']" style="${view == 'upcoming' ? 'zcrm-period-active' : ''}"/>
-            <link url="." text="My follow-ups due" parameter-map="[view:'mywork']" style="${view == 'mywork' ? 'zcrm-period-active' : ''}"/>
-            <link url="." text="Mine" parameter-map="[view:'mine']" style="${view == 'mine' ? 'zcrm-period-active' : ''}"/>
-            <link url="." text="Open tasks" parameter-map="[view:'tasks']" style="${view == 'tasks' ? 'zcrm-period-active' : ''}"/>
-            <link url="." text="Notes" parameter-map="[view:'notes']" style="${view == 'notes' ? 'zcrm-period-active' : ''}"/>
-            <link url="." text="Completed" parameter-map="[view:'completed']" style="${view == 'completed' ? 'zcrm-period-active' : ''}"/>
-            <link url="." text="Cancelled" parameter-map="[view:'cancelled']" style="${view == 'cancelled' ? 'zcrm-period-active' : ''}"/>
-            <link url="." text="Agenda" parameter-map="[view:'agenda']" style="${view == 'agenda' ? 'zcrm-period-active' : ''}"/>
+            <link link-type="anchor" url="." text="All" parameter-map="[view:'all',period:period]" style="${view == 'all' ? 'zcrm-period-active' : ''}"/>
+            <link link-type="anchor" url="." text="Today" parameter-map="[view:'today']" style="${view == 'today' ? 'zcrm-period-active' : ''}"/>
+            <link link-type="anchor" url="." text="Overdue" parameter-map="[view:'overdue']" style="${view == 'overdue' ? 'zcrm-period-active' : ''}"/>
+            <link link-type="anchor" url="." text="Upcoming" parameter-map="[view:'upcoming']" style="${view == 'upcoming' ? 'zcrm-period-active' : ''}"/>
+            <link link-type="anchor" url="." text="My follow-ups due" parameter-map="[view:'mywork']" style="${view == 'mywork' ? 'zcrm-period-active' : ''}"/>
+            <link link-type="anchor" url="." text="Mine" parameter-map="[view:'mine']" style="${view == 'mine' ? 'zcrm-period-active' : ''}"/>
+            <link link-type="anchor" url="." text="Open tasks" parameter-map="[view:'tasks']" style="${view == 'tasks' ? 'zcrm-period-active' : ''}"/>
+            <link link-type="anchor" url="." text="Notes" parameter-map="[view:'notes']" style="${view == 'notes' ? 'zcrm-period-active' : ''}"/>
+            <link link-type="anchor" url="." text="Completed" parameter-map="[view:'completed']" style="${view == 'completed' ? 'zcrm-period-active' : ''}"/>
+            <link link-type="anchor" url="." text="Cancelled" parameter-map="[view:'cancelled']" style="${view == 'cancelled' ? 'zcrm-period-active' : ''}"/>
+            <link link-type="anchor" url="." text="Agenda" parameter-map="[view:'agenda']" style="${view == 'agenda' ? 'zcrm-period-active' : ''}"/>
         </container>
         <container style="zcrm-metrics zcrm-reference-metrics">
             <container style="zcrm-metric"><label text="Total activities" type="span"/><label text="${activityCount}" type="h4"/><label text="${periodStart ? 'This month' : 'All time'}" type="span" style="zcrm-muted"/></container>

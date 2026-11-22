@@ -40,13 +40,12 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
   await page.locator('#pos-pay-cash').click();
   await page.locator('#pos-cash-received').fill('250');
   await page.locator('.pos-cash-confirm').click();
-  await page.getByRole('dialog',{name:'Sale saved on this device'}).waitFor();
-  await page.locator('#posOfflineDialog .ofl-cancel').click();
+  await page.locator('#posPaySave').click();
+  await page.locator('#posPayConfirmOverlay').waitFor({state:'hidden'});
   await page.evaluate(()=>window._posAjax('POS_QA_A_P5',200,'Disposable POS A P5'));
   await page.locator('#pos-pay-card').click();
-  await page.locator('#posPayConfOk').click();
-  await page.getByRole('dialog',{name:'Sale saved on this device'}).waitFor();
-  await page.locator('#posOfflineDialog .ofl-cancel').click();
+  await page.locator('#posPaySave').click();
+  await page.locator('#posPayConfirmOverlay').waitFor({state:'hidden'});
   const saved = (await stored()).queue;
   check('two offline sample bills are durable before closing',saved.length===2,saved);
   check('billing row omits workspace and pending review text',await page.locator('#pos-offline-banner').count()===0);
@@ -101,7 +100,7 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
   const before=q("SELECT close_date,last_activity_date FROM pos_session WHERE session_id='"+retired.sessionId+"'")[0];
   check('retirement removed the unpaid cart but preserved the voided held bill',q("SELECT transaction_id FROM pos_transaction WHERE transaction_id='"+missing.transactionId+"'").length===0&&q("SELECT status_id FROM pos_transaction WHERE transaction_id='"+held.transactionId+"'")[0]?.status_id==='PtVoided');
   const newer=await invoke('open',{terminalId,openingCash:'0'});
-  const recovered={...saved[0],offlineId:'RECOVER-MISSING-'+Date.now(),sessionId:retired.sessionId,sourceTransactionId:missing.transactionId,sourceRevision:original.sourceRevision,items:[{...saved[0].items[0],productId:'POS_QA_A_P18',qty:1,price:100}],total:118,taxAmount:18,payments:[{method:'Cash',amount:118}],change:0,paymentMethod:'Cash'};
+  const recovered={...saved[0],checkoutAttemptId:null,offlineId:'RECOVER-MISSING-'+Date.now(),sessionId:retired.sessionId,sourceTransactionId:missing.transactionId,sourceRevision:original.sourceRevision,items:[{...saved[0].items[0],productId:'POS_QA_A_P18',qty:1,price:100}],total:118,taxAmount:18,payments:[{method:'Cash',amount:118}],change:0,paymentMethod:'Cash'};
   const recoveredHold={...recovered,offlineId:'RECOVER-HELD-'+Date.now(),sourceTransactionId:held.transactionId,items:[{...recovered.items[0],productId:'POS_QA_A_P5',price:200}],total:210,taxAmount:10,payments:[{method:'Cash',amount:210}]};
   const legacy={offlineId:'RECOVER-LEGACY-'+Date.now(),terminalId,sessionId:retired.sessionId,organizationPartyId:recovered.organizationPartyId,items:[{productId:'POS_QA_A_P18',qty:1,price:100}],taxOn:'Y',total:118,paymentMethod:'Cash',ts:new Date().toISOString()};
   const batch=[recovered,recoveredHold,legacy].map(JSON.stringify);

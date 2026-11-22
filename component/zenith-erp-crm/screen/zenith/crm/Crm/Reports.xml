@@ -166,10 +166,10 @@
             <field name="sourceId"><default-field title="Original source"><drop-down allow-empty="true"><list-options list="sourceCatalogue" key="${leadSourceId}" text="${description}"/></drop-down></default-field></field>
             <field name="campaignId"><default-field title="Campaign"><drop-down allow-empty="true"><list-options list="campaigns" key="${campaignId}" text="${campaignName}"/></drop-down></default-field></field>
             <field name="submitButton"><default-field title="Apply"><submit/></default-field></field>
-            <field name="resetButton"><default-field title="Reset"><link url="." text="Reset"/></default-field></field>
+            <field name="resetButton"><default-field title="Reset"><link url="." text="Reset" parameter-map="[period:'', sourceId:'', campaignId:'']"/></default-field></field>
         </form-single></container>
         <container style="zcrm-period zcrm-saved-views">
-            <section-iterate name="ReportSavedViews" list="savedFilters" entry="saved"><widgets><link url="." text="${saved.filterName}" parameter-map="new groovy.json.JsonSlurper().parseText(saved.filterJson)"/></widgets></section-iterate>
+            <section-iterate name="ReportSavedViews" list="savedFilters" entry="saved"><widgets><link link-type="anchor" url="." text="${saved.filterName}" parameter-map="new groovy.json.JsonSlurper().parseText(saved.filterJson)"/></widgets></section-iterate>
             <section name="SaveReportView" condition="modCanWrite"><widgets><form-single name="SaveReportFilter" transition="saveView">
                 <field name="screenName"><default-field><hidden default-value="Reports"/></default-field></field>
                 <field name="period"><default-field><hidden default-value="${period}"/></default-field></field>

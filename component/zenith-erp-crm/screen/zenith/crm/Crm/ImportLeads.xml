@@ -10,6 +10,8 @@
             <service-call name="zenith.crm.CrmServices.assert#CrmWrite" out-map="crmWrite"/>
             <if condition="!crmWrite.allowed"><return error="true" message="CRM write access is required."/></if>
             <script><![CDATA[
+                ec.web.sessionAttributes.remove('crmLeadImport')
+                ec.web.sessionAttributes.remove('crmLeadImportResult')
                 try {
                     def upload = ec.web.parameters.csvFile
                     def csv = ec.web.parameters.csvText
@@ -110,8 +112,7 @@
                     def digest = java.security.MessageDigest.getInstance('SHA-256').digest(csv.getBytes('UTF-8'))
                         .collect { String.format('%02x', it & 0xff) }.join('')
                     ec.web.sessionAttributes.put('crmLeadImport', [userId:ec.user.userId, organizationPartyId:orgId,
-                        digest:digest, rows:parsed])
-                    ec.web.sessionAttributes.remove('crmLeadImportResult')
+                        previewId:java.util.UUID.randomUUID().toString(), digest:digest, rows:parsed])
                 } finally {
                     ['csvText','csvFile'].each { key ->
                         ec.web.parameters.remove(key); ec.web.requestParameters.remove(key); ec.context.remove(key)
@@ -130,8 +131,8 @@
             <script><![CDATA[
                 def plan = ec.web.sessionAttributes.get('crmLeadImport')
                 def orgId = crmWrite.activeOrg
-                if (!plan || plan.userId != ec.user.userId || plan.organizationPartyId != orgId || plan.digest != confirmationDigest) {
-                    ec.message.addError('Preview the same CSV in this organization before importing.'); return
+                if (!previewId || !plan || plan.userId != ec.user.userId || plan.organizationPartyId != orgId || plan.previewId != previewId) {
+                    ec.message.addError('Review the latest CSV preview in this organization before importing.'); return
                 }
                 int imported = 0; int skipped = 0; def errors = []
                 plan.rows.each { row ->
@@ -155,7 +156,7 @@
         <if condition="importResult &amp;&amp; (importResult.userId != ec.user.userId || importResult.organizationPartyId != crmOrganization.activeOrgId)">
             <set field="importResult" from="null"/>
         </if>
-        <if condition="preview &amp;&amp; (preview.userId != ec.user.userId || preview.organizationPartyId != crmOrganization.activeOrgId)">
+        <if condition="preview &amp;&amp; (!preview.previewId || preview.userId != ec.user.userId || preview.organizationPartyId != crmOrganization.activeOrgId)">
             <set field="preview" from="null"/>
         </if>
     </actions>
@@ -187,7 +188,7 @@
                         <field name="error"><default-field title="Validation"><display text="${error ?: 'Ready'}"/></default-field></field>
                     </form-list>
                     <form-single name="CommitLeadCsv" transition="commitImport">
-                        <field name="confirmationDigest"><default-field><hidden default-value="${preview.digest}"/></default-field></field>
+                        <field name="previewId"><default-field><hidden default-value="${preview.previewId}"/></default-field></field>
                         <field name="submitButton"><default-field title="Import valid rows"><submit/></default-field></field>
                     </form-single>
                 </box-body></container-box>

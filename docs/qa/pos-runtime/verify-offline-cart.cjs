@@ -22,16 +22,28 @@ const server=http.createServer(async(req,res)=>{
   await page.evaluate(()=>window._posOffline.add('P1'));await page.locator('.aj-p').waitFor();await page.locator('.aj-p').fill('80');
   await context.setOffline(false);await page.reload();await page.locator('.aj-p').waitFor();assert.equal(await page.locator('.aj-p').inputValue(),'80','local draft survives reload even when server restoration is rejected');
   const second=await context.newPage();await second.goto(base+'/apps/zenith/pos/Terminal');await second.waitForFunction(()=>window._posOffline?.paused());assert.match(await second.locator('body').innerText(),/another tab/);await second.close();
-  await context.setOffline(true);await page.locator('.aj-qi').fill('');await page.locator('#pos-pay-cash').click();assert.equal(await page.locator('#pos-cash-received').count(),0,'invalid visible quantity blocks payment');await page.locator('.aj-qi').fill('2');
+  await context.setOffline(true);
+  const qty = page.locator('.aj-qi');
+  for (const incomplete of ['', '.']) {
+   await qty.fill(incomplete);
+   await page.locator('#pos-pay-cash').click();
+   assert.equal(await page.locator('#pos-cash-received').count(),0,'incomplete quantity blocks payment');
+   assert.equal(await qty.inputValue(),incomplete,'cashier can finish the original quantity');
+  }
+  await qty.fill('2');
   await page.locator('#cartInlineSearch').focus();await page.keyboard.press('Space');assert.equal(await page.locator('#pos-pay-cash').evaluate(el=>el===document.activeElement),true);
-  await page.keyboard.press('Enter');await page.locator('.pos-cash-quick[data-amt="189"]').click();await page.locator('#pos-cash-received').press('Enter');await page.locator('#oflPrintReceipt').waitFor();
-  assert.equal((await page.evaluate(()=>window._posOffline.getQueue())).length,1,'confirmed sale is durable');assert.equal(await page.locator('.aj-p').count(),0,'queued sale clears draft');await page.locator('.ofl-cancel').click();
+  await page.keyboard.press('Enter');await page.locator('.pos-cash-quick[data-amt="189"]').click();await page.locator('#pos-cash-received').press('Enter');
+  await page.locator('#posPaySave').waitFor();
+  const cash=(await page.evaluate(()=>window._posOffline.getQueue()))[0];
+  assert(cash?.offlineId&&(await page.locator('#posPayConfirmOverlay').innerText()).includes(cash.offlineId),'completion uses the saved offline reference');
+  await page.locator('#posPaySave').click();await page.locator('#posPayConfirmOverlay').waitFor({state:'hidden'});
+  assert.equal((await page.evaluate(()=>window._posOffline.getQueue())).length,1,'confirmed sale is durable');assert.equal(await page.locator('.aj-p').count(),0,'queued sale clears draft');
   await page.evaluate(()=>window._posOffline.add('P1'));await page.locator('#pos-pay-upi').click();
-  assert.match(await page.getByRole('dialog',{name:'UPI Payment'}).innerText(),/cannot verify the payment provider while offline/);
-  await page.locator('#posPayConfCancel').click();assert.equal((await page.evaluate(()=>window._posOffline.getQueue())).length,1);
-  await page.locator('#pos-pay-upi').click();await page.locator('#posPayConfOk').click();
-  await page.getByRole('dialog',{name:'Save UPI bill'}).getByRole('button',{name:'Save',exact:true}).click();
-  await page.waitForFunction(async()=>((await window._posOffline.getQueue()).length===2)&&!document.getElementById('posOfflineDialog'));
+  await page.locator('#posPaySave').waitFor();
+  assert.equal((await page.evaluate(()=>window._posOffline.getQueue())).length,2,'UPI queues the sale before offering a receipt');
+  await page.locator('#posPaySave').click();
+  await page.locator('#posPayConfirmOverlay').waitFor({state:'hidden'});
+  assert.equal((await page.evaluate(()=>window._posOffline.getQueue())).length,2);
   assert.equal(await page.locator('#pos-offline-frame').count(),0,'Save queues UPI without printing');
   await context.setOffline(false);await page.waitForFunction(async()=>{const q=await window._posOffline.getQueue();return q.length&&window._posOffline.reviewReason(q[0].offlineId)});assert.equal((await page.evaluate(()=>window._posOffline.getQueue())).length,2,'missing acknowledgement never removes sales');
   await page.reload();await page.waitForFunction(async()=>{const q=await window._posOffline.getQueue();return q.length&&window._posOffline.reviewReason(q[0].offlineId)});

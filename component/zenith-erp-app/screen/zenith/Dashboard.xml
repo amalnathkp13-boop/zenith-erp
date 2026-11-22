@@ -249,7 +249,7 @@
                 [id:'Z_BARCODE', name:'Barcode', url:'/apps/zenith/barcode/BarcodeDashboard', bg:'bg-cyan-1'],
                 [id:'Z_CONTACTS', name:'Contacts', url:'/apps/zenith/Contacts/FindContact', bg:'bg-blue-1'],
                 [id:'Z_CRM', name:'CRM', url:'/apps/zenith/Crm/Leads', bg:'bg-pink-1'],
-                [id:'Z_HR', name:'HR', url:'/apps/zenith/Hr/Employees', bg:'bg-amber-1'],
+                [id:'Z_HR', name:'HR', url:showHrWorkspace ? '/apps/zenith/Hr/Dashboard' : '/apps/zenith/Hr/Employees', bg:'bg-amber-1'],
                 [id:'Z_PAYROLL', name:'Payroll', url:'/apps/zenith/payroll/PayrollRuns', bg:'bg-green-1'],
                 [id:'Z_ATTENDANCE', name:'Attendance', url:'/apps/zenith/attendance/MyAttendance', bg:'bg-blue-grey-1'],
                 [id:'Z_TIMEOFF', name:'Time Off', url:'/apps/zenith/timeoff/MyLeaves', bg:'bg-cyan-1'],
@@ -324,7 +324,7 @@
             if (qaAcct) qaGroups << [title:'Accounting & Finance', color:'text-green-8', links:qaAcct]
             def qaPeople = []
             if (qaCan('Z_CONTACTS','contacts')) { qaPeople << [t:'Add Contact', u:'/apps/zenith/Contacts/FindContact?newContact=1']; qaPeople << [t:'Contact Directory', u:'/apps/zenith/Contacts/FindContact']; qaPeople << [t:'Vendor Directory', u:'/apps/zenith/Contacts/Vendors'] }
-            if (qaCan('Z_HR','hr')) { qaPeople << [t:'Employees', u:'/apps/zenith/Hr/Employees'] }
+            if (qaCan('Z_HR','hr')) { qaPeople << [t:'Employees', u:showHrWorkspace ? '/apps/zenith/Hr/Directory' : '/apps/zenith/Hr/Employees'] }
             if (qaCan('Z_RECRUITMENT','recruitment')) { qaPeople << [t:'Recruitment', u:'/apps/zenith/recruitment/Applications'] }
             if (qaPeople) qaGroups << [title:'Contacts & People', color:'text-deep-purple-8', links:qaPeople]
 

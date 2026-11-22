@@ -49,29 +49,29 @@ module.exports = async ({a, base, check, invoke, post, q, out}) => {
       new URLSearchParams(r.request().postData()).get('action')==='updatePrice');
     await rate('POS_QA_A_P5').fill('87');
     await manual;
-    await page.locator('#pos-pay-card').click();
     const confirm = page.locator('#posPayConfirmOverlay');
-    await confirm.waitFor();
-    await updateModePrice('POS_QA_A_P18',112);
-    const review = page.getByRole('alert').filter({hasText:'Product prices changed'});
-    await confirm.locator('#posPayConfOk').click();
-    await review.waitFor();
-    check('a price change during confirmation requires review and writes no tender',
-      await review.isVisible() && payments().length===0);
+    await page.route('**/Terminal/payAndComplete',async route=>{
+      await updateModePrice('POS_QA_A_P18',112);
+      await route.continue();
+    },{times:1});
+    const isPayment = r => r.url().endsWith('/payAndComplete') && r.request().method()==='POST';
+    const firstPayment = page.waitForResponse(isPayment);
+    await page.locator('#pos-pay-card').click();
+    const review = await (await firstPayment).json();
     await waitForRate('POS_QA_A_P18',112);
+    check('a price change during checkout requires review and writes no tender',
+      review.priceReview===true && !(await confirm.count()) && payments().length===0);
     check('catalog refresh preserves the cashier’s deliberate rate override',
       Number(rates().find(row => row.product_id==='POS_QA_A_P5')?.unit_price)===87 &&
       await rate('POS_QA_A_P5').inputValue()==='87');
+    const payment = page.waitForResponse(isPayment);
     await page.locator('#pos-pay-card').click();
-    await confirm.waitFor();
-    check('reopened tender shows the reviewed total', (await confirm.innerText()).includes('199.00'));
-    const payment = page.waitForResponse(r => r.url().endsWith('/payAndComplete') && r.request().method()==='POST');
-    await confirm.locator('#posPayConfOk').click();
     const response = await payment;
     const data = await response.json();
     check('the refreshed sale completes with the acknowledged revision and one correct payment',
       data.success===true && new URLSearchParams(response.request().postData()).has('catalogRevision') &&
       payments().length===1 && Number(payments()[0].amount)===199);
+    await confirm.locator('#posPaySave').click();
   } catch (error) {
     if (out) await page.screenshot({path:path.join(out,'live-mode-pricing-failure.png')});
     throw error;
