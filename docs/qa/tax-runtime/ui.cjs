@@ -16,7 +16,7 @@ async function submit(id){await Promise.all([page.waitForNavigation({waitUntil:'
 (async()=>{
  browser=await puppeteer.launch({headless:true,executablePath:process.env.TAX_QA_CHROME||undefined,args:['--no-sandbox','--disable-dev-shm-usage']});page=await browser.newPage();
  const res=await fetch(base+'/apps/zenith',{headers:{Authorization:'Basic '+Buffer.from('tax.qa:moqui').toString('base64')},redirect:'manual'});const cookie=res.headers.getSetCookie().find(c=>c.startsWith('JSESSIONID='));await res.text();assert(res.status===200&&cookie,'Authenticated disposable session required');await page.setCookie({name:'JSESSIONID',value:cookie.split(';')[0].slice(11),url:base,httpOnly:true});
- const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
+ const errors=[];page.on('pageerror',e=>errors.push(page.url()+' :: '+e.message));page.on('dialog',d=>d.accept());
  for(const shell of ['apps','qapps']){
   for(const screen of ['TaxDashboard','FindTaxRate','FindTaxAuthority','FindTaxRegistration','FindTaxExemption','Gstr1Returns','TaxEngines']){
    await record(`${shell}/${screen} render + responsive`,async()=>{

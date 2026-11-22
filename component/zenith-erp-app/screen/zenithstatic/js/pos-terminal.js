@@ -2217,8 +2217,8 @@ window._posOffline = (function () {
             function (e) {
                 if (!active() || !e.target.matches('.pos-cart .aj-mode,.pos-cart .aj-p,.pos-cart .aj-qi')) return;
                 e.stopImmediatePropagation();
+                // Qty and rate already update on input. Keep the visible draft for payment validation.
                 if (e.target.matches('.aj-mode')) edit({action:'setItemMode',seq:e.target.dataset.seq,mode:e.target.value});
-                else render();
             },
             true,
         );
@@ -4310,6 +4310,7 @@ window.posToggleFullscreen = function() {
 
 
         function fmt(n) { return Math.round(Number(n)).toLocaleString('en-IN'); }
+        function fmtQty(n) { return Number(n).toLocaleString('en-IN', {maximumFractionDigits:6}); }
         function fmt2(n) { return Number(n).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2}); }
 
         function extractHeldInfo(doc) {
@@ -4931,7 +4932,7 @@ window.posToggleFullscreen = function() {
             var sh = '<div class="pos-sum-strip" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
                 + lastCompletedMarkup()
                 + '<div style="display:flex;gap:16px;font-size:14px">'
-                + '<span style="color:#555">Qty: <b id="posSumQty">'+fmt(d.tQty)+'</b></span>'
+                + '<span style="color:#555">Qty: <b id="posSumQty">'+fmtQty(d.tQty)+'</b></span>'
                 + '<span style="color:#555">Tax: <b id="posSumTax">'+fmt(d.tax)+'</b></span>'
                 + '<span style="color:#555">Disc: <b id="posSumDisc">'+fmt(d.disc)+'</b></span>'
                 + '</div></div>'
@@ -4966,7 +4967,7 @@ window.posToggleFullscreen = function() {
             return '<div class="pos-sum-strip" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
                 + lastCompletedMarkup()
                 + '<div style="display:flex;gap:16px;font-size:14px">'
-                + '<span style="color:#555">Qty: <b>'+(lastCartData ? fmt(lastCartData.tQty) : '0')+'</b></span>'
+                + '<span style="color:#555">Qty: <b>'+(lastCartData ? fmtQty(lastCartData.tQty) : '0')+'</b></span>'
                 + '<span style="color:#555">Tax: <b>'+(lastCartData ? fmt(lastCartData.tax) : '0')+'</b></span>'
                 + '<span style="color:#555">Disc: <b>'+(lastCartData ? fmt(lastCartData.disc) : '0')+'</b></span>'
                 + '</div></div>'
@@ -4988,7 +4989,7 @@ window.posToggleFullscreen = function() {
             return '<div class="pos-sum-strip" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
                 + lastCompletedMarkup()
                 + '<div style="display:flex;gap:16px;font-size:14px">'
-                + '<span style="color:#555">Qty: <b>'+(lastCartData ? fmt(lastCartData.tQty) : '0')+'</b></span>'
+                + '<span style="color:#555">Qty: <b>'+(lastCartData ? fmtQty(lastCartData.tQty) : '0')+'</b></span>'
                 + '<span style="color:#555">Tax: <b>'+(lastCartData ? fmt(lastCartData.tax) : '0')+'</b></span>'
                 + '<span style="color:#555">Disc: <b>'+(lastCartData ? fmt(lastCartData.disc) : '0')+'</b></span>'
                 + '</div></div>'
@@ -5048,7 +5049,16 @@ window.posToggleFullscreen = function() {
                         if (!row.children[index]) row.appendChild(cell);
                         else if (discardInputs || !row._posCells || row._posCells[index] !== cells[index]) {
                             if (!discardInputs && row.children[index].contains(active) && active.matches('.aj-p,.aj-qi')) {
-                                var replacement = cell.querySelector(active.classList.contains('aj-p') ? '.aj-p' : '.aj-qi');
+                                // Moving a focused Qty fires change on a lone "." and restores 1 before the next digit.
+                                if (active.classList.contains('aj-qi')) {
+                                    var quantity = cell.querySelector('.aj-qi');
+                                    active.dataset.seq = quantity.dataset.seq;
+                                    active.defaultValue = quantity.defaultValue;
+                                    active.previousElementSibling.replaceWith(quantity.previousElementSibling);
+                                    active.nextElementSibling.replaceWith(quantity.nextElementSibling);
+                                    return;
+                                }
+                                var replacement = cell.querySelector('.aj-p');
                                 if (replacement) { active.dataset.seq = replacement.dataset.seq; replacement.replaceWith(active); }
                             }
                             row.replaceChild(cell, row.children[index]);
@@ -5151,7 +5161,7 @@ window.posToggleFullscreen = function() {
                 var _sig = (d.items.length > 0 ? '1' : '0') + ':' + heldCount + ':' + (heldId ? '1' : '0');
                 var _q = sm.querySelector('#posSumQty');
                 if (_q && (local ? sm.querySelector('.pos-reference-payments') : sm.getAttribute('data-sig') === _sig)) {
-                    _q.textContent = fmt(d.tQty);
+                    _q.textContent = fmtQty(d.tQty);
                     var _tx = sm.querySelector('#posSumTax'); if (_tx) _tx.textContent = fmt(d.tax);
                     var _dc = sm.querySelector('#posSumDisc'); if (_dc) _dc.textContent = fmt(d.disc);
                     var _tt = sm.querySelector('#posSumTotal'); if (_tt) _tt.innerHTML = CS + (document.querySelector('.pos-checkout-reference') ? fmt2(d.pay) : fmt(d.pay));
@@ -5401,6 +5411,7 @@ window.posToggleFullscreen = function() {
                     return;
                 }
                 inflight = true;
+                var creatingCart = !TX && op.action === 'addItem' ? lc() : null;
                 requestCart(paramsFor(op)).then(function(d) {
                     inflight = false;
                     q.shift();
@@ -5417,6 +5428,8 @@ window.posToggleFullscreen = function() {
                         fail(d && d.error || 'The bill edit could not be saved.');
                         return;
                     }
+                    // A first-item quantity edit or tender can already be using this draft.
+                    if (creatingCart) creatingCart.transactionId = d.transactionId;
                     if (d.transactionId && d.transactionId !== TX) { realByTmp = {}; TX = d.transactionId; }
                     if (window._posOffline) {
                         window._posOffline.remember(d);
@@ -5468,10 +5481,12 @@ window.posToggleFullscreen = function() {
                 var ln = byPid(pid, SM || '', price); var newTs = null;
                 if (ln && n(ln.qty) > 0) { var f = (n(ln.qty) + 1) / n(ln.qty); ln.qty = n(ln.qty) + 1; ln.total = n(ln.total) * f; ln.tax = n(ln.tax) * f; }
                 else { newTs = 't#' + (++tmp); ln = { seq: newTs, pid: pid, name: name || pid, price: n(price), qty: 1, total: n(price), tax: 0, disc: 0, mode: SM || '', uom: uom || '' }; L.items.push(ln); }
-                recompute(); queueCartRender();
+                recompute();
+                if (pendingProductFocus) renderCart(L); else queueCartRender();
                 enqueue({ action: 'addItem', pid: pid, price: price, mode: SM || '', addQty: 1, ts: newTs, lineKey: pid + '|' + (SM || '') });
             }
             function doQty(seq, newQty) {
+                seq = realSeq(seq);
                 newQty = Number(newQty);
                 var ln = bySeq(seq);
                 // A quantity edit must NEVER delete the line — a decimal/cleared/0 value that
@@ -5680,9 +5695,9 @@ window.posToggleFullscreen = function() {
         }
         window._posWaitForEdits = function(form) {
             if (!OPT._drainPending()) return false;
-            var paymentTx = TX;
+            var paymentCart = lastCartData || {transactionId:TX};
             OPT.whenIdle().then(function() {
-                if (af.isConnected && TX && TX === paymentTx) submitPosPaymentForm(currentPaymentForm(form));
+                if (af.isConnected && TX && TX === paymentCart.transactionId) submitPosPaymentForm(currentPaymentForm(form));
             }).catch(function(error) { showToast(error.message, '#c62828'); });
             return true;
         };
@@ -5998,7 +6013,7 @@ window.posToggleFullscreen = function() {
                     if (!af.isConnected || checkedTx !== TX || OPT._drainPending() || lastCartData !== cartBefore) return data;
                     if (!current || !current.success) throw new Error('Could not refresh the bill. Try again.');
                     var focused = document.activeElement;
-                    var edited = focused && focused.matches('.aj-p,.aj-qi') && focused.getAttribute('aria-invalid') !== 'true';
+                    var edited = focused && focused.matches('.aj-p') && focused.getAttribute('aria-invalid') !== 'true';
                     var oldValue = edited && focused.value;
                     if (Number(current.pay) !== Number(lastPay) && smRoot &&
                         smRoot.querySelector('.pos-cash-panel,.pos-split-panel')) {
@@ -6007,7 +6022,7 @@ window.posToggleFullscreen = function() {
                     renderCart(current);
                     if (edited && focused.isConnected && focused.value === oldValue) {
                         var line = current.items.find(function(item) { return String(item.seq) === focused.dataset.seq; });
-                        if (line) focused.value = focused.classList.contains('aj-p') ? line.price : line.qty;
+                        if (line) focused.value = line.price;
                     }
                     catalogDirtyTx = '';
                     return data;
@@ -6391,10 +6406,10 @@ window.posToggleFullscreen = function() {
                 if (/posPayCash|posPayDigital/.test(form.getAttribute('onsubmit') || '') && form.dataset.posPaymentConfirmed !== '1') {
                     if (paymentPanelPending) return;
                     var method = form.querySelector('[name="paymentMethod"]').value;
-                    var paymentTx = TX;
+                    var paymentCart = lastCartData || {transactionId:TX};
                     paymentPanelPending = true;
                     OPT.whenIdle().then(function() { return refreshCatalog(true); }).then(function() {
-                        if (!af.isConnected || !TX || TX !== paymentTx) return;
+                        if (!af.isConnected || !TX || TX !== paymentCart.transactionId) return;
                         form = currentPaymentForm(form);
                         var gate = method === 'Cash' ? window.posPayCash : window.posPayDigital;
                         if (gate(form) !== false) {
@@ -6766,7 +6781,8 @@ window.posToggleFullscreen = function() {
                 } else {
                     if (window._posAjax) window._posAjax(items[0].dataset.pid, items[0].dataset.price, items[0].dataset.name);
                 }
-                resetSearch(); si.value = ''; si.focus();
+                resetSearch(); si.value = '';
+                if (!document.activeElement.matches('.aj-qi')) si.focus();
                 resetGridSearch();
                 keyTimes = [];
             }
@@ -6784,7 +6800,8 @@ window.posToggleFullscreen = function() {
             if (!item) return;
             if (window._posAjax) {
                 window._posAjax(item.dataset.pid, item.dataset.price, item.dataset.name);
-                resetSearch(); si.value = ''; si.focus();
+                resetSearch(); si.value = '';
+                if (!document.activeElement.matches('.aj-qi')) si.focus();
                 resetGridSearch();
                 return;
             }
