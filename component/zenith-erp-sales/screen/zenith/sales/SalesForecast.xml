@@ -34,12 +34,11 @@
             <service-call name="zenith.sales.SalesForecastServices.forecast#Sales" out-map="fc" in-map="[organizationPartyId:org, currencyUomId:reportCurrency, horizonDays:14]"/>
             <service-call name="zenith.sales.SalesForecastServices.forecast#CategorySales" out-map="catFc" in-map="[organizationPartyId:org, currencyUomId:reportCurrency, topN:6, horizonDays:14]"/>
             <script><![CDATA[
-                import org.moqui.entity.EntityCondition
                 def currencyFilter = ec.resource.script('component://zenith-erp-sales/script/ReportingCurrencyCondition.groovy', null,
                         [currency:reportCurrency, includeUnspecified:legacyForecastCurrency == reportCurrency])
                 histList = ec.entity.find('zenith.erp.sales.SalesRevenueForecast')
                         .condition('organizationPartyId', org).condition('dimension', 'Overall').condition(currencyFilter)
-                        .condition('actualAmount', EntityCondition.NOT_EQUAL, null)
+                        .condition('actualAmount', org.moqui.entity.EntityCondition.NOT_EQUAL, null)
                         .orderBy(['-periodDate','-runDate','forecastId']).limit(14).list()
             ]]></script>
         </if>
@@ -74,7 +73,7 @@
                 trendBadgeColor = (fc.trendLabel == 'growing') ? 'green' : (fc.trendLabel == 'softening' ? 'red' : 'grey')
                 driverNice = driverWord(fc.primaryDriver)
                 confNice = confWord(fc.confidencePct)
-                hasData = (fc.confidencePct != null)
+                hasData = fc.projectedNext7 != null
                 confColor = (fc.confidencePct != null && fc.confidencePct >= 60) ? "success" : (fc.confidencePct != null && fc.confidencePct >= 45 ? "warning" : "grey")
                 perDay = (fc.projectedNext7 != null) ? (fc.projectedNext7 / 7.0) : 0
                 // plain-words summary + a single glance-able lead line (replaces the dense paragraph)
@@ -154,7 +153,7 @@
                 <label text="What you're likely to sell in the coming days — updated automatically each night." type="p" style="text-grey-7 q-mb-none text-caption"/>
                 <container style="row items-center q-gutter-xs q-mt-sm">
                     <label text="How sure:" type="span" style="text-grey-7 text-caption"/>
-                    <label text="${confNice}${hasData ? ' (' + fc.confidencePct + '%)' : ''}" type="span" style="zenith-badge nd ${confColor}"/>
+                    <label text="${confNice}${fc?.confidencePct != null ? ' (' + fc.confidencePct + '%)' : ''}" type="span" style="zenith-badge nd ${confColor}"/>
                 </container>
             </container>
             <section name="ForecastControls" condition="!noOrg"><widgets>

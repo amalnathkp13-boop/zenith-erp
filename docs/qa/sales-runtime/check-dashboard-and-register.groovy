@@ -139,4 +139,3 @@ try {
     } finally { if (tx) ec.transaction.rollback(true,'Disposable Sales report fixtures',null) }
     exitCode=0
 } catch(Throwable error) { error.printStackTrace(System.out) } finally { Moqui.destroyActiveExecutionContextFactory(); System.exit(exitCode) }
-

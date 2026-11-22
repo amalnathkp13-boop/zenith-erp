@@ -66,6 +66,8 @@ try {
                 .condition('productCategoryId',groups[0].id).count() == 14
         (1..14).each { day -> invoice(groups[0], day, 'USD', 'USD') }
         assert service('forecast#Sales', [currencyUomId:'USD']).projectedNext7 == 91
+        def threeDays = service('forecast#Sales', [currencyUomId:'USD', horizonDays:3])
+        assert threeDays.points.size() == 3 && threeDays.projectedHorizon == 39 && threeDays.projectedNext7 == 91
         assert service('forecast#Sales', [currencyUomId:'INR']).projectedNext7 == 742
         assert service('forecast#CategorySales', [currencyUomId:'USD']).categories*.recent30 == [140]
         create('zenith.erp.sales.SalesRevenueForecast', [forecastId:'QA_FC_UNKNOWN', organizationPartyId:org,
