@@ -14,6 +14,22 @@
         <service-call name="zenith.crm.CrmServices.schedule#Activity"/>
         <default-response url="."/><error-response url="."/>
     </transition>
+    <transition name="searchActivityLeads" read-only="true">
+        <parameter name="term"/>
+        <actions>
+            <set field="crmPickerKind" value="lead"/>
+            <script location="component://zenith-erp-crm/script/RecordPicker.groovy"/>
+        </actions>
+        <default-response type="none"/>
+    </transition>
+    <transition name="searchActivityOpportunities" read-only="true">
+        <parameter name="term"/>
+        <actions>
+            <set field="crmPickerKind" value="opportunity"/>
+            <script location="component://zenith-erp-crm/script/RecordPicker.groovy"/>
+        </actions>
+        <default-response type="none"/>
+    </transition>
     <transition name="saveView"><service-call name="zenith.crm.CrmServices.save#CrmFilter"/><default-response url="."/><error-response url="."/></transition>
     <!-- ZE-SEC-JSON f/u: org-scoped party picker (stock SimpleScreens searchPartyList leaks cross-tenant). -->
     <transition-include name="searchPartyList" location="component://zenith-erp-base/screen/include/PartyPicker.xml"/>
@@ -34,7 +50,16 @@
             tomorrowStart = midnight(today.plusDays(1))
             dueStart = view in ['today','upcoming'] ? (view == 'today' ? todayStart : tomorrowStart) : null
             dueEnd = view in ['today','mywork'] ? tomorrowStart : (view == 'overdue' ? ec.user.nowTimestamp : null)
-            statusFilter = [completed:'Completed', cancelled:'Cancelled'][view] ?: (view in ['today','upcoming','overdue','agenda','tasks','mywork'] ? 'Scheduled' : null)
+            statusFilter = [cancelled:'Cancelled'][view] ?: (view in ['today','upcoming','overdue','agenda','tasks','mywork'] ? 'Scheduled' : null)
+            completedCondition = null
+            if (view == 'completed') {
+                def cf = ec.entity.conditionFactory
+                def legacy = cf.makeCondition([statusId:null, dueDate:null])
+                completedCondition = cf.makeCondition([
+                    cf.makeCondition('statusId', EntityCondition.EQUALS, 'Completed'),
+                    cf.makeCondition(legacy, EntityCondition.AND, cf.makeCondition('activityDate', EntityCondition.NOT_EQUAL, null))
+                ], EntityCondition.OR)
+            }
             activityTypeFilter = [tasks:'Task',notes:'Note'][view]
             ownerFilter = view in ['mine','mywork'] ? ec.user.userId : null
             def orgId = (crmOrganization.activeOrgId ?: '_NA_') ?: '__NO_ORGANIZATION__'
@@ -59,10 +84,11 @@
             <econdition field-name="dueDate" operator="greater-equals" from="dueStart" ignore-if-empty="true"/>
             <econdition field-name="dueDate" operator="less" from="dueEnd" ignore-if-empty="true"/>
             <econdition field-name="statusId" from="statusFilter" ignore-if-empty="true"/>
+            <econdition-object field="completedCondition"/>
             <econdition field-name="activityType" from="activityTypeFilter" ignore-if-empty="true"/>
             <econdition field-name="assignedToUserId" from="ownerFilter" ignore-if-empty="true"/>
         </entity-find>
-        <set field="agendaDays" from="activityList.findAll { it.dueDate != null }.groupBy { ec.l10n.format(it.dueDate, 'dd MMM yyyy') }.collect { day, rows -> [day:day, rows:rows.sort { it.dueDate }] }.sort { it.rows[0].dueDate }"/>
+        <set field="agendaDays" from="view != 'agenda' ? [] : activityList.findAll { it.dueDate != null }.groupBy { ec.l10n.format(it.dueDate, 'dd MMM yyyy') }.collect { day, rows -> [day:day, rows:rows.sort { it.dueDate }] }.sort { it.rows[0].dueDate }"/>
         <entity-find entity-name="zenith.erp.crm.CrmSavedFilter" list="savedFilters">
             <econdition field-name="organizationPartyId" from="(crmOrganization.activeOrgId ?: '_NA_') ?: '__NO_ORGANIZATION__'"/>
             <econdition field-name="userId" from="ec.user.userId"/><econdition field-name="screenName" value="Activities"/>
@@ -81,8 +107,8 @@
                         <field name="description"><default-field title="Notes"><text-area rows="3" cols="40"/></default-field></field>
                         <field name="dueDate"><default-field title="Due"><date-time type="date-time"/></default-field></field>
                         <field name="priority"><default-field><drop-down><option key="Normal"/><option key="High"/><option key="Low"/></drop-down></default-field></field>
-                        <field name="leadId"><default-field title="Lead (optional)"><drop-down allow-empty="true"><entity-options key="${leadId}" text="${firstName} ${lastName ?: ''}"><entity-find entity-name="zenith.erp.crm.Lead"><econdition field-name="organizationPartyId" from="(crmOrganization.activeOrgId ?: '_NA_') ?: '__NO_ORGANIZATION__'"/></entity-find></entity-options></drop-down></default-field></field>
-                        <field name="salesOpportunityId"><default-field title="Opportunity (optional)"><drop-down allow-empty="true"><entity-options key="${salesOpportunityId}" text="${opportunityName}"><entity-find entity-name="mantle.sales.opportunity.SalesOpportunity"><econdition field-name="organizationPartyId" from="(crmOrganization.activeOrgId ?: '_NA_') ?: '__NO_ORGANIZATION__'"/></entity-find></entity-options></drop-down></default-field></field>
+                        <field name="leadId"><default-field title="Lead (optional)"><drop-down allow-empty="true"><dynamic-options transition="searchActivityLeads" server-search="true" min-length="1"/></drop-down></default-field></field>
+                        <field name="salesOpportunityId"><default-field title="Opportunity (optional)"><drop-down allow-empty="true"><dynamic-options transition="searchActivityOpportunities" server-search="true" min-length="1"/></drop-down></default-field></field>
                         <field name="contactPartyId"><default-field title="Contact (optional)"><drop-down allow-empty="true"><dynamic-options transition="searchPartyList" server-search="true" min-length="2"/></drop-down></default-field></field>
                         <field name="submitButton"><default-field title="Schedule"><submit/></default-field></field>
                     </form-single>
@@ -154,6 +180,14 @@
                         </widgets></section-iterate>
                     </box-body></container-box>
                 </widgets></section-iterate>
+                <section name="AgendaPages" condition="activityListPageMaxIndex &gt; 0 || activityListPageIndex &gt; 0"><widgets>
+                    <container style="zcrm-period">
+                        <link url="." text="Previous page" condition="activityListPageIndex &gt; 0"
+                              parameter-map="crmExportFilters + [view:'agenda', pageSize:activityListPageSize, pageIndex:activityListPageIndex - 1]"/>
+                        <link url="." text="Next page" condition="activityListPageIndex &lt; activityListPageMaxIndex"
+                              parameter-map="crmExportFilters + [view:'agenda', pageSize:activityListPageSize, pageIndex:activityListPageIndex + 1]"/>
+                    </container>
+                </widgets></section>
             </widgets></section>
             <section name="ActivityTable" condition="view != 'agenda'"><widgets>
             <link url="exportList" condition="crmCanExport" text="Export CSV" link-type="anchor" target-window="_blank"
@@ -173,7 +207,7 @@
                     <header-field title="Type">
                         <drop-down allow-empty="true">
                             <option key="Call"/><option key="Email"/><option key="Meeting"/>
-                            <option key="WhatsApp"/><option key="SMS"/><option key="Note"/><option key="Task"/><option key="SiteVisit"/>
+                            <option key="WhatsApp"/><option key="SMS"/><option key="Note"/><option key="Task"/><option key="SiteVisit"/><option key="Demo"/><option key="FollowUp"/>
                         </drop-down>
                     </header-field>
                     <default-field><display/></default-field>

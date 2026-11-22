@@ -1,4 +1,6 @@
 (function() {
+    // The classic shell renders the permitted menu on the server and never mounts the Vue drawer.
+    if (/^\/apps(?:\/|$)/.test(location.pathname)) return;
     if (window._saasMenuFilterLoaded) return;
     window._saasMenuFilterLoaded = true;
 

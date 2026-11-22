@@ -170,6 +170,9 @@
             <service-call name="mantle.account.InvoiceServices.update#InvoiceTotals" in-map="[invoiceId:invoiceId]"/>
             <script><![CDATA[
                 def items = ec.entity.find('mantle.account.invoice.InvoiceItem').condition('invoiceId',invoiceId).list()
+                def detailsByLine = ec.entity.find('zenith.erp.tax.TaxLineDetail')
+                        .condition('referenceType','InvoiceItem').condition('referenceId',invoiceId)
+                        .orderBy('sequenceNum').list().groupBy { it.referenceSeqId }
                 def taxable = BigDecimal.ZERO, cgst = BigDecimal.ZERO, sgst = BigDecimal.ZERO, igst = BigDecimal.ZERO, tax = BigDecimal.ZERO
                 for (item in items) {
                     // A full discount stores a real zero; it must never fall back to the gross line value.
@@ -178,17 +181,35 @@
                     sgst += (item.sgstAmount ?: 0) as BigDecimal
                     igst += (item.igstAmount ?: 0) as BigDecimal
                     if (item.cgstAmount != null || item.sgstAmount != null || item.igstAmount != null) {
-                        def prior=ec.entity.find('zenith.erp.tax.TaxLineDetail').condition('referenceType','InvoiceItem').condition('referenceId',invoiceId).condition('referenceSeqId',item.invoiceItemSeqId).list()
-                        def breakdowns=prior.findAll { !(it.taxName in ['CGST','SGST','IGST']) }.collect { it.getMap() }
-                        ['CGST','SGST','IGST'].each { name ->
-                            def rate=(item.get(name.toLowerCase()+'Rate') ?: 0) as BigDecimal
-                            if (rate > 0) breakdowns.add([taxName:name,taxRate:rate,taxableAmount:item.taxableAmount,taxAmount:(item.get(name.toLowerCase()+'Amount') ?: 0),countryGeoId:'IND',isIncludedInPrice:(item.isTaxInclusive ?: 'N')])
+                        def prior = detailsByLine[item.invoiceItemSeqId] ?: []
+                        def gstNames = ['CGST','SGST','IGST']
+                        def breakdowns = prior.findAll { !(it.taxName in gstNames) }.collect { it.getMap() }
+                        boolean changed = false
+                        for (name in gstNames) {
+                            def key = name.toLowerCase()
+                            def rate = item.get(key+'Rate') ?: 0
+                            def amount = item.get(key+'Amount') ?: 0
+                            def previous = prior.findAll { it.taxName == name }
+                            boolean current = rate > 0 && previous &&
+                                    previous.sum { it.taxRate ?: 0 } == rate &&
+                                    previous.sum { it.taxAmount ?: 0 } == amount &&
+                                    previous.every { it.taxableAmount == item.taxableAmount &&
+                                            (it.isIncludedInPrice ?: 'N') == (item.isTaxInclusive ?: 'N') }
+                            if (current) {
+                                breakdowns.addAll(previous.collect { it.getMap() })
+                            } else if (rate > 0) {
+                                // Preserve the tax engine's authority/category on an amount-only edit.
+                                def row = previous.size() == 1 && previous[0].taxRate == rate ? previous[0].getMap() : [:]
+                                breakdowns.add(row + [taxName:name,taxRate:rate,taxableAmount:item.taxableAmount,
+                                        taxAmount:amount,countryGeoId:row.countryGeoId ?: 'IND',isIncludedInPrice:item.isTaxInclusive ?: 'N'])
+                                changed = true
+                            } else if (previous) {
+                                changed = true
+                            }
                         }
-                        if (breakdowns) {
+                        if (changed && breakdowns) {
                             ec.service.sync().name('zenith.tax.TaxServices.store#TaxLineDetails').parameters([referenceType:'InvoiceItem',referenceId:invoiceId,referenceSeqId:item.invoiceItemSeqId,currencyUomId:invoice.currencyUomId,taxBreakdowns:breakdowns]).call()
-                        } else {
-                            // The shared tax service requires a non-empty list. An exempt Sales
-                            // line has no breakdowns; remove only its previously loaded exact rows.
+                        } else if (changed) {
                             prior.each { it.delete() }
                         }
                     }
@@ -254,7 +275,11 @@
                     def ia=zero ? BigDecimal.ZERO : (taxable*ir/100).setScale(2,java.math.RoundingMode.HALF_UP)
                     def priorGst=(item.cgstAmount ?: 0)+(item.sgstAmount ?: 0)+(item.igstAmount ?: 0)
                     def otherTax=zero ? BigDecimal.ZERO : (item.totalTaxAmount != null ? item.totalTaxAmount-priorGst : BigDecimal.ZERO)
-                    ec.service.sync().name('update#mantle.account.invoice.InvoiceItem').parameters([invoiceId:invoiceId,invoiceItemSeqId:item.invoiceItemSeqId,cgstRate:cr,sgstRate:sr,igstRate:ir,cgstAmount:ca,sgstAmount:sa,igstAmount:ia,totalTaxAmount:ca+sa+ia+otherTax]).call()
+                    def amounts = [cgstRate:cr,sgstRate:sr,igstRate:ir,cgstAmount:ca,sgstAmount:sa,igstAmount:ia,totalTaxAmount:ca+sa+ia+otherTax]
+                    if (amounts.any { field, value -> item.get(field) != value }) {
+                        ec.service.sync().name('update#mantle.account.invoice.InvoiceItem').parameters(
+                                amounts + [invoiceId:invoiceId,invoiceItemSeqId:item.invoiceItemSeqId]).call()
+                    }
                 }
             ]]></script>
             <service-call name="zenith.sales.SalesLineServices.refresh#DraftInvoiceTotals" in-map="[invoiceId:invoiceId]"/>

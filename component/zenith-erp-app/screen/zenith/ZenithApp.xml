@@ -391,7 +391,7 @@
             html_stylesheets.add('/zenithstatic/css/inventory-responsive.css?v=2')
             html_stylesheets.add('https://fonts.googleapis.com/icon?family=Material+Icons')
             if (footer_scripts == null) footer_scripts = []
-            footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=14')
+            footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=15')
             footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=58')
             footer_scripts.add('/zenithstatic/js/profile-menu.js?v=1')
             footer_scripts.add('/zenithstatic/js/pos-deferred-close.js?v=' + ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-deferred-close.js').getLastModified())

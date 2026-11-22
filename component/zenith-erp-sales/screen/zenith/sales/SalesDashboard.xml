@@ -29,11 +29,11 @@
             def _wk = ['metrics','trend','payments','forecast','recent']
             ec.user.setPreference('SALES_DASH_HIDDEN', _wk.findAll { !context.get('w_' + it) }.join(','))
         ]]></script></actions>
-        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo]"/>
+        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dateMode:dateMode]"/>
     </transition>
     <transition name="resetDashLayout">
         <actions><script>ec.user.setPreference('SALES_DASH_HIDDEN', null); ec.user.setPreference('SALES_DASH_ORDER', null); ec.user.setPreference('SALES_DASH_SIZE', null)</script></actions>
-        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo]"/>
+        <default-response url="." parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dateMode:dateMode]"/>
     </transition>
     <transition name="saveDashOrder" require-session-token="false">
         <actions><script><![CDATA[
@@ -106,42 +106,47 @@
             urlCustom = dashDate ? ("?dateMode=custom&dashDate="+dashDate+"&dashDateTo="+dashDateTo) : "?dateMode=custom"
             rangeLabel = dashDate ? (dashDate == dashDateTo ? dashDate : (dashDate + " – " + dashDateTo)) : "All time"
         ]]></script>
-        <!-- ZE-SHOP: globally-selected shop (null = All Shops). When set, the invoice figures below route through the
-             direct-Invoice find (facilityId econdition) instead of the grouped summary view (left untouched). -->
-        <script>_activeShop = null; try { def _sc = ec.service.sync().name("zenith.base.ShopServices.get#ActiveShopScope").call(); _activeShop = _sc?.activeShopId } catch (Exception _e) {}</script>
-        <!-- ZE-CP-C-04b: Total sales = sum of FINALISED sales invoices only (issued + paid). Excludes in-process
-             DRAFTS (InvoiceInProcess) and cancelled - a draft is not a completed sale, and counting drafts inflated
-             the figure (e.g. a large B2B draft). Keeps this tile consistent with the Copilot's sales figures. -->
-        <entity-find entity-name="zenith.erp.sales.InvoiceSalesSummaryView" list="salesSums">
-            <econdition field-name="fromPartyId" from="orgId"/>
-            <econdition field-name="invoiceTypeEnumId" value="InvoiceSales"/>
-            <econdition field-name="statusId" operator="in" value="InvoiceFinalized,InvoicePmtRecvd"/>
-        </entity-find>
-        <set field="totalSalesAmount" from="0.0" type="BigDecimal"/>
-        <script>salesSums.each { totalSalesAmount += ((it.taxableSum ?: 0G) + (it.taxSum ?: 0G) + (it.roundSum ?: 0G)) }</script>
-        <!-- when a date range is chosen, recompute Total Sales for that period (finalised invoices) -->
+        <service-call name="zenith.base.ShopServices.get#ActiveShopScope" out-map="salesShopScope"/>
+        <set field="_activeShop" from="salesShopScope.activeShopId"/>
         <script><![CDATA[
             import org.moqui.entity.EntityCondition
-            if (dayStart || _activeShop) {
-                def _q = ec.entity.find("mantle.account.invoice.Invoice").condition("fromPartyId", orgId).condition("invoiceTypeEnumId","InvoiceSales").condition("statusId", EntityCondition.IN, ["InvoiceFinalized","InvoicePmtRecvd"])
-                if (dayStart) _q.condition("invoiceDate", EntityCondition.GREATER_THAN_EQUAL_TO, dayStart).condition("invoiceDate", EntityCondition.LESS_THAN, dayEndExcl)
-                if (_activeShop) _q.condition("facilityId", _activeShop)   // ZE-SHOP
-                def _inv = _q.selectField("totalTaxableAmount").selectField("totalTaxAmount").selectField("roundOffAmount").list()
-                totalSalesAmount = 0.0G; _inv.each { totalSalesAmount += ((it.totalTaxableAmount ?: 0G) + (it.totalTaxAmount ?: 0G) + (it.roundOffAmount ?: 0G)) }
+            invoiceSummaryFor = { from, until ->
+                def query = ec.entity.find('zenith.erp.sales.DashboardInvoiceTotals')
+                        .condition('fromPartyId', orgId ?: '__NO_SALES_ORGANIZATION__')
+                        .condition('invoiceTypeEnumId', 'InvoiceSales')
+                        .condition('statusId', EntityCondition.NOT_EQUAL, 'InvoiceCancelled')
+                        .selectFields(['statusId', 'invoiceCount', 'grossSum'])
+                if (_activeShop) query.condition('facilityId', _activeShop)
+                if (from) query.condition('invoiceDate', EntityCondition.GREATER_THAN_EQUAL_TO, from)
+                if (until) query.condition('invoiceDate', EntityCondition.LESS_THAN, until)
+                def result = [revenue: 0.0G, generated: 0L, finalized: 0L, paid: 0L]
+                query.list().each { row ->
+                    long count = row.invoiceCount as long
+                    result.generated += count
+                    if (row.statusId in ['InvoiceFinalized', 'InvoicePmtRecvd']) {
+                        result.revenue += row.grossSum ?: 0.0G
+                        if (row.statusId == 'InvoicePmtRecvd') result.paid += count
+                        else result.finalized += count
+                    }
+                }
+                return result
             }
+            def period = invoiceSummaryFor(dayStart, dayEndExcl)
+            totalSalesAmount = period.revenue
+            totalInvoices = period.generated
+            salesStatusJson = "[" + period.paid + "," + period.finalized + "]"
         ]]></script>
 
         <!-- Sales forecast (from the nightly stored forecast) for the dashboard infographic -->
-        <set field="fcToday" from="new java.sql.Date(System.currentTimeMillis())"/>
-        <entity-find entity-name="zenith.erp.sales.SalesRevenueForecast" list="fcRows">
-            <econdition field-name="organizationPartyId" from="orgId"/>
+        <set field="fcToday" from="java.sql.Date.valueOf(ec.user.nowTimestamp.toInstant().atZone(ec.user.timeZone.toZoneId()).toLocalDate())"/>
+        <entity-find entity-name="zenith.erp.sales.SalesRevenueForecast" list="fcRows" limit="7">
+            <econdition field-name="organizationPartyId" from="orgId ?: '__NO_SALES_ORGANIZATION__'"/>
             <econdition field-name="dimension" value="Overall"/>
             <econdition field-name="periodDate" operator="greater-equals" from="fcToday"/>
             <order-by field-name="periodDate"/>
         </entity-find>
         <script><![CDATA[
             def pts = (fcRows ?: [])
-            if (pts.size() > 7) pts = pts.subList(0, 7)
             def fcLabels = []; def fcVals = []
             java.math.BigDecimal fcSumBd = java.math.BigDecimal.ZERO
             double peakD = -1.0; def peakDow = null
@@ -172,15 +177,6 @@
             <econdition field-name="ownerPartyId" from="_salesOrgId ?: '__NO_SALES_ORGANIZATION__'"/>
         </entity-find-count>
 
-        <!-- Get Total Orders (Placed/Approved/Completed) -->
-        <entity-find-count entity-name="mantle.order.OrderHeaderAndPart" count-field="totalOrders">
-            <econdition field-name="orderId" operator="not-in" from="_mixedOrders.mixedOrderIds ?: ['__NO_MIXED_SALES_ORDER__']"/>
-            <econdition field-name="statusId" operator="in" value="OrderPlaced,OrderApproved,OrderCompleted"/>
-            <econdition field-name="vendorPartyId" from="_salesOrgId ?: '__NO_SALES_ORGANIZATION__'"/>
-            <econdition field-name="entryDate" operator="greater-equals" from="dayStart" ignore-if-empty="true"/>
-            <econdition field-name="entryDate" operator="less" from="dayEndExcl" ignore-if-empty="true"/>
-        </entity-find-count>
-
         <!-- Get Active Quotes (Proposed) -->
         <entity-find-count entity-name="mantle.order.OrderHeaderAndPart" count-field="activeQuotes">
             <econdition field-name="orderId" operator="not-in" from="_mixedOrders.mixedOrderIds ?: ['__NO_MIXED_SALES_ORDER__']"/>
@@ -188,16 +184,6 @@
             <econdition field-name="vendorPartyId" from="_salesOrgId ?: '__NO_SALES_ORGANIZATION__'"/>
             <econdition field-name="entryDate" operator="greater-equals" from="dayStart" ignore-if-empty="true"/>
             <econdition field-name="entryDate" operator="less" from="dayEndExcl" ignore-if-empty="true"/>
-        </entity-find-count>
-
-        <!-- Get Total Invoices -->
-        <entity-find-count entity-name="mantle.account.invoice.Invoice" count-field="totalInvoices">
-            <econdition field-name="invoiceTypeEnumId" value="InvoiceSales"/>
-            <econdition field-name="statusId" operator="not-equals" value="InvoiceCancelled"/>
-            <econdition field-name="fromPartyId" from="_salesOrgId ?: '__NO_SALES_ORGANIZATION__'"/>
-            <econdition field-name="facilityId" from="_activeShop" ignore-if-empty="true"/><!-- ZE-SHOP -->
-            <econdition field-name="invoiceDate" operator="greater-equals" from="dayStart" ignore-if-empty="true"/>
-            <econdition field-name="invoiceDate" operator="less" from="dayEndExcl" ignore-if-empty="true"/>
         </entity-find-count>
 
         <!-- Get Recent Orders for Table -->
@@ -212,37 +198,30 @@
             import org.moqui.entity.EntityCondition
             import java.util.Calendar
             def nowTs = ec.user.nowTimestamp
-            def revArr = []; def ordArr = []
+            def revArr = []; def invoiceCounts = []; def monthLabels = []
             // ZE-DASH: per-metric 6-month sparklines (mockup stat-card mini-bars), computed in the same loop
             def _spQ = []; def _spC = []; def _spI = []
             for (int i = 5; i >= 0; i--) {
-                def c = Calendar.getInstance(); c.setTimeInMillis(nowTs.getTime()); c.add(Calendar.MONTH, -i)
+                def c = Calendar.getInstance(ec.user.timeZone); c.setTimeInMillis(nowTs.getTime()); c.add(Calendar.MONTH, -i)
                 c.set(Calendar.DAY_OF_MONTH,1); c.set(Calendar.HOUR_OF_DAY,0); c.set(Calendar.MINUTE,0); c.set(Calendar.SECOND,0); c.set(Calendar.MILLISECOND,0)
                 def start = new java.sql.Timestamp(c.getTimeInMillis())
                 def c2 = (Calendar) c.clone(); c2.add(Calendar.MONTH,1)
                 def end = new java.sql.Timestamp(c2.getTimeInMillis())
-                def _mq = ec.entity.find("mantle.account.invoice.Invoice").condition("fromPartyId", orgId).condition("invoiceTypeEnumId", "InvoiceSales").condition("statusId", EntityCondition.IN, ["InvoiceFinalized","InvoicePmtRecvd"]).condition("invoiceDate", EntityCondition.GREATER_THAN_EQUAL_TO, start).condition("invoiceDate", EntityCondition.LESS_THAN, end)
-                if (_activeShop) _mq.condition("facilityId", _activeShop)   // ZE-SHOP
-                def invs = _mq.selectField("totalTaxableAmount").selectField("totalTaxAmount").selectField("roundOffAmount").list()
-                def rev = 0.0G; invs.each { rev += ((it.totalTaxableAmount ?: 0G) + (it.totalTaxAmount ?: 0G) + (it.roundOffAmount ?: 0G)) }
-                revArr.add(rev.setScale(0, java.math.RoundingMode.HALF_UP).toPlainString())
-                ordArr.add(invs.size())
-                _spQ.add(ec.entity.find("mantle.order.OrderHeaderAndPart").condition("orderId",EntityCondition.NOT_IN,_mixedOrders.mixedOrderIds ?: ['__NO_MIXED_SALES_ORDER__']).condition("statusId","OrderProposed").condition("vendorPartyId",orgId).condition("entryDate",EntityCondition.GREATER_THAN_EQUAL_TO,start).condition("entryDate",EntityCondition.LESS_THAN,end).count())
-                _spI.add(ec.entity.find("mantle.account.invoice.Invoice").condition("fromPartyId",orgId).condition("invoiceTypeEnumId","InvoiceSales").condition("statusId",EntityCondition.NOT_EQUAL,"InvoiceCancelled").condition("invoiceDate",EntityCondition.GREATER_THAN_EQUAL_TO,start).condition("invoiceDate",EntityCondition.LESS_THAN,end).count())
-                try { _spC.add(ec.entity.find("mantle.party.PartyDetailAndRole").condition("roleTypeId","Customer").condition("ownerPartyId",orgId).condition("createdDate",EntityCondition.GREATER_THAN_EQUAL_TO,start).condition("createdDate",EntityCondition.LESS_THAN,end).count()) } catch (Exception _e) { _spC.add(0) }
+                def month = invoiceSummaryFor(start, end)
+                revArr.add(month.revenue.setScale(0, java.math.RoundingMode.HALF_UP).toPlainString())
+                invoiceCounts.add(month.paid + month.finalized)
+                monthLabels.add(start.toInstant().atZone(ec.user.timeZone.toZoneId()).format(java.time.format.DateTimeFormatter.ofPattern("MMM yyyy", Locale.ENGLISH)))
+                _spQ.add(ec.entity.find("mantle.order.OrderHeaderAndPart").condition("orderId",EntityCondition.NOT_IN,_mixedOrders.mixedOrderIds ?: ['__NO_MIXED_SALES_ORDER__']).condition("statusId","OrderProposed").condition("vendorPartyId",orgId ?: "__NO_SALES_ORGANIZATION__").condition("entryDate",EntityCondition.GREATER_THAN_EQUAL_TO,start).condition("entryDate",EntityCondition.LESS_THAN,end).count())
+                _spI.add(month.generated)
+                try { _spC.add(ec.entity.find("mantle.party.PartyDetailAndRole").condition("roleTypeId","Customer").condition("ownerPartyId",orgId ?: "__NO_SALES_ORGANIZATION__").condition("createdDate",EntityCondition.GREATER_THAN_EQUAL_TO,start).condition("createdDate",EntityCondition.LESS_THAN,end).count()) } catch (Exception _e) { _spC.add(0) }
             }
             salesRevJson = "[" + revArr.join(",") + "]"
-            salesOrdJson = "[" + ordArr.join(",") + "]"
+            invoiceCountJson = "[" + invoiceCounts.join(",") + "]"
+            monthLabelsJson = "[" + monthLabels.collect { "'" + it + "'" }.join(",") + "]"
             salesSpark = salesRevJson
             quotesSpark = "[" + _spQ.join(",") + "]"
             custSpark = "[" + _spC.join(",") + "]"
             invSpark = "[" + _spI.join(",") + "]"
-            long onCredit = ec.entity.find("zenith.erp.pos.PosTransaction").condition("organizationPartyId", orgId).condition("statusId","PtCompleted").condition("isCredit","Y").count()
-            long totalSalesCnt = 0
-            for (r in salesSums) { totalSalesCnt += ((r.cnt ?: 0) as long) }
-            long paidCnt = totalSalesCnt - onCredit
-            if (paidCnt < 0) paidCnt = 0
-            salesStatusJson = "[" + paidCnt + "," + onCredit + "]"
             // ZE-DASH layout: switchable widgets (+ cashier role default) + saved drag order
             def _roleHidden = ''
             try {
@@ -259,7 +238,7 @@
             w_forecast = showForecast ? 'Y' : ''; w_recent = showRecent ? 'Y' : ''
             dashOrderCsv = (ec.user.getPreference('SALES_DASH_ORDER') ?: '')
             dashSizeCsv = (ec.user.getPreference('SALES_DASH_SIZE') ?: '')
-            urlSettings = dashDate ? ("?dashDate="+dashDate+"&dashDateTo="+dashDateTo+"&showSettings=1") : "?showSettings=1"
+            urlSettings = dashDate ? ("?dashDate="+dashDate+"&dashDateTo="+dashDateTo+"&showSettings=1") : "?dateMode=all&showSettings=1"
         ]]></script>
 
         <!-- ZE-DASH: stat-card deltas (last 30 vs prior 30 days) + Sales-by-Category (actual, bounded) -->
@@ -270,33 +249,36 @@
             catNamesJson = "[]"; catValsJson = "[]"; catHasData = false
             if (orgId) {
                 def _now2 = ec.user.nowTimestamp
-                def _tsShift = { days -> def c = Calendar.getInstance(); c.setTimeInMillis(_now2.getTime()); c.set(Calendar.HOUR_OF_DAY,0); c.set(Calendar.MINUTE,0); c.set(Calendar.SECOND,0); c.set(Calendar.MILLISECOND,0); c.add(Calendar.DAY_OF_MONTH, days); return new java.sql.Timestamp(c.getTimeInMillis()) }
-                def _d0 = _tsShift(1); def _d30 = _tsShift(-30); def _d60 = _tsShift(-60)
+                def _tsShift = { days -> def c = Calendar.getInstance(ec.user.timeZone); c.setTimeInMillis(_now2.getTime()); c.set(Calendar.HOUR_OF_DAY,0); c.set(Calendar.MINUTE,0); c.set(Calendar.SECOND,0); c.set(Calendar.MILLISECOND,0); c.add(Calendar.DAY_OF_MONTH, days); return new java.sql.Timestamp(c.getTimeInMillis()) }
+                def _d0 = _tsShift(1); def _d30 = _tsShift(-29); def _d60 = _tsShift(-59)
                 def _pct = { cur, prev -> (prev == null || (prev as BigDecimal) == 0G) ? null : ((((cur as BigDecimal) - (prev as BigDecimal)) * 100G) / (prev as BigDecimal)).setScale(1, java.math.RoundingMode.HALF_UP) }
-                def _salesSum = { from, to -> def s = 0.0G; ec.entity.find("mantle.account.invoice.Invoice").condition("fromPartyId", orgId).condition("invoiceTypeEnumId","InvoiceSales").condition("statusId", EntityCondition.IN, ["InvoiceFinalized","InvoicePmtRecvd"]).condition("invoiceDate", EntityCondition.GREATER_THAN_EQUAL_TO, from).condition("invoiceDate", EntityCondition.LESS_THAN, to).selectField("totalTaxableAmount").selectField("totalTaxAmount").selectField("roundOffAmount").list().each { s += ((it.totalTaxableAmount?:0G)+(it.totalTaxAmount?:0G)+(it.roundOffAmount?:0G)) }; return s }
-                def _qCnt = { from, to -> ec.entity.find("mantle.order.OrderHeaderAndPart").condition("orderId",EntityCondition.NOT_IN,_mixedOrders.mixedOrderIds ?: ['__NO_MIXED_SALES_ORDER__']).condition("statusId","OrderProposed").condition("vendorPartyId",orgId).condition("entryDate",EntityCondition.GREATER_THAN_EQUAL_TO,from).condition("entryDate",EntityCondition.LESS_THAN,to).count() }
-                def _iCnt = { from, to -> ec.entity.find("mantle.account.invoice.Invoice").condition("fromPartyId",orgId).condition("invoiceTypeEnumId","InvoiceSales").condition("statusId",EntityCondition.NOT_EQUAL,"InvoiceCancelled").condition("invoiceDate",EntityCondition.GREATER_THAN_EQUAL_TO,from).condition("invoiceDate",EntityCondition.LESS_THAN,to).count() }
-                def _cCnt = { from, to -> try { return ec.entity.find("mantle.party.PartyDetailAndRole").condition("roleTypeId","Customer").condition("ownerPartyId",orgId).condition("createdDate",EntityCondition.GREATER_THAN_EQUAL_TO,from).condition("createdDate",EntityCondition.LESS_THAN,to).count() } catch (Exception _e) { return null } }
-                salesDelta = _pct(_salesSum(_d30,_d0), _salesSum(_d60,_d30))
+                def _qCnt = { from, to -> ec.entity.find("mantle.order.OrderHeaderAndPart").condition("orderId",EntityCondition.NOT_IN,_mixedOrders.mixedOrderIds ?: ['__NO_MIXED_SALES_ORDER__']).condition("statusId","OrderProposed").condition("vendorPartyId",orgId ?: "__NO_SALES_ORGANIZATION__").condition("entryDate",EntityCondition.GREATER_THAN_EQUAL_TO,from).condition("entryDate",EntityCondition.LESS_THAN,to).count() }
+                def _cCnt = { from, to -> try { return ec.entity.find("mantle.party.PartyDetailAndRole").condition("roleTypeId","Customer").condition("ownerPartyId",orgId ?: "__NO_SALES_ORGANIZATION__").condition("createdDate",EntityCondition.GREATER_THAN_EQUAL_TO,from).condition("createdDate",EntityCondition.LESS_THAN,to).count() } catch (Exception _e) { return null } }
+                def currentInvoices = invoiceSummaryFor(_d30, _d0)
+                def priorInvoices = invoiceSummaryFor(_d60, _d30)
+                salesDelta = _pct(currentInvoices.revenue, priorInvoices.revenue)
                 quotesDelta = _pct(_qCnt(_d30,_d0), _qCnt(_d60,_d30))
-                invoicesDelta = _pct(_iCnt(_d30,_d0), _iCnt(_d60,_d30))
+                invoicesDelta = _pct(currentInvoices.generated, priorInvoices.generated)
                 def _cc30 = _cCnt(_d30,_d0); def _cc60 = _cCnt(_d60,_d30)
                 customersDelta = (_cc30 == null || _cc60 == null) ? null : _pct(_cc30, _cc60)
 
                 def _catFrom = dayStart ?: _tsShift(-90)
                 def _catTo = dayEndExcl ?: _d0
-                def _catMap = [:]
-                ec.entity.find("zenith.erp.sales.InvoiceCategorySalesView").condition("fromPartyId",orgId).condition("invoiceTypeEnumId","InvoiceSales").condition("statusId",EntityCondition.NOT_EQUAL,"InvoiceCancelled").condition("invoiceDate",EntityCondition.GREATER_THAN_EQUAL_TO,_catFrom).condition("invoiceDate",EntityCondition.LESS_THAN,_catTo).selectField("productCategoryId").selectField("taxableAmount").selectField("totalTaxAmount").list().each { r ->
-                    def cid = r.productCategoryId
-                    if (cid) _catMap[cid] = ((_catMap[cid] ?: 0.0G)) + ((r.taxableAmount ?: 0G) + (r.totalTaxAmount ?: 0G))
-                }
-                def _catTop = _catMap.entrySet().toList().sort { -it.value }.take(6)
-                def _cn = []; def _cv = []
-                _catTop.each { e ->
-                    def pc = ec.entity.find("mantle.product.category.ProductCategory").condition("productCategoryId", e.key).selectField("categoryName").one()
-                    _cn.add((pc?.categoryName ?: e.key).toString())
-                    _cv.add((e.value as BigDecimal).setScale(0, java.math.RoundingMode.HALF_UP).toPlainString())
-                }
+                def categories = ec.entity.find("zenith.erp.sales.DashboardCategoryTotals")
+                        .condition("fromPartyId",orgId).condition("invoiceTypeEnumId","InvoiceSales")
+                        .condition("statusId",EntityCondition.IN,["InvoiceFinalized","InvoicePmtRecvd"])
+                        .condition("invoiceDate",EntityCondition.GREATER_THAN_EQUAL_TO,_catFrom)
+                        .condition("invoiceDate",EntityCondition.LESS_THAN,_catTo)
+                        .selectFields(["productCategoryId","taxableSum","taxSum"])
+                if (_activeShop) categories.condition("facilityId", _activeShop)
+                def topCategories = categories.list().collect { row ->
+                    [id:row.productCategoryId, total:(row.taxableSum ?: 0.0G) + (row.taxSum ?: 0.0G)]
+                }.sort { a, b -> (b.total <=> a.total) ?: (a.id <=> b.id) }.take(6)
+                def names = topCategories ? ec.entity.find("mantle.product.category.ProductCategory")
+                        .condition("productCategoryId", EntityCondition.IN, topCategories*.id)
+                        .selectFields(["productCategoryId","categoryName"]).list().collectEntries { [(it.productCategoryId):it.categoryName] } : [:]
+                def _cn = topCategories.collect { names[it.id] ?: it.id }
+                def _cv = topCategories.collect { it.total.setScale(0, java.math.RoundingMode.HALF_UP).toPlainString() }
                 // The chart JSON is inserted into an HTML onload attribute. Encode both JS strings
                 // and the surrounding HTML attribute so category names cannot break chart rendering.
                 catNamesJson = groovy.json.JsonOutput.toJson(_cn).replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
@@ -364,16 +346,17 @@
                     <form-single name="DashLayoutForm" transition="saveDashLayout">
                         <field name="dashDate"><default-field><hidden/></default-field></field>
                         <field name="dashDateTo"><default-field><hidden/></default-field></field>
+                        <field name="dateMode"><default-field><hidden/></default-field></field>
                         <field name="w_metrics"><default-field title="Metrics (Total Sales, Quotes, Customers, Invoices)"><check><option key="Y" text=" "/></check></default-field></field>
-                        <field name="w_trend"><default-field title="Sales &amp; Orders Trend"><check><option key="Y" text=" "/></check></default-field></field>
-                        <field name="w_payments"><default-field title="Payment Status"><check><option key="Y" text=" "/></check></default-field></field>
+                        <field name="w_trend"><default-field title="Revenue &amp; Billed Invoices"><check><option key="Y" text=" "/></check></default-field></field>
+                        <field name="w_payments"><default-field title="Issued invoice status"><check><option key="Y" text=" "/></check></default-field></field>
                         <field name="w_forecast"><default-field title="Sales Forecast"><check><option key="Y" text=" "/></check></default-field></field>
                         <field name="w_recent"><default-field title="Recent Orders"><check><option key="Y" text=" "/></check></default-field></field>
                         <field name="saveBtn"><default-field title=""><submit text="Save Layout" icon="fa fa-check"/></default-field></field>
                     </form-single>
                     <container style="row q-gutter-sm q-mt-sm">
-                        <link url="resetDashLayout" text="Reset to Default" icon="fa fa-undo" btn-type="warning" parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo]"/>
-                        <link url="." text="Close" btn-type="flat" parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo]"/>
+                        <link url="resetDashLayout" text="Reset to Default" icon="fa fa-undo" btn-type="warning" parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dateMode:dateMode]"/>
+                        <link url="." text="Close" btn-type="flat" parameter-map="[dashDate:dashDate, dashDateTo:dashDateTo, dateMode:dateMode]"/>
                     </container>
                 </container>
             </widgets>
@@ -452,30 +435,24 @@
                 <section name="wTrend" condition="showTrend"><widgets>
                 <render-mode><text type="html"><![CDATA[<div class="dash-widget" data-wkey="trend"><div class="dash-handle" title="Drag to reorder">&#8942;&#8942;</div>]]></text></render-mode>
                 <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-md q-mb-md">
-                    <label text="Sales &amp; Orders Trend" type="h6" style="text-primary text-weight-bold q-mb-md"/>
+                    <label text="Revenue &amp; Billed Invoices" type="h6" style="text-primary text-weight-bold q-mb-md"/>
                     <render-mode><text type="html,vuet,qvt"><![CDATA[
                         <div id="salesTrendChart"></div>
                         <img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onload="zChart(this,function(){(function() {
-                            var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                            var now = new Date();
-                            var labels = [];
-                            for (var i = 5; i >= 0; i--) {
-                                var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-                                labels.push(months[d.getMonth()] + ' ' + d.getFullYear());
-                            }
+                            var labels = ${monthLabelsJson};
                             var salesData = ${salesRevJson};
-                            var ordersData = ${salesOrdJson};
+                            var invoiceCounts = ${invoiceCountJson};
 
                             new ApexCharts(document.querySelector(&quot;#salesTrendChart&quot;), {
                                 chart: { type: 'bar', height: 280, toolbar: { show: true }, fontFamily: 'Roboto, sans-serif' },
                                 series: [
                                     { name: 'Revenue', data: salesData },
-                                    { name: 'Orders', data: ordersData }
+                                    { name: 'Invoices', data: invoiceCounts }
                                 ],
                                 xaxis: { categories: labels },
                                 yaxis: [
                                     { seriesName: 'Revenue', min: 0, max: function(v){ return Number.isFinite(v) &amp;&amp; v > 0 ? v : 1; }, title: { text: 'Revenue' }, labels: { formatter: function(v) { return '${currSymbol!"$"}' + ((Number.isFinite(v) ? v : 0)/1000).toFixed(0) + 'K'; } } },
-                                    { seriesName: 'Orders', min: 0, max: function(v){ return Number.isFinite(v) &amp;&amp; v > 0 ? v : 1; }, opposite: true, title: { text: 'Orders' }, labels: { formatter: function(v){ return Math.round(Number.isFinite(v) ? v : 0); } } }
+                                    { seriesName: 'Invoices', min: 0, max: function(v){ return Number.isFinite(v) &amp;&amp; v > 0 ? v : 1; }, opposite: true, title: { text: 'Invoices' }, labels: { formatter: function(v){ return Math.round(Number.isFinite(v) ? v : 0); } } }
                                 ],
                                 colors: ['#2563EB', '#F59E0B'],
                                 plotOptions: { bar: { columnWidth: '62%', borderRadius: 3, borderRadiusApplication: 'end' } },
@@ -669,14 +646,14 @@
                 <section name="wPayments" condition="showPayments"><widgets>
                 <render-mode><text type="html"><![CDATA[<div class="dash-widget" data-wkey="payments"><div class="dash-handle" title="Drag to reorder">&#8942;&#8942;</div>]]></text></render-mode>
                 <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-md q-mb-md">
-                    <label text="Payment Status" type="h6" style="text-primary text-weight-bold q-mb-md"/>
+                    <label text="Issued invoice status" type="h6" style="text-primary text-weight-bold q-mb-md"/>
                     <render-mode><text type="html,vuet,qvt"><![CDATA[
                         <div id="orderStatusChart"></div>
                         <img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onload="zChart(this,function(){(function() {
                             new ApexCharts(document.querySelector(&quot;#orderStatusChart&quot;), {
                                 chart: { type: 'donut', height: 280, fontFamily: 'Roboto, sans-serif' },
                                 series: ${salesStatusJson},
-                                labels: ['Paid', 'On Credit'],
+                                labels: ['Payment received', 'Finalized'],
                                 colors: ['#4CAF50', '#F44336'],
                                 legend: { position: 'bottom', fontSize: '12px' },
                                 plotOptions: { pie: { donut: { size: '55%', labels: { show: true, total: { show: true, label: 'Total', fontSize: '14px' } } } } },

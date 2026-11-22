@@ -11,6 +11,8 @@
         <field name="granularity" type="text-short"><description>Daily | Weekly</description></field>
         <field name="dimension" type="text-short"><description>Overall | Category</description></field>
         <field name="dimensionValue" type="text-medium"><description>ALL, or the category name</description></field>
+        <field name="productCategoryId" type="id"><description>Category used for this forecast, including after a category rename.</description></field>
+        <field name="currencyUomId" type="id"><description>Invoice currency for the historical series and predicted amounts.</description></field>
         <field name="periodDate" type="date"><description>The forecasted period (start date)</description></field>
         <field name="predictedAmount" type="currency-amount"/>
         <field name="lowerBound" type="currency-amount"/>
@@ -46,7 +48,9 @@
     <view-entity entity-name="InvoiceCategorySalesView" package="zenith.erp.sales">
         <member-entity entity-alias="II" entity-name="mantle.account.invoice.InvoiceItem"/>
         <member-entity entity-alias="INV" entity-name="mantle.account.invoice.Invoice" join-from-alias="II"><key-map field-name="invoiceId"/></member-entity>
-        <member-entity entity-alias="PCM" entity-name="mantle.product.category.ProductCategoryMember" join-from-alias="II"><key-map field-name="productId"/></member-entity>
+        <member-entity entity-alias="PCM" entity-name="mantle.product.category.ProductCategoryMember" join-from-alias="II">
+            <key-map field-name="productId"/>
+        </member-entity>
         <alias entity-alias="II" name="invoiceId"/>
         <alias entity-alias="II" name="productId"/>
         <alias entity-alias="II" name="taxableAmount"/>
@@ -55,7 +59,38 @@
         <alias entity-alias="INV" name="fromPartyId"/>
         <alias entity-alias="INV" name="statusId"/>
         <alias entity-alias="INV" name="invoiceTypeEnumId"/>
+        <alias entity-alias="INV" name="currencyUomId"/>
         <alias entity-alias="PCM" name="productCategoryId"/>
+        <entity-condition>
+            <econdition entity-alias="PCM" field-name="fromDate" operator="less-equals" to-entity-alias="INV" to-field-name="invoiceDate"/>
+            <econditions combine="or">
+                <econdition entity-alias="PCM" field-name="thruDate" operator="is-null"/>
+                <econdition entity-alias="PCM" field-name="thruDate" operator="greater" to-entity-alias="INV" to-field-name="invoiceDate"/>
+            </econditions>
+        </entity-condition>
     </view-entity>
 
+    <view-entity entity-name="DashboardCategoryTotals" package="zenith.erp.sales">
+        <member-entity entity-alias="II" entity-name="mantle.account.invoice.InvoiceItem"/>
+        <member-entity entity-alias="INV" entity-name="mantle.account.invoice.Invoice" join-from-alias="II"><key-map field-name="invoiceId"/></member-entity>
+        <member-entity entity-alias="PCM" entity-name="mantle.product.category.ProductCategoryMember" join-from-alias="II">
+            <key-map field-name="productId"/>
+        </member-entity>
+        <alias entity-alias="INV" name="fromPartyId"/>
+        <alias entity-alias="INV" name="invoiceTypeEnumId"/>
+        <alias entity-alias="INV" name="currencyUomId"/>
+        <alias entity-alias="INV" name="statusId"/>
+        <alias entity-alias="INV" name="facilityId"/>
+        <alias entity-alias="INV" name="invoiceDate"/>
+        <alias entity-alias="PCM" name="productCategoryId" group-by="true"/>
+        <alias entity-alias="II" name="taxableSum" field="taxableAmount" function="sum"/>
+        <alias entity-alias="II" name="taxSum" field="totalTaxAmount" function="sum"/>
+        <entity-condition>
+            <econdition entity-alias="PCM" field-name="fromDate" operator="less-equals" to-entity-alias="INV" to-field-name="invoiceDate"/>
+            <econditions combine="or">
+                <econdition entity-alias="PCM" field-name="thruDate" operator="is-null"/>
+                <econdition entity-alias="PCM" field-name="thruDate" operator="greater" to-entity-alias="INV" to-field-name="invoiceDate"/>
+            </econditions>
+        </entity-condition>
+    </view-entity>
 </entities>

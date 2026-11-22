@@ -281,6 +281,24 @@
         <alias entity-alias="INV" name="cnt" field="invoiceId" function="count"/>
     </view-entity>
 
+    <!-- Date and facility restrict the underlying rows. Select only statusId and the aggregates to
+         return one row per invoice status, including for an unbounded date range. -->
+    <view-entity entity-name="DashboardInvoiceTotals" package="zenith.erp.sales">
+        <member-entity entity-alias="INV" entity-name="mantle.account.invoice.Invoice"/>
+        <alias entity-alias="INV" name="fromPartyId"/>
+        <alias entity-alias="INV" name="invoiceTypeEnumId"/>
+        <alias entity-alias="INV" name="currencyUomId"/>
+        <alias entity-alias="INV" name="facilityId"/>
+        <alias entity-alias="INV" name="invoiceDate"/>
+        <alias entity-alias="INV" name="statusId" group-by="true"/>
+        <!-- Current invoiceTotal includes taxes and additional fees. Older rows may only have a
+             tax split. Round-off is separate in either representation; zero is a legitimate total. -->
+        <alias name="grossSum" function="sum" type="currency-precise">
+            <complex-alias expression="COALESCE(INV.INVOICE_TOTAL, COALESCE(INV.TOTAL_TAXABLE_AMOUNT, 0) + COALESCE(INV.TOTAL_TAX_AMOUNT, 0)) + COALESCE(INV.ROUND_OFF_AMOUNT, 0)"/>
+        </alias>
+        <alias entity-alias="INV" name="invoiceCount" field="invoiceId" function="count"/>
+    </view-entity>
+
     <!-- ZE-DASH: product-level sales aggregation for the Home dashboard "Top Selling Products" widget.
          Query-only view (no table). The DB does the group-by (per product + org + type + status) so callers
          filter to finalised sales in-code and never build a huge invoiceId IN-clause. totalValue = SUM(amount*qty). -->

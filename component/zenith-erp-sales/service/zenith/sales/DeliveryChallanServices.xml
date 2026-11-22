@@ -86,17 +86,19 @@
                 if(aliases[dc.statusId]) ec.service.sync().name('update#zenith.erp.sales.DeliveryChallan').parameters([challanId:deliveryChallanId,statusId:aliases[dc.statusId]]).call()
             ]]></script>
             <if condition="!dc.customerPartyId"><return error="true" message="Select a customer before converting this challan."/></if>
-            <entity-find entity-name="zenith.erp.sales.DeliveryChallanItem" list="dcItems">
+            <entity-find entity-name="zenith.erp.sales.DeliveryChallanItem" list="challanItems">
                 <econdition field-name="challanId" from="deliveryChallanId"/><order-by field-name="challanItemSeqId"/>
             </entity-find>
-            <if condition="!dcItems"><return error="true" message="Add at least one goods item before converting this challan."/></if>
+            <if condition="!challanItems"><return error="true" message="Add at least one goods item before converting this challan."/></if>
+            <set field="challan" from="dc"/>
+            <script location="component://zenith-erp-sales/script/SalesChallanGoods.groovy"/>
             <script><![CDATA[
                 def invoiceItems = []
-                for (item in dcItems) {
+                for (item in challanItems) {
                     if (item.quantity == null || item.quantity <= 0) { ec.message.addError('Challan quantities must be greater than zero.'); return }
                     def price = item.unitPrice != null ? item.unitPrice :
                         ((item.estimatedValue ?: 0) as BigDecimal).divide(item.quantity as BigDecimal, 5, java.math.RoundingMode.HALF_UP)
-                    invoiceItems.add([productId:item.productId, itemDescription:item.description ?: item.remarks,
+                    invoiceItems.add([productId:item.productId, itemDescription:item.description,
                         quantity:item.quantity, unitAmount:price, productTaxCode:item.hsnSacCode])
                 }
                 def result=ec.service.sync().name('zenith.sales.SalesInvoiceServices.create#SalesInvoice').parameters([

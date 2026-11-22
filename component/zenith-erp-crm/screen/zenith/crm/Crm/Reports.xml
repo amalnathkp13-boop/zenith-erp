@@ -9,11 +9,21 @@
     <actions>
         <set field="activeOrg" from="crmOrganization.activeOrgId"/>
         <if condition="!activeOrg || activeOrg == '_NA_'"><return error="true" message="Choose an organization to view CRM reports."/></if>
-        <entity-find entity-name="zenith.erp.crm.Lead" list="allLeads"><econdition field-name="organizationPartyId" from="activeOrg"/></entity-find>
-        <entity-find entity-name="mantle.sales.opportunity.SalesOpportunity" list="allOpportunities"><econdition field-name="organizationPartyId" from="activeOrg"/></entity-find>
-        <entity-find entity-name="zenith.erp.crm.CrmActivity" list="allActivities"><econdition field-name="organizationPartyId" from="activeOrg"/></entity-find>
-        <entity-find entity-name="zenith.erp.crm.LeadSource" list="sourceCatalogue"><order-by field-name="description"/></entity-find>
-        <set field="sourceCatalogue" from="sourceCatalogue.findAll { !it.organizationPartyId || it.organizationPartyId == activeOrg }"/>
+        <entity-find entity-name="zenith.erp.crm.Lead" list="allLeads">
+            <econdition field-name="organizationPartyId" from="activeOrg"/>
+            <select-field field-name="leadId,statusId,assignedToUserId,createdDate,leadSourceId,firstTouchSourceId,latestTouchSourceId,campaignId"/>
+        </entity-find>
+        <entity-find entity-name="mantle.sales.opportunity.SalesOpportunity" list="allOpportunities">
+            <econdition field-name="organizationPartyId" from="activeOrg"/>
+            <select-field field-name="salesOpportunityId,opportunityName,opportunityStageId,estimatedCloseDate,wonDate,lostDate,leadSourceId,campaignId,estimatedAmount,estimatedProbability,currencyUomId,lastUpdatedStamp,assignedToUserId,lostReason"/>
+        </entity-find>
+        <entity-find entity-name="zenith.erp.crm.CrmActivity" list="allActivities">
+            <econdition field-name="organizationPartyId" from="activeOrg"/>
+            <select-field field-name="activityId,subject,statusId,dueDate,activityDate,completedDate,salesOpportunityId,leadId,assignedToUserId"/>
+        </entity-find>
+        <entity-find entity-name="zenith.erp.crm.LeadSource" list="sourceCatalogue">
+            <econdition field-name="organizationPartyId" from="activeOrg" or-null="true"/><order-by field-name="description"/>
+        </entity-find>
         <entity-find entity-name="zenith.erp.crm.CrmCampaign" list="campaigns"><econdition field-name="organizationPartyId" from="activeOrg"/></entity-find>
         <entity-find entity-name="moqui.basic.StatusItem" list="leadStatuses" cache="true">
             <econdition field-name="statusTypeId" value="CrmLead"/><order-by field-name="sequenceNum"/>
@@ -81,10 +91,13 @@
             pipelineTotal = amountText(openOpps, amount)
             weightedTotal = amountText(openOpps, weighted)
             def stageNames = stages.collectEntries { [(it.opportunityStageId): stageName(it)] }
-            def stageOrder = stages.collectEntries { [(it.opportunityStageId):settingsByStage[it.opportunityStageId]?.sequenceNum ?: it.sequenceNum] }
+            def stageOrder = stages.collectEntries { stage ->
+                def configured = settingsByStage[stage.opportunityStageId]?.sequenceNum
+                [(stage.opportunityStageId): configured != null ? configured : stage.sequenceNum]
+            }
             forecastRows = openOpps.groupBy { it.opportunityStageId }.collectMany { id, matching ->
                 matching.groupBy(currency).collect { code, deals ->
-                    [stageName:stageNames[id] ?: id ?: 'Unspecified', sequenceNum:stageOrder[id] ?: Integer.MAX_VALUE,
+                    [stageName:stageNames[id] ?: id ?: 'Unspecified', sequenceNum:stageOrder[id] != null ? stageOrder[id] : Integer.MAX_VALUE,
                      currency:code, deals:deals.size(), amount:deals.sum(amount), weighted:deals.sum(weighted)]
                 }
             }.sort { a, b -> a.sequenceNum <=> b.sequenceNum ?: a.stageName <=> b.stageName ?: a.currency <=> b.currency }
