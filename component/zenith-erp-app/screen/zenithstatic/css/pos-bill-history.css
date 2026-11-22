@@ -1,0 +1,157 @@
+/* The history dialog is mounted on body in both POS billing layouts. */
+#pos-history-overlay {
+    --hist-gutter: 20px;
+    --hist-border: #d9d6e5;
+    --hist-primary: #6d28d9;
+}
+
+#pos-history-overlay .hist-toolbar {
+    display: flex;
+    flex: none;
+    gap: 8px;
+    padding: 12px var(--hist-gutter);
+    border-bottom: 1px solid #e8e5ef;
+}
+
+#hist-search,
+#hist-filter-form input[name] {
+    box-sizing: border-box;
+    min-width: 0;
+    height: 42px;
+    margin: 0;
+    padding: 0 10px;
+    border: 1px solid var(--hist-border);
+    border-radius: 8px;
+    background: #fff;
+    color: #282636;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: normal;
+}
+
+#hist-search { flex: 1; padding-inline: 12px; }
+#hist-filter-form input[name] { display: block; width: 100%; padding-inline: 8px 32px; font-variant-numeric: tabular-nums; }
+#hist-filter-form .hist-entry { position: relative; }
+#hist-filter-form .hist-picker {
+    position: absolute;
+    inset: 2px 2px 2px auto;
+    width: 30px;
+    display: grid;
+    place-items: center;
+    border-radius: 6px;
+    color: #675b7d;
+}
+#hist-filter-form .hist-picker:hover { color: var(--hist-primary); background: #f5f3ff; }
+#hist-filter-form .hist-picker:focus-within { outline: 2px solid var(--hist-primary); }
+#hist-filter-form .hist-picker input {
+    position: absolute;
+    inset: 0;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+#hist-filter-form .hist-picker input::-webkit-calendar-picker-indicator {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    cursor: pointer;
+}
+
+#hist-filter,
+#hist-filter-form button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    box-sizing: border-box;
+    min-height: 40px;
+    padding: 0 16px;
+    border: 1px solid var(--hist-border);
+    border-radius: 8px;
+    background: #fff;
+    color: #49435b;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#hist-filter:hover,
+#hist-filter[aria-expanded="true"],
+#hist-filter.hist-applied {
+    border-color: #c4b5fd;
+    background: #f5f3ff;
+    color: var(--hist-primary);
+}
+
+#hist-filter.hist-applied::after {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+#hist-filter-form[hidden] { display: none !important; }
+#hist-filter-form { margin: 0; padding: 0; }
+#hist-filter-form .hist-filter-body {
+    padding: 15px var(--hist-gutter);
+    border-bottom: 1px solid #e8e5ef;
+    background: #f9f8fc;
+}
+
+#hist-filter-form .hist-ranges,
+#hist-filter-form .hist-range-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+}
+#hist-filter-form .hist-range-fields { gap: 10px; }
+#hist-filter-form fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+#hist-filter-form legend {
+    float: none;
+    width: auto;
+    margin: 0 0 8px;
+    padding: 0;
+    border: 0;
+    color: #302b41;
+    font-size: 14px;
+    font-weight: 650;
+    line-height: 1.4;
+}
+#hist-filter-form legend small { margin-left: 4px; color: #6c667b; font-size: 12px; font-weight: 400; }
+#hist-filter-form .hist-field {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+#hist-filter-form label {
+    margin: 0;
+    color: #514a60;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+#hist-filter-error { margin: 10px 0 0; color: #ab2336; font-size: 13px; }
+#hist-filter-form .hist-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+#hist-filter-reset:hover { background: #f1eef7; }
+#hist-filter-form button[type="submit"] { border-color: var(--hist-primary); background: var(--hist-primary); color: #fff; }
+#hist-filter-form button[type="submit"]:hover { background: #5b21b6; }
+#pos-history-overlay :is(.hist-toolbar, #hist-filter-form) :is(input, button):focus-visible {
+    outline: 2px solid #7c3aed;
+    outline-offset: 2px;
+}
+
+@media (max-width: 720px) {
+    #pos-history-overlay { --hist-gutter: 14px; }
+    #hist-filter-form .hist-ranges { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+}
