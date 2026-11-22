@@ -624,7 +624,7 @@ jobs:
       - name: Verify POS functions, isolation and responsive UI
         if: env.POS_QA_ENABLED == 'true'
         env:
-          POS_QA_BASE: http://localhost:8080
+          POS_QA_BASE: http://127.0.0.1:8080
           POS_QA_OUT: ${{ runner.temp }}/pos-profile
         run: |
           set -euo pipefail
@@ -650,7 +650,7 @@ jobs:
         # sales-gated; drive it with `candidate_sha=<Sales PR head>`.
         if: env.SALES_QA_ENABLED == 'true'
         env:
-          SALES_QA_BASE: http://localhost:8080
+          SALES_QA_BASE: http://127.0.0.1:8080
           SALES_QA_OUT: ${{ runner.temp }}/sales-profile
         run: |
           set -euo pipefail
