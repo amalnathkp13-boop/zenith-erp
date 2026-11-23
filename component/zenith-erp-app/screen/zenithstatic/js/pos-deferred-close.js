@@ -185,7 +185,7 @@
         if (running) return running;
         var who = identity();
         if (!who || !navigator.onLine) return Promise.resolve();
-        var work = navigator.locks ? navigator.locks.request('zenith-pos-close:' + who.organization + ':' + who.user, {ifAvailable:true}, function (lock) { if (lock) return process(); }) : process();
+        var work = navigator.locks ? navigator.locks.request('zenith-pos-close:' + who.organization + ':' + who.user, process) : process();
         running = work.catch(function () {}).finally(function () { running = null; });
         return running;
     }
