@@ -9,4 +9,5 @@
     <depends-on name="zenith-erp-contacts"/>
     <depends-on name="zenith-erp-accounting"/>
     <depends-on name="zenith-erp-inventory"/>
+    <depends-on name="zenith-erp-pricing"/>
 </component>

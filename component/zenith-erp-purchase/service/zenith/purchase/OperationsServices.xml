@@ -100,14 +100,39 @@
             ]]></script>
         </actions>
     </service>
+    <service verb="get" noun="PurchaseOrderLinePrice">
+        <in-parameters><parameter name="orderId" required="true"/><parameter name="productId" required="true"/><parameter name="quantity" type="BigDecimal" required="true"/></in-parameters>
+        <out-parameters><parameter name="unitAmount" type="BigDecimal"/><parameter name="priceSource"/><parameter name="currencyUomId"/></out-parameters>
+        <actions>
+            <service-call name="zenith.purchase.OperationsServices.assert#PurchaseWrite"/>
+            <service-call name="zenith.purchase.OperationsServices.assert#PurchaseOrder" in-map="[orderId:orderId]" out-map="access"/>
+            <if condition="!access.allowed || access.order.statusId != 'OrderOpen' || quantity &lt;= 0"><return/></if>
+            <script><![CDATA[
+                def orgId = access.part.customerPartyId
+                def product = ec.entity.find('mantle.product.Product').condition('productId', productId)
+                    .condition('ownerPartyId', orgId).disableAuthz().one()
+                if (!product) { ec.message.addError('Select a product from the buying organization.'); return }
+                currencyUomId = access.order.currencyUomId
+                if (!currencyUomId) return
+                def quote = ec.service.sync().name('zenith.pricing.PricingServices.calculate#Price')
+                    .parameters([productId:productId, quantity:quantity, organizationPartyId:orgId,
+                                 currencyUomId:currencyUomId, buying:true]).disableAuthz().call()
+                if (quote.unitPrice == null || quote.unitPrice < 0G) return
+                def usesCatalog = quote.priceSource == 'ProductListPrice'
+                if (usesCatalog && quote.listPrice <= 0G) return
+                unitAmount = usesCatalog ? quote.listPrice : quote.unitPrice
+                priceSource = usesCatalog ? 'Catalog estimate' : 'Buying price list'
+            ]]></script>
+        </actions>
+    </service>
     <service verb="add" noun="PurchaseOrderLine">
-        <in-parameters><parameter name="orderId" required="true"/><parameter name="productId"/><parameter name="itemDescription"/><parameter name="quantity" type="BigDecimal" required="true"/><parameter name="unitAmount" type="BigDecimal" required="true"/><parameter name="requiredByDate" type="Timestamp"/></in-parameters>
+        <in-parameters><parameter name="orderId" required="true"/><parameter name="productId"/><parameter name="itemDescription"/><parameter name="quantity" type="BigDecimal" required="true"/><parameter name="unitAmount" type="BigDecimal"/><parameter name="useCatalogPrice" type="Boolean" default="false"/><parameter name="requiredByDate" type="Timestamp"/></in-parameters>
         <out-parameters><parameter name="orderItemSeqId"/></out-parameters>
         <actions>
             <service-call name="zenith.purchase.OperationsServices.assert#PurchaseWrite"/>
             <service-call name="zenith.purchase.OperationsServices.assert#PurchaseOrder" in-map="[orderId:orderId,editable:true]" out-map="access"/>
             <if condition="!access.allowed"><return/></if>
-            <if condition="quantity&lt;=0 || unitAmount&lt;0 || (!productId &amp;&amp; !itemDescription?.trim())"><return error="true" message="Enter a product or description, positive quantity and nonnegative unit price."/></if>
+            <if condition="quantity&lt;=0 || (!productId &amp;&amp; !itemDescription?.trim())"><return error="true" message="Enter a product or description and a positive quantity."/></if>
             <script><![CDATA[
                 def product=productId ? ec.entity.find('mantle.product.Product').condition('productId',productId).disableAuthz().one() : null
                 if (productId && (!product || product.ownerPartyId != access.part.customerPartyId)) {
@@ -117,6 +142,11 @@
                 }
             ]]></script>
             <if condition="ec.message.hasError()"><return/></if>
+            <if condition="productId &amp;&amp; (useCatalogPrice || unitAmount == null)">
+                <service-call name="zenith.purchase.OperationsServices.get#PurchaseOrderLinePrice" in-map="[orderId:orderId, productId:productId, quantity:quantity]" out-map="quote"/>
+                <set field="unitAmount" from="quote.unitAmount"/>
+            </if>
+            <if condition="unitAmount == null || unitAmount &lt; 0"><return error="true" message="Enter a nonnegative unit price when there is no configured price for this product and quantity."/></if>
             <service-call name="create#mantle.order.OrderItem" in-map="[orderId:orderId,orderPartSeqId:'01',productId:productId,itemDescription:itemDescription,quantity:quantity,unitAmount:unitAmount,requiredByDate:requiredByDate,itemTypeEnumId:'ItemInventory']" out-map="context"/>
             <service-call name="mantle.order.OrderServices.update#OrderHeaderTotal" in-map="[orderId:orderId]"/>
         </actions>
@@ -134,7 +164,7 @@
         </actions>
     </service>
     <service verb="create" noun="GoodsReceiptNote">
-        <in-parameters><parameter name="purchaseOrderId" required="true"/><parameter name="receiptDate" required="true"/><parameter name="freightAmount" type="BigDecimal"/><parameter name="insuranceAmount" type="BigDecimal"/><parameter name="customsDutyAmount" type="BigDecimal"/></in-parameters>
+        <in-parameters><parameter name="purchaseOrderId" required="true"/><parameter name="receiptDate" required="true"/><parameter name="freightAmount" type="BigDecimal"/><parameter name="insuranceAmount" type="BigDecimal"/><parameter name="customsDutyAmount" type="BigDecimal"/><parameter name="otherChargesAmount" type="BigDecimal"/></in-parameters>
         <out-parameters><parameter name="grnId"/></out-parameters>
         <actions>
             <service-call name="zenith.purchase.OperationsServices.assert#PurchaseWrite"/>
@@ -146,9 +176,12 @@
             <script><![CDATA[
                 def date
                 try {date=java.sql.Timestamp.valueOf(java.time.LocalDate.parse(receiptDate.toString().trim()).atStartOfDay())} catch(Exception ignored) {ec.message.addError('Enter a valid receipt date.');return}
-                def amounts=[freightAmount,insuranceAmount,customsDutyAmount]
+                def amounts=[freightAmount,insuranceAmount,customsDutyAmount,otherChargesAmount]
                 if(amounts.any {it!=null && it<0}) {ec.message.addError('Landed surcharges cannot be negative.');return}
-                def row=ec.entity.makeValue('zenith.erp.purchase.GoodsReceiptNote').setAll([purchaseOrderId:purchaseOrderId,vendorPartyId:access.part.vendorPartyId,statusId:'GrnDraft',receiptDate:date,freightAmount:freightAmount,insuranceAmount:insuranceAmount,customsDutyAmount:customsDutyAmount]).setSequencedIdPrimary().create()
+                def row=ec.entity.makeValue('zenith.erp.purchase.GoodsReceiptNote').setAll(
+                    [purchaseOrderId:purchaseOrderId,vendorPartyId:access.part.vendorPartyId,statusId:'GrnDraft',
+                     receiptDate:date,freightAmount:freightAmount,insuranceAmount:insuranceAmount,
+                     customsDutyAmount:customsDutyAmount,otherChargesAmount:otherChargesAmount]).setSequencedIdPrimary().create()
                 grnId=row.grnId
             ]]></script>
         </actions>

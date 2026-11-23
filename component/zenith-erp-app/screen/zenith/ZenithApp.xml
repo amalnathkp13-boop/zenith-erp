@@ -355,8 +355,8 @@
             html_stylesheets.add('/zenithstatic/css/receiving-stock.css?v=16')
             html_stylesheets.add('/zenithstatic/css/gate-passes.css?v=12')
             html_stylesheets.add('/zenithstatic/css/shops-reference.css?v=2')
-            html_stylesheets.add('/zenithstatic/css/purchase-operations.css?v=3')
-            html_stylesheets.add('/zenithstatic/css/purchase-grn.css?v=2')
+            html_stylesheets.add('/zenithstatic/css/purchase-operations.css?v=4')
+            html_stylesheets.add('/zenithstatic/css/purchase-grn.css?v=3')
             html_stylesheets.add('/zenithstatic/css/contacts-dashboard.css?v=1')
             html_stylesheets.add('/zenithstatic/css/accounting-dashboard-reference.css?v=1')
             html_stylesheets.add('/zenithstatic/css/edit-customer-group.css?v=1')
@@ -413,7 +413,7 @@
             footer_scripts.add('/zenithstatic/js/product-catalog.js?v=4')
             footer_scripts.add('/zenithstatic/js/stock-transfers.js?v=2')
             footer_scripts.add('/zenithstatic/js/pricing-rules.js?v=1')
-            footer_scripts.add('/zenithstatic/js/purchase-operations.js?v=2')
+            footer_scripts.add('/zenithstatic/js/purchase-operations.js?v=3')
             footer_scripts.add('/zenithstatic/js/purchase-gstr2b.js?v=1')
             footer_scripts.add('/zenithstatic/js/barcode-module.js?v=1')
             html_stylesheets.add('/zenithstatic/css/barcode-module.css?v=1')
@@ -435,7 +435,7 @@
             html_scripts.add('/zenithstatic/js/stock-levels.js?v=2')
             html_scripts.add('/zenithstatic/js/expiry-risk.js?v=3')
             html_scripts.add('/zenithstatic/js/stock-adjustments.js?v=7')
-            html_scripts.add('/zenithstatic/js/purchase-operations.js?v=2')
+            html_scripts.add('/zenithstatic/js/purchase-operations.js?v=3')
             html_scripts.add('/zenithstatic/js/serial-tracking.js?v=3')
             html_scripts.add('/zenithstatic/js/zenith-map.js?v=10')
             html_scripts.add('/zenithstatic/js/cp-tabs.js?v=1')
@@ -1389,8 +1389,8 @@
             <link rel="stylesheet" href="/zenithstatic/css/barcode-module.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/barcode-reference.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/receiving-stock.css?v=16"/>
-            <link rel="stylesheet" href="/zenithstatic/css/purchase-operations.css?v=3"/>
-            <link rel="stylesheet" href="/zenithstatic/css/purchase-grn.css?v=2"/>
+            <link rel="stylesheet" href="/zenithstatic/css/purchase-operations.css?v=4"/>
+            <link rel="stylesheet" href="/zenithstatic/css/purchase-grn.css?v=3"/>
             <link rel="stylesheet" href="/zenithstatic/css/gate-passes.css?v=12"/>
             <link rel="stylesheet" href="/zenithstatic/css/shops-reference.css?v=2"/>
             <link rel="stylesheet" href="/zenithstatic/css/contacts-dashboard.css?v=1"/>

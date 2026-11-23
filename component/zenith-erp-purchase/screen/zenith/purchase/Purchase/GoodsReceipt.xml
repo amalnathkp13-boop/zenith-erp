@@ -5,7 +5,11 @@
 
     <transition name="createGrn"><actions>
         <if condition="ec.web.request.method != 'POST'"><return error="true" message="Create a GRN using the form."/></if>
-        <if condition="!ec.web.parameters.moquiSessionToken || ec.web.parameters.moquiSessionToken != ec.web.sessionToken"><return error="true" message="Your session expired. Reload Goods Receipt."/></if><service-call name="zenith.purchase.OperationsServices.create#GoodsReceiptNote" in-map="[purchaseOrderId:purchaseOrderId,receiptDate:receiptDate,freightAmount:freightAmount,insuranceAmount:insuranceAmount,customsDutyAmount:customsDutyAmount]" out-map="context"/></actions><default-response url="../GoodsReceiptDetail" parameter-map="[grnId:grnId]"/><error-response url="."/></transition>
+        <if condition="!ec.web.parameters.moquiSessionToken || ec.web.parameters.moquiSessionToken != ec.web.sessionToken"><return error="true" message="Your session expired. Reload Goods Receipt."/></if>
+        <service-call name="zenith.purchase.OperationsServices.create#GoodsReceiptNote"
+            in-map="[purchaseOrderId:purchaseOrderId,receiptDate:receiptDate,freightAmount:freightAmount,
+                    insuranceAmount:insuranceAmount,customsDutyAmount:customsDutyAmount,otherChargesAmount:otherChargesAmount]" out-map="context"/>
+    </actions><default-response url="../GoodsReceiptDetail" parameter-map="[grnId:grnId]"/><error-response url="."/></transition>
 
     <transition name="exportCsv" read-only="true"><actions><script><![CDATA[
         exportFilters=[:]
@@ -68,11 +72,25 @@
                                     </drop-down>
                                 </default-field>
                             </field>
-                            <field name="receiptDate"><default-field><date-time type="date"/></default-field></field>
-                            <field name="freightAmount"><default-field title="Freight Charges"><text-line size="15"/></default-field></field>
-                            <field name="insuranceAmount"><default-field title="Insurance Charges"><text-line size="15"/></default-field></field>
-                            <field name="customsDutyAmount"><default-field title="Customs Duty (Imports)"><text-line size="15"/></default-field></field>
+                            <field name="receiptDate"><default-field><date-time type="date" default-value="${ec.l10n.format(ec.user.nowTimestamp, 'yyyy-MM-dd')}"/></default-field></field>
+                            <field name="freightAmount"><default-field title="Freight"><text-line size="15"/></default-field></field>
+                            <field name="insuranceAmount"><default-field title="Insurance"><text-line size="15"/></default-field></field>
+                            <field name="customsDutyAmount"><default-field title="Customs duty (imports)"><text-line size="15"/></default-field></field>
+                            <field name="otherChargesAmount"><default-field title="Other landed charges"><text-line size="15"/></default-field></field>
                             <field name="submitButton"><default-field title="Create GRN"><submit/></default-field></field>
+                            <field-layout>
+                                <field-ref name="purchaseOrderId"/>
+                                <field-ref name="receiptDate"/>
+                                <field-accordion active="false">
+                                    <field-group title="Advanced charges (optional)">
+                                        <field-ref name="freightAmount"/>
+                                        <field-ref name="insuranceAmount"/>
+                                        <field-ref name="customsDutyAmount"/>
+                                        <field-ref name="otherChargesAmount"/>
+                                    </field-group>
+                                </field-accordion>
+                                <field-ref name="submitButton"/>
+                            </field-layout>
                         </form-single>
                     </container-dialog>
                   </widgets>
@@ -109,7 +127,7 @@
                         freightDisp = grp(freightAmount)
                         insuranceDisp = grp(insuranceAmount)
                         customsDisp = grp(customsDutyAmount)
-                        totalLanded = (freightAmount ?: 0.0G) + (insuranceAmount ?: 0.0G) + (customsDutyAmount ?: 0.0G)
+                        totalLanded = [freightAmount, insuranceAmount, customsDutyAmount, otherChargesAmount].findAll { it != null }.sum(0G)
                         totalDisp = grp(totalLanded)
                         receiptDisp = receiptDate ? ec.l10n.format(receiptDate, 'dd MMM yyyy') : '—'
                         isCsv = ec.web?.parameters?.renderMode == 'csv' || ec.web?.parameters?.renderMode == 'xlsx'

@@ -41,6 +41,7 @@
             <set field="grnCurrency" from="access.order.currencyUomId == 'INR' ? '₹' : (access.order.currencyUomId ?: '')"/>
             <set field="draft" from="!grn.statusId || grn.statusId == 'GrnDraft'"/>
             <set field="canEdit" from="modCanWrite &amp;&amp; draft"/>
+            <set field="purchasePath" from="(sri.renderMode in ['qvt','vuet'] || ec.web.request.requestURI.startsWith('/qapps/') ? '/qapps' : '/apps') + '/zenith/Purchase/'"/>
             <set field="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
             <set field="grnStatus" from="[GrnDraft:'Draft',GrnPending:'Awaiting receipt',GrnPartial:'Partially received',GrnReceived:'Received',GrnCancelled:'Cancelled'][grn.statusId] ?: 'Draft'"/>
             <entity-find-one entity-name="mantle.party.PartyDetail" value-field="supplier"><field-map field-name="partyId" from="grn.vendorPartyId"/></entity-find-one>
@@ -92,7 +93,7 @@
                     <container><label text="Purchase order" type="span" style="grn-caption"/><link url="../EditPurchaseOrder" parameter-map="[orderId:grn.purchaseOrderId]" text="${grn.purchaseOrderId}" style="grn-order" link-type="anchor"/></container>
                     <container><label text="Receipt date" type="span" style="grn-caption"/><label text="${grn.receiptDate ? ec.l10n.format(grn.receiptDate, 'dd MMM yyyy') : 'Not set'}" type="span" style="grn-value"/></container>
                 </container>
-                <label condition="draft &amp;&amp; !(access.order.statusId in ['OrderApproved','OrderCompleted'])" text="Purchase order approval is required before you submit this delivery to Inventory." type="p" style="grn-warning"/>
+                <label condition="draft &amp;&amp; !access.canSend" text="Approve the purchase order before sending this delivery to Inventory." type="p" style="grn-warning"/>
             </container>
             <section name="GrnDraftEditor" condition="canEdit"><widgets>
                 <render-mode><text type="html,qvt,vuet" location="component://zenith-erp-purchase/template/purchase/GrnDraft.html.ftl" template="true" encode="false"/></render-mode>

@@ -1,4 +1,4 @@
-<form class="grn-card grn-editor" method="post" action="${sri.buildUrl('saveDraft').url?html}" v-pre>
+<form class="grn-card grn-editor" method="post" action="${purchasePath}GoodsReceiptDetail/saveDraft" v-pre>
     <input type="hidden" name="moquiSessionToken" value="${ec.web.sessionToken?html}"/>
     <input type="hidden" name="grnId" value="${grn.grnId?html}"/>
     <input type="hidden" name="draftVersion" value="${grn.lastUpdatedStamp.time?c}"/>
@@ -16,15 +16,14 @@
             </label>
         </div>
         <#if vendorBills?has_content || grn.invoiceId?has_content>
-        <details class="grn-bill-picker"<#if grn.invoiceId?has_content> open</#if>>
-            <summary>Link an existing vendor bill</summary>
-            <label>Vendor bill
+        <div class="grn-bill-picker">
+            <label>Vendor bill <small>Optional</small>
                 <select name="invoiceId">
                     <option value="">No linked bill</option>
                     <#list vendorBills as bill><option value="${bill.invoiceId?html}"<#if (grn.invoiceId!'') == bill.invoiceId> selected</#if>>${(bill.vendorInvoiceNumber!bill.invoiceId)?html}</option></#list>
                 </select>
             </label>
-        </details>
+        </div>
         </#if>
     </section>
     <section class="grn-editor-products" aria-labelledby="grn-products-heading">
@@ -54,11 +53,15 @@
     </section>
     <#if draftProducts?has_content>
     <footer class="grn-editor-footer">
-        <p>Stock updates when Inventory confirms receipt.</p>
+        <p><#if access.canSend!false>Stock updates when Inventory confirms receipt.<#else>After the PO is approved, send this delivery to Receiving.</#if></p>
         <div class="grn-actions">
             <button type="submit" name="draftAction" value="save">Save draft</button>
-            <#if ['OrderApproved','OrderCompleted']?seq_contains(access.order.statusId)>
+            <#if access.canSend!false>
             <button class="grn-send" type="submit" name="draftAction" value="send">Send to Receiving <span aria-hidden="true">→</span></button>
+            <#elseif access.approvalAction?has_content>
+            <button class="grn-send" type="submit" name="draftAction" value="${access.approvalAction?html}"><#if access.approvalAction == 'placePo'>Save &amp; place purchase order<#else>Save &amp; approve purchase order</#if></button>
+            <#else>
+            <a class="grn-open" href="${purchasePath}EditPurchaseOrder?orderId=${grn.purchaseOrderId?url('UTF-8')}">Review purchase order</a>
             </#if>
         </div>
     </footer>
