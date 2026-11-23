@@ -36,6 +36,24 @@
         <set field="_org" from="scope.organizationPartyId ?: '__NO_ORGANIZATION__'"/>
         <set field="currSymbol" from="currSymbol ?: '₹'"/>
         <set field="activeOrgId" from="_org"/><service-call name="zenith.purchase.OperationsServices.get#PurchaseOrderIds" out-map="poScope"/>
+        <if condition="modCanWrite &amp;&amp; !(sri.renderMode in ['csv','xlsx'])">
+            <set field="grnCreatePath" from="(sri.renderMode in ['qvt','vuet'] || ec.web.request.requestURI.startsWith('/qapps/') ? '/qapps' : '/apps') + '/zenith/Purchase/GoodsReceipt/createGrn'"/>
+            <set field="defaultReceiptDate" from="ec.l10n.format(ec.user.nowTimestamp, 'yyyy-MM-dd')"/>
+            <entity-find entity-name="mantle.order.OrderHeaderAndPart" list="receiptOrders">
+                <econdition field-name="customerPartyId" from="_org"/>
+                <econdition field-name="orderId" operator="in" from="poScope.orderIds ?: ['__NO_ORGANIZATION__']"/>
+                <econdition field-name="vendorPartyId" operator="is-not-null"/>
+                <econdition field-name="statusId" operator="not-in" from="['OrderCancelled','OrderRejected']"/>
+                <order-by field-name="-entryDate,-orderId"/>
+            </entity-find>
+            <set field="receiptSupplierNames" from="[:]"/>
+            <if condition="receiptOrders">
+                <entity-find entity-name="mantle.party.PartyDetail" list="receiptSuppliers">
+                    <econdition field-name="partyId" operator="in" from="receiptOrders*.vendorPartyId.unique()"/>
+                </entity-find>
+                <set field="receiptSupplierNames" from="receiptSuppliers.collectEntries { [(it.partyId): (it.organizationName ?: [it.firstName, it.lastName].findAll().join(' '))] }"/>
+            </if>
+        </if>
         <entity-find entity-name="zenith.erp.purchase.GoodsReceiptNoteView" list="grnList">
             <search-form-inputs skip-fields="organizationPartyId,ownerPartyId,customerPartyId,toPartyId,orderPartSeqId" default-order-by="-receiptDate"/>
             <!-- ZE-SALES-014 f/u: org-isolate the list (buying org lives on the joined OrderHeader) -->
@@ -59,39 +77,7 @@
                   <widgets>
                     <container-dialog id="CreateGrnDialog" button-text="+ New GRN"
                         button-class="q-btn q-btn-item non-selectable no-outline q-btn--standard q-btn--rectangle bg-primary text-white q-btn--actionable q-focusable q-hoverable text-weight-bold q-px-md z-newbtn">
-                        <form-single name="CreateGrnForm" transition="createGrn">
-                            <field name="purchaseOrderId">
-                                <default-field title="Purchase Order">
-                                    <drop-down allow-empty="false">
-                                        <entity-options key="${orderId}" text="PO-${orderId} [${vendorPartyId}]">
-                                            <entity-find entity-name="mantle.order.OrderHeaderAndPart">
-                                                <econdition field-name="customerPartyId" from="_org"/><econdition field-name="orderId" operator="in" from="poScope.orderIds ?: ['__NO_ORGANIZATION__']"/>
-                                                <econdition field-name="vendorPartyId" operator="is-not-null"/>
-                                            </entity-find>
-                                        </entity-options>
-                                    </drop-down>
-                                </default-field>
-                            </field>
-                            <field name="receiptDate"><default-field><date-time type="date" default-value="${ec.l10n.format(ec.user.nowTimestamp, 'yyyy-MM-dd')}"/></default-field></field>
-                            <field name="freightAmount"><default-field title="Freight"><text-line size="15"/></default-field></field>
-                            <field name="insuranceAmount"><default-field title="Insurance"><text-line size="15"/></default-field></field>
-                            <field name="customsDutyAmount"><default-field title="Customs duty (imports)"><text-line size="15"/></default-field></field>
-                            <field name="otherChargesAmount"><default-field title="Other landed charges"><text-line size="15"/></default-field></field>
-                            <field name="submitButton"><default-field title="Create GRN"><submit/></default-field></field>
-                            <field-layout>
-                                <field-ref name="purchaseOrderId"/>
-                                <field-ref name="receiptDate"/>
-                                <field-accordion active="false">
-                                    <field-group title="Advanced charges (optional)">
-                                        <field-ref name="freightAmount"/>
-                                        <field-ref name="insuranceAmount"/>
-                                        <field-ref name="customsDutyAmount"/>
-                                        <field-ref name="otherChargesAmount"/>
-                                    </field-group>
-                                </field-accordion>
-                                <field-ref name="submitButton"/>
-                            </field-layout>
-                        </form-single>
+                        <render-mode><text type="html,qvt,vuet" location="component://zenith-erp-purchase/template/purchase/NewGrn.html.ftl" template="true" encode="false"/></render-mode>
                     </container-dialog>
                   </widgets>
                 </section>

@@ -54,7 +54,7 @@ body:not(.zq-nav):has(.zpur-page) .modal-backdrop{z-index:1190}
 .po-entry-panel {
   container-type: inline-size;
   margin-bottom: 24px;
-  padding: 18px;
+  padding: 16px;
   border: 1px solid var(--z-border, #e3dfea);
   border-radius: 12px;
   background: var(--z-surface, #fff);
@@ -62,13 +62,12 @@ body:not(.zq-nav):has(.zpur-page) .modal-backdrop{z-index:1190}
 .po-entry-panel .po-entry-title { margin: 0 0 14px; font-size: 18px; line-height: 1.35; font-weight: 700; }
 .po-entry-panel #AddItemForm {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 14px;
+  gap: 10px;
 }
 .po-entry-panel .po-entry-fields, .po-entry-panel .po-entry-extra {
   display: grid;
-  grid-template-columns: minmax(0, 2.2fr) minmax(86px, .75fr) minmax(110px, 1fr);
+  grid-template-columns: minmax(0, 2.2fr) minmax(70px, .65fr) minmax(97px, 1fr) auto;
+  align-items: end;
   gap: 12px;
   grid-column: 1 / -1;
 }
@@ -96,7 +95,7 @@ body:not(.zq-nav):has(.zpur-page) .modal-backdrop{z-index:1190}
 .po-entry-panel summary { color: var(--z-primary, #6636ac); cursor: pointer; font-size: 13px; }
 .po-entry-panel button[type="submit"] {
   justify-self: end;
-  min-height: 36px;
+  min-height: 40px;
   padding: 6px 15px;
   border: 0;
   border-radius: 6px;
@@ -107,8 +106,6 @@ body:not(.zq-nav):has(.zpur-page) .modal-backdrop{z-index:1190}
 @container (max-width: 575px) {
   .po-entry-panel .po-entry-fields { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .po-entry-panel .po-entry-fields > :first-child { grid-column: 1 / -1; }
+  .po-entry-panel .po-entry-fields > button { grid-column: 1 / -1; }
   .po-entry-panel .po-entry-extra { grid-template-columns: minmax(0,1fr); }
-}
-@container (max-width: 370px) {
-  .po-entry-panel #AddItemForm { grid-template-columns: minmax(0,1fr); }
 }

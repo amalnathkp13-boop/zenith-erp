@@ -17,14 +17,14 @@
         <label>Unit price<#if poCurrencyLabel?has_content> (${poCurrencyLabel?html})</#if>
             <input name="unitAmount" type="number" min="0" step="any" aria-describedby="po-price-status"/>
         </label>
-        <p id="po-price-status" role="status">Select a product to fill its unit price.</p>
+        <button class="btn btn-primary" type="submit">Add to order</button>
     </div>
+    <p id="po-price-status" role="status">Unit price fills automatically.</p>
     <details>
-        <summary>Custom description or expected date</summary>
+        <summary>More options</summary>
         <div class="po-entry-extra">
             <label>Custom description <input name="itemDescription"/></label>
             <label>Expected date <input name="requiredByDate" type="date"/></label>
         </div>
     </details>
-    <button class="btn btn-primary" type="submit">Add to order</button>
 </form>
