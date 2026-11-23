@@ -121,6 +121,8 @@
         <field name="facilityId" type="id"/>
         <field name="adjustmentDate" type="date-time"/>
         <field name="adjustmentType" type="text-short"><description>PhysicalCount, Damage, Expiry, WriteOff, Opening</description></field>
+        <field name="shortageReasonCode" type="text-short"/>
+        <field name="shortageReasonNote" type="text-medium"/>
         <field name="statusId" type="id"/>
         <field name="remarks" type="text-medium"/>
         <field name="adjustedBy" type="id"/>

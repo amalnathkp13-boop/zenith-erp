@@ -8,8 +8,8 @@
             <if condition="ec.web.request.method != 'POST'"><return error="true" message="Stock adjustment changes require a POST request."/></if>
             <service-call name="zenith.inventory.InventoryServices.create#StockAdjustment" in-map="[facilityId:(context.containsKey('newFacilityId') ? newFacilityId : facilityId), adjustmentType:(context.containsKey('newAdjustmentType') ? newAdjustmentType : adjustmentType), adjustmentDate:(context.containsKey('newAdjustmentDate') ? newAdjustmentDate : adjustmentDate), remarks:(context.containsKey('newRemarks') ? newRemarks : remarks)]" out-map="context"/>
         </actions>
-        <error-response url="."/>
         <default-response url="../EditStockAdjustment"><parameter name="stockAdjustmentId" from="stockAdjustmentId"/></default-response>
+        <error-response url="."/>
     </transition>
     <transition name="applyAdjustment">
         <actions>
@@ -30,7 +30,7 @@
             <!-- ZE-INV-IV-06A: block approving another tenant's adjustment -->
             <service-call name="zenith.inventory.InventoryServices.assert#StockAdjustmentAccess" in-map="[stockAdjustmentId:stockAdjustmentId]" out-map="_acc"/>
             <if condition="!_acc.allowed"><return error="true" message="You do not have access to this stock adjustment."/></if>
-            <service-call name="zenith.inventory.StockAdjustmentServices.approve#StockAdjustment" in-map="[stockAdjustmentId:stockAdjustmentId]"/>
+            <service-call name="zenith.inventory.StockAdjustmentServices.approve#StockAdjustment" in-map="[stockAdjustmentId:stockAdjustmentId, shortageReasonCode:shortageReasonCode, shortageReasonNote:shortageReasonNote]"/>
         </actions>
         <default-response url="."/>
     </transition>
