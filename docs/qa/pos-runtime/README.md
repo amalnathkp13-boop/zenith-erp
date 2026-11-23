@@ -74,6 +74,11 @@ deployment claim. Never reuse a database containing customer records.
   `POS_QA_FOCUS=offline-session-close` scenario covers reload, a lost close response,
   legacy/current snapshots from retired drawers, original timestamps, cash
   reconciliation, duplicate replay, and rollback of real draft/payment conflicts.
+- Reopening a locally closed counter immediately reconciles that counter before
+  opening a fresh session. Its saved bills remain durable, unrelated counters'
+  retries do not delay opening, and reconnection syncs automatically from the
+  selector. Failed synchronization keeps the selector open for retry instead of
+  resuming the old drawer and showing its closure popup again.
 - Concurrent completion numbers and synthetic-only amendment validation, linked
   invoice totals, tax detail and audit. No production issued bill is amended.
 - Tenant service/detail/receipt denial, CSRF, cashier permissions, child report
