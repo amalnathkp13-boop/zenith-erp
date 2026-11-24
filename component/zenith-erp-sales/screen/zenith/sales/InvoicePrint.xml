@@ -49,11 +49,12 @@
                 def rmode = java.math.RoundingMode.HALF_UP
                 def totCgst = BigDecimal.ZERO, totSgst = BigDecimal.ZERO, totIgst = BigDecimal.ZERO
                 def enriched = []
+                def detailsByLine = ec.entity.find('zenith.erp.tax.TaxLineDetail')
+                        .condition('referenceType', 'InvoiceItem').condition('referenceId', invoice.invoiceId)
+                        .orderBy('sequenceNum').list().groupBy { it.referenceSeqId }
                 for (it0 in invoiceItems) {
                     def m = new LinkedHashMap(it0)
-                    def tlds = ec.entity.find("zenith.erp.tax.TaxLineDetail")
-                        .condition("referenceType", "InvoiceItem").condition("referenceId", invoice.invoiceId)
-                        .condition("referenceSeqId", it0.invoiceItemSeqId).list()
+                    def tlds = detailsByLine[it0.invoiceItemSeqId]
                     // The item's stored totalTaxAmount is authoritative: an EXPLICIT 0 means a tax-off line —
                     // ignore any stale TaxLineDetail rows (seen when the tax toggle changed mid-sale). Only a
                     // NULL item tax (older/manual rows) lets the breakdown rows speak for themselves.

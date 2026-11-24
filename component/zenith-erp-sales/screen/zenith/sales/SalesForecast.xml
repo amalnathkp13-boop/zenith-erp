@@ -2,20 +2,28 @@
 <screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         default-menu-title="Sales Forecast" default-menu-index="9">
+    <parameter name="currencyUomId"/>
     <always-actions>
         <service-call name="zenith.sales.SalesAccessServices.get#AuthorizedActiveOrganization" out-map="_salesScope"/>
         <set field="_salesOrgId" from="_salesScope.activeOrgId"/>
+        <set field="forecastCurrencyInfo" from="ec.resource.script('component://zenith-erp-sales/script/ReportingCurrency.groovy', null,
+                [reportOrgId:_salesOrgId, reportShopId:null, currencyUomId:currencyUomId])"/>
+        <set field="reportCurrency" from="forecastCurrencyInfo.reportCurrency"/>
+        <set field="reportCurrencies" from="forecastCurrencyInfo.reportCurrencies"/>
     </always-actions>
 
 
+    <transition name="selectCurrency" read-only="true">
+        <default-response url="." parameter-map="[currencyUomId:reportCurrency]"/>
+    </transition>
     <transition name="runForecast">
         <actions>
             <set field="org" from="_salesOrgId"/>
-            <if condition="!org"><return error="true" message="Select an organization before updating its forecast."/></if>
-            <script>ec.service.async().name("zenith.sales.SalesForecastServices.cycle#SalesForecast").parameter("organizationPartyId", org).call()</script>
+            <if condition="!org || org == '_NA_'"><return error="true" message="Select an organization before updating its forecast."/></if>
+            <script>ec.service.async().name("zenith.sales.SalesForecastServices.cycle#SalesForecast").parameters([organizationPartyId:org, currencyUomId:reportCurrency]).call()</script>
         </actions>
-        <error-response url="."/>
-        <default-response url="."><message>Updating your forecast — give it a few seconds, then reload the page.</message></default-response>
+        <error-response url="." parameter-map="[currencyUomId:reportCurrency]"/>
+        <default-response url="." parameter-map="[currencyUomId:reportCurrency]"><message>Updating your forecast — give it a few seconds, then reload the page.</message></default-response>
     </transition>
 
     <actions>
@@ -25,21 +33,26 @@
              before an org is selected). Skip the forecast and show a friendly message instead. -->
         <set field="noOrg" from="!org || org == '_NA_'"/>
         <if condition="!noOrg">
-            <service-call name="zenith.sales.SalesForecastServices.forecast#Sales" out-map="fc" in-map="[organizationPartyId:org, horizonDays:14]"/>
-            <service-call name="zenith.sales.SalesForecastServices.forecast#CategorySales" out-map="catFc" in-map="[organizationPartyId:org, topN:6, horizonDays:14]"/>
-            <entity-find entity-name="zenith.erp.sales.SalesRevenueForecast" list="histList">
-                <econdition field-name="organizationPartyId" from="org"/>
-                <econdition field-name="dimension" value="Overall"/>
-                <order-by field-name="-periodDate"/>
-            </entity-find>
+            <service-call name="zenith.sales.SalesForecastServices.forecast#Sales" out-map="fc" in-map="[organizationPartyId:org, currencyUomId:reportCurrency, horizonDays:14]"/>
+            <service-call name="zenith.sales.SalesForecastServices.forecast#CategorySales" out-map="catFc" in-map="[organizationPartyId:org, currencyUomId:reportCurrency, topN:6, horizonDays:14]"/>
+            <script><![CDATA[
+                def currencyFilter = ec.resource.script('component://zenith-erp-sales/script/ReportingCurrencyCondition.groovy', null,
+                        [currency:reportCurrency, includeUnspecified:forecastCurrencyInfo.legacyForecastCurrency == reportCurrency])
+                histList = ec.entity.find('zenith.erp.sales.SalesRevenueForecast')
+                        .condition('organizationPartyId', org).condition('dimension', 'Overall').condition(currencyFilter)
+                        .condition('actualAmount', org.moqui.entity.EntityCondition.NOT_EQUAL, null)
+                        .orderBy(['-periodDate','-runDate','forecastId']).limit(14).list()
+            ]]></script>
         </if>
         <set field="weeklyList" from="fc?.weeklyPoints ?: []"/>
         <set field="catList" from="catFc?.categories ?: []"/>
-        <!-- track record: most recent ~14 days that actually have a result (newest first) so it stays compact -->
-        <set field="histList" from="(histList ?: []).findAll{ it.actualAmount != null }.take(14)"/>
-        <set field="sym" value="₹"/>
+        <set field="sym" from="forecastCurrencyInfo.currSymbol"/>
+        <set field="currencyOptions" from="reportCurrencies.collect { [code:it] }"/>
         <script><![CDATA[
-            def fmt = { v -> ec.l10n.format((v ?: 0) as BigDecimal, "#,##,##0") }
+            forecastAmount = { v ->
+                def formatted = ec.l10n.format((v ?: 0) as BigDecimal, '#,##0')
+                reportCurrency == 'INR' ? zinr.inr(formatted) : formatted
+            }
             def confWord = { p -> p == null ? "Building up" : (p >= 75 ? "Strong" : (p >= 60 ? "Good" : (p >= 45 ? "Fair" : "Early estimate"))) }
             def trendWord = { t -> t == "growing" ? "Going up" : (t == "softening" ? "Slowing down" : "Holding steady") }
             def driverWord = { d ->
@@ -62,18 +75,18 @@
                 trendBadgeColor = (fc.trendLabel == 'growing') ? 'green' : (fc.trendLabel == 'softening' ? 'red' : 'grey')
                 driverNice = driverWord(fc.primaryDriver)
                 confNice = confWord(fc.confidencePct)
-                hasData = (fc.confidencePct != null)
+                hasData = fc.projectedNext7 != null
                 confColor = (fc.confidencePct != null && fc.confidencePct >= 60) ? "success" : (fc.confidencePct != null && fc.confidencePct >= 45 ? "warning" : "grey")
                 perDay = (fc.projectedNext7 != null) ? (fc.projectedNext7 / 7.0) : 0
                 // plain-words summary + a single glance-able lead line (replaces the dense paragraph)
                 if (hasData) {
-                    plain = "Over the next 7 days you're likely to sell about " + sym + fmt(fc.projectedNext7) +
-                        " — roughly " + sym + fmt(perDay) + " a day. Sales are " + trendNice.toLowerCase() +
+                    plain = "Over the next 7 days you're likely to sell about " + sym + forecastAmount(fc.projectedNext7) +
+                        " — roughly " + sym + forecastAmount(perDay) + " a day. Sales are " + trendNice.toLowerCase() +
                         ", and " + (fc.peakDay ?: "the weekend") + " is usually your busiest day. " +
-                        "Expect around " + fmt(fc.next7Traffic) + " customers spending about " + sym + fmt(fc.next7Aov) + " each. " +
+                        "Expect around " + ec.l10n.format(fc.next7Traffic ?: 0, '#,##0') + " customers spending about " + sym + forecastAmount(fc.next7Aov) + " each. " +
                         "The main change right now: " + driverNice.toLowerCase() + ". " +
                         "How sure are we? " + confNice + " — and this gets sharper every day as more sales come in."
-                    leadLine = "You're on track to sell about " + sym + fmt(fc.projectedNext7) + " this week — sales are " +
+                    leadLine = "You're on track to sell about " + sym + forecastAmount(fc.projectedNext7) + " this week — sales are " +
                         trendNice.toLowerCase() + ", and " + driverNice.substring(0,1).toLowerCase() + driverNice.substring(1) + "."
                 } else {
                     plain = "We need a couple of weeks of sales before we can predict reliably. Keep billing through the POS and check back soon."
@@ -102,8 +115,8 @@
                     _b.append('<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid rgba(128,128,128,0.14);">')
                     _b.append('<div style="width:24%;font-weight:600;">' + _esc(c.category) + '</div>')
                     _b.append('<div style="flex:1;background:rgba(128,128,140,0.16);border-radius:9999px;height:9px;overflow:hidden;"><div style="width:' + (c.barPct ?: 0) + '%;min-width:2px;background:' + col + ';height:9px;border-radius:9999px;"></div></div>')
-                    _b.append('<div style="width:96px;text-align:right;font-weight:700;">' + sym + fmt(c.projectedNext7) + '</div>')
-                    _b.append('<div style="width:64px;text-align:right;color:#9a9aa8;">' + sym + fmt(c.perDay) + '</div>')
+                    _b.append('<div style="width:96px;text-align:right;font-weight:700;">' + sym + forecastAmount(c.projectedNext7) + '</div>')
+                    _b.append('<div style="width:64px;text-align:right;color:#9a9aa8;">' + sym + forecastAmount(c.perDay) + '</div>')
                     _b.append('<div style="width:132px;text-align:center;font-size:0.82rem;font-weight:600;color:' + dd[0] + ';">' + dd[1] + '</div>')
                     _b.append('</div>')
                 }
@@ -142,14 +155,29 @@
                 <label text="What you're likely to sell in the coming days — updated automatically each night." type="p" style="text-grey-7 q-mb-none text-caption"/>
                 <container style="row items-center q-gutter-xs q-mt-sm">
                     <label text="How sure:" type="span" style="text-grey-7 text-caption"/>
-                    <label text="${confNice}${hasData ? ' (' + fc.confidencePct + '%)' : ''}" type="span" style="zenith-badge nd ${confColor}"/>
+                    <label text="${confNice}${fc?.confidencePct != null ? ' (' + fc.confidencePct + '%)' : ''}" type="span" style="zenith-badge nd ${confColor}"/>
                 </container>
             </container>
+            <section name="ForecastControls" condition="!noOrg"><widgets>
             <container style="row q-gutter-sm items-center">
-                <form-single name="RunForm" transition="runForecast"><field name="go">
+                <section name="ChooseForecastCurrency" condition="reportCurrencies.size() &gt; 1"><widgets>
+                    <form-single name="ForecastCurrencyForm" transition="selectCurrency">
+                        <field name="currencyUomId" entry-name="reportCurrency">
+                            <default-field title="Currency"><drop-down>
+                                <list-options list="currencyOptions" key="${code}" text="${code}"/>
+                            </drop-down></default-field>
+                        </field>
+                        <field name="apply"><default-field title=""><submit text="Apply"/></default-field></field>
+                        <field-layout><field-row><field-ref name="currencyUomId"/><field-ref name="apply"/></field-row></field-layout>
+                    </form-single>
+                </widgets><fail-widgets><label text="Currency · ${reportCurrency}" type="span" style="text-grey-7"/></fail-widgets></section>
+                <form-single name="RunForm" transition="runForecast">
+                    <field name="currencyUomId" entry-name="reportCurrency"><default-field><hidden/></default-field></field>
+                    <field name="go">
                     <conditional-field name="runForecast_write" condition="modCanWrite" title=""><submit text="Update Now" icon="refresh" style="z-solid bg-primary text-white text-weight-bold border-radius-sm q-px-md"/></conditional-field>
                     <default-field title=""><label text="You have view-only access — changes are disabled." type="span" style="text-grey-7"/></default-field></field></form-single>
             </container>
+            </widgets></section>
         </container>
 
         <section name="ForecastReady" condition="hasData"><widgets>
@@ -159,8 +187,8 @@
                 <container style="zsf-hero-inner">
                     <container style="zsf-hero-kpi">
                         <label text="Expected sales · next 7 days" type="p" style="text-primary text-uppercase text-weight-bold text-caption q-mb-xs"/>
-                        <label text="${sym}${zinr.inr(ec.l10n.format(fc.projectedNext7 ?: 0,'#,##,##0'))}" type="h2" style="text-primary text-weight-bolder q-my-none"/>
-                        <label text="≈ ${sym}${zinr.inr(ec.l10n.format(perDay,'#,##,##0'))} on a normal day  ·  busiest ${fc.peakDay ?: 'day varies'}" type="p" style="text-grey-8 q-mb-none q-mt-xs"/>
+                        <label text="${sym}${forecastAmount(fc.projectedNext7 ?: 0)}" type="h2" style="text-primary text-weight-bolder q-my-none"/>
+                        <label text="≈ ${sym}${forecastAmount(perDay)} on a normal day  ·  busiest ${fc.peakDay ?: 'day varies'}" type="p" style="text-grey-8 q-mb-none q-mt-xs"/>
                     </container>
                     <container style="zsf-hero-narrative">
                         <label text="${leadLine}" type="p" style="text-grey-9 text-subtitle1 q-mt-none q-mb-sm"/>
@@ -181,8 +209,8 @@
                         <label text="groups" type="span" style="material-icons z-icobadge primary"/>
                         <container style="column">
                             <label text="Customers · next 7 days" type="p" style="text-grey-7 text-weight-bold text-caption q-mb-none"/>
-                            <label text="${zinr.inr(ec.l10n.format(fc.next7Traffic ?: 0,'#,##0'))}" type="h4" style="text-primary text-weight-bold q-my-none"/>
-                            <label text="spending about ${sym}${zinr.inr(ec.l10n.format(fc.next7Aov ?: 0,'#,##0'))} each visit" type="p" style="text-grey-6 text-caption q-mb-none"/>
+                            <label text="${ec.l10n.format(fc.next7Traffic ?: 0,'#,##0')}" type="h4" style="text-primary text-weight-bold q-my-none"/>
+                            <label text="spending about ${sym}${forecastAmount(fc.next7Aov)} each visit" type="p" style="text-grey-6 text-caption q-mb-none"/>
                         </container>
                     </container>
                 </row-col>
@@ -222,8 +250,8 @@
                         <label text="Two-week outlook" type="span" style="text-primary text-weight-bold"/>
                         <form-list name="WeeklyList" list="weeklyList" skip-form="true">
                             <field name="weekStart"><default-field title="Week starting"><display/></default-field></field>
-                            <field name="predicted"><default-field title="Expected"><display text="${sym}${zinr.inr(ec.l10n.format(predicted ?: 0,'#,##,##0'))}"/></default-field></field>
-                            <field name="range"><default-field title="Likely between"><display text="${sym}${zinr.inr(ec.l10n.format(lower ?: 0,'#,##,##0'))}–${sym}${zinr.inr(ec.l10n.format(upper ?: 0,'#,##,##0'))}"/></default-field></field>
+                            <field name="predicted"><default-field title="Expected"><display text="${sym}${forecastAmount(predicted ?: 0)}"/></default-field></field>
+                            <field name="range"><default-field title="Likely between"><display text="${sym}${forecastAmount(lower ?: 0)}–${sym}${forecastAmount(upper ?: 0)}"/></default-field></field>
                         </form-list>
                     </container>
                 </row-col>
@@ -232,8 +260,8 @@
                         <label text="Track record — forecast vs actual" type="span" style="text-primary text-weight-bold"/>
                         <form-list name="ForecastList" list="histList" skip-form="true" show-page-size="true">
                             <field name="periodDate"><default-field title="Date"><display/></default-field></field>
-                            <field name="predictedAmount"><default-field title="We expected"><display text="${sym}${zinr.inr(ec.l10n.format(predictedAmount ?: 0,'#,##,##0'))}"/></default-field></field>
-                            <field name="actualAmount"><default-field title="Actually sold"><display text="${actualAmount != null ? (sym + zinr.inr(ec.l10n.format(actualAmount,'#,##,##0'))) : 'not yet'}"/></default-field></field>
+                            <field name="predictedAmount"><default-field title="We expected"><display text="${sym}${forecastAmount(predictedAmount ?: 0)}"/></default-field></field>
+                            <field name="actualAmount"><default-field title="Actually sold"><display text="${actualAmount != null ? (sym + forecastAmount(actualAmount)) : 'not yet'}"/></default-field></field>
                             <field name="accuracyPct"><default-field title="How close"><label text="${accuracyPct != null ? (accuracyPct + '% on target') : '—'}" type="span" style="${accuracyPct != null ? ('zenith-badge nd ' + (accuracyPct &gt;= 80 ? 'success' : (accuracyPct &gt;= 40 ? 'warning' : 'danger'))) : 'text-grey-6'}"/></default-field></field>
                         </form-list>
                     </container>

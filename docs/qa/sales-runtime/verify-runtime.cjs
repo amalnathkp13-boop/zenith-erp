@@ -89,9 +89,15 @@ function totals(name,id,taxable,cgst,sgst,igst){const i=inv(id);check(name,Numbe
   }
   await post('EditInvoice','addItem',{invoiceId:'SALES_QA_INV',productId:'SALES_QA_PROD_A',quantity:'10',amount:'100',discountPercent:'10',taxPercentage:'18',description:'Disposable discounted line'});
   totals('discounted intra-state invoice golden', 'SALES_QA_INV',900,81,81,0);
-  await post('EditInvoice','addItem',{invoiceId:'SALES_QA_INV',quantity:'1',amount:'100',taxPercentage:'0',description:'Disposable removable line'});
+  const draftTaxRows = seq => rows('tax_line_detail',`reference_type='InvoiceItem' AND reference_id='SALES_QA_INV' AND reference_seq_id='${seq}'`);
+  const originalTaxIds = draftTaxRows('01').map(row => row.tax_line_detail_id).sort();
+  check('discounted line has both GST details',originalTaxIds.length === 2,{ids:originalTaxIds});
+  await post('EditInvoice','addItem',{invoiceId:'SALES_QA_INV',quantity:'1',amount:'100',taxPercentage:'18',description:'Disposable removable line'});
+  check('new taxable line has GST details',draftTaxRows('02').length === 2,{});
   await post('EditInvoice','deleteItem',{invoiceId:'SALES_QA_INV',invoiceItemSeqId:'02'});
   totals('deleting another item preserves discount and GST','SALES_QA_INV',900,81,81,0);
+  check('deletion removes only the deleted line tax rows',draftTaxRows('02').length === 0 &&
+    JSON.stringify(draftTaxRows('01').map(row => row.tax_line_detail_id).sort()) === JSON.stringify(originalTaxIds),{});
   await post('EditInvoice','updateItem',{invoiceId:'SALES_QA_INV',invoiceItemSeqId:'01',quantity:'2.5',amount:'100'});
   totals('decimal edit retains omitted discount','SALES_QA_INV',225,20.25,20.25,0);
   await post('EditInvoice','updateItem',{invoiceId:'SALES_QA_INV',invoiceItemSeqId:'01',quantity:'10',amount:'100',discountPercent:'0'});
@@ -141,6 +147,12 @@ function totals(name,id,taxable,cgst,sgst,igst){const i=inv(id);check(name,Numbe
    const result=await invoke('invoice',{organizationPartyId:'SALES_QA_A',customerPartyId:'SALES_QA_CUST_A',isReverseCharge,items:JSON.stringify([{productId:'SALES_QA_PROD_A',quantity:10,unitAmount:100,discountPercent:10}])});report.created.push({type:'invoice',id:result.invoiceId});
    totals('service invoice discount and RCM '+isReverseCharge,result.invoiceId,900,isReverseCharge==='Y'?0:81,isReverseCharge==='Y'?0:81,0);
   }
+  const usdResult=await invoke('invoice',{organizationPartyId:'SALES_QA_A',customerPartyId:'SALES_QA_CUST_A',
+    currencyUomId:'USD',items:JSON.stringify([{itemDescription:'Disposable fractional amount',quantity:1,unitAmount:10.25}])});
+  const usdInvoice=inv(usdResult.invoiceId);
+  check('foreign-currency invoice retains its fractional payable',Number(usdInvoice.round_off_amount)===0 &&
+    !Number.isInteger(Number(usdInvoice.invoice_total)) && Number(usdInvoice.unpaid_total)===Number(usdInvoice.invoice_total),
+    {total:usdInvoice.invoice_total,unpaid:usdInvoice.unpaid_total});
   await invoke('invoice',{organizationPartyId:'SALES_QA_A',customerPartyId:'SALES_QA_CUST_B',items:JSON.stringify([{productId:'SALES_QA_PROD_A',quantity:1,unitAmount:100}])},true);
   await invoke('invoice',{organizationPartyId:'SALES_QA_A',customerPartyId:'SALES_QA_CUST_A',items:JSON.stringify([{productId:'SALES_QA_PROD_B',quantity:1,unitAmount:100}])},true);
   await invoke('serviceItem',{invoiceId:'SALES_QA_ISSUED',productId:'SALES_QA_PROD_A',quantity:'1',unitAmount:'100'},true);
