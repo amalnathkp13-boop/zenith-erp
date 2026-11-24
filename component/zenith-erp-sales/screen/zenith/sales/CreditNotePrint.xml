@@ -31,11 +31,12 @@
                 def rmode = java.math.RoundingMode.HALF_UP
                 def totCgst = BigDecimal.ZERO, totSgst = BigDecimal.ZERO, totIgst = BigDecimal.ZERO
                 def enriched = []
+                def detailsByLine = ec.entity.find('zenith.erp.tax.TaxLineDetail')
+                        .condition('referenceType', 'InvoiceItem').condition('referenceId', invoice.invoiceId)
+                        .orderBy('sequenceNum').list().groupBy { it.referenceSeqId }
                 for (it0 in invoiceItems) {
                     def m = new LinkedHashMap(it0)
-                    def tlds = ec.entity.find("zenith.erp.tax.TaxLineDetail")
-                        .condition("referenceType", "InvoiceItem").condition("referenceId", invoice.invoiceId)
-                        .condition("referenceSeqId", it0.invoiceItemSeqId).list()
+                    def tlds = detailsByLine[it0.invoiceItemSeqId]
                     // stored totalTaxAmount is authoritative: explicit 0 = tax-off line, ignore stale breakdowns
                     def storedGst = ((it0.cgstAmount ?: 0) + (it0.sgstAmount ?: 0) + (it0.igstAmount ?: 0)) as BigDecimal
                     if (it0.totalTaxAmount != null && ((it0.totalTaxAmount as BigDecimal) == 0)) {

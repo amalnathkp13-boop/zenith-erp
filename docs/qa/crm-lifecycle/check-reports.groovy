@@ -28,11 +28,12 @@ def input = [period:'month', sourceId:'Web', campaignId:'', allLeads:leads, allA
              leadStatuses:[[statusId:'LeadNew',description:'New'],[statusId:'LeadLost',description:'Lost']],
              allOpportunities:deals, sourceCatalogue:[[leadSourceId:'Web', description:'Website']], campaigns:[],
              stages:[[opportunityStageId:'Qualify',description:'Qualification'], [opportunityStageId:'NoAlert',description:'Negotiation']],
-             stageSettings:[[opportunityStageId:'Qualify',displayName:'Qualified',staleAfterDays:14],
-                            [opportunityStageId:'NoAlert',staleAfterDays:0]],
+             stageSettings:[[opportunityStageId:'Qualify',displayName:'Qualified',staleAfterDays:14,sequenceNum:0],
+                            [opportunityStageId:'NoAlert',staleAfterDays:0,sequenceNum:1]],
              ec:[user:[nowTimestamp:now, timeZone:TimeZone.getTimeZone('Asia/Kolkata')], l10n:[format:{ n, fmt -> new DecimalFormat(fmt).format(n) }]]]
 def binding = new Binding(input)
 new GroovyShell(binding).evaluate(script)
+assert binding.forecastRows*.sequenceNum == [0,0,1]
 assert binding.forecastRows.findAll { it.stageName == 'Qualified' }*.currency == ['INR','USD']
 assert binding.forecastRows.every { it.weighted == 50.25G && it.amount == 100.50G }
 assert binding.weightedTotal.contains('INR 100.50') && binding.weightedTotal.contains('USD 50.25')

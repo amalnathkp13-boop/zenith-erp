@@ -116,9 +116,7 @@
                                 <fo:table-cell padding="3pt" border-right="0.5pt solid black"><fo:block text-align="center">${item_index+1}</fo:block></fo:table-cell>
                                 <fo:table-cell padding="3pt" border-right="0.5pt solid black"><fo:block font-weight="bold"><@encodeText (item.description)!""/></fo:block></fo:table-cell>
                                 <fo:table-cell padding="3pt" border-right="0.5pt solid black"><fo:block text-align="center">${item.hsnSacCode!"-"}</fo:block></fo:table-cell>
-                                <#assign uomStr = "">
-                                <#if item.uomId??><#assign uomDesc = ec.entity.find("moqui.basic.Uom").condition("uomId", item.uomId).one()!><#assign uomStr = " " + (uomDesc.description!"")></#if>
-                                <fo:table-cell padding="3pt" border-right="0.5pt solid black"><fo:block text-align="center">${item.quantity!"1"}${uomStr}</fo:block></fo:table-cell>
+                                <fo:table-cell padding="3pt" border-right="0.5pt solid black"><fo:block text-align="center">${item.quantity!"1"} <@encodeText (item.unitDescription)!""/></fo:block></fo:table-cell>
                                 <fo:table-cell padding="3pt"><fo:block text-align="right"><@formatINR itemEst/></fo:block></fo:table-cell>
                             </fo:table-row>
                         </#list>

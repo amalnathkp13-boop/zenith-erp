@@ -73,10 +73,14 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
   await page.waitForFunction(()=>window.PosDeferredClose);
   check('background reconciliation is available outside billing',await page.locator('#cartInlineAddForm').count()===0);
   outage=false;
-  await page.evaluate(()=>window.PosDeferredClose.flush());
-  check('lost close response retains the durable request',(await stored()).state.some(r=>r.key==='session-close:'+session.sessionId&&!r.value.syncedAt));
-  await page.evaluate(()=>window.PosDeferredClose.flush());
-  const after=await stored();
+  for (let attempt=0;attempt<3&&closeRequests===0;attempt++) await page.evaluate(()=>window.PosDeferredClose.flush());
+  check('lost close response retains the durable request',closeRequests===1&&(await stored()).state.some(r=>r.key==='session-close:'+session.sessionId&&!r.value.syncedAt),{closeRequests});
+  let after;
+  for (let attempt=0;attempt<12;attempt++) {
+   await page.waitForTimeout(1000);
+   after=await stored();
+   if (after.queue.length===0&&after.state.find(r=>r.key==='session-close:'+session.sessionId)?.value.syncedAt) break;
+  }
   check('reconnection acknowledges bills before completing the deferred close',after.queue.length===0&&after.state.find(r=>r.key==='session-close:'+session.sessionId)?.value.syncedAt,after);
   const drawer=q("SELECT status_id,closing_cash,expected_cash,cash_difference FROM pos_session WHERE session_id='"+session.sessionId+"'")[0];
   check('server close reconciles the exact cash after importing offline bills',drawer?.status_id==='PsClosed'&&Number(drawer.closing_cash)===336&&Number(drawer.expected_cash)===336&&Number(drawer.cash_difference)===0,drawer);

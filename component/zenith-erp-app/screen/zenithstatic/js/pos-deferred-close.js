@@ -1,7 +1,7 @@
 /* Durable POS offline queues and close requests for the signed-in organization and cashier. */
 (function () {
     if (window.PosDeferredClose) return;
-    var running;
+    var running, retryTimer, retryDelay = 5000;
     function identity() {
         var el = document.getElementById('pos-sync-context');
         return el && el.dataset.organization && el.dataset.user ?
@@ -165,7 +165,7 @@
         var who = identity();
         if (!who || !navigator.onLine) return;
         var rows = await read('state', IDBKeyRange.bound('session-close:', 'session-close:\uffff'));
-        var closingSessions = new Set();
+        var closingSessions = new Set(), needsRetry = false;
         for (var row of rows) {
             var request = row.value;
             if (!row.key.startsWith('session-close:') || !request || request.syncedAt ||
@@ -178,14 +178,25 @@
             if (!current || current.organization !== who.organization || current.user !== who.user) return;
             await write(function (tx) { tx.objectStore('state').put({key:row.key, value:request}); });
             notify(request);
+            if (!request.syncedAt) needsRetry = true;
         }
         await flushOpenSales(who, closingSessions);
+        if (needsRetry) {
+            if (!retryTimer) {
+                retryTimer = setTimeout(function () { retryTimer = null; flush(); }, retryDelay);
+                retryDelay = Math.min(retryDelay * 2, 60000);
+            }
+        } else {
+            clearTimeout(retryTimer);
+            retryTimer = null;
+            retryDelay = 5000;
+        }
     }
     function flush() {
         if (running) return running;
         var who = identity();
         if (!who || !navigator.onLine) return Promise.resolve();
-        var work = navigator.locks ? navigator.locks.request('zenith-pos-close:' + who.organization + ':' + who.user, {ifAvailable:true}, function (lock) { if (lock) return process(); }) : process();
+        var work = navigator.locks ? navigator.locks.request('zenith-pos-close:' + who.organization + ':' + who.user, process) : process();
         running = work.catch(function () {}).finally(function () { running = null; });
         return running;
     }

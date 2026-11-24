@@ -2453,6 +2453,30 @@ window._posOffline = (function () {
         /* === Bill History Panel === */
         var historyOverlay = null, historyCriteria = {}, historyRequest, historyVersion = 0;
         var historyReconnect, historySynced, historyFailed = false;
+        function historyRangeField(end, kind) {
+            var name = 'history' + end + kind, label = end + ' ' + kind;
+            var date = kind === 'Date';
+            var icon = date ? '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 11h18"/>'
+                : '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>';
+            return '<div class="hist-field"><label for="' + name + '">' + end + '</label><div class="hist-entry">' +
+                '<input id="' + name + '" name="' + name + '" aria-label="' + label + '" aria-keyshortcuts="Alt+ArrowDown" type="text" inputmode="numeric" autocomplete="off" ' +
+                (date ? 'required placeholder="DD-MM-YYYY"' : 'placeholder="HH:MM"') + '>' +
+                '<span class="hist-picker" title="Choose ' + label.toLowerCase() + '"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">' + icon + '</svg>' +
+                '<input type="' + kind.toLowerCase() + '" tabindex="-1" aria-label="Pick ' + label.toLowerCase() + '"></span></div></div>';
+        }
+        function historyDateValue(text) {
+            var value = text.trim();
+            var compact = /^(\d{2})(\d{2})(\d{4})$/.exec(value);
+            var parts = compact || /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/.exec(value);
+            if (parts) value = parts[3] + '-' + parts[2].padStart(2, '0') + '-' + parts[1].padStart(2, '0');
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value.startsWith('0000')) return '';
+            var day = new Date(value + 'T00:00:00Z');
+            return Number.isFinite(day.getTime()) && day.toISOString().slice(0, 10) === value ? value : '';
+        }
+        function historyTimeValue(text) {
+            var parts = /^(\d{1,2}):?(\d{2})$/.exec(text.trim());
+            return parts && +parts[1] < 24 && +parts[2] < 60 ? parts[1].padStart(2, '0') + ':' + parts[2] : '';
+        }
         function openBillHistory(search) {
             closeHistory(); historyCriteria = {};
             var ov = document.createElement('div');
@@ -2464,17 +2488,17 @@ window._posOffline = (function () {
             panel.innerHTML = '<div style="flex:none;padding:16px 20px;background:#7C3AED;color:#fff;display:flex;justify-content:space-between;align-items:center">'
                 + '<span style="font-size:18px;font-weight:700">&#128196; Bill History</span>'
                 + '<button id="hist-close" style="background:none;border:none;color:#fff;font-size:24px;cursor:pointer;padding:0 4px">&times;</button></div>'
-                + '<div style="flex:none;display:flex;gap:8px;padding:12px 20px;border-bottom:1px solid #e0e0e0">'
-                + '<input id="hist-search" type="search" aria-label="Search bills" placeholder="Search by bill number, amount, or customer..." style="flex:1;min-width:0;padding:10px 14px;border:1px solid #ccc;border-radius:8px;font-size:14px"/>'
-                + '<button id="hist-filter" type="button" aria-expanded="false" aria-controls="hist-filter-form" style="border:1px solid #7C3AED;border-radius:8px;background:white;color:#6D28D9;padding:0 12px">Filter</button></div>'
+                + '<div class="hist-toolbar">'
+                + '<input id="hist-search" type="search" aria-label="Search bills" placeholder="Search by bill number, amount, or customer..."/>'
+                + '<button id="hist-filter" type="button" aria-expanded="false" aria-controls="hist-filter-form"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 7h4m6 0h8M3 17h10m6 0h2"/><circle cx="10" cy="7" r="3"/><circle cx="16" cy="17" r="3"/></svg>Filter</button></div>'
                 + '<div id="hist-scroll" style="min-height:0;overflow:auto">'
-                + '<form id="hist-filter-form" hidden novalidate style="padding:12px 20px;border-bottom:1px solid #e0e0e0"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(124px,1fr));gap:8px">'
-                + '<label style="min-width:0;font-weight:600">From Date<input type="date" name="historyFromDate" required style="display:block;box-sizing:border-box;width:100%;min-width:0;margin-top:4px;padding:8px;border:1px solid #d7d1e6;border-radius:7px;background:white;color:#202036"/></label>'
-                + '<label style="min-width:0;font-weight:600">To Date<input type="date" name="historyToDate" required style="display:block;box-sizing:border-box;width:100%;min-width:0;margin-top:4px;padding:8px;border:1px solid #d7d1e6;border-radius:7px;background:white;color:#202036"/></label>'
-                + '<label style="min-width:0;font-weight:600">From Time<input type="time" name="historyFromTime" style="display:block;box-sizing:border-box;width:100%;min-width:0;margin-top:4px;padding:8px;border:1px solid #d7d1e6;border-radius:7px;background:white;color:#202036"/></label>'
-                + '<label style="min-width:0;font-weight:600">To Time<input type="time" name="historyToTime" style="display:block;box-sizing:border-box;width:100%;min-width:0;margin-top:4px;padding:8px;border:1px solid #d7d1e6;border-radius:7px;background:white;color:#202036"/></label></div>'
-                + '<p id="hist-filter-error" role="alert" style="margin:6px 0;color:#b91c1c" hidden></p>'
-                + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px"><button id="hist-filter-reset" type="button">Reset</button><button type="submit">Apply Filter</button></div></form>'
+                + '<form id="hist-filter-form" hidden novalidate><div class="hist-filter-body"><div class="hist-ranges">'
+                + '<fieldset><legend>Date range</legend><div class="hist-range-fields">'
+                + historyRangeField('From', 'Date') + historyRangeField('To', 'Date') + '</div></fieldset>'
+                + '<fieldset><legend>Time range <small>Optional</small></legend><div class="hist-range-fields">'
+                + historyRangeField('From', 'Time') + historyRangeField('To', 'Time') + '</div></fieldset></div>'
+                + '<p id="hist-filter-error" role="alert" hidden></p>'
+                + '<div class="hist-actions"><button id="hist-filter-reset" type="button">Reset</button><button type="submit">Apply</button></div></div></form>'
                 + '<div id="hist-list" style="padding:8px 12px"><div style="text-align:center;padding:40px;color:#999">Loading...</div></div></div>';
             ov.appendChild(panel);
             document.body.appendChild(ov);
@@ -2485,22 +2509,89 @@ window._posOffline = (function () {
             var filter = panel.querySelector('#hist-filter');
             var form = panel.querySelector('#hist-filter-form');
             var error = panel.querySelector('#hist-filter-error');
-            var fromDate = form.elements.historyFromDate, toDate = form.elements.historyToDate;
+            var datePickers = form.querySelectorAll('input[type=date]');
             var earliest = '0001-01-01';
             var clock = document.getElementById('nb-clock');
             var parts = new Intl.DateTimeFormat('en-CA', {timeZone: clock ? clock.dataset.timeZone : undefined,
                 year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
             function part(type) { return parts.find(function(p) { return p.type === type; }).value; }
             var today = part('year') + '-' + part('month') + '-' + part('day');
-            function validDate(value) { return /^\d{4}-\d{2}-\d{2}$/.test(value) && value >= earliest && value <= today; }
-            function syncDateBounds() {
-                fromDate.min = earliest;
-                fromDate.max = validDate(toDate.value) ? toDate.value : today;
-                toDate.min = validDate(fromDate.value) ? fromDate.value : earliest;
-                toDate.max = today;
-            }
-            syncDateBounds();
-            form.addEventListener('input', syncDateBounds);
+            datePickers.forEach(function (picker) {
+                picker.min = earliest;
+                picker.max = today;
+            });
+            // Keep native picker state separate from the caret and partially typed digits.
+            form.querySelectorAll('.hist-entry').forEach(function (entry) {
+                var field = entry.querySelector('input[name]'), picker = entry.querySelector('.hist-picker input');
+                function display(value) {
+                    return picker.type === 'date' ? value.split('-').reverse().join('-') : value;
+                }
+                function commitText() {
+                    picker.value = picker.type === 'date' ? historyDateValue(field.value) : historyTimeValue(field.value);
+                    if (picker.value) field.value = display(picker.value);
+                }
+                field.addEventListener('beforeinput', function (event) {
+                    if (event.isComposing || field.selectionStart !== field.selectionEnd) return;
+                    var start = field.selectionStart;
+                    // Backspace/Delete across an inserted separator should remove the adjacent digit.
+                    if (event.inputType === 'deleteContentBackward' && /[-:]/.test(field.value.charAt(start - 1))) {
+                        field.setSelectionRange(start - 2, start);
+                    } else if (event.inputType === 'deleteContentForward' && /[-:]/.test(field.value.charAt(start))) {
+                        field.setSelectionRange(start, start + 2);
+                    }
+                });
+                field.addEventListener('input', function (event) {
+                    if (event.isComposing) return;
+                    var date = picker.type === 'date', raw = field.value;
+                    var separator = date ? '-' : ':';
+                    // A complete pasted date may use ISO order or single-digit day/month values.
+                    if (event.inputType === 'insertFromPaste' || (event.data && event.data.length > 1)) {
+                        var parsed = date ? historyDateValue(raw) : historyTimeValue(raw);
+                        if (parsed) { field.value = display(parsed); return; }
+                        // Preserve invalid pasted separators so Apply reports the original entry.
+                        if (/\D/.test(raw)) return;
+                    }
+                    if (!(date ? /^[\d/-]*$/ : /^[\d:]*$/).test(raw)) return;
+                    // Explicit separators also support entries such as 1/2/2026 and 7:05.
+                    if ((date ? /^[-/]$/ : /^:$/).test(event.data || '') && field.selectionStart === raw.length) {
+                        var segments = raw.split(date ? /[-/]/ : /:/);
+                        var completed = segments.slice(0, -1);
+                        if (completed.length <= (date ? 2 : 1) && completed.every(function (part) { return /^\d{1,2}$/.test(part); })) {
+                            field.value = completed.map(function (part) { return part.padStart(2, '0'); }).join(separator) + separator;
+                            return;
+                        }
+                    }
+                    var digits = raw.replace(/\D/g, '');
+                    if (digits.length > (date ? 8 : 4)) return;
+                    var beforeCaret = raw.slice(0, field.selectionStart).replace(/\D/g, '').length;
+                    var groups = date ? [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4)] : [digits.slice(0, 2), digits.slice(2)];
+                    var formatted = groups.filter(Boolean).join(separator);
+                    if (formatted === raw) return;
+                    field.value = formatted;
+                    var caret = beforeCaret + (beforeCaret > 2 ? 1 : 0) + (date && beforeCaret > 4 ? 1 : 0);
+                    field.setSelectionRange(caret, caret);
+                });
+                field.addEventListener('blur', commitText);
+                field.addEventListener('keydown', function (event) {
+                    if (event.isComposing) return;
+                    if (event.key === 'Enter') commitText();
+                    if (event.altKey && event.key === 'ArrowDown') {
+                        event.preventDefault();
+                        commitText();
+                        picker.click();
+                    }
+                });
+                picker.addEventListener('change', function () {
+                    field.value = display(picker.value);
+                });
+                picker.addEventListener('click', function (event) {
+                    if (!picker.showPicker || navigator.userActivation?.isActive === false) return;
+                    try {
+                        picker.showPicker();
+                        event.preventDefault();
+                    } catch (_) { /* Use the native click action if the browser restricts showPicker. */ }
+                });
+            });
             var searchTimer;
             function reload() { clearTimeout(searchTimer); loadHistoryList(searchInput.value); }
             historyReconnect = function() { if (historyFailed) reload(); };
@@ -2515,19 +2606,29 @@ window._posOffline = (function () {
             form.addEventListener('submit', function (event) {
                 event.preventDefault();
                 var values = Object.fromEntries(new FormData(form));
-                if (!validDate(values.historyFromDate) || !validDate(values.historyToDate)) {
-                    error.textContent = 'Choose both dates, up to today, using a four-digit year.';
+                values.historyFromDate = historyDateValue(values.historyFromDate);
+                values.historyToDate = historyDateValue(values.historyToDate);
+                if (!values.historyFromDate || !values.historyToDate || values.historyFromDate > today || values.historyToDate > today) {
+                    error.textContent = 'Enter both dates as DD-MM-YYYY, up to today.';
                     error.hidden = false;
                     return;
                 }
+                var startTime = historyTimeValue(values.historyFromTime), endTime = historyTimeValue(values.historyToTime);
+                if ((values.historyFromTime.trim() && !startTime) || (values.historyToTime.trim() && !endTime)) {
+                    error.textContent = 'Enter times in 24-hour format, such as 09:30.';
+                    error.hidden = false;
+                    return;
+                }
+                values.historyFromTime = startTime;
+                values.historyToTime = endTime;
                 var from = values.historyFromDate + 'T' + (values.historyFromTime || '00:00');
                 var to = values.historyToDate + 'T' + (values.historyToTime || '23:59');
                 error.hidden = from <= to;
                 if (!error.hidden) { error.textContent = 'The end must be on or after the start.'; return; }
-                historyCriteria = values; filter.textContent = 'Filter •'; reload();
+                historyCriteria = values; filter.classList.add('hist-applied'); filter.setAttribute('aria-label', 'Filter (applied)'); reload();
             });
             panel.querySelector('#hist-filter-reset').addEventListener('click', function () {
-                form.reset(); syncDateBounds(); error.hidden = true; historyCriteria = {}; filter.textContent = 'Filter'; reload();
+                form.reset(); error.hidden = true; historyCriteria = {}; filter.classList.remove('hist-applied'); filter.removeAttribute('aria-label'); reload();
             });
             searchInput.addEventListener('input', function() {
                 clearTimeout(searchTimer);
@@ -2699,7 +2800,7 @@ window._posOffline = (function () {
                     var payStr = (bill.payments||[]).map(function(p) { return p.method; }).join(', ');
                     var edited = bill.amendCount > 0 ? '<span style="background:#ff9800;color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:6px">EDITED ('+bill.amendCount+')</span>' : '';
                     h += '<div class="hist-bill-row" data-tx-id="'+histEsc(bill.txId)+'" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 14px;padding:12px 14px;border:1px solid #e8e8e8;border-radius:10px;margin-bottom:8px;cursor:pointer;transition:all 0.15s;background:#fafafa" onmouseover="this.style.background=\'#ECE8FB\';this.style.borderColor=\'#CBB8F0\'" onmouseout="this.style.background=\'#fafafa\';this.style.borderColor=\'#e8e8e8\'">'
-                        + '<div style="display:flex;justify-content:space-between;align-items:center">'
+                        + '<div style="display:flex;flex-wrap:wrap;gap:2px 8px;justify-content:space-between;align-items:center;overflow-wrap:anywhere">'
                         + '<div><span style="font-weight:700;font-size:15px;color:#7C3AED">#'+histEsc(bill.billNo)+'</span>'+edited+'</div>'
                         + '<span style="font-weight:800;font-size:16px;color:#2e7d32">₹'+Number(bill.grand||0).toFixed(2)+'</span></div>'
                         + '<div style="grid-column:1;display:flex;flex-wrap:wrap;gap:4px 12px;justify-content:space-between;font-size:12px;color:#777">'
