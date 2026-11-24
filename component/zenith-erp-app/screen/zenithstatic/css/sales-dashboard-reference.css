@@ -3,7 +3,7 @@
 .sales-dashboard-page .sd-heading{display:inline-block;vertical-align:top;width:34%;min-width:285px;margin:0 0 20px!important}
 .sales-dashboard-page .sd-heading h3{font-size:25px!important;line-height:1.2;color:#172033!important;font-weight:700!important}
 .sales-dashboard-page .sd-heading p{font-size:12px;line-height:1.5;color:#667085!important;margin-top:6px!important}
-.sales-dashboard-page .sd-toolbar.zenith-card{display:inline-block;vertical-align:top;width:65%!important;max-width:none!important;margin:0 0 20px!important;padding:0!important;background:transparent!important;border:0!important;box-shadow:none!important;overflow:visible!important}
+.sales-dashboard-page .sd-toolbar.zenith-card{position:relative;z-index:5;display:inline-block;vertical-align:top;width:65%!important;max-width:none!important;margin:0 0 20px!important;padding:0!important;background:transparent!important;border:0!important;box-shadow:none!important;overflow:visible!important}
 .sales-dashboard-page .sd-toolbar>div:first-child{display:flex!important;align-items:center;justify-content:flex-end;gap:6px!important;flex-wrap:wrap;margin:0!important}
 .sales-dashboard-page .sd-datebar{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:7px}
 .sales-dashboard-page .sd-datebar .material-icons{font-size:15px;line-height:1}

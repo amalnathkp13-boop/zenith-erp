@@ -26,7 +26,7 @@ module.exports=async function({a,base,check,q,invoke,post,out,loggedOutSweep}) {
    await clock(active.sessionId,55);
    const old=get(active.sessionId).last_activity_date;
    await page.evaluate(()=>{window.posBoundaryOffset=(window.posBoundaryOffset||0)+31000;if(!window.posBoundaryRealNow){window.posBoundaryRealNow=Date.now.bind(Date);Date.now=()=>window.posBoundaryRealNow()+window.posBoundaryOffset;}});
-   const touched=page.waitForResponse(r=>r.url().includes('/Terminal/touchSession')&&r.request().method()==='POST');
+   const touched=page.waitForResponse(r=>r.url().includes('/Terminal/touchSession')&&new URLSearchParams(r.request().postData()||'').get('activity')==='Y');
    await page.locator('#cartInlineSearch').press(reset?'b':'a');await touched;
    const touch=get(active.sessionId);
    check('POS-03-06 qualifying keyboard input resets server activity '+(reset+1),new Date(touch.last_activity_date)>new Date(old)&&touch.status_id==='PsOpen',{before:old,after:touch.last_activity_date});

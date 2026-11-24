@@ -221,7 +221,7 @@
 
             <!-- Round-off and amount in words -->
             <set field="grandTotal" from="totalTaxableAmount + totalTaxAmount" type="BigDecimal"/>
-            <set field="roundOffAmount" from="sourceOrderId ? BigDecimal.ZERO : grandTotal.setScale(0, java.math.RoundingMode.HALF_UP) - grandTotal" type="BigDecimal"/>
+            <set field="roundOffAmount" from="sourceOrderId || currencyUomId != 'INR' ? BigDecimal.ZERO : grandTotal.setScale(0, java.math.RoundingMode.HALF_UP) - grandTotal" type="BigDecimal"/>
             <service-call name="zenith.base.LocalizationServices.convert#AmountToWords"
                           in-map="[amount:grandTotal + roundOffAmount, currencyUomId:currencyUomId, organizationPartyId:organizationPartyId]"
                           out-map="wordsResult" ignore-error="true"/>

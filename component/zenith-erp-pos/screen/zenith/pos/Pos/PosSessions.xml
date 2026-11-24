@@ -79,7 +79,7 @@
         <entity-find-one entity-name="zenith.erp.pos.PosOrgBillingConfig" value-field="idlePolicy">
             <field-map field-name="organizationPartyId" from="posOrganizationPartyId ?: '__NO_ORGANIZATION__'"/>
         </entity-find-one>
-        <set field="idlePolicyEnabled" from="idlePolicy ? idlePolicy.idleSessionAutoClose : 'Y'"/>
+        <set field="idlePolicyEnabled" from="idlePolicy ? idlePolicy.idleSessionAutoClose : 'N'"/>
         <set field="idleRuleMessage" from="idlePolicyEnabled == 'Y' ? 'New sessions close after one hour without cashier input or a completed bill. Cash stays unverified for later review.' : 'Automatic closure for inactivity is disabled by this organization policy.'"/>
         <entity-find-one entity-name="moqui.service.job.ServiceJob" value-field="idleSweepJob">
             <field-map field-name="jobName" value="zenith_PosIdleSessionSweep_5min"/>

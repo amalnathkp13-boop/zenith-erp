@@ -12,15 +12,15 @@ module.exports=async({a,foreign,base,check,q,invoke,post,out})=>{
  const page=await a.c.newPage();
  try{
   for(const [saved,next,price] of [['RETAIL','WHOLESALE',100],['WHOLESALE',customMode,90],[customMode,'RETAIL',80]]){
-   const bill=await invoke('cart',{sessionId:session.sessionId});
+   const bill=await invoke('cart',{sessionId:session.sessionId,reuseOpenCart:false});
    await invoke('add',{transactionId:bill.transactionId,productId:'POS_QA_A_P18',quantity:'1',salesModeId:saved,taxOn:'N'});
-   check(saved+' bill stores the selected mode when its first item is added',tx(bill.transactionId).sales_mode_id===saved);
+   check(saved+' bill stores the selected mode when its first item is added',tx(bill.transactionId).sales_mode_id===saved,{storedMode:tx(bill.transactionId).sales_mode_id});
    const held=await invoke('hold',{transactionId:bill.transactionId});
    if (foreign && saved==='RETAIL') {
     const denied=await post('Terminal','ajaxCart',{action:'recallSale',sessionId:session.sessionId,heldId:held.heldId},foreign);
     check('Another organization cannot recall or alter the held draft',denied.status()===403&&tx(bill.transactionId).status_id==='PtHeld');
    }
-   const other=await invoke('cart',{sessionId:session.sessionId});
+   const other=await invoke('cart',{sessionId:session.sessionId,reuseOpenCart:false});
    await invoke('reprice',{transactionId:other.transactionId,salesModeId:next,taxOn:'N'});
    await invoke('add',{transactionId:other.transactionId,productId:'POS_QA_A_P18',quantity:'1',salesModeId:next,taxOn:'N'});
    const amount=tx(other.transactionId).payable_amount;

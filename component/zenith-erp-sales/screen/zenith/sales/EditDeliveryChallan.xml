@@ -90,6 +90,7 @@
             <econdition field-name="challanId"/>
             <order-by field-name="challanItemSeqId"/>
         </entity-find>
+        <script location="component://zenith-erp-sales/script/SalesChallanGoods.groovy"/>
 
         <entity-find-one entity-name="mantle.party.PartyDetail" value-field="fromParty">
             <field-map field-name="partyId" from="challan?.organizationPartyId"/>
@@ -243,13 +244,10 @@
 
             <container style="z-sales-table">
 <form-list name="ChallanItemsForm" list="challanItems" skip-form="true" header-dialog="true" show-csv-button="true" show-xlsx-button="true" show-page-size="true">
-                <row-actions>
-                    <entity-find-one entity-name="moqui.basic.Uom" value-field="uom"/>
-                </row-actions>
                 <field name="challanItemSeqId"><default-field title="#"><label text="${challanItemSeqId}" type="span" style="text-grey-7"/></default-field></field>
                 <field name="description"><default-field title="Description"><label text="${description ?: 'N/A'}" type="strong" style="text-dark"/></default-field></field>
                 <field name="hsnSacCode"><default-field title="HSN/SAC"><label text="${hsnSacCode ?: '-'}" type="span" style="zenith-badge grey"/></default-field></field>
-                <field name="quantity"><default-field><label text="${quantity} ${uom?.description ?: ''}" type="span" style="text-dark"/></default-field></field>
+                <field name="quantity"><default-field><label text="${quantity} ${unitDescription ?: ''}" type="span" style="text-dark"/></default-field></field>
                 <field name="estimatedValue"><default-field title="Est. Taxable Value"><label text="${currSymbol}${zinr.inr(ec.l10n.format(estimatedValue ?: 0, '#,##,##0.00'))}" type="span" style="text-weight-bold"/></default-field></field>
                 
                 <field name="deleteItem">

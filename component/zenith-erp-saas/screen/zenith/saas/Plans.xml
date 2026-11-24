@@ -171,7 +171,7 @@
                         </default-field></field>
                         <field name="moduleId"><default-field title="Module">
                             <drop-down>
-                                <list-options list="availableModules" key="${it.key}" text="${it.label}"/>
+                                <list-options list="availableModules" key="${key}" text="${label}"/>
                             </drop-down>
                         </default-field></field>
                         <field name="submitBtn"><default-field title="">

@@ -1720,10 +1720,10 @@
         }
     ]]></script></actions><default-response type="none"/></transition>
 
-    <transition name="touchSession" begin-transaction="true">
+    <transition name="touchSession" method="post" begin-transaction="true">
         <actions>
-            <service-call name="zenith.pos.PosServices.touch#PosSessionActivity" in-map="[sessionId:sessionId]" out-map="_touch"/>
-            <script>ec.web.sendJsonResponse([open:_touch.open ?: false, success:!ec.message.hasError(),handoffUserId:_touch.handoffUserId])</script>
+            <service-call name="zenith.pos.PosServices.touch#PosSessionActivity" in-map="[sessionId:sessionId,recordActivity:ec.web.parameters.activity == 'Y']" out-map="_touch"/>
+            <script>ec.web.sendJsonResponse([open:_touch.open ?: false, success:!ec.message.hasError(),handoffUserId:_touch.handoffUserId,closeReason:_touch.closeReason,idleCloseAfterMs:_touch.idleCloseAfterMs])</script>
         </actions>
         <default-response type="none"/>
     </transition>
@@ -3621,6 +3621,9 @@
 
 
     <widgets>
+        <render-mode><text type="html,qvt" template="true"><![CDATA[
+            <link rel="stylesheet" href="/zenithstatic/css/pos-bill-history.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/pos-bill-history.css').getLastModified()?c}"/>
+        ]]></text></render-mode>
 
 
 

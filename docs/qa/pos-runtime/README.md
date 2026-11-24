@@ -58,6 +58,15 @@ deployment claim. Never reuse a database containing customer records.
   belong to the receiving drawer. Payment Wise page/CSV/PDF subtract change once
   and count distinct bills for each method, retaining the billing-date filter contract.
 - Preserve recorded partial tenders and held carts at session boundaries.
+- `POS_QA_FOCUS=idle-session` checks that background status polling never resets
+  the idle clock, real cashier input does, and both POS/KOT billing layouts close
+  at the server deadline. Controlled disposable timestamps exercise the real
+  browser timer without waiting an hour. Unpaid open/held bills survive closure,
+  overnight cleanup and reopening the same counter; unfinished tenders remain
+  protected. KOT online carts retain manual rates, quantities and layout across
+  the expired session, and storage failure blocks navigation that would lose work.
+  The full idle group also covers the actual scheduled worker when
+  `POS_QA_REAL_SCHEDULER=true`.
 - Preserve held sale identity, customer, manual price, line mode and tax toggle.
 - Choose customer place-of-supply before the first line. Once lines or tenders exist,
   changing/clearing to a different destination is rejected without changing any rows.
@@ -74,6 +83,11 @@ deployment claim. Never reuse a database containing customer records.
   `POS_QA_FOCUS=offline-session-close` scenario covers reload, a lost close response,
   legacy/current snapshots from retired drawers, original timestamps, cash
   reconciliation, duplicate replay, and rollback of real draft/payment conflicts.
+- Reopening a locally closed counter immediately reconciles that counter before
+  opening a fresh session. Its saved bills remain durable, unrelated counters'
+  retries do not delay opening, and reconnection syncs automatically from the
+  selector. Failed synchronization keeps the selector open for retry instead of
+  resuming the old drawer and showing its closure popup again.
 - Concurrent completion numbers and synthetic-only amendment validation, linked
   invoice totals, tax detail and audit. No production issued bill is amended.
 - Tenant service/detail/receipt denial, CSRF, cashier permissions, child report

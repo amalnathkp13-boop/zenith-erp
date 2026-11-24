@@ -14,6 +14,8 @@
             <parameter name="horizonDays" type="Integer" default="14"/>
             <parameter name="lookbackDays" type="Integer" default="120"/>
             <parameter name="categoryName"><description>Optional: forecast only this product category's sales</description></parameter>
+            <parameter name="productCategoryId"><description>Exact category for a selected product group.</description></parameter>
+            <parameter name="currencyUomId" default-value="INR"/>
         </in-parameters>
         <out-parameters>
             <parameter name="weeklyPoints" type="List"/>
@@ -51,23 +53,26 @@
                 def reportZone = ec.user.timeZone.toZoneId()
                 def today = nowTs.toInstant().atZone(reportZone).toLocalDate()
                 def fromTs = Timestamp.from(today.minusDays((lookbackDays ?: 120) as long).atStartOfDay(reportZone).toInstant())
+                def untilTs = Timestamp.from(today.atStartOfDay(reportZone).toInstant())
+                def currencyFilter = ec.resource.script('component://zenith-erp-sales/script/ReportingCurrencyCondition.groovy', null,
+                        [currency:currencyUomId, includeUnspecified:currencyUomId == 'INR'])
                 int H = (horizonDays ?: 14) as int
 
                 points = []; methodScores = []; weeklyPoints = []; result = [:]
                 def dayTot = [:]; def dayCnt = [:]
                 def minD = today; def maxRaw = today.minusDays(1)
-                if (categoryName) {
-                    def cats = ec.entity.find("mantle.product.category.ProductCategory")
-                        .condition(ec.entity.conditionFactory.makeCondition("categoryName", EntityCondition.LIKE, "%" + categoryName + "%")).selectField("productCategoryId").list()
-                    def catIds = cats.collect { it.productCategoryId }
+                if (productCategoryId || categoryName) {
+                    def catIds = productCategoryId ? [productCategoryId] : ec.entity.find("mantle.product.category.ProductCategory")
+                        .condition("categoryName", EntityCondition.LIKE, "%" + categoryName + "%").selectField("productCategoryId").list()*.productCategoryId
                     if (!catIds) { narrative = "No product category matches '" + categoryName + "'."; summary = narrative; confidencePct = null; historyDays = 0; return }
                     def rows = ec.entity.find("zenith.erp.sales.InvoiceCategorySalesView")
+                        .condition(currencyFilter)
                         .condition("fromPartyId", organizationPartyId).condition("invoiceTypeEnumId", "InvoiceSales")
                         .condition("statusId", EntityCondition.IN, ["InvoiceFinalized","InvoicePmtRecvd"])
                         .condition(ec.entity.conditionFactory.makeCondition("productCategoryId", EntityCondition.IN, catIds))
                         .condition(ec.entity.conditionFactory.makeCondition("invoiceDate", EntityCondition.GREATER_THAN_EQUAL_TO, fromTs))
+                        .condition("invoiceDate", EntityCondition.LESS_THAN, untilTs)
                         .selectField("invoiceDate").selectField("taxableAmount").selectField("totalTaxAmount").selectField("invoiceId").list()
-                    if (rows == null || rows.size() < 14) { narrative = "Not enough sales history for category '" + categoryName + "' yet."; summary = narrative; confidencePct = null; historyDays = (rows ? rows.size() : 0); return }
                     def dayTxns = [:]
                     for (rw in rows) {
                         def ld = rw.invoiceDate.toInstant().atZone(reportZone).toLocalDate(); if (!ld.isBefore(today)) continue
@@ -80,14 +85,16 @@
                     for (e in dayTxns) dayCnt[e.key] = e.value.size()
                 } else {
                     def txns = ec.entity.find("mantle.account.invoice.Invoice")
+                        .condition(currencyFilter)
                         .condition("fromPartyId", organizationPartyId).condition("invoiceTypeEnumId", "InvoiceSales")
                         .condition("statusId", EntityCondition.IN, ["InvoiceFinalized","InvoicePmtRecvd"])
                         .condition(ec.entity.conditionFactory.makeCondition("invoiceDate", EntityCondition.GREATER_THAN_EQUAL_TO, fromTs))
-                        .selectField("invoiceDate").selectField("totalTaxableAmount").selectField("totalTaxAmount").selectField("roundOffAmount").list()
-                    if (txns == null || txns.size() < 14) { narrative = "Not enough sales history to forecast yet — need about two weeks of sales."; summary = narrative; confidencePct = null; historyDays = (txns ? txns.size() : 0); return }
+                        .condition("invoiceDate", EntityCondition.LESS_THAN, untilTs)
+                        .selectFields(["invoiceDate", "invoiceTotal", "totalTaxableAmount", "totalTaxAmount", "roundOffAmount"]).list()
                     for (t in txns) {
                         def ld = t.invoiceDate.toInstant().atZone(reportZone).toLocalDate(); if (!ld.isBefore(today)) continue
-                        dayTot[ld] = ((dayTot[ld] ?: 0.0) as double) + ((t.totalTaxableAmount ?: 0.0) as double) + ((t.totalTaxAmount ?: 0.0) as double) + ((t.roundOffAmount ?: 0.0) as double)
+                        def gross = t.invoiceTotal != null ? t.invoiceTotal : (t.totalTaxableAmount ?: 0G) + (t.totalTaxAmount ?: 0G)
+                        dayTot[ld] = (dayTot[ld] ?: 0G) + gross + (t.roundOffAmount ?: 0G)
                         dayCnt[ld] = ((dayCnt[ld] ?: 0) as int) + 1
                         if (ld.isBefore(minD)) minD = ld
                         if (ld.isAfter(maxRaw)) maxRaw = ld
@@ -105,9 +112,12 @@
                 double median = nz ? (nz[(int)(nz.size()/2)] as double) : 0.0
                 double thr = median * 0.15
                 boolean[] activeR = new boolean[nRaw]
-                int lastA = -1
-                for (int i = 0; i < nRaw; i++) { activeR[i] = (yR[i] >= thr && yR[i] > 0); if (activeR[i]) lastA = i }
-                if (lastA < 13) { narrative = "Not enough active selling days to forecast yet."; summary = narrative; confidencePct = null; historyDays = lastA + 1; return }
+                int lastA = -1, activeDays = 0
+                for (int i = 0; i < nRaw; i++) {
+                    activeR[i] = yR[i] >= thr && yR[i] > 0
+                    if (activeR[i]) { lastA = i; activeDays++ }
+                }
+                if (activeDays < 14) { narrative = "Not enough active selling days to forecast yet."; summary = narrative; confidencePct = null; historyDays = activeDays; return }
 
                 // truncate trailing inactive tail -> series ends at last active selling day
                 int n = lastA + 1
@@ -184,10 +194,14 @@
                 double horizonSum = 0; double next7 = 0
                 def fcC2 = buildTSarr(c, n - 1); def fcA2 = buildTSarr(aov, n - 1)
                 double traf7 = 0
-                for (int h = 0; h < H; h++) {
+                // The weekly metric always covers seven days, even for a shorter requested horizon.
+                for (int h = 0; h < Math.max(7, H); h++) {
                     def fd = fcStart.plusDays(h); double pred = fcBest.call(fd) as double
-                    points.add([date: fd.toString(), dow: fd.getDayOfWeek().toString().substring(0,3), predicted: r2(pred), lower: r2(Math.max(0, pred - pred*band)), upper: r2(pred + pred*band)])
-                    horizonSum += pred; if (h < 7) { next7 += pred; traf7 += (fcC2.call(fd) as double) }
+                    if (h < H) {
+                        points.add([date: fd.toString(), dow: fd.getDayOfWeek().toString().substring(0,3), predicted: r2(pred), lower: r2(Math.max(0, pred - pred*band)), upper: r2(pred + pred*band)])
+                        horizonSum += pred
+                    }
+                    if (h < 7) { next7 += pred; traf7 += (fcC2.call(fd) as double) }
                 }
 
                 double meanY = 0; int my = 0; for (int i = 0; i < n; i++) if (active[i]) { meanY += y[i]; my++ }; meanY = my > 0 ? meanY / my : 0
@@ -214,7 +228,7 @@
                 // three stated figures reconcile (bills x avg basket = projected total, to rounding). Previously this
                 // showed aovMean (a separate historical mean), which did not reconcile with the revenue/traffic models.
                 next7Aov = (next7Traffic > 0) ? r2(projectedNext7 / next7Traffic) : r2(aovMean)
-                def sym = "INR "
+                def sym = currencyUomId + " "
                 narrative = "Projected sales for the next 7 days: " + sym + projectedNext7 + " (about " + sym + r2(next7/7) + "/day). " +
                     "Sales are " + trendLabel + ", busiest on " + peakDay + "; expect ~" + next7Traffic + " bills at ~" + sym + next7Aov + " each. " +
                     "Main mover: " + primaryDriver + ". " +
@@ -229,7 +243,7 @@
                 }
                 weeklyPoints = weekly
                 summary = narrative
-                result = [scope: (categoryName ?: "ALL"), projectedNext7: projectedNext7, projectedHorizon: projectedHorizon, perDay: r2(next7 / 7.0),
+                result = [scope: (categoryName ?: productCategoryId ?: "ALL"), projectedNext7: projectedNext7, projectedHorizon: projectedHorizon, perDay: r2(next7 / 7.0),
                           method: method, confidencePct: confidencePct, trend: trendLabel, peakDay: peakDay, primaryDriver: primaryDriver,
                           next7Traffic: next7Traffic, next7Aov: next7Aov, weekly: weekly]
             ]]></script>
@@ -242,6 +256,7 @@
         <in-parameters>
             <parameter name="organizationPartyId" required="true"/>
             <parameter name="topN" type="Integer" default="6"/>
+            <parameter name="currencyUomId" default-value="INR"/>
             <parameter name="horizonDays" type="Integer" default="14"/>
         </in-parameters>
         <out-parameters>
@@ -255,28 +270,17 @@
                 <if condition="(!scope.activeOrgId || organizationPartyId != scope.activeOrgId) &amp;&amp; !ec.user.isInGroup('ADMIN')"><return error="true" message="Select an organization you belong to before viewing its forecast."/></if>
             </if>
             <script><![CDATA[
-                import java.sql.Timestamp
-                import org.moqui.entity.EntityCondition
-                def fromTs = new Timestamp(ec.user.nowTimestamp.getTime() - 30L * 86400000L)
-                def rows = ec.entity.find("zenith.erp.sales.InvoiceCategorySalesView")
-                    .condition("fromPartyId", organizationPartyId).condition("invoiceTypeEnumId", "InvoiceSales")
-                    .condition("statusId", EntityCondition.IN, ["InvoiceFinalized","InvoicePmtRecvd"])
-                    .condition(ec.entity.conditionFactory.makeCondition("invoiceDate", EntityCondition.GREATER_THAN_EQUAL_TO, fromTs))
-                    .selectField("productCategoryId").selectField("taxableAmount").selectField("totalTaxAmount").list()
-                def catRev = [:]
-                for (rw in rows) { def cid = rw.productCategoryId; catRev[cid] = ((catRev[cid] ?: 0.0) as double) + ((rw.taxableAmount ?: 0.0) as double) + ((rw.totalTaxAmount ?: 0.0) as double) }
-                def topCats = catRev.entrySet().sort { -it.value }.take((topN ?: 6) as int)
+                def topCats = ec.resource.script('component://zenith-erp-sales/script/TopForecastCategories.groovy', null,
+                        [organizationPartyId:organizationPartyId, topN:(topN ?: 6) as int, currencyUomId:currencyUomId])
                 categories = []
-                for (ce in topCats) {
-                    def cat = ec.entity.find("mantle.product.category.ProductCategory").condition("productCategoryId", ce.key).one()
-                    def cname = cat?.categoryName ?: ce.key
+                for (cat in topCats) {
                     def f = ec.service.sync().name("zenith.sales.SalesForecastServices.forecast#Sales")
-                        .parameters([organizationPartyId: organizationPartyId, categoryName: cname, horizonDays: (horizonDays ?: 14)]).call()
-                    categories.add([category: cname, projectedNext7: f.projectedNext7,
+                        .parameters([organizationPartyId: organizationPartyId, currencyUomId:currencyUomId, productCategoryId:cat.id, categoryName:cat.name, horizonDays: (horizonDays ?: 14)]).call()
+                    categories.add([category: cat.name, projectedNext7: f.projectedNext7,
                         perDay: (f.projectedNext7 != null ? (f.projectedNext7 / 7.0).setScale(0, java.math.RoundingMode.HALF_UP) : null),
-                        confidencePct: f.confidencePct, trend: f.trendLabel, method: f.method, recent30: Math.round(ce.value as double)])
+                        confidencePct: f.confidencePct, trend: f.trendLabel, method: f.method, recent30: Math.round(cat.revenue as double)])
                 }
-                def parts = categories.findAll { it.projectedNext7 != null }.collect { it.category + " ~INR " + it.projectedNext7 + " (" + (it.trend ?: '') + ")" }
+                def parts = categories.findAll { it.projectedNext7 != null }.collect { it.category + " ~" + currencyUomId + " " + it.projectedNext7 + " (" + (it.trend ?: '') + ")" }
                 summary = parts ? ("Category outlook for the next 7 days — " + parts.join("; ") + ".") : "Not enough category sales history yet."
                 result = [categories: categories]
             ]]></script>
@@ -287,7 +291,7 @@
          (1) Calibrates: fills actual sales + accuracy for past forecast days now known.
          (2) Generates a fresh 14-day forecast and stores it. Scheduled daily; safe to re-run. -->
     <service verb="cycle" noun="SalesForecast" authenticate="false" transaction-timeout="1800">
-        <in-parameters><parameter name="organizationPartyId"/></in-parameters>
+        <in-parameters><parameter name="organizationPartyId"/><parameter name="currencyUomId"/></in-parameters>
         <out-parameters>
             <parameter name="orgsProcessed" type="Integer"/>
             <parameter name="forecastsStored" type="Integer"/>
@@ -307,7 +311,8 @@
                 // because it is allow-remote and that would let anonymous REST callers read any tenant's revenue.
                 ec.user.loginAnonymousIfNoUser()
 
-                def today = ec.user.nowTimestamp.toInstant().atZone(ec.user.timeZone.toZoneId()).toLocalDate()
+                def reportZone = ec.user.timeZone.toZoneId()
+                def today = ec.user.nowTimestamp.toInstant().atZone(reportZone).toLocalDate()
                 def todaySql = SqlDate.valueOf(today)
                 orgsProcessed = 0; forecastsStored = 0; calibrated = 0
 
@@ -318,43 +323,53 @@
                         .selectField("fromPartyId").distinct(true).list().each { if (it.fromPartyId) orgs.add(it.fromPartyId) }
                 }
 
-                for (org in orgs) {
-                    if (!org) continue
+                def scopes = orgs.findAll().collectMany { org ->
+                    def options = ec.resource.script('component://zenith-erp-sales/script/ReportingCurrency.groovy', null,
+                            [reportOrgId:org, reportShopId:null, currencyUomId:currencyUomId])
+                    def currencies = currencyUomId ? options.organizationCurrencies.findAll { it == currencyUomId } : options.organizationCurrencies
+                    currencies.collect { code -> [org:org, code:code, includeLegacy:options.legacyForecastCurrency == code] }
+                }
+                for (scope in scopes) {
+                    def org = scope.org, code = scope.code
+                    def invoiceCurrency = ec.resource.script('component://zenith-erp-sales/script/ReportingCurrencyCondition.groovy', null,
+                            [currency:code, includeUnspecified:code == 'INR'])
+                    def forecastCurrency = ec.resource.script('component://zenith-erp-sales/script/ReportingCurrencyCondition.groovy', null,
+                            [currency:code, includeUnspecified:scope.includeLegacy])
                     // 1) calibrate past, not-yet-actualed Overall forecasts
                     def due = ec.entity.find("zenith.erp.sales.SalesRevenueForecast")
-                        .condition("organizationPartyId", org).condition("dimension", "Overall")
+                        .condition(forecastCurrency).condition("organizationPartyId", org).condition("dimension", "Overall")
                         .condition(ec.entity.conditionFactory.makeCondition("actualAmount", EntityCondition.EQUALS, null))
                         .condition(ec.entity.conditionFactory.makeCondition("periodDate", EntityCondition.LESS_THAN, todaySql))
                         .list()
                     for (fc in due) {
                         def pd = fc.periodDate.toLocalDate()
-                        def ds = Timestamp.valueOf(pd.atStartOfDay()); def de = Timestamp.valueOf(pd.plusDays(1).atStartOfDay())
-                        def acts = ec.entity.find("mantle.account.invoice.Invoice")
-                            .condition("fromPartyId", org).condition("invoiceTypeEnumId", "InvoiceSales")
+                        def ds = Timestamp.from(pd.atStartOfDay(reportZone).toInstant()); def de = Timestamp.from(pd.plusDays(1).atStartOfDay(reportZone).toInstant())
+                        def totals = ec.entity.find("zenith.erp.sales.DashboardInvoiceTotals")
+                            .condition(invoiceCurrency).condition("fromPartyId", org).condition("invoiceTypeEnumId", "InvoiceSales")
                             .condition("statusId", EntityCondition.IN, ["InvoiceFinalized","InvoicePmtRecvd"])
                             .condition(ec.entity.conditionFactory.makeCondition("invoiceDate", EntityCondition.GREATER_THAN_EQUAL_TO, ds))
                             .condition(ec.entity.conditionFactory.makeCondition("invoiceDate", EntityCondition.LESS_THAN, de))
-                            .selectField("totalTaxableAmount").selectField("totalTaxAmount").selectField("roundOffAmount").list()
-                        double act = 0; for (a in acts) act += ((a.totalTaxableAmount ?: 0) as double) + ((a.totalTaxAmount ?: 0) as double) + ((a.roundOffAmount ?: 0) as double)
+                            .selectField("grossSum").one()
+                        double act = totals?.grossSum ?: 0
                         double pred = (fc.predictedAmount ?: 0) as double
                         Integer acc = (act > 0) ? Math.max(0, Math.min(100, (int) Math.round(100.0 * (1.0 - Math.abs(pred - act) / act)))) : null
                         ec.service.sync().name("update#zenith.erp.sales.SalesRevenueForecast")
-                            .parameters([forecastId: fc.forecastId, actualAmount: (act as BigDecimal).setScale(2, java.math.RoundingMode.HALF_UP), accuracyPct: acc]).call()
+                            .parameters([forecastId: fc.forecastId, currencyUomId:code, actualAmount: (act as BigDecimal).setScale(2, java.math.RoundingMode.HALF_UP), accuracyPct: acc]).call()
                         calibrated++
                     }
                     // 2) fresh forecast
                     def r = ec.service.sync().name("zenith.sales.SalesForecastServices.forecast#Sales")
-                        .parameters([organizationPartyId: org, horizonDays: 14]).call()
+                        .parameters([organizationPartyId: org, currencyUomId:code, horizonDays: 14]).call()
                     if (r.points) {
                         // clear prior un-actualed future rows for this org to avoid duplicates
                         ec.entity.find("zenith.erp.sales.SalesRevenueForecast")
-                            .condition("organizationPartyId", org).condition("dimension", "Overall")
+                            .condition(forecastCurrency).condition("organizationPartyId", org).condition("dimension", "Overall")
                             .condition(ec.entity.conditionFactory.makeCondition("actualAmount", EntityCondition.EQUALS, null))
                             .condition(ec.entity.conditionFactory.makeCondition("periodDate", EntityCondition.GREATER_THAN_EQUAL_TO, todaySql))
                             .deleteAll()
                         for (p in r.points) {
                             ec.entity.makeValue("zenith.erp.sales.SalesRevenueForecast").setAll([
-                                organizationPartyId: org, runDate: ec.user.nowTimestamp, granularity: "Daily", dimension: "Overall", dimensionValue: "ALL",
+                                organizationPartyId: org, currencyUomId:code, runDate: ec.user.nowTimestamp, granularity: "Daily", dimension: "Overall", dimensionValue: "ALL",
                                 periodDate: SqlDate.valueOf(p.date), predictedAmount: p.predicted, lowerBound: p.lower, upperBound: p.upper,
                                 method: r.method, confidencePct: r.confidencePct, aovForecast: r.next7Aov, createdStamp: ec.user.nowTimestamp]).setSequencedIdPrimary().create()
                             forecastsStored++
@@ -362,20 +377,20 @@
                     }
                     // ===== CATEGORY dimension: calibrate past + generate fresh =====
                     def dueCat = ec.entity.find("zenith.erp.sales.SalesRevenueForecast")
-                        .condition("organizationPartyId", org).condition("dimension", "Category")
+                        .condition(forecastCurrency).condition("organizationPartyId", org).condition("dimension", "Category")
                         .condition(ec.entity.conditionFactory.makeCondition("actualAmount", EntityCondition.EQUALS, null))
                         .condition(ec.entity.conditionFactory.makeCondition("periodDate", EntityCondition.LESS_THAN, todaySql))
                         .list()
                     for (fc in dueCat) {
                         def pd = fc.periodDate.toLocalDate()
-                        def ds = Timestamp.valueOf(pd.atStartOfDay()); def de = Timestamp.valueOf(pd.plusDays(1).atStartOfDay())
-                        def cats = ec.entity.find("mantle.product.category.ProductCategory")
-                            .condition(ec.entity.conditionFactory.makeCondition("categoryName", EntityCondition.LIKE, "%" + fc.dimensionValue + "%")).selectField("productCategoryId").list()
-                        def catIds = cats.collect { it.productCategoryId }
+                        def ds = Timestamp.from(pd.atStartOfDay(reportZone).toInstant()); def de = Timestamp.from(pd.plusDays(1).atStartOfDay(reportZone).toInstant())
+                        def catIds = fc.productCategoryId ? [fc.productCategoryId] : ec.entity.find("mantle.product.category.ProductCategory")
+                            .condition("categoryName", fc.dimensionValue).selectField("productCategoryId").list()*.productCategoryId
+                        if (!catIds) catIds = [fc.dimensionValue] // Older rows used the ID for unnamed categories.
                         double act = 0
                         if (catIds) {
                             def arows = ec.entity.find("zenith.erp.sales.InvoiceCategorySalesView")
-                                .condition("fromPartyId", org).condition("invoiceTypeEnumId", "InvoiceSales")
+                                .condition(invoiceCurrency).condition("fromPartyId", org).condition("invoiceTypeEnumId", "InvoiceSales")
                                 .condition("statusId", EntityCondition.IN, ["InvoiceFinalized","InvoicePmtRecvd"])
                                 .condition(ec.entity.conditionFactory.makeCondition("productCategoryId", EntityCondition.IN, catIds))
                                 .condition(ec.entity.conditionFactory.makeCondition("invoiceDate", EntityCondition.GREATER_THAN_EQUAL_TO, ds))
@@ -386,39 +401,31 @@
                         double pr = (fc.predictedAmount ?: 0) as double
                         Integer acc = (act > 0) ? Math.max(0, Math.min(100, (int) Math.round(100.0 * (1.0 - Math.abs(pr - act) / act)))) : null
                         ec.service.sync().name("update#zenith.erp.sales.SalesRevenueForecast")
-                            .parameters([forecastId: fc.forecastId, actualAmount: (act as BigDecimal).setScale(2, java.math.RoundingMode.HALF_UP), accuracyPct: acc]).call()
+                            .parameters([forecastId: fc.forecastId, currencyUomId:code, actualAmount: (act as BigDecimal).setScale(2, java.math.RoundingMode.HALF_UP), accuracyPct: acc]).call()
                         calibrated++
                     }
-                    def cFrom = Timestamp.valueOf(today.minusDays(30).atStartOfDay())
-                    def crows = ec.entity.find("zenith.erp.sales.InvoiceCategorySalesView")
-                        .condition("fromPartyId", org).condition("invoiceTypeEnumId", "InvoiceSales")
-                        .condition("statusId", EntityCondition.IN, ["InvoiceFinalized","InvoicePmtRecvd"])
-                        .condition(ec.entity.conditionFactory.makeCondition("invoiceDate", EntityCondition.GREATER_THAN_EQUAL_TO, cFrom))
-                        .selectField("productCategoryId").selectField("taxableAmount").selectField("totalTaxAmount").list()
-                    def catRev = [:]; for (rw in crows) { def cid = rw.productCategoryId; catRev[cid] = ((catRev[cid] ?: 0.0) as double) + ((rw.taxableAmount ?: 0.0) as double) + ((rw.totalTaxAmount ?: 0.0) as double) }
-                    def topCats = catRev.entrySet().sort { -it.value }.take(6)
+                    def topCats = ec.resource.script('component://zenith-erp-sales/script/TopForecastCategories.groovy', null,
+                            [organizationPartyId:org, topN:6, currencyUomId:code])
                     ec.entity.find("zenith.erp.sales.SalesRevenueForecast")
-                        .condition("organizationPartyId", org).condition("dimension", "Category")
+                        .condition(forecastCurrency).condition("organizationPartyId", org).condition("dimension", "Category")
                         .condition(ec.entity.conditionFactory.makeCondition("actualAmount", EntityCondition.EQUALS, null))
                         .condition(ec.entity.conditionFactory.makeCondition("periodDate", EntityCondition.GREATER_THAN_EQUAL_TO, todaySql))
                         .deleteAll()
-                    for (ce in topCats) {
-                        def cat = ec.entity.find("mantle.product.category.ProductCategory").condition("productCategoryId", ce.key).one()
-                        def cname = cat?.categoryName ?: ce.key
+                    for (cat in topCats) {
                         def fcat = ec.service.sync().name("zenith.sales.SalesForecastServices.forecast#Sales")
-                            .parameters([organizationPartyId: org, categoryName: cname, horizonDays: 14]).call()
+                            .parameters([organizationPartyId: org, currencyUomId:code, productCategoryId:cat.id, categoryName:cat.name, horizonDays: 14]).call()
                         if (fcat.points) {
                             for (p in fcat.points) {
                                 ec.entity.makeValue("zenith.erp.sales.SalesRevenueForecast").setAll([
-                                    organizationPartyId: org, runDate: ec.user.nowTimestamp, granularity: "Daily", dimension: "Category", dimensionValue: cname,
+                                    organizationPartyId: org, currencyUomId:code, runDate: ec.user.nowTimestamp, granularity: "Daily", dimension: "Category", dimensionValue: cat.name, productCategoryId:cat.id,
                                     periodDate: SqlDate.valueOf(p.date), predictedAmount: p.predicted, lowerBound: p.lower, upperBound: p.upper,
                                     method: fcat.method, confidencePct: fcat.confidencePct, aovForecast: fcat.next7Aov, createdStamp: ec.user.nowTimestamp]).setSequencedIdPrimary().create()
                                 forecastsStored++
                             }
                         }
                     }
-                    orgsProcessed++
                 }
+                orgsProcessed = scopes*.org.unique().size()
             ]]></script>
         </actions>
     </service>

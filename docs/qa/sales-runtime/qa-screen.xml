@@ -39,7 +39,7 @@
         linkStatus:['zenith.sales.PaymentGatewayServices.check#PaymentStatus',['paymentLinkId']],
         callback:['zenith.sales.PaymentGatewayServices.process#PaymentCallback',['externalLinkId','status','transactionId']],
         upi:['zenith.sales.PaymentGatewayServices.generate#UpiPaymentQr',['invoiceId','upiId','merchantName']],
-        invoice:['zenith.sales.SalesInvoiceServices.create#SalesInvoice',['organizationPartyId','customerPartyId','items','isReverseCharge']],
+        invoice:['zenith.sales.SalesInvoiceServices.create#SalesInvoice',['organizationPartyId','customerPartyId','items','isReverseCharge','currencyUomId']],
         claim:['zenith.sales.DeliveryChallanServices.file#WarrantyClaim',['warrantyRegId','issueDescription']],
         resolve:['zenith.sales.DeliveryChallanServices.resolve#WarrantyClaim',['warrantyClaimId','resolutionEnumId','serviceCost']],
         commission:['zenith.sales.CommissionServices.calculate#Commission',['orderId','partyId']],

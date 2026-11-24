@@ -51,16 +51,145 @@ const playwright = require('playwright');
         await page.evaluate(() => window.dispatchEvent(new Event('online')));
         await history.locator('.hist-bill-row').waitFor();
 
-        failure = 'malformed'; calls = [];
         await history.getByRole('button',{name:'Filter',exact:true}).click();
-        await history.getByLabel('From Date').fill('2026-11-05');
-        await history.getByLabel('To Date').fill('2026-11-05');
-        await history.getByRole('button',{name:'Apply Filter'}).click();
+        const form = history.locator('#hist-filter-form');
+        const fromDate = form.getByRole('textbox',{name:'From Date',exact:true});
+        const toDate = form.getByRole('textbox',{name:'To Date',exact:true});
+        const fromTime = form.getByRole('textbox',{name:'From Time',exact:true});
+        const toTime = form.getByRole('textbox',{name:'To Time',exact:true});
+        const fromCalendar = form.getByLabel('Pick from date',{exact:true});
+        const toCalendar = form.getByLabel('Pick to date',{exact:true});
+        const apply = form.getByRole('button',{name:'Apply',exact:true});
+        const alert = form.getByRole('alert');
+
+        calls = [];
+        const today = await toCalendar.getAttribute('max');
+        for (const [digit, expected] of [
+            ['2',/^2$/], ['2',/^22-?$/], ['1',/^22-1$/], ['1',/^22-11-?$/],
+            ['2',/^22-11-2$/], ['0',/^22-11-20$/], ['2',/^22-11-202$/], ['6',/^22-11-2026$/]
+        ]) {
+            await fromDate.pressSequentially(digit);
+            assert.match(await fromDate.inputValue(),expected,'date separates as each digit is typed');
+        }
+        await fromDate.fill('');
+        await fromDate.pressSequentially('221');
+        await fromDate.press('Backspace');
+        await fromDate.press('Backspace');
+        assert.equal((await fromDate.inputValue()).replace(/-/g,''),'2','Backspace crosses the date separator');
+        await fromDate.pressSequentially('2112026');
+        assert.equal(await fromDate.inputValue(),'22-11-2026','typing resumes from the deletion caret');
+        await fromDate.press('Home');
+        await fromDate.press('ArrowRight');
+        await fromDate.press('Shift+ArrowRight');
+        await fromDate.press('1');
+        assert.equal(await fromDate.inputValue(),'21-11-2026','replacing a day digit preserves month and year');
+        assert.ok(await fromDate.evaluate(input=>input.selectionStart<=3),'editing the day keeps the caret by the day');
+        await fromDate.evaluate(input=>input.setSelectionRange(3,3));
+        await fromDate.press('Backspace');
+        assert.equal((await fromDate.inputValue()).replace(/-/g,''),'2112026','Backspace after the hyphen removes the preceding digit');
+        await fromDate.press('1');
+        assert.equal(await fromDate.inputValue(),'21-11-2026','the deleted day digit can be retyped in place');
+
+        // Insert a complete clipboard value in one edit, without touching the OS clipboard.
+        async function pasteInto(field, text) {
+            await field.press('ControlOrMeta+a');
+            await field.evaluate((input, value) => {
+                const transfer = new DataTransfer();
+                transfer.setData('text/plain',value);
+                const paste = new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:transfer});
+                if (input.dispatchEvent(paste)) {
+                    input.setRangeText(value,input.selectionStart,input.selectionEnd,'end');
+                    input.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertFromPaste',data:value}));
+                }
+            },text);
+            await field.press('Tab');
+        }
+        await pasteInto(fromDate,'2015-03-12');
+        assert.equal(await fromDate.inputValue(),'12-03-2015','pasted ISO date keeps the original year');
+        await pasteInto(toDate,'12/03/2015');
+        assert.equal(await toDate.inputValue(),'12-03-2015','pasted day-first date is normalized');
+        for (const calendar of [fromCalendar,toCalendar]) {
+            assert.equal(await calendar.inputValue(),'2015-03-12');
+            assert.equal(await calendar.getAttribute('min'),'0001-01-01','equal endpoints allow earlier years');
+            assert.equal(await calendar.getAttribute('max'),today,'equal endpoints allow later years up to today');
+        }
+        await toCalendar.fill('2000-01-01');
+        assert.equal(await toDate.inputValue(),'01-01-2000');
+        assert.equal(await alert.isVisible(),false,'editing either end allows temporarily reversed dates');
+        await apply.click();
+        assert.ok(await alert.isVisible(),'Apply rejects a reversed date range');
+        assert.equal(calls.length,0,'invalid range does not reach the history service');
+
+        for (const invalid of ['2012-02-30','1/112/2020']) {
+            await pasteInto(fromDate,invalid);
+            assert.equal(await fromDate.inputValue(),invalid,'an invalid pasted date keeps its original order');
+            await apply.click();
+            assert.match(await alert.innerText(),/both dates/i);
+        }
+        await pasteInto(fromDate,'2000-01-01');
+        await pasteInto(fromTime,'1:234');
+        assert.equal(await fromTime.inputValue(),'1:234','an invalid pasted time keeps its original separator');
+        await apply.click();
+        assert.match(await alert.innerText(),/24-hour/i);
+        assert.equal(calls.length,0,'invalid pasted values cannot turn into an accepted range');
+
+        await fromTime.fill('');
+        await fromDate.fill('');
+        await toDate.fill('');
+        await fromDate.pressSequentially('05112');
+        await toDate.pressSequentially('06-11-2020');
+        await apply.click();
+        assert.ok(await alert.isVisible(), 'a partially typed date displays inline feedback');
+        await fromDate.fill('');
+        await fromDate.pressSequentially('05112020');
+        await fromTime.pressSequentially('09');
+        await apply.click();
+        assert.ok(await alert.isVisible(), 'a partially typed time displays inline feedback');
+        assert.equal(calls.length,0,'incomplete dates and times do not submit history reads');
+
+        await fromTime.fill('');
+        await fromTime.pressSequentially('09:30');
+        await fromDate.focus();
+        await fromDate.press('End');
+        for (let digit=0; digit<4; digit++) await fromDate.press('Shift+ArrowLeft');
+        await fromDate.pressSequentially('1106');
+        await fromDate.press('Tab');
+        assert.ok(await toDate.evaluate(input => input === document.activeElement),
+            'Tab moves directly from the start date to the end date');
+        assert.equal(await fromCalendar.inputValue(),'1106-11-05','all four replacement year digits reach the picker');
+        assert.equal(await toCalendar.getAttribute('min'),'0001-01-01');
+        assert.equal(await fromCalendar.getAttribute('max'),today);
+
+        failure = 'malformed'; calls = [];
+        await toTime.pressSequentially('17');
+        await toTime.pressSequentially('4');
+        assert.equal(await toTime.inputValue(),'17:4','time separator appears during fast entry');
+        await toTime.press('Backspace');
+        await toTime.press('Backspace');
+        assert.equal((await toTime.inputValue()).replace(/:/g,''),'1','Backspace crosses the time separator');
+        await toTime.pressSequentially('745');
+        await toTime.evaluate(input=>input.setSelectionRange(2,2));
+        await toTime.press('Delete');
+        assert.equal((await toTime.inputValue()).replace(/:/g,''),'175','Delete before the colon removes the following digit');
+        await toTime.press('4');
+        await toTime.press('Enter');
         await history.locator('.hist-bill-row').waitFor();
+        assert.equal(await toTime.inputValue(),'17:45','Enter formats the compact time in the active field');
         assert.equal(calls.length,2,'an invalid response retries the read');
-        assert.equal(calls.at(-1).historyFromDate,'2026-11-05','retry retains date filters');
+        for (const request of calls) {
+            assert.deepEqual(
+                [request.historyFromDate,request.historyToDate,request.historyFromTime,request.historyToTime],
+                ['1106-11-05','2020-11-06','09:30','17:45'],'typed dates and times submit the same range on retry');
+        }
+        await fromCalendar.fill('2019-04-08');
+        await form.getByLabel('Pick from time',{exact:true}).fill('08:15');
+        assert.equal(await fromDate.inputValue(),'08-04-2019','calendar selection updates the visible date');
+        assert.equal(await fromTime.inputValue(),'08:15','clock selection updates the visible time');
         await history.getByRole('button',{name:'Reset',exact:true}).click();
         await history.locator('.hist-bill-row').waitFor();
+        assert.ok(await form.locator('input').evaluateAll(inputs => inputs.every(input => !input.value)),
+            'Reset clears text fields and native pickers');
+        assert.equal(calls.at(-1).historyFromDate,undefined,'Reset requests unfiltered history');
 
         failure = 'auth'; calls = [];
         await page.evaluate(() => {window._posOffline = {getQueue:async () => [{total:12,ts:1,paymentMethod:'Cash',items:[{name:'Pending synthetic bill',qty:1}]}]};});

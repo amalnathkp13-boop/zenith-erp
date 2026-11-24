@@ -36,25 +36,20 @@
         <!-- ZE-SALES-0308 f/u: Order No. is a CONTAINS search over the internal orderId AND the customer-facing
              displayId (the SO/26-27/00001 number), not an exact orderId equals. Empty box -> _qno null -> skipped. -->
         <set field="_qno" from="ec.context.orderNoSearch ? '%' + ec.context.orderNoSearch.toString().trim() + '%' : null"/>
-        <!-- ZE-SALES-0308 f/u: a QUOTATION that was CANCELLED (never became an order) leaked into the Orders list,
-             because OrderCancelled isn't in the excluded Proposed/Rejected set. documentType lives on the base
-             OrderHeader, not the OrderHeaderAndPart view, so collect those dead-quote ids here and exclude them
-             below. A CONVERTED quote (QUOTATION + OrderPlaced) is NOT collected -> it correctly stays in Orders. -->
-        <entity-find entity-name="mantle.order.OrderHeader" list="_deadQuotes">
-            <econdition field-name="documentType" value="QUOTATION"/>
-            <econdition field-name="statusId" value="OrderCancelled"/>
-            <select-field field-name="orderId"/>
-        </entity-find>
-        <set field="_deadQuoteIds" from="_deadQuotes.collect{ it.orderId } ?: ['__NONE__']"/>
         <entity-find entity-name="mantle.order.OrderHeaderAndPart" list="orderList">
-            <search-form-inputs skip-fields="organizationPartyId,fromPartyId,vendorPartyId,ownerPartyId" default-order-by="-entryDate"/>
+            <search-form-inputs skip-fields="organizationPartyId,fromPartyId,vendorPartyId,ownerPartyId" default-order-by="-entryDate,orderId,orderPartSeqId"/>
 <!-- ZE-SALES-014 f/u (cross-tenant CSV leak): source the active org DIRECTLY, not via the parent-set
                  activeOrgId var, which is empty in the CSV/standalone render -> ignore-if-empty then skipped the
                  filter and the CSV dumped every tenant's orders (incl. MARUTHI). -->
             <econdition field-name="vendorPartyId" from="_salesOrgId ?: '__NO_SALES_ORGANIZATION__'"/>
             <econdition field-name="orderId" operator="not-in" from="_mixedOrders.mixedOrderIds ?: ['__NO_MIXED_SALES_ORDER__']"/>
             <econdition field-name="statusId" operator="not-in" value="OrderProposed,OrderRejected"/>
-            <econdition field-name="orderId" operator="not-in" from="_deadQuoteIds"/>
+            <!-- OrderHeaderAndPart includes documentType via its OrderHeader alias-all. -->
+            <econditions combine="or">
+                <econdition field-name="statusId" operator="not-equals" value="OrderCancelled"/>
+                <econdition field-name="documentType" operator="not-equals" value="QUOTATION"/>
+                <econdition field-name="documentType" from="null"/>
+            </econditions>
             <econdition field-name="customerPartyId" operator="in" from="_custIds" ignore-if-empty="true"/>
             <econditions combine="or">
                 <econdition field-name="orderId" operator="like" from="_qno" ignore-if-empty="true" ignore-case="true"/>

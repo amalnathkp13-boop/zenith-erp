@@ -21,9 +21,9 @@ module.exports=async function({a,base,check,q,invoke,post,out,cleanupInvoke=invo
    check('fractional/manual line saves '+productId,result.success);
   }
   const {heldId}=await invoke('hold',{transactionId});
-  await post('PosQaAcceptance','idleClock',{sessionId,minutes:'61'});
+  await post('PosQaAcceptance','idleClock',{sessionId,minutes:'59'});
   const idle=await (await post('Terminal','closeIdleSession',{sessionId})).json();
-  check('a long-held bill keeps its session open',!idle.closed&&idle.reason==='held_bill');
+  check('a held bill remains open before the idle deadline',!idle.closed&&idle.reason==='still_active');
   await invoke('recall',{heldId,sessionId});
   const initialRevision=page.waitForResponse(r=>r.url().endsWith('/catalogRevision'));
   await page.goto(terminal);

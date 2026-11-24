@@ -1,7 +1,7 @@
 module.exports=async function ({a,foreign,base,check,q,invoke,post}) {
  const terminalId='POS_QA_A_LONG_CART';
  await post('PosTerminals','createTerminal',{terminalId,terminalName:'Disposable long-running cart',facilityId:'POS_QA_A_FAC',organizationPartyId:'POS_QA_A',stateCode:'33',isActive:'Y'});
- const {sessionId}=await invoke('open',{terminalId,openingCash:'0'});
+ let {sessionId}=await invoke('open',{terminalId,openingCash:'0'});
  const {transactionId}=await invoke('cart',{sessionId});
  const productId='POS_QA_A_P18';
  const lines=()=>q("SELECT item_seq_id,unit_price FROM pos_transaction_item WHERE transaction_id='"+transactionId+"' ORDER BY item_seq_id");
@@ -70,18 +70,30 @@ module.exports=async function ({a,foreign,base,check,q,invoke,post}) {
    }
   }
   if(!scenario||scenario==='idle'){
+   await page.close();
+   const savedLines=JSON.stringify(lines());
    const clock=await post('PosQaAcceptance','idleClock',{sessionId,minutes:'61'});
    check('Disposable session clock crossed the one-hour boundary',(await clock.json()).backdated===true);
    const idle=await (await post('Terminal','closeIdleSession',{sessionId})).json();
-   check('An idle drawer retains the unpaid cart and its saved rate',!idle.closed&&idle.reason==='open_cart'&&!!line(),idle);
+   check('An idle drawer closes while retaining the unpaid cart and its saved rate',idle.closed&&
+     q(`SELECT status_id FROM pos_session WHERE session_id='${sessionId}'`)[0].status_id==='PsClosed'&&
+     JSON.stringify(lines())===savedLines,idle);
    const denied=await post('Terminal','ajaxCart',{action:'refresh',recoverDraft:'Y',sessionId},foreign);
    check('Cart recovery rejects a session in another organization',denied.status()===403);
-   const held=await invoke('hold',{transactionId});
+   ({sessionId}=await invoke('open',{terminalId,openingCash:'0'}));
+   const recovered=q(`SELECT held_id,items_json FROM pos_held_transaction WHERE session_id='${sessionId}' AND status_id='PhHeld'`)
+     .filter(held=>JSON.parse(held.items_json||'[]').some(item=>item.sourceTransactionId===transactionId));
+   check('Reopening the counter recovers the original unpaid cart once through Hold Bills',recovered.length===1&&
+     q(`SELECT session_id,status_id FROM pos_transaction WHERE transaction_id='${transactionId}'`)[0].session_id===sessionId&&
+     JSON.stringify(lines())===savedLines,recovered);
    const heldClock=await post('PosQaAcceptance','idleClock',{sessionId,minutes:'61'});
    check('Disposable held session clock crossed the one-hour boundary',(await heldClock.json()).backdated===true);
    const parked=await (await post('Terminal','closeIdleSession',{sessionId})).json();
-   check('The idle policy preserves a long-held bill',!parked.closed&&parked.reason==='held_bill',parked);
-   const recalled=await invoke('recall',{heldId:held.heldId,sessionId});
+   check('The idle policy closes the drawer and preserves a long-held bill',parked.closed&&
+     q(`SELECT status_id FROM pos_session WHERE session_id='${sessionId}'`)[0].status_id==='PsClosed'&&
+     JSON.stringify(lines())===savedLines,parked);
+   ({sessionId}=await invoke('open',{terminalId,openingCash:'0'}));
+   const recalled=await invoke('recall',{heldId:recovered[0].held_id,sessionId});
    check('The long-held bill recalls the same saved transaction and rate',recalled.transactionId===transactionId&&
      Number(line().unit_price)===(scenario==='idle'?100:70),recalled);
    await invoke('pay',{transactionId,paymentMethod:'Card',amount:String(Number(line().unit_price))});
@@ -89,6 +101,7 @@ module.exports=async function ({a,foreign,base,check,q,invoke,post}) {
   }
  }finally{
   await page.close();
-  await invoke('close',{sessionId,closingCash:'0'});
+  if(q(`SELECT status_id FROM pos_session WHERE session_id='${sessionId}'`)[0]?.status_id==='PsOpen')
+   await invoke('close',{sessionId,closingCash:'0'});
  }
 };
