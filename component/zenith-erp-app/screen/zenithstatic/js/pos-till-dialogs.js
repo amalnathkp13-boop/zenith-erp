@@ -242,6 +242,7 @@
         const dialog = document.createElement('dialog');
         dialog.className = 'pos-close-overlay';
         dialog.id = 'posCloseSessionOverlay';
+        dialog.setAttribute('role','dialog');
         dialog.setAttribute('aria-labelledby','pos-close-title');
         var row = function(label, val, color) {
             return '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee">'
@@ -285,6 +286,8 @@
             + '<button type="button" class="pos-close-confirm" style="padding:14px;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;background:#c62828;color:#fff">&#9724; CLOSE SESSION</button>'
             + '</div></div>';
         dialog.innerHTML = html;
+        const panel = dialog.firstElementChild;
+        panel.tabIndex = 0;
         const input = dialog.querySelector('.pos-close-cash');
         const difference = dialog.querySelector('.pos-close-diff');
         const cancel = dialog.querySelector('.pos-close-cancel');
@@ -300,6 +303,12 @@
         }
         input.addEventListener('input', update);
         input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); confirm.click(); } });
+        dialog.addEventListener('keydown', e => {
+            if (e.altKey || e.ctrlKey || e.metaKey || !['ArrowDown','ArrowUp','PageDown','PageUp'].includes(e.key)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            panel.scrollBy(0, (e.key.endsWith('Down') ? 1 : -1) * (e.key.startsWith('Page') ? panel.clientHeight : 48));
+        });
         dialog.addEventListener('click', e => { if (e.target === dialog && !closing) dialog.close(); });
         dialog.addEventListener('cancel', e => { if (closing) e.preventDefault(); });
         dialog.addEventListener('close', () => dialog.remove());
