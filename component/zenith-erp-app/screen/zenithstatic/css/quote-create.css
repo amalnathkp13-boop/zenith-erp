@@ -1,0 +1,118 @@
+.zqc-create-card {
+    width: min(calc(100% - 24px), 600px);
+    margin: clamp(14px, 4vh, 36px) auto 24px;
+    padding: 0 20px 16px;
+    border: 1px solid #e6e1ef;
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 6px 22px rgba(53, 37, 98, .07);
+}
+.zqc-create-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid #eeeaf4;
+}
+.zqc-create-title {
+    margin: 0;
+    color: #241d3d;
+    font-size: 21px;
+    font-weight: 700;
+    line-height: 1.2;
+}
+.zqc-back {
+    color: #59448a !important;
+    font-weight: 600;
+}
+:is(#CreateQuoteForm, #CreateQuoteForm > fieldset) {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    margin: 14px 0 0;
+    padding: 0;
+}
+#CreateQuoteForm > fieldset {
+    grid-column: 1 / -1;
+    min-width: 0;
+    margin: 0;
+}
+#CreateQuoteForm .form-group { margin: 0; }
+#CreateQuoteForm .form-group > .control-label {
+    display: block;
+    padding: 0 0 4px;
+    text-align: left;
+}
+:is(#CreateQuoteForm, #CreateQuoteForm > fieldset) > .row { grid-column: 1 / -1; }
+:is(#CreateQuoteForm, #CreateQuoteForm > fieldset) > .row:not(:last-child) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 12px;
+}
+:is(#CreateQuoteForm, #CreateQuoteForm > fieldset) > .row:not(:last-child) > .col-sm-6 {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+}
+#CreateQuoteForm .q-ma-sm { margin: 0; }
+#CreateQuoteForm .q-field {
+    width: 100%;
+    max-width: none !important;
+    padding: 19px 0 0 !important;
+}
+#CreateQuoteForm .q-field__label {
+    top: -19px !important;
+    left: 0 !important;
+    width: auto !important;
+    height: 16px !important;
+    display: block !important;
+    color: #514762;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: left !important;
+}
+#CreateQuoteForm .q-field__control { border-radius: 8px; }
+:is(#CreateQuoteForm, #CreateQuoteForm > fieldset)[data-advanced="false"] > .zqc-advanced-row { display: none; }
+:is(#CreateQuoteForm, #CreateQuoteForm > fieldset)[data-advanced="true"] > .zqc-advanced-row {
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: #f8f6fc;
+}
+.zqc-options-toggle {
+    display: inline-flex;
+    grid-column: 1 / -1;
+    justify-self: start;
+    align-items: center;
+    gap: 4px;
+    min-height: 36px;
+    padding: 4px 8px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #59448a;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 600;
+}
+.zqc-options-toggle:hover, .zqc-options-toggle:focus-visible { background: #f1ebfb; }
+.zqc-options-chevron { font-size: 18px; }
+.zqc-options-toggle[aria-expanded="true"] .zqc-options-chevron { transform: rotate(180deg); }
+:is(#CreateQuoteForm, #CreateQuoteForm > fieldset) > .row:last-child { justify-content: flex-end; }
+:is(#CreateQuoteForm, #CreateQuoteForm > fieldset) > .row:last-child > .col-sm-6 { width: auto; max-width: none; }
+:is(#CreateQuoteForm, #CreateQuoteForm > fieldset)[data-advanced="false"] > .zqc-options-toggle { grid-column: 1; }
+:is(#CreateQuoteForm, #CreateQuoteForm > fieldset)[data-advanced="false"] > .row:last-child { grid-column: 2; }
+#CreateQuoteForm_submitButton {
+    min-height: 36px;
+    padding: 0 14px;
+    border-radius: 8px !important;
+    background: #7040c9 !important;
+    color: #fff !important;
+    font-weight: 600;
+}
+#CreateQuoteForm_submitButton:hover { background: #5e2fb8 !important; }
+@media (max-width: 510px) {
+    .zqc-create-card { padding-inline: 14px; }
+    :is(#CreateQuoteForm, #CreateQuoteForm > fieldset) > .row:not(:last-child) { grid-template-columns: minmax(0, 1fr); }
+}

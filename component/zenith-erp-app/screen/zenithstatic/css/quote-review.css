@@ -1,0 +1,144 @@
+.zqr-page {
+    --zqr-accent: var(--z-primary, #7040c9);
+    --zqr-line: var(--z-border, #e6e1ef);
+    --zqr-surface: var(--z-bg-card, #fff);
+    --zqr-soft: var(--z-bg-input, #f8f5fd);
+    --zqr-text: var(--z-text-main, #29233c);
+    --zqr-muted: var(--z-text-muted, #6a627b);
+    display: grid;
+    gap: 14px;
+    width: min(100%, 1280px);
+    margin: 0 auto;
+    padding: clamp(12px, 2vw, 24px);
+    color: var(--zqr-text);
+}
+.zqr-page > *, .zqr-panel { min-width: 0; }
+.zqr-back {
+    justify-self: start;
+    color: var(--zqr-accent);
+    font-size: 13px;
+    font-weight: 600;
+}
+.zqr-back i { margin-right: 5px; }
+.zqr-panel {
+    padding: clamp(12px, 2vw, 20px);
+    border: 1px solid var(--zqr-line);
+    border-radius: 12px;
+    background: var(--zqr-surface);
+}
+.zqr-heading, .zqr-toolbar, .zqr-items-header, .zqr-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+}
+.zqr-toolbar, .zqr-items-header { justify-content: space-between; }
+.zqr-title, .zqr-section-title, .zqr-fact-label {
+    margin: 0 !important;
+    color: var(--zqr-text);
+    font-weight: 700;
+    line-height: 1.25;
+}
+.zqr-title { font-size: clamp(22px, 2.5vw, 29px); overflow-wrap: anywhere; }
+.zqr-section-title { font-size: 17px; }
+.zqr-fact-label { font-size: 13px; color: var(--zqr-muted); }
+.zqr-revision {
+    padding: 4px 9px;
+    border: 1px solid var(--zqr-line);
+    border-radius: 999px;
+    background: var(--zqr-soft);
+    color: var(--zqr-accent);
+    font-size: 12px;
+    font-weight: 600;
+}
+.zqr-meta {
+    margin: 0;
+    color: var(--zqr-muted);
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+.zqr-toolbar {
+    align-items: flex-end;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--zqr-line);
+}
+.zqr-toolbar > .q-my-md, .zqr-terms > .q-my-md { margin: 0; }
+.zqr-actions { min-width: 0; gap: 8px; }
+.zqr-actions .q-btn, .zqr-page :is(#StatusForm_submitButton, #TermsForm_submitButton) {
+    min-height: 38px;
+    padding: 4px 10px;
+    margin: 0;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+}
+.zqr-actions a { display: inline-flex; color: var(--zqr-accent); }
+.zqr-add .q-btn,
+.zqr-page :is(#StatusForm_submitButton, #TermsForm_submitButton) {
+    background: var(--zqr-accent) !important;
+    border-color: var(--zqr-accent) !important;
+    color: #fff !important;
+}
+.zqr-add .q-btn:hover,
+.zqr-page :is(#StatusForm_submitButton, #TermsForm_submitButton):hover { filter: brightness(.93); }
+.zqr-overview {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+.zqr-fact { display: grid; align-content: start; gap: 5px; overflow-wrap: anywhere; }
+.zqr-total-panel { background: var(--zqr-soft); }
+.zqr-total { color: var(--zqr-accent); font-size: 24px; line-height: 1.25; }
+.zqr-total-note { margin: 3px 0 0; font-size: 12px; color: var(--zqr-muted); }
+.zqr-items-header { margin-bottom: 14px; }
+.zqr-items .z-sales-table {
+    max-width: 100%;
+    overflow-x: auto;
+    border: 1px solid var(--zqr-line);
+    border-radius: 8px;
+}
+.zqr-items .z-sales-table :is(.q-table, table) { min-width: 680px; }
+.zqr-items :is(th, .th) { background: var(--zqr-soft); }
+.zqr-terms .zqr-section-title { margin-bottom: 14px !important; }
+.zqr-page :is(#StatusForm, #TermsForm) { min-width: 0; max-width: 100%; margin: 0; }
+.zqr-page :is(#StatusForm, #TermsForm) > .row {
+    display: grid;
+    align-items: end;
+    gap: 10px;
+    grid-template-columns: minmax(0, 270px) auto;
+}
+.zqr-page #TermsForm > .row { grid-template-columns: repeat(3, minmax(0, 1fr)) auto; }
+.zqr-page :is(#StatusForm, #TermsForm) > .row > [class*="col-"] {
+    width: auto;
+    min-width: 0;
+    max-width: none;
+}
+.zqr-page :is(#StatusForm, #TermsForm) .q-ma-sm { margin: 0; }
+.zqr-page :is(#StatusForm, #TermsForm) .q-field {
+    width: 100%;
+    max-width: none !important;
+    padding: 19px 0 0 !important;
+}
+.zqr-page :is(#StatusForm, #TermsForm) .q-field__label {
+    top: -19px !important;
+    left: 0 !important;
+    width: auto !important;
+    height: 16px !important;
+    display: block !important;
+    text-align: left !important;
+    font-size: 12px;
+    font-weight: 600;
+}
+.zqr-page :is(#StatusForm, #TermsForm) .q-field__control { border-radius: 8px; }
+.zqr-page :is(#StatusForm, #TermsForm) :is(#StatusForm_submitButton, #TermsForm_submitButton) { margin-bottom: 3px; }
+.zqr-toolbar > .zqr-actions { margin-bottom: 3px; }
+@media (max-width: 800px) {
+    .zqr-page #TermsForm > .row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+    .zqr-overview, .zqr-page :is(#StatusForm, #TermsForm) > .row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .zqr-page #StatusForm { width: 100%; }
+}

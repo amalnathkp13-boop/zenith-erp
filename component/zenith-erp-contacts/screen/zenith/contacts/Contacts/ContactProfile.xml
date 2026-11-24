@@ -109,7 +109,7 @@
             <container style="cp-actions">
                 <link url="/apps/zenith/sales/CreateQuotation" text="New Quote" parameter-map="[customerPartyId:partyId]" link-type="anchor" style="cp-btn cp-btn-outline"/>
                 <link url="/apps/zenith/sales/CreateOrder" text="New Order" parameter-map="[customerPartyId:partyId]" link-type="anchor" style="cp-btn cp-btn-outline"/>
-                <link url="/apps/zenith/Purchase/CreatePurchaseOrder" text="New PO" parameter-map="[vendorPartyId:partyId]" link-type="anchor" style="cp-btn cp-btn-outline"/>
+                <link url="/apps/zenith/Purchase/FindPurchaseOrder" text="New PO" parameter-map="[vendorPartyId:partyId,openCreate:'Y']" link-type="anchor" style="cp-btn cp-btn-outline"/>
                 <link url="../EditContact" text="Edit" parameter-map="[partyId:partyId]" link-type="anchor" style="cp-btn cp-btn-primary"/>
             </container>
         </container>

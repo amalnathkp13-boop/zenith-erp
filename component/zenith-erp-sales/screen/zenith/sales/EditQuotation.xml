@@ -284,194 +284,196 @@
     </actions>
 
     <widgets>
-        <link url="findQuotation" text="Back to Quotes" link-type="anchor"/>
+        <render-mode><text type="html,qvt"><![CDATA[
+            <img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEAAAICTAEAOw==" onload="if(!document.getElementById('zqr-css')){var l=document.createElement('link');l.id='zqr-css';l.rel='stylesheet';l.href='/zenithstatic/css/quote-review.css?v=2';document.head.appendChild(l);}"/>
+        ]]></text></render-mode>
+        <container style="zqr-page">
+            <link url="findQuotation" text="Back to quotations" icon="fa fa-arrow-left" link-type="anchor" style="zqr-back"/>
 
-        <!-- Cross-tenant / missing quotation — plain notice, never another org's quote data -->
-        <section name="NoAccess">
-            <condition><expression>noAccess</expression></condition>
-            <widgets>
-                <container style="zenith-card q-pa-lg bg-white shadow-1 border-radius-md q-mt-md text-center">
-                    <label text="That quotation isn't part of your account." type="h5" style="text-grey-8 q-mb-xs"/>
-                    <label text="It may belong to another organization, or it may not exist. Use the back link above to return to your list." type="p" style="text-grey-6 q-mb-none"/>
-                </container>
-            </widgets>
-        </section>
-
-        <section name="TheRecord">
-        <condition><expression>!noAccess</expression></condition>
-        <widgets>
-        <container style="zenith-profile-banner q-pa-lg bg-white shadow-3 border-radius-xl q-mb-xl">
-            <container style="row items-center justify-between no-wrap">
-                <container style="row items-center">
-                    <container style="q-pa-md bg-indigo-1 border-radius-md q-mr-md text-indigo-8 shadow-1">
-                        <render-mode><text type="html"><![CDATA[<q-icon name="request_quote" class="text-h3"/>]]></text></render-mode>
+            <!-- Cross-tenant / missing quotation — plain notice, never another org's quote data -->
+            <section name="NoAccess">
+                <condition><expression>noAccess</expression></condition>
+                <widgets>
+                    <container style="zqr-panel">
+                        <label text="That quotation isn't part of your account." type="h5" style="zqr-section-title"/>
+                        <label text="It may belong to another organization, or it may not exist. Use the back link above to return to your list." type="p" style="zqr-meta"/>
                     </container>
-                    <container style="column">
-                        <label text="Quotation ${order?.zenithDocNumber ?: (order?.orderName ?: orderId)}" type="h3" style="text-primary text-weight-bold q-my-none"/>
-                        <label text="Revision: ${order.orderRevision ?: 1}" type="p" style="text-grey-7 text-subtitle2 q-mt-xs q-mb-none"/>
-                    </container>
-                </container>
-                <container style="row items-center">
-                    <form-single name="StatusForm" transition="updateStatus" map="order">
-                        <field name="orderId"><default-field><hidden/></default-field></field>
-                        <field name="statusId"><default-field title="">
-                            <drop-down current="selected">
-                                <entity-options key="${statusId}" text="${description}">
-                                    <entity-find entity-name="moqui.basic.StatusItem">
-                                        <econdition field-name="statusTypeId" value="OrderHeader"/>
-                                        <econdition field-name="statusId" operator="in" from="allowedStatusIds"/>
-                                        <order-by field-name="sequenceNum"/>
-                                    </entity-find>
-                                </entity-options>
-                            </drop-down>
-                        </default-field></field>
-                        <field name="submitButton">
-                            <conditional-field name="quoteStatus_write" condition="modCanWrite" title=""><submit text="Update Status" icon="update" style="q-btn q-btn-item non-selectable no-outline q-btn--standard q-btn--rectangle bg-indigo-8 text-white q-py-xs q-px-md border-radius-sm shadow-2"/></conditional-field>
-                            <default-field title=""><label text="You have view-only access — changes are disabled." type="span" style="text-grey-7"/></default-field>
-                        </field>
-                        <field-layout><field-row><field-ref name="statusId"/><field-ref name="submitButton"/></field-row></field-layout>
-                    </form-single>
-                </container>
-            </container>
-            
-            <container style="row items-center q-mt-lg justify-end q-gutter-md border-top q-pt-md">
-                <section name="newVersion_write"><condition><expression>modCanWrite</expression></condition><widgets>
-                <link url="createRevision" text="New Version" icon="history" style="q-btn q-btn-item non-selectable no-outline q-btn--flat bg-grey-2 text-dark border-radius-sm"/>
-                </widgets></section>
-                <link url="printQuotation" text="Quotation PDF" parameter-map="[orderId:orderId]" target-window="_blank"
-                      icon="fa fa-file-pdf-o" class="q-btn q-btn-item non-selectable no-outline q-btn--standard q-btn--rectangle bg-grey-9 text-white border-radius-sm shadow-2"/>
-                <link url="printProforma" text="Draft Bill (Proforma) PDF" parameter-map="[orderId:orderId]" target-window="_blank"
-                      icon="fa fa-file-text-o" class="q-btn q-btn-item non-selectable no-outline q-btn--standard q-btn--rectangle bg-indigo-8 text-white border-radius-sm shadow-2"/>
-            </container>
-        </container>
+                </widgets>
+            </section>
 
-        <container-row>
-            <row-col lg="6">
-                <container style="zenith-card q-pa-md bg-white shadow-1 border-radius-md q-mb-md">
-                    <label text="Customer Details" type="h5" style="text-primary text-weight-bold q-mb-md border-bottom q-pb-sm"/>
-                    <container style="row q-col-gutter-md">
-                        <container style="col-12 col-md-6"><label text="Name" type="strong" style="text-grey-7 block"/><label text="${customer?.organizationName ?: ((customer?.firstName ?: '') + ' ' + (customer?.lastName ?: '')).trim()}" type="span" style="text-dark"/></container>
-                        <container style="col-12 col-md-6"><label text="Customer ID" type="strong" style="text-grey-7 block"/><label text="${customer?.partyId ?: 'N/A'}" type="span" style="text-dark"/></container>
+            <section name="TheRecord">
+                <condition><expression>!noAccess</expression></condition>
+                <widgets>
+                    <container style="zqr-panel zqr-header">
+                        <container style="zqr-heading">
+                            <label text="Quotation ${order?.zenithDocNumber ?: ('#' + orderId)}" type="h1" style="zqr-title"/>
+                            <label text="Revision ${order.orderRevision ?: 1}" type="span" style="zqr-revision"/>
+                        </container>
+                        <label condition="order?.orderName &amp;&amp; order.orderName != 'New Quotation'" text="${order.orderName}" type="p" style="zqr-meta"/>
+                        <container style="zqr-toolbar">
+                            <form-single name="StatusForm" transition="updateStatus" map="order">
+                                <field name="orderId"><default-field><hidden/></default-field></field>
+                                <field name="statusId"><default-field title="Status">
+                                    <drop-down current="selected">
+                                        <entity-options key="${statusId}" text="${description}">
+                                            <entity-find entity-name="moqui.basic.StatusItem">
+                                                <econdition field-name="statusTypeId" value="OrderHeader"/>
+                                                <econdition field-name="statusId" operator="in" from="allowedStatusIds"/>
+                                                <order-by field-name="sequenceNum"/>
+                                            </entity-find>
+                                        </entity-options>
+                                    </drop-down>
+                                </default-field></field>
+                                <field name="submitButton">
+                                    <conditional-field name="quoteStatus_write" condition="modCanWrite" title=""><submit text="Update status"/></conditional-field>
+                                    <default-field title=""><label text="You have view-only access — changes are disabled." type="span" style="text-grey-7"/></default-field>
+                                </field>
+                                <field-layout><field-row><field-ref name="statusId"/><field-ref name="submitButton"/></field-row></field-layout>
+                            </form-single>
+                            <container style="zqr-actions">
+                                <section name="newVersion_write">
+                                    <condition><expression>modCanWrite</expression></condition>
+                                    <widgets><link url="createRevision" text="New version" icon="fa fa-history"/></widgets>
+                                </section>
+                                <link url="printQuotation" text="Quotation PDF" icon="fa fa-file-pdf-o" parameter-map="[orderId:orderId]" target-window="_blank"/>
+                                <link url="printProforma" text="Proforma PDF" icon="fa fa-file-text-o" parameter-map="[orderId:orderId]" target-window="_blank"/>
+                            </container>
+                        </container>
                     </container>
-                </container>
 
-                <container style="zenith-card q-pa-md bg-white shadow-1 border-radius-md q-mb-md">
-                    <label text="Terms &amp; Conditions" type="h5" style="text-primary text-weight-bold q-mb-md border-bottom q-pb-sm"/>
-                    <form-single name="TermsForm" transition="updateTerms" map="orderPart">
-                        <field name="orderId"><default-field><hidden/></default-field></field>
-                        <field name="orderPartSeqId"><default-field><hidden/></default-field></field>
-                        <field name="validThruDate"><default-field title="Validity Date"><date-time type="date"/></default-field></field>
-                        <field name="tradeTermEnumId"><default-field title="Freight Terms">
-                            <drop-down allow-empty="true">
-                                <list-options list="tradeTermList" key="${enumId}" text="${description}"/>
-                                <option key="EXW" text="Ex Works (EXW)"/>
-                                <option key="FOR" text="Free on Road (FOR Destination)"/>
-                            </drop-down>
-                        </default-field></field>
-                        <field name="settlementTermId"><default-field title="Payment Terms">
-                            <drop-down allow-empty="true">
-                                <list-options list="settlementTermList" key="${settlementTermId}" text="${description}"/>
-                            </drop-down>
-                        </default-field></field>
-                        <field name="submitButton">
-                            <conditional-field name="termsSave_write" condition="modCanWrite" title=""><submit text="Save Terms" icon="save" style="q-btn q-btn-item non-selectable no-outline q-btn--standard q-btn--rectangle bg-indigo-7 text-white q-py-xs q-px-md border-radius-sm shadow-2"/></conditional-field>
-                            <default-field title=""><label text="You have view-only access — changes are disabled." type="span" style="text-grey-7"/></default-field>
-                        </field>
-                    </form-single>
-                </container>
-            </row-col>
-            
-            <row-col lg="6">
-                <container style="zenith-card q-pa-md bg-white shadow-1 border-radius-md q-mb-md">
-                    <label text="Your Business (Seller)" type="h5" style="text-primary text-weight-bold q-mb-md border-bottom q-pb-sm"/>
-                    <container style="row q-col-gutter-md">
-                        <container style="col-12 col-md-6"><label text="Name" type="strong" style="text-grey-7 block"/><label text="${vendor?.organizationName ?: ((vendor?.firstName ?: '') + ' ' + (vendor?.lastName ?: '')).trim()}" type="span" style="text-dark"/></container>
-                        <container style="col-12 col-md-6"><label text="Vendor ID" type="strong" style="text-grey-7 block"/><label text="${vendor?.partyId ?: 'N/A'}" type="span" style="text-dark"/></container>
+                    <container style="zqr-overview">
+                        <container style="zqr-panel zqr-fact">
+                            <label text="From · Seller" type="h2" style="zqr-fact-label"/>
+                            <label text="${vendor?.organizationName ?: ((vendor?.firstName ?: '') + ' ' + (vendor?.lastName ?: '')).trim() ?: '—'}" type="strong"/>
+                            <label text="Vendor ID: ${vendor?.partyId ?: 'N/A'}" type="span" style="zqr-meta"/>
+                        </container>
+                        <container style="zqr-panel zqr-fact">
+                            <label text="To · Customer" type="h2" style="zqr-fact-label"/>
+                            <label text="${customer?.organizationName ?: ((customer?.firstName ?: '') + ' ' + (customer?.lastName ?: '')).trim() ?: '—'}" type="strong"/>
+                            <label text="Customer ID: ${customer?.partyId ?: 'N/A'}" type="span" style="zqr-meta"/>
+                        </container>
+                        <container style="zqr-panel zqr-fact zqr-total-panel">
+                            <label text="Estimated grand total" type="h2" style="zqr-fact-label"/>
+                            <label text="₹${zinr.inr(ec.l10n.format(displayOrderTotal ?: 0, '#,##,##0.00'))}" type="strong" style="zqr-total"/>
+                            <label text="Line items: ${orderItems?.size() ?: 0}" type="span" style="zqr-meta"/>
+                            <section name="HistoricalSalesTotal">
+                                <condition><expression>hasHistoricalDifference</expression></condition>
+                                <widgets>
+                                    <label text="Recorded header: ${order.currencyUomId} ${ec.l10n.format(order.grandTotal, '#,##0.00')}. Line total with tax and discounts: ${order.currencyUomId} ${ec.l10n.format(lineGrandTotal, '#,##0.00')}." type="p" style="zqr-total-note"/>
+                                </widgets>
+                            </section>
+                        </container>
                     </container>
-                </container>
 
-                <container style="zenith-card q-pa-md bg-white shadow-1 border-radius-md q-mb-md">
-                    <label text="Estimated Total Summary" type="h5" style="text-primary text-weight-bold q-mb-md border-bottom q-pb-sm"/>
-                    <container style="row q-col-gutter-md">
-                        <container style="col-12 col-md-6"><label text="Total Items" type="strong" style="text-grey-7 block"/><label text="${orderItems?.size() ?: 0}" type="span" style="text-dark"/></container>
-                        <container style="col-12 col-md-6"><section name="HistoricalSalesTotal"><condition><expression>hasHistoricalDifference</expression></condition><widgets>
-                            <label text="Recorded header: ${order.currencyUomId} ${ec.l10n.format(order.grandTotal, '#,##0.00')}. Line total with tax and discounts: ${order.currencyUomId} ${ec.l10n.format(lineGrandTotal, '#,##0.00')}." type="p" style="text-warning q-mb-xs"/>
-                        </widgets></section><label text="Estimated Grand Total" type="strong" style="text-grey-7 block"/><label text="₹${zinr.inr(ec.l10n.format(displayOrderTotal ?: 0, '#,##,##0.00'))}" type="h4" style="text-primary q-my-none"/></container>
+                    <container style="zqr-panel zqr-items">
+                        <container style="zqr-items-header">
+                            <label text="Quote items &amp; estimated GST" type="h2" style="zqr-section-title"/>
+                            <section name="quoteItemActions_write">
+                                <condition><expression>modCanWrite</expression></condition>
+                                <widgets>
+                                    <container style="zqr-actions">
+                                        <link url="convertToOrder" text="Convert to sales order" icon="fa fa-shopping-cart"/>
+                                        <container style="zqr-add">
+                                            <container-dialog id="AddItemDialog" button-text="Add item" button-icon="add">
+                                                <form-single name="AddItemForm" transition="addItem">
+                                                    <field name="orderId"><default-field><hidden/></default-field></field>
+                                                    <field name="itemDescription"><default-field title="Description"><text-line size="60"/></default-field></field>
+                                                    <field name="productId"><default-field title="Product">
+                                                        <drop-down allow-empty="true">
+                                                            <entity-options key="${productId}" text="${pseudoId} - ${productName}">
+                                                                <entity-find entity-name="mantle.product.Product"><econdition field-name="ownerPartyId" from="_salesOrgId ?: '__NO_SALES_ORGANIZATION__'"/><order-by field-name="productName"/></entity-find>
+                                                            </entity-options>
+                                                        </drop-down>
+                                                    </default-field></field>
+                                                    <field name="quantity"><default-field><text-line size="8"/></default-field></field>
+                                                    <field name="unitAmount"><default-field title="Unit Price"><text-line size="12"/></default-field></field>
+
+                                                    <!-- GST Fields -->
+                                                    <field name="hsnSacCode"><default-field title="HSN/SAC Code"><text-line size="10"/></default-field></field>
+                                                    <field name="taxPercentage"><default-field title="GST Rate (%)">
+                                                        <drop-down no-current-selected-key="18">
+                                                            <option key="0" text="0% (Exempt)"/>
+                                                            <option key="5" text="5%"/>
+                                                            <option key="12" text="12%"/>
+                                                            <option key="18" text="18%"/>
+                                                            <option key="28" text="28%"/>
+                                                        </drop-down>
+                                                    </default-field></field>
+                                                    <!-- ZE-SALES-020 f/u (SL-042): line discount — GST charged on the discounted value -->
+                                                    <field name="discountPercent"><default-field title="Discount (%)"><text-line size="8" default-value="0"/></default-field></field>
+
+                                                    <field name="submitButton"><default-field title=""><submit text="Add Item" icon="add" style="q-btn q-btn-item non-selectable no-outline q-btn--standard q-btn--rectangle bg-indigo-8 text-white border-radius-sm shadow-2"/></default-field></field>
+                                                </form-single>
+                                            </container-dialog>
+                                        </container>
+                                    </container>
+                                </widgets>
+                            </section>
+                        </container>
+                        <container style="z-sales-table">
+                            <form-list name="OrderItemsForm" list="orderItems" skip-form="true" header-dialog="true" show-csv-button="true" show-xlsx-button="true" show-page-size="true">
+                                <field name="orderItemSeqId"><default-field title="#"><label text="${orderItemSeqId}" type="span" style="text-grey-7"/></default-field></field>
+                                <field name="itemDescription"><default-field title="Description"><label text="${itemDescription ?: 'N/A'}" type="strong" style="text-dark"/></default-field></field>
+                                <field name="hsnSacCode"><default-field title="HSN/SAC"><label text="${hsnSacCode ?: '-'}" type="span" style="zenith-badge grey"/></default-field></field>
+                                <field name="quantity"><default-field><label text="${quantity}" type="span" style="text-dark"/></default-field></field>
+                                <field name="unitAmount"><default-field title="Unit Price"><label text="${zinr.inr(ec.l10n.format(unitAmount, '#,##,##0.00'))}" type="span"/></default-field></field>
+                                <!-- ZE-SALES-020 f/u (SL-042): line discount column -->
+                                <field name="discount"><default-field title="Discount">
+                                    <label text="${(discountPercent ?: 0) != 0 ? (discountPercent + '% (₹' + zinr.inr(ec.l10n.format(discountAmount ?: 0, '#,##,##0.00')) + ')') : '-'}" type="span" style="text-grey-8 text-caption"/>
+                                </default-field></field>
+
+                                <!-- GST Breakdown -->
+                                <field name="gstBreakdown"><default-field title="Est. GST">
+                                    <label text="${igstRate ? ('IGST: ' + igstRate + '% (₹' + igstAmount + ')') : ''}" type="span" style="block text-grey-8 text-caption"/>
+                                    <label text="${cgstRate ? ('CGST: ' + cgstRate + '% (₹' + cgstAmount + ')') : ''}" type="span" style="block text-grey-8 text-caption"/>
+                                    <label text="${sgstRate ? ('SGST: ' + sgstRate + '% (₹' + sgstAmount + ')') : ''}" type="span" style="block text-grey-8 text-caption"/>
+                                    <label text="${!igstRate &amp;&amp; !cgstRate ? '-' : ''}" type="span" style="block text-grey-8 text-caption"/>
+                                </default-field></field>
+
+                                <field name="total"><default-field title="Total (Inc GST)">
+                                    <label text="${zinr.inr(ec.l10n.format(orderLineAmounts[orderItemSeqId].total, '#,##,##0.00'))}" type="span" style="text-weight-bold"/>
+                                </default-field></field>
+                                <field name="findButton"><header-field title="Find"><submit/></header-field></field>
+                            </form-list>
+                        </container>
                     </container>
-                </container>
-            </row-col>
-        </container-row>
 
-        <container style="zenith-card q-pa-md bg-white shadow-1 border-radius-md q-mb-lg">
-            <container style="row justify-between items-center q-mb-md border-bottom q-pb-sm">
-                <label text="Quote Items &amp; Estimated GST" type="h5" style="text-primary text-weight-bold q-my-none"/>
-                
-                <section name="quoteItemActions_write"><condition><expression>modCanWrite</expression></condition><widgets>
-                <container style="row items-center q-gutter-md">
-                    <link url="convertToOrder" text="Convert to Sales Order" icon="fa fa-shopping-cart" style="q-btn q-btn-item non-selectable no-outline q-btn--standard q-btn--rectangle bg-teal-7 text-white border-radius-sm shadow-2"/>
-                    
-                    <container-dialog id="AddItemDialog" button-text="Add Item" button-class="q-btn q-btn-item non-selectable no-outline q-btn--standard q-btn--rectangle bg-indigo-8 text-white border-radius-sm shadow-2">
-                        <form-single name="AddItemForm" transition="addItem">
+                    <container style="zqr-panel zqr-terms">
+                        <label text="Terms &amp; conditions" type="h2" style="zqr-section-title"/>
+                        <form-single name="TermsForm" transition="updateTerms" map="orderPart">
                             <field name="orderId"><default-field><hidden/></default-field></field>
-                            <field name="itemDescription"><default-field title="Description"><text-line size="60"/></default-field></field>
-                            <field name="productId"><default-field title="Product">
+                            <field name="orderPartSeqId"><default-field><hidden/></default-field></field>
+                            <field name="validThruDate"><default-field title="Validity Date"><date-time type="date"/></default-field></field>
+                            <field name="tradeTermEnumId"><default-field title="Freight Terms">
                                 <drop-down allow-empty="true">
-                                    <entity-options key="${productId}" text="${pseudoId} - ${productName}">
-                                        <entity-find entity-name="mantle.product.Product"><econdition field-name="ownerPartyId" from="_salesOrgId ?: '__NO_SALES_ORGANIZATION__'"/><order-by field-name="productName"/></entity-find>
-                                    </entity-options>
+                                    <list-options list="tradeTermList" key="${enumId}" text="${description}"/>
+                                    <option key="EXW" text="Ex Works (EXW)"/>
+                                    <option key="FOR" text="Free on Road (FOR Destination)"/>
                                 </drop-down>
                             </default-field></field>
-                            <field name="quantity"><default-field><text-line size="8"/></default-field></field>
-                            <field name="unitAmount"><default-field title="Unit Price"><text-line size="12"/></default-field></field>
-                            
-                            <!-- GST Fields -->
-                            <field name="hsnSacCode"><default-field title="HSN/SAC Code"><text-line size="10"/></default-field></field>
-                            <field name="taxPercentage"><default-field title="GST Rate (%)">
-                                <drop-down no-current-selected-key="18">
-                                    <option key="0" text="0% (Exempt)"/>
-                                    <option key="5" text="5%"/>
-                                    <option key="12" text="12%"/>
-                                    <option key="18" text="18%"/>
-                                    <option key="28" text="28%"/>
+                            <field name="settlementTermId"><default-field title="Payment Terms">
+                                <drop-down allow-empty="true">
+                                    <list-options list="settlementTermList" key="${settlementTermId}" text="${description}"/>
                                 </drop-down>
                             </default-field></field>
-                            <!-- ZE-SALES-020 f/u (SL-042): line discount — GST charged on the discounted value -->
-                            <field name="discountPercent"><default-field title="Discount (%)"><text-line size="8" default-value="0"/></default-field></field>
-
-                            <field name="submitButton"><default-field title=""><submit text="Add Item" icon="add" style="q-btn q-btn-item non-selectable no-outline q-btn--standard q-btn--rectangle bg-indigo-8 text-white border-radius-sm shadow-2"/></default-field></field>
+                            <field name="submitButton">
+                                <conditional-field name="termsSave_write" condition="modCanWrite" title=""><submit text="Save terms"/></conditional-field>
+                                <default-field title=""><label text="You have view-only access — changes are disabled." type="span" style="text-grey-7"/></default-field>
+                            </field>
+                            <field-layout>
+                                <field-ref name="orderId"/>
+                                <field-ref name="orderPartSeqId"/>
+                                <field-row>
+                                    <field-ref name="validThruDate"/>
+                                    <field-ref name="tradeTermEnumId"/>
+                                    <field-ref name="settlementTermId"/>
+                                    <field-ref name="submitButton"/>
+                                </field-row>
+                            </field-layout>
                         </form-single>
-                    </container-dialog>
-                </container>
-                </widgets></section>
-            </container>
-            <container style="z-sales-table">
-<form-list name="OrderItemsForm" list="orderItems" skip-form="true" header-dialog="true" show-csv-button="true" show-xlsx-button="true" show-page-size="true">
-                <field name="orderItemSeqId"><default-field title="#"><label text="${orderItemSeqId}" type="span" style="text-grey-7"/></default-field></field>
-                <field name="itemDescription"><default-field title="Description"><label text="${itemDescription ?: 'N/A'}" type="strong" style="text-dark"/></default-field></field>
-                <field name="hsnSacCode"><default-field title="HSN/SAC"><label text="${hsnSacCode ?: '-'}" type="span" style="zenith-badge grey"/></default-field></field>
-                <field name="quantity"><default-field><label text="${quantity}" type="span" style="text-dark"/></default-field></field>
-                <field name="unitAmount"><default-field title="Unit Price"><label text="${zinr.inr(ec.l10n.format(unitAmount, '#,##,##0.00'))}" type="span"/></default-field></field>
-                <!-- ZE-SALES-020 f/u (SL-042): line discount column -->
-                <field name="discount"><default-field title="Discount">
-                    <label text="${(discountPercent ?: 0) != 0 ? (discountPercent + '% (₹' + zinr.inr(ec.l10n.format(discountAmount ?: 0, '#,##,##0.00')) + ')') : '-'}" type="span" style="text-grey-8 text-caption"/>
-                </default-field></field>
-
-                <!-- GST Breakdown -->
-                <field name="gstBreakdown"><default-field title="Est. GST">
-                    <label text="${igstRate ? ('IGST: ' + igstRate + '% (₹' + igstAmount + ')') : ''}" type="span" style="block text-grey-8 text-caption"/>
-                    <label text="${cgstRate ? ('CGST: ' + cgstRate + '% (₹' + cgstAmount + ')') : ''}" type="span" style="block text-grey-8 text-caption"/>
-                    <label text="${sgstRate ? ('SGST: ' + sgstRate + '% (₹' + sgstAmount + ')') : ''}" type="span" style="block text-grey-8 text-caption"/>
-                    <label text="${!igstRate &amp;&amp; !cgstRate ? '-' : ''}" type="span" style="block text-grey-8 text-caption"/>
-                </default-field></field>
-
-                <field name="total"><default-field title="Total (Inc GST)">
-                    <label text="${zinr.inr(ec.l10n.format(orderLineAmounts[orderItemSeqId].total, '#,##,##0.00'))}" type="span" style="text-weight-bold"/>
-                </default-field></field>
-                <field name="findButton"><header-field title="Find"><submit/></header-field></field>
-                </form-list>
-</container>
+                    </container>
+                </widgets>
+            </section>
         </container>
-        </widgets>
-        </section>
     </widgets>
 </screen>

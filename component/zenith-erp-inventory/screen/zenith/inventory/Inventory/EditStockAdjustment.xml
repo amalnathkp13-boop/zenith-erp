@@ -34,15 +34,17 @@
             <if condition="!_acc.allowed"><return error="true" message="You do not have access to this stock adjustment."/></if>
             <service-call name="zenith.inventory.InventoryServices.apply#StockAdjustment" in-map="[stockAdjustmentId:stockAdjustmentId]"/>
         </actions>
-        <error-response url="."><parameter name="stockAdjustmentId"/></error-response>
         <default-response url="../StockAdjustments"/>
+        <error-response url="."><parameter name="stockAdjustmentId"/></error-response>
     </transition>
     <transition name="approveAdjustment">
         <actions>
             <if condition="ec.web.request.method != 'POST'"><return error="true" message="Stock adjustment changes require a POST request."/></if>
-            <service-call in-map="context" name="zenith.inventory.StockAdjustmentServices.approve#StockAdjustment"/>
+            <service-call name="zenith.inventory.StockAdjustmentServices.approve#StockAdjustment"
+                          in-map="[stockAdjustmentId:stockAdjustmentId, shortageReasonCode:shortageReasonCode, shortageReasonNote:shortageReasonNote]"/>
         </actions>
         <default-response url="."><parameter name="stockAdjustmentId"/></default-response>
+        <error-response url="."><parameter name="stockAdjustmentId"/></error-response>
     </transition>
     <transition name="reopenAdjustment">
         <actions>
@@ -78,6 +80,12 @@
             </entity-find>
             <set field="isDraft" from="adj?.statusId == 'AdjPending'"/>
             <set field="isApproved" from="adj?.statusId == 'AdjApproved'"/>
+            <set field="decreaseCount" from="itemList.count { it.actualQuantity != null &amp;&amp; it.systemQuantity != null &amp;&amp; it.actualQuantity &lt; it.systemQuantity }"/>
+            <if condition="(isDraft &amp;&amp; decreaseCount) || adj.shortageReasonCode">
+                <service-call name="zenith.inventory.StockAdjustmentServices.get#StockShortageReasons" out-map="shortageChoices"/>
+                <set field="shortageReasonOptions" from="shortageChoices.reasons.collect { code, label -&gt; [code:code, label:label] }"/>
+            </if>
+            <set field="approvalPath" from="(sri.renderMode in ['qvt','vuet'] || ec.web.request.requestURI.startsWith('/qapps/') ? '/qapps' : '/apps') + '/zenith/Inventory/EditStockAdjustment/approveAdjustment'"/>
             <entity-find entity-name="mantle.product.asset.Asset" list="countAssets">
                 <econdition field-name="ownerPartyId" from="orgId"/><econdition field-name="facilityId" from="adj.facilityId"/>
                 <econdition field-name="assetTypeEnumId" value="AstTpInventory"/><order-by field-name="productId,assetId"/>
@@ -123,15 +131,24 @@
             <container style="row items-center justify-between">
                 <container style="column">
                     <label text="Stock Adjustment" type="h5" style="text-primary text-weight-bold q-my-none"/>
-                    <label text="Correct your on-hand stock — for a physical recount, damage, expiry or a write-off. Add each product, type the real count you have, then approve and apply. Approved counts are locked; reopen them to correct a draft." type="p" style="text-grey-6 text-caption q-mb-none"/>
+                    <label text="Enter actual counts, review the differences, then approve and apply." type="p" style="text-grey-6 text-caption q-mb-none"/>
                 </container>
                 <label text="${isApplied ? 'Applied ✓' : (adj?.statusId == 'AdjApproved' ? 'Approved' : 'Draft')}" type="span" style="zenith-badge ${isApplied ? 'success' : 'warning'}"/>
             </container>
             <container style="row q-gutter-xl q-mt-sm">
-                <container style="column"><label text="Reason" type="p" style="text-grey-6 text-caption q-mb-none"/><label text="${typeNice}" type="p" style="text-dark text-weight-bold q-my-none"/></container>
+                <container style="column"><label text="Type" type="p" style="text-grey-6 text-caption q-mb-none"/><label text="${typeNice}" type="p" style="text-dark text-weight-bold q-my-none"/></container>
                 <container style="column"><label text="Date" type="p" style="text-grey-6 text-caption q-mb-none"/><label text="${adj?.adjustmentDate ? ec.l10n.format(adj.adjustmentDate,'dd-MMM-yyyy') : '—'}" type="p" style="text-dark text-weight-bold q-my-none"/></container>
                 <container style="column"><label text="Note" type="p" style="text-grey-6 text-caption q-mb-none"/><label text="${adj?.remarks ?: '—'}" type="p" style="text-dark q-my-none"/></container>
             </container>
+            <section name="ApprovedDecreaseReason" condition="!isDraft &amp;&amp; adj.shortageReasonCode">
+                <widgets>
+                    <container style="sa-decrease-record">
+                        <label text="Stock decrease reason" type="span" style="sa-decrease-caption"/>
+                        <label text="${shortageChoices.reasons[adj.shortageReasonCode] ?: adj.shortageReasonCode}" type="strong"/>
+                        <label condition="adj.shortageReasonNote" text="${adj.shortageReasonNote}" type="p"/>
+                    </container>
+                </widgets>
+            </section>
         </container>
 
         <!-- ZE-INV-010: Add-item form is a write action — hidden for view-only users -->
@@ -190,11 +207,7 @@
             <condition><expression>isDraft &amp;&amp; itemList &amp;&amp; invCanWrite</expression></condition>
             <widgets>
                 <container-dialog id="ApproveCountsDialog" button-text="Approve counts">
-                    <label text="Approve these counts and lock the adjustment? You can reopen approved counts before applying." type="p"/>
-                    <form-single name="ApproveCountsForm" transition="approveAdjustment">
-                        <field name="stockAdjustmentId"><default-field><hidden/></default-field></field>
-                        <field name="submitButton"><default-field title="Confirm approval"><submit/></default-field></field>
-                    </form-single>
+                    <render-mode><text type="html,qvt,vuet" location="component://zenith-erp-inventory/template/inventory/ApproveStockAdjustment.html.ftl" template="true" encode="false"/></render-mode>
                 </container-dialog>
             </widgets>
         </section>

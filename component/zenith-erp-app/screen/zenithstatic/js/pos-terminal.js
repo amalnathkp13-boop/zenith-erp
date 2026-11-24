@@ -937,7 +937,7 @@ window._posOffline = (function () {
     var leaseReady = false,
         leasePending = false;
     function begin() {
-        if (localClose) return false;
+        if (localClose || !afScope?.isConnected || !tCtx().sessionId) return false;
         if (!storageReady || (window._posCartWriteInFlight && window._posCartWriteInFlight())) return false;
         if (!leaseReady) {
             if (!leasePending) {
@@ -2073,6 +2073,12 @@ window._posOffline = (function () {
         localEditing = false;
         draft = null; holds = []; cart = []; snapshot = null;
         banner(false);
+        // Default/menu entry must not resume a shift that this browser already closed.
+        // This also handles a deferred-close notification arriving after billing booted.
+        if (!new URL(location.href).searchParams.has('sessionId')) {
+            location.replace('/apps/zenith/pos/Terminal?chooseTerminal=Y');
+            return;
+        }
         var dialog = document.getElementById('posSessionClosed');
         if (!dialog) {
             dialog = document.createElement('dialog');
@@ -2084,7 +2090,7 @@ window._posOffline = (function () {
                 '<h2 id="pos-closed-title" style="margin:0 0 12px;font-size:24px">Session closed</h2>' +
                 '<p class="pos-closed-status" role="status"></p><p>Closing cash: ₹' + f2(request.closingCash) + '</p>' +
                 '<div style="display:flex;gap:12px;margin-top:20px"><button type="button" class="pos-closed-history" style="padding:10px 14px;border:1px solid #7c3aed;border-radius:8px;background:#fff;color:#6d28d9;font:inherit">Bill History</button>' +
-                '<a href="/apps/zenith/pos/PosTerminals" style="padding:10px 14px;border-radius:8px;background:#7c3aed;color:white;text-decoration:none">Back to counters</a></div></div>';
+                '<a href="/apps/zenith/pos/Terminal?chooseTerminal=Y" style="padding:10px 14px;border-radius:8px;background:#7c3aed;color:white;text-decoration:none">Back to counters</a></div></div>';
             dialog.addEventListener('cancel', function (event) { event.preventDefault(); });
             dialog.querySelector('button').addEventListener('click', function () {
                 if (window.posOpenHistory) window.posOpenHistory();

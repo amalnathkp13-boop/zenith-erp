@@ -1,7 +1,7 @@
 /* Durable POS offline queues and close requests for the signed-in organization and cashier. */
 (function () {
     if (window.PosDeferredClose) return;
-    var running, retryTimer, retryDelay = 5000;
+    var running, retryTimer, retryDelay = 5000, sessionWork = new Map();
     function identity() {
         var el = document.getElementById('pos-sync-context');
         return el && el.dataset.organization && el.dataset.user ?
@@ -161,6 +161,26 @@
             catch (error) { /* keep this terminal's queue for the next reachable attempt */ }
         }
     }
+    function syncSession(who, sessionId) {
+        var lockName = 'zenith-pos-close-session:' + JSON.stringify([who.organization,who.user,sessionId]);
+        if (sessionWork.has(lockName)) return sessionWork.get(lockName);
+        async function sync() {
+            assertIdentity(who);
+            // Another tab may have finished this request while we waited for its lock.
+            var request = await get(sessionId);
+            if (!request || request.syncedAt || request.organizationPartyId !== who.organization || request.userId !== who.user) return;
+            try { await reconcile(request); }
+            catch (error) { request.error = error.message; }
+            assertIdentity(who);
+            await write(function (tx) { tx.objectStore('state').put({key:key(sessionId), value:request}); });
+            notify(request);
+            return request;
+        }
+        var work = (navigator.locks ? navigator.locks.request(lockName, sync) : sync())
+            .finally(function () { sessionWork.delete(lockName); });
+        sessionWork.set(lockName, work);
+        return work;
+    }
     async function process() {
         var who = identity();
         if (!who || !navigator.onLine) return;
@@ -171,14 +191,8 @@
             if (!row.key.startsWith('session-close:') || !request || request.syncedAt ||
                 request.organizationPartyId !== who.organization || request.userId !== who.user) continue;
             closingSessions.add(request.sessionId);
-            try { await reconcile(request); }
-            catch (error) { request.error = error.message; }
-            // Do not write another tenant's response if the active organization changed during the request.
-            var current = identity();
-            if (!current || current.organization !== who.organization || current.user !== who.user) return;
-            await write(function (tx) { tx.objectStore('state').put({key:row.key, value:request}); });
-            notify(request);
-            if (!request.syncedAt) needsRetry = true;
+            var pendingClose = await syncSession(who, request.sessionId);
+            if (pendingClose && !pendingClose.syncedAt) needsRetry = true;
         }
         await flushOpenSales(who, closingSessions);
         if (needsRetry) {
@@ -193,14 +207,69 @@
         }
     }
     function flush() {
-        if (running) return running;
         var who = identity();
         if (!who || !navigator.onLine) return Promise.resolve();
+        if (running) return running;
         var work = navigator.locks ? navigator.locks.request('zenith-pos-close:' + who.organization + ':' + who.user, process) : process();
         running = work.catch(function () {}).finally(function () { running = null; });
         return running;
     }
-    window.PosDeferredClose = {get:get, save:save, flush:flush};
+    async function prepareOpen(terminalId) {
+        var who = identity();
+        if (!who) throw Error('Sign in to open this counter.');
+        var pending = (await read('state', IDBKeyRange.bound('session-close:', 'session-close:\uffff')))
+            .map(function (row) { return row.value; }).filter(function (request) {
+                return request && request.terminalId === terminalId && !request.syncedAt &&
+                    request.organizationPartyId === who.organization && request.userId === who.user;
+            });
+        assertIdentity(who);
+        if (!pending.length) return;
+        if (!navigator.onLine) throw Error('Reconnect to finish closing the previous session before opening this counter. Your saved bills are retained.');
+        for (var request of pending) {
+            var state = await post('touchSession', {sessionId:request.sessionId,activity:'N'});
+            if (!state.success) throw Error('The previous session could not be checked. Please retry.');
+            if (state.open === false) continue;
+            // Reconcile just this counter, without waiting for other counters' background retries.
+            await syncSession(who, request.sessionId);
+            state = await post('touchSession', {sessionId:request.sessionId,activity:'N'});
+            if (!state.success || state.open !== false) {
+                var remaining = await get(request.sessionId);
+                throw Error('The previous session could not finish closing. Your saved bills are retained. ' +
+                    (remaining?.error || 'Please retry once the connection is available.'));
+            }
+        }
+        assertIdentity(who);
+        flush();
+    }
+    window.PosDeferredClose = {get:get, save:save, flush:flush, prepareOpen:prepareOpen};
+    var openingForms = new WeakSet(), approvedForms = new WeakSet();
+    document.addEventListener('submit', function (event) {
+        var form = event.target;
+        if (form.id !== 'OpenSessionForm' || !new URL(form.action, location.href).pathname.endsWith('/pos/Terminal/openSession')) return;
+        if (approvedForms.delete(form)) return;
+        event.preventDefault(); event.stopImmediatePropagation();
+        if (openingForms.has(form)) return;
+        openingForms.add(form);
+        var button = event.submitter || form.querySelector('button[type="submit"]');
+        var status = form.querySelector('[data-pos-open-status]');
+        if (!status) {
+            status = document.createElement('p'); status.dataset.posOpenStatus = '';
+            status.setAttribute('role','status'); form.append(status);
+        }
+        status.style.color = '#64748b'; status.textContent = 'Opening terminal…';
+        if (button) button.disabled = true;
+        prepareOpen(new FormData(form).get('terminalId')).then(function () {
+            if (!form.isConnected) return;
+            approvedForms.add(form);
+            if (button) button.disabled = false;
+            form.requestSubmit(button || undefined);
+        }).catch(function (error) {
+            status.style.color = '#c62828'; status.textContent = error.message;
+        }).finally(function () {
+            openingForms.delete(form);
+            if (button) button.disabled = false;
+        });
+    }, true);
     var channel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('zenith-pos-session-close') : null;
     function notify(request) {
         window.dispatchEvent(new CustomEvent('possessionclosed', {detail:request}));

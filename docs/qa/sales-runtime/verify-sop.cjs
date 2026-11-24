@@ -102,8 +102,11 @@ module.exports=async function({ctx,p,post,invoke,q,rows,inv,count,check,base,out
    });
   }
   const empty=await post('CreateOrder','createOrder',{customerPartyId:'SALES_QA_CUST_A',facilityId:'SALES_QA_FAC_A'}),id=createdId(empty,'orderId');check('SOP empty order created',!!id,{id});await post('EditOrder','convertToInvoice',{orderId:id});check('SOP empty order has no invoice link',count('order_item_billing',`order_id='${id}'`)===0,{id});
-  await page('EditQuotation?orderId=SALES_QA_QUOTE');await p.getByText('Add Item',{exact:true}).first().click();
-  const rates=await p.locator('select[name="taxPercentage"] option').evaluateAll(es=>es.map(e=>e.value));check('SOP GST dropdown offers only supported slabs',rates.join(',')==='0,5,12,18,28',rates);
+  await page('EditQuotation?orderId=SALES_QA_QUOTE');
+  await p.locator('#AddItemDialog-button').click();
+  const dialog=p.locator('#AddItemDialog');
+  await dialog.waitFor({state:'visible'});
+  const rates=await dialog.locator('select[name="taxPercentage"] option').evaluateAll(es=>es.map(e=>e.value));check('SOP GST dropdown offers only supported slabs',rates.join(',')==='0,5,12,18,28',rates);
  });
  await scenario(['SL-014','SL-015','SL-022','XF-002'],'A changed tax jurisdiction preserves the accepted rate and requires revision for a changed price',async()=>{
   const customer='SALES_QA_CUST_INTER';

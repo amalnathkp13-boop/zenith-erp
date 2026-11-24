@@ -384,7 +384,7 @@
             <container style="cp-actions">
                 <link url="/apps/zenith/sales/CreateQuotation" text="New Quote" parameter-map="[customerPartyId:partyId]" link-type="anchor" style="cp-btn cp-btn-outline"/>
                 <link url="/apps/zenith/sales/CreateOrder" text="New Order" parameter-map="[customerPartyId:partyId]" link-type="anchor" style="cp-btn ${isVendorRole ? 'cp-btn-outline' : 'cp-btn-primary'}"/>
-                <link url="/apps/zenith/Purchase/CreatePurchaseOrder" text="New PO" parameter-map="[vendorPartyId:partyId]" link-type="anchor" style="cp-btn ${isVendorRole ? 'cp-btn-primary' : 'cp-btn-outline'}"/>
+                <link url="/apps/zenith/Purchase/FindPurchaseOrder" text="New PO" parameter-map="[vendorPartyId:partyId,openCreate:'Y']" link-type="anchor" style="cp-btn ${isVendorRole ? 'cp-btn-primary' : 'cp-btn-outline'}"/>
                 <!-- ZE-CONTACTS-EDIT-REDESIGN: overflow menu (real secondary actions, native <details>, no JS). -->
                 <render-mode><text type="html,qvt,vuet"><![CDATA[
                   <details class="cpe-of">

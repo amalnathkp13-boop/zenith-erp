@@ -476,6 +476,7 @@
             <parameter name="priceListId"/>
             <parameter name="salesChannelEnumId"/>
             <parameter name="regionGeoId"/>
+            <parameter name="buying" type="Boolean" default="false"/>
             <parameter name="orderDate" type="Timestamp" default="ec.user.nowTimestamp"/>
             <!-- ZE-PRC-025: internal accumulator of price-list ids already visited in the parent-fallback
                  recursion (callers never pass it). Makes the recursion cycle-safe. -->
@@ -507,6 +508,14 @@
                 <return error="true" message="Product ${productId} not found"/>
             </if>
             <set field="listPrice" from="product.mrpAmount ?: BigDecimal.ZERO" type="BigDecimal"/>
+            <if condition="buying">
+                <entity-find-one entity-name="zenith.erp.base.CompanySettings" value-field="catalogCurrency">
+                    <field-map field-name="organizationPartyId"/><field-map field-name="settingKey" value="CURRENCY_UOM_ID"/>
+                </entity-find-one>
+                <if condition="currencyUomId != (catalogCurrency?.settingValue ?: 'INR')">
+                    <set field="listPrice" from="BigDecimal.ZERO"/>
+                </if>
+            </if>
             <set field="unitPrice" from="listPrice"/>
             <set field="priceSource" value="ProductListPrice"/>
 
@@ -575,15 +584,15 @@
             </if>
 
             <!-- 1d: Organization default price list -->
-            <if condition="!effectivePriceListId &amp;&amp; organizationPartyId">
+            <if condition="!effectivePriceListId &amp;&amp; organizationPartyId &amp;&amp; !_visitedPriceLists">
                 <entity-find entity-name="zenith.erp.pricing.PriceList" list="defPls" limit="1">
                     <econdition field-name="organizationPartyId"/>
-                    <econdition field-name="priceListTypeEnumId" value="PltSelling"/>
-                    <econdition field-name="isDefault" value="Y"/>
+                    <econdition field-name="priceListTypeEnumId" from="buying ? 'PltBuying' : 'PltSelling'"/>
+                    <econdition field-name="isDefault" from="buying ? null : 'Y'" ignore-if-empty="true"/>
                     <econdition field-name="isActive" value="Y"/>
                     <econdition field-name="currencyUomId" ignore-if-empty="true"/>
                     <date-filter valid-date="now" from-field-name="validFromDate" thru-field-name="validThruDate"/>
-                    <order-by field-name="priceListId"/>
+                    <order-by field-name="-isDefault,priceListId"/>
                 </entity-find>
                 <if condition="defPls">
                     <set field="effectivePriceListId" from="defPls[0].priceListId"/>
@@ -598,6 +607,7 @@
                     <econdition field-name="organizationPartyId" from="organizationPartyId ?: '__NO_ORGANIZATION__'"/>
                     <econdition field-name="isActive" value="Y"/>
                     <econdition field-name="currencyUomId" ignore-if-empty="true"/>
+                    <econdition field-name="priceListTypeEnumId" from="buying ? 'PltBuying' : null" ignore-if-empty="true"/>
                     <date-filter valid-date="now" from-field-name="validFromDate" thru-field-name="validThruDate"/>
                 </entity-find>
                 <if condition="!eligibleLists"><set field="effectivePriceListId" from="null"/></if>
@@ -621,7 +631,7 @@
                     <if condition="plItem.priceTypeEnumId == 'PtpFixed'">
                         <set field="unitPrice" from="plItem.unitPrice" type="BigDecimal"/>
                         <set field="priceSource" value="PriceList"/>
-                    <else-if condition="plItem.priceTypeEnumId == 'PtpDiscount' &amp;&amp; plItem.discountPercent != null">
+                    <else-if condition="plItem.priceTypeEnumId == 'PtpDiscount' &amp;&amp; plItem.discountPercent != null &amp;&amp; (!buying || listPrice &gt; 0)">
                         <set field="unitPrice" from="(listPrice * (100 - plItem.discountPercent) / 100).setScale(2, java.math.RoundingMode.HALF_UP)" type="BigDecimal"/>
                         <set field="priceSource" value="PriceListDiscount"/>
                     </else-if></if>
@@ -652,7 +662,7 @@
                                           in-map="[productId:productId, quantity:quantity,
                                                    priceListId:pl.parentPriceListId, orderDate:orderDate,
                                                    organizationPartyId:organizationPartyId, currencyUomId:currencyUomId,
-                                                   _visitedPriceLists:_seenPls]"
+                                                   buying:buying, _visitedPriceLists:_seenPls]"
                                           out-map="parentResult"/>
                             <if condition="parentResult.priceSource != 'ProductListPrice'">
                                 <set field="unitPrice" from="parentResult.unitPrice"/>
@@ -681,7 +691,7 @@
                     <if condition="vp.unitPrice != null">
                         <set field="unitPrice" from="vp.unitPrice" type="BigDecimal"/>
                         <set field="priceSource" value="VolumePricing"/>
-                    <else-if condition="vp.discountPercent != null">
+                    <else-if condition="vp.discountPercent != null &amp;&amp; (!buying || (unitPrice != null &amp;&amp; (priceSource != 'ProductListPrice' || listPrice &gt; 0)))">
                         <set field="unitPrice" from="(unitPrice * (100 - vp.discountPercent) / 100).setScale(2, java.math.RoundingMode.HALF_UP)" type="BigDecimal"/>
                         <set field="priceSource" value="VolumeDiscount"/>
                     </else-if></if>
@@ -694,7 +704,7 @@
                  a cross-tenant leak that silently discounted other tenants (e.g. a null-org "QA_Discount_10"
                  turned DOODLE's ₹80 volume tier into ₹72, reported as "volume tier ignored"). Now a rule
                  applies only to its own org, and with no org in context NO rules apply (rules stays unset). -->
-            <if condition="organizationPartyId &amp;&amp; !_visitedPriceLists">
+            <if condition="!buying &amp;&amp; organizationPartyId &amp;&amp; !_visitedPriceLists">
                 <entity-find entity-name="zenith.erp.pricing.PricingRule" list="rules">
                     <econdition field-name="isActive" value="Y"/>
                     <econdition field-name="organizationPartyId" from="organizationPartyId"/>

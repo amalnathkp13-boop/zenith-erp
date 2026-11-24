@@ -171,17 +171,19 @@ def verify_draft_editor():
     order_page = "/apps/zenith/Purchase/EditPurchaseOrder"
     default_qty = form_inputs(order_page + "?orderId=" + po, "addItem")["quantity"]
     assert Decimal(default_qty) == 1
+    for shell, qty, amount in [("apps", "1", "12.5"), ("qapps", "5", "10.25")]:
+        quote_url = f"{BASE}/{shell}/zenith/Purchase/EditPurchaseOrder/quoteLinePrice?" + urllib.parse.urlencode(
+            dict(orderId=po, productId="PP_QA_PRODUCT_A", quantity=qty))
+        with user[0].open(quote_url, timeout=120) as response:
+            quote = json.load(response)
+        assert quote == {"unitAmount": amount, "currency": "INR", "source": "Buying price list"}, quote
     for qty, description in [(default_qty, ""), ("2", "Custom packing line")]:
         post(user, order_page + "/addItem", dict(orderId=po, productId="PP_QA_PRODUCT_A",
-             itemDescription=description, quantity=qty, unitAmount="12.50"))
+             itemDescription=description, quantity=qty, useCatalogPrice="true"))
     items = query(f"SELECT ORDER_ITEM_SEQ_ID,ITEM_DESCRIPTION FROM ORDER_ITEM WHERE ORDER_ID='{po}' ORDER BY ORDER_ITEM_SEQ_ID")
     catalog_name = row("product", "product_id", "PP_QA_PRODUCT_A")["product_name"]
     assert [item["item_description"] for item in items] == [catalog_name, "Custom packing line"]
     first, second = [item["order_item_seq_id"] for item in items]
-    invoke("updatePo", orderId=po, statusId="OrderPlaced")
-    if row("order_header", "order_id", po)["status_id"] == "OrderPlaced":
-        invoke("updatePo", orderId=po, statusId="OrderApproved")
-
     grn = invoke("create", purchaseOrderId=po, receiptDate="2026-02-03")["grnId"]
     assert invoke("get", grnId=grn)["order"]["currencyUomId"] == "INR"
     path = "/apps/zenith/Purchase/GoodsReceiptDetail"
@@ -209,6 +211,17 @@ def verify_draft_editor():
     post(user, path + "/saveDraft", {**current, "cost_" + first:"22", "qty_" + second:"3",
                                      "vendorInvoiceNumber":"INVALID"})
     assert saved_state() == saved, "A bad second line committed part of the draft"
+    post(user, path + "/saveDraft", {**current, "draftAction":"approvePo"})
+    assert row("order_header", "order_id", po)["status_id"] == "OrderOpen"
+    post(user, path + "/saveDraft", {**current, "draftAction":"placePo"})
+    status = row("order_header", "order_id", po)["status_id"]
+    assert status in ("OrderPlaced", "OrderApproved"), status
+    if status == "OrderPlaced":
+        post(user, path + "/saveDraft", {**form_inputs(url, "saveDraft"), "facilityId":"PP_QA_A_STORE",
+                                        "draftAction":"approvePo"})
+    assert row("order_header", "order_id", po)["status_id"] == "OrderApproved"
+    current = form_inputs(url, "saveDraft")
+    current["facilityId"] = "PP_QA_A_STORE"
     post(user, path + "/saveDraft", {**current, "draftAction":"send"})
     assert saved_state() == ("GrnPending", *saved[1:])
     assert quantity() == initial_stock

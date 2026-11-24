@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
+    <service verb="get" noun="StockShortageReasons">
+        <out-parameters><parameter name="reasons" type="Map"/></out-parameters>
+        <actions>
+            <set field="reasons" from="[CountDiscrepancy:'Physical count discrepancy', Damaged:'Damaged stock', Expired:'Expired stock', Lost:'Missing or lost stock', UnrecordedIssue:'Unrecorded stock issue', Other:'Others']"/>
+        </actions>
+    </service>
     <service verb="get" noun="StockAdjustmentScope">
         <out-parameters><parameter name="organizationPartyId"/></out-parameters>
         <actions><script><![CDATA[
@@ -204,11 +210,33 @@
         </actions>
     </service>
     <service verb="approve" noun="StockAdjustment">
-        <in-parameters><parameter name="stockAdjustmentId" required="true"/></in-parameters>
+        <in-parameters>
+            <parameter name="stockAdjustmentId" required="true"/>
+            <parameter name="shortageReasonCode"/>
+            <parameter name="shortageReasonNote"/>
+        </in-parameters>
         <actions>
             <service-call name="zenith.inventory.StockAdjustmentServices.require#StockAdjustmentWrite" in-map="[stockAdjustmentId:stockAdjustmentId, requiredStatus:'AdjPending']" out-map="guard"/>
-            <service-call name="zenith.inventory.StockAdjustmentServices.validate#StockAdjustmentCounts" in-map="[stockAdjustmentId:stockAdjustmentId]"/>
-            <service-call name="update#zenith.erp.inventory.StockAdjustment" in-map="[stockAdjustmentId:stockAdjustmentId, statusId:'AdjApproved']"/>
+            <service-call name="zenith.inventory.StockAdjustmentServices.validate#StockAdjustmentCounts" in-map="[stockAdjustmentId:stockAdjustmentId]" out-map="validated"/>
+            <if condition="ec.message.hasError()"><return/></if>
+            <if condition="validated.plans.any { it.line.actualQuantity &lt; it.line.systemQuantity }">
+                <service-call name="zenith.inventory.StockAdjustmentServices.get#StockShortageReasons" out-map="choices"/>
+                <if condition="!choices.reasons.containsKey(shortageReasonCode)">
+                    <return error="true" message="Choose a reason for the stock decrease before approving."/>
+                </if>
+                <set field="shortageReasonNote" from="shortageReasonNote?.trim() ?: null"/>
+                <if condition="shortageReasonCode == 'Other' &amp;&amp; !shortageReasonNote">
+                    <return error="true" message="Enter a short explanation when you select Others."/>
+                </if>
+                <if condition="(shortageReasonNote?.length() ?: 0) &gt; 240">
+                    <return error="true" message="Keep the stock decrease explanation to 240 characters or fewer."/>
+                </if>
+            <else>
+                <set field="shortageReasonCode" from="null"/>
+                <set field="shortageReasonNote" from="null"/>
+            </else></if>
+            <service-call name="update#zenith.erp.inventory.StockAdjustment"
+                          in-map="[stockAdjustmentId:stockAdjustmentId, statusId:'AdjApproved', shortageReasonCode:shortageReasonCode, shortageReasonNote:shortageReasonNote]"/>
             <message>Counts approved. Apply them to update stock, or reopen to correct the draft.</message>
         </actions>
     </service>

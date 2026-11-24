@@ -12,6 +12,13 @@
     if (ec.message.hasError()) throw new IllegalStateException('Fixture did not load')
     ec.entity.find('zenith.erp.base.CompanySettings').condition('organizationPartyId','PP_QA_A')
         .condition('settingKey','CURRENCY_UOM_ID').one().set('settingValue','INR').update()
+    def buying = [organizationPartyId:'PP_QA_A',priceListId:'PP_QA_GRN_BUY']
+    ec.entity.makeValue('zenith.erp.pricing.PriceList').setAll(buying + [priceListName:'Disposable buying arithmetic',
+        priceListTypeEnumId:'PltBuying',currencyUomId:'INR',isDefault:'Y',isActive:'Y']).create()
+    ec.entity.makeValue('zenith.erp.pricing.PriceListItem').setAll(buying + [priceListItemId:'PP_QA_GRN_PRICE',
+        productId:'PP_QA_PRODUCT_A',unitPrice:12.50G,minQuantity:1G,priceTypeEnumId:'PtpFixed']).create()
+    ec.entity.makeValue('zenith.erp.pricing.VolumePricing').setAll(buying + [volumePricingId:'PP_QA_GRN_TIER',
+        productId:'PP_QA_PRODUCT_A',unitPrice:10.25G,minQuantity:5G]).create()
     ec.entity.makeValue('mantle.account.invoice.Invoice').setAll([invoiceId:'PP_QA_GRN_BILL_INR',
         invoiceTypeEnumId:'InvoicePurchase', statusId:'InvoiceApproved', currencyUomId:'INR',
         fromPartyId:'PP_QA_SUPPLIER_A', toPartyId:'PP_QA_A', invoiceDate:ec.user.nowTimestamp,
@@ -62,4 +69,5 @@
     ec.message.clearErrors()
     ec.web.sendJsonResponse([result:result,errors:errors])
 ]]></script></actions><default-response type="none"/></transition>
+<widgets/>
 </screen>

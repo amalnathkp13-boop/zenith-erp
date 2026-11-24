@@ -107,95 +107,79 @@
     </actions>
 
     <widgets>
-        <container style="q-mb-md">
-            <link url="findQuotation" text="Back to Quotes" icon="fa fa-arrow-left" style="q-btn--flat bg-grey-2 text-dark border-radius-md q-px-md"/>
+        <render-mode><text type="html,qvt"><![CDATA[
+            <img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" onload="if(!document.getElementById('zqc-create-css')){var l=document.createElement('link');l.id='zqc-create-css';l.rel='stylesheet';l.href='/zenithstatic/css/quote-create.css?v=6';document.head.appendChild(l);}if(!document.getElementById('zqc-create-js')){var s=document.createElement('script');s.id='zqc-create-js';s.src='/zenithstatic/js/quote-create.js?v=3';document.head.appendChild(s);}"/>
+        ]]></text></render-mode>
+        <container style="zqc-create-card">
+            <container style="zqc-create-header">
+                <label text="New quotation" type="h4" style="zqc-create-title"/>
+                <link url="findQuotation" text="Back" icon="fa fa-arrow-left" style="zqc-back"/>
+            </container>
+            <form-single name="CreateQuoteForm" transition="createQuotation">
+                <field name="salesOpportunityId"><default-field><hidden/></default-field></field>
+                <field name="organizationPartyId"><default-field><hidden default-value="${activeOrgId}"/></default-field></field>
+                <field name="supplierName"><default-field title="From · Your business"><display text="${activeOrgName}"/></default-field></field>
+                <field name="customerPartyId"><default-field title="To · Customer">
+                    <drop-down allow-empty="true">
+                        <entity-options key="${partyId}" text="${(organizationName ?: ((firstName?:'') + ' ' + (lastName?:'')).trim()) ?: partyId} [${partyId}]">
+                            <entity-find entity-name="mantle.party.PartyDetailAndRole" distinct="true">
+                                <econdition field-name="roleTypeId" value="Customer"/>
+                                <econdition field-name="ownerPartyId" from="_salesOrgId ?: '__NO_SALES_ORGANIZATION__'"/>
+                                <order-by field-name="organizationName,firstName,lastName"/>
+                            </entity-find>
+                        </entity-options>
+                    </drop-down>
+                </default-field></field>
+
+                <field name="orderDate"><default-field title="Quote Date"><date-time type="date" default-value="${ec.l10n.format(ec.user.nowTimestamp, 'yyyy-MM-dd')}"/></default-field></field>
+                <field name="settlementTermId"><default-field title="Payment Terms">
+                    <drop-down allow-empty="true">
+                        <entity-options key="${settlementTermId}" text="${description}">
+                            <entity-find entity-name="mantle.account.invoice.SettlementTerm">
+                                <order-by field-name="description"/>
+                            </entity-find>
+                        </entity-options>
+                    </drop-down>
+                </default-field></field>
+
+                <field name="isReverseCharge"><default-field title="Reverse Charge">
+                    <drop-down no-current-selected-key="N">
+                        <option key="N" text="No"/><option key="Y" text="Yes"/>
+                    </drop-down>
+                </default-field></field>
+                <field name="isExport"><default-field title="Export Quote">
+                    <drop-down no-current-selected-key="N">
+                        <option key="N" text="No"/><option key="Y" text="Yes"/>
+                    </drop-down>
+                </default-field></field>
+
+                <field name="submitButton">
+                    <conditional-field name="save_write" condition="modCanWrite" title="">
+                        <submit text="Create quotation"/>
+                    </conditional-field>
+                    <default-field title=""><label text="You have view-only access — changes are disabled." type="span" style="text-grey-7"/></default-field>
+                </field>
+
+                <field-layout>
+                    <field-row>
+                        <field-ref name="supplierName"/>
+                        <field-ref name="customerPartyId"/>
+                    </field-row>
+                    <field-ref name="organizationPartyId"/>
+                    <field-ref name="salesOpportunityId"/>
+                    <field-row>
+                        <field-ref name="orderDate"/>
+                        <field-ref name="settlementTermId"/>
+                    </field-row>
+                    <field-row>
+                        <field-ref name="isReverseCharge"/>
+                        <field-ref name="isExport"/>
+                    </field-row>
+                    <field-row>
+                        <field-ref name="submitButton"/>
+                    </field-row>
+                </field-layout>
+            </form-single>
         </container>
-
-        <container-row>
-            <row-col lg="8" md="10" sm="12" style="q-mx-auto">
-                <container style="zenith-card bg-white shadow-4 border-radius-xl q-pa-xl q-mt-md">
-                    <container-row>
-                        <row-col>
-                            <container style="row items-center q-mb-lg">
-                                <container style="q-pa-md bg-indigo-1 border-radius-md q-mr-md text-indigo-8">
-                                    <render-mode><text type="html"><![CDATA[<q-icon name="request_quote" class="text-h3"/>]]></text></render-mode>
-                                </container>
-                                <container>
-                                    <label text="Create Sales Quotation" type="h4" style="text-dark text-weight-bolder q-mt-none q-mb-xs"/>
-                                    <label text="Pick the customer and date to start a new price quote." type="p" style="text-grey-7 text-subtitle1 q-mb-none"/>
-                                </container>
-                            </container>
-                            <label text="" type="hr" style="q-mb-xl bg-grey-3" size="1"/>
-                        </row-col>
-                    </container-row>
-
-                    <form-single name="CreateQuoteForm" transition="createQuotation">
-                        <field name="salesOpportunityId"><default-field><hidden/></default-field></field>
-                        <field name="organizationPartyId"><default-field><hidden default-value="${activeOrgId}"/></default-field></field>
-                        <field name="supplierName"><default-field title="From (Supplier)"><display text="${activeOrgName}"/></default-field></field>
-                        <field name="customerPartyId"><default-field title="To (Customer)">
-                            <drop-down allow-empty="true">
-                                <entity-options key="${partyId}" text="${(organizationName ?: ((firstName?:'') + ' ' + (lastName?:'')).trim()) ?: partyId} [${partyId}]">
-                                    <entity-find entity-name="mantle.party.PartyDetailAndRole" distinct="true">
-                                        <econdition field-name="roleTypeId" value="Customer"/>
-                                        <econdition field-name="ownerPartyId" from="_salesOrgId ?: '__NO_SALES_ORGANIZATION__'"/>
-                                        <order-by field-name="organizationName,firstName,lastName"/>
-                                    </entity-find>
-                                </entity-options>
-                            </drop-down>
-                        </default-field></field>
-                        
-                        <field name="orderDate"><default-field title="Quote Date"><date-time type="date" default-value="${ec.l10n.format(ec.user.nowTimestamp, 'yyyy-MM-dd')}"/></default-field></field>
-                        <field name="settlementTermId"><default-field title="Payment Terms">
-                            <drop-down allow-empty="true">
-                                <entity-options key="${settlementTermId}" text="${description}">
-                                    <entity-find entity-name="mantle.account.invoice.SettlementTerm">
-                                        <order-by field-name="description"/>
-                                    </entity-find>
-                                </entity-options>
-                            </drop-down>
-                        </default-field></field>
-                        
-                        <field name="isReverseCharge"><default-field title="Reverse Charge">
-                            <drop-down no-current-selected-key="N">
-                                <option key="N" text="No"/><option key="Y" text="Yes"/>
-                            </drop-down>
-                        </default-field></field>
-                        <field name="isExport"><default-field title="Export Quote">
-                            <drop-down no-current-selected-key="N">
-                                <option key="N" text="No"/><option key="Y" text="Yes"/>
-                            </drop-down>
-                        </default-field></field>
-                        
-                        <field name="submitButton">
-                            <conditional-field name="save_write" condition="modCanWrite" title="">
-                                <submit text="Create Quotation" icon="request_quote" style="bg-indigo-8 text-white shadow-3 q-px-xl q-py-sm text-subtitle1 text-weight-bold q-mt-lg glossy"/>
-                            </conditional-field>
-                            <default-field title=""><label text="You have view-only access — changes are disabled." type="span" style="text-grey-7"/></default-field>
-                        </field>
-
-                        <field-layout>
-                            <field-row>
-                                <field-ref name="supplierName"/>
-                                <field-ref name="customerPartyId"/>
-                            </field-row>
-                            <field-ref name="organizationPartyId"/>
-                            <field-ref name="salesOpportunityId"/>
-                            <field-row>
-                                <field-ref name="orderDate"/>
-                                <field-ref name="settlementTermId"/>
-                            </field-row>
-                            <field-row>
-                                <field-ref name="isReverseCharge"/>
-                                <field-ref name="isExport"/>
-                            </field-row>
-                            <field-row>
-                                <field-ref name="submitButton"/>
-                            </field-row>
-                        </field-layout>
-                    </form-single>
-                </container>
-            </row-col>
-        </container-row>
     </widgets>
 </screen>

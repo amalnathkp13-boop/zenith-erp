@@ -3,7 +3,28 @@
     'use strict';
     if (window.zenithPurchaseUiLoaded) return;
     window.zenithPurchaseUiLoaded = true;
+    var openedContactPo = '';
     function enhance() {
+        var contactPo = location.pathname.endsWith('/Purchase/FindPurchaseOrder') && new URLSearchParams(location.search).get('openCreate') === 'Y' ? location.href : '';
+        if (!contactPo) openedContactPo = '';
+        if (contactPo && contactPo !== openedContactPo) {
+            var newPoButton = document.querySelector('#po-header button');
+            if (newPoButton) {
+                openedContactPo = contactPo;
+                var cleanUrl = new URL(location.href);
+                cleanUrl.searchParams.delete('openCreate');
+                history.replaceState(history.state, '', cleanUrl.pathname + cleanUrl.search + cleanUrl.hash);
+                document.title = document.title.replace('(Y, ', '(');
+                newPoButton.click();
+            }
+        }
+        if (location.pathname.endsWith('/Purchase/FindPurchaseOrder')) {
+            document.querySelectorAll('.zc-purchase-page a[href*="openCreate=Y"]').forEach(function (link) {
+                var url = new URL(link.href);
+                url.searchParams.delete('openCreate');
+                link.href = url.href;
+            });
+        }
         document.querySelectorAll('.zc-purchase-page .z-listchrome.zlc-on').forEach(function (card) {
             var toolbar = card.querySelector('.zlc-toolbar');
             if (!toolbar) return;

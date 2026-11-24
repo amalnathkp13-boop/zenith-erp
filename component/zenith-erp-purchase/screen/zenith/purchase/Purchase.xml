@@ -39,7 +39,7 @@
 
     <widgets>
         <render-mode><text type="html,qvt"><![CDATA[
-        <img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" onload="if(!document.getElementById('zc-purchase-css')){var l=document.createElement('link');l.id='zc-purchase-css';l.rel='stylesheet';l.href='/zenithstatic/css/purchase.css?v=5';document.head.appendChild(l);}if(!document.getElementById('zc-purchase-js')){var s=document.createElement('script');s.id='zc-purchase-js';s.src='/zenithstatic/js/purchase-ui.js?v=2';document.head.appendChild(s);}"/>
+        <img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" onload="if(!document.getElementById('zc-purchase-css')){var l=document.createElement('link');l.id='zc-purchase-css';l.rel='stylesheet';l.href='/zenithstatic/css/purchase.css?v=5';document.head.appendChild(l);}if(!document.getElementById('zc-purchase-js')){var s=document.createElement('script');s.id='zc-purchase-js';s.src='/zenithstatic/js/purchase-ui.js?v=6';document.head.appendChild(s);}"/>
         ]]></text></render-mode>
         <container style="zc-purchase-page"><subscreens-active/></container>
     </widgets>

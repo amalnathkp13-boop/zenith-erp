@@ -9,7 +9,24 @@
     
     <transition name="updateOrder"><actions><service-call name="zenith.purchase.OperationsServices.update#PurchaseOrder" in-map="[orderId:orderId,updates:[orderName:ec.web.requestParameters.orderName,statusId:ec.web.requestParameters.statusId]]"/></actions><default-response url="."/><error-response url="."/></transition>
 
-    <transition name="addItem"><actions><service-call name="zenith.purchase.OperationsServices.add#PurchaseOrderLine" in-map="[orderId:orderId,productId:productId,itemDescription:itemDescription,quantity:quantity,unitAmount:unitAmount,requiredByDate:requiredByDate]"/></actions><default-response url="."/><error-response url="."/></transition>
+    <transition name="quoteLinePrice" read-only="true"><actions>
+        <service-call name="zenith.purchase.OperationsServices.get#PurchaseOrderLinePrice"
+            in-map="[orderId:orderId, productId:productId, quantity:quantity]" out-map="quote"/>
+        <script><![CDATA[
+            ec.web.response.setHeader('Cache-Control', 'no-store')
+            ec.web.sendJsonResponse([unitAmount:quote?.unitAmount?.stripTrailingZeros()?.toPlainString(),
+                                     currency:quote?.currencyUomId, source:quote?.priceSource])
+        ]]></script>
+    </actions><default-response type="none"/></transition>
+
+    <transition name="addItem"><actions>
+        <if condition="ec.web.request.method != 'POST' || ec.web.parameters.moquiSessionToken != ec.web.sessionToken">
+            <return error="true" message="Reload this purchase order and add the line using the form."/>
+        </if>
+        <service-call name="zenith.purchase.OperationsServices.add#PurchaseOrderLine"
+            in-map="[orderId:orderId,productId:productId,itemDescription:itemDescription,quantity:quantity,
+                    unitAmount:unitAmount,useCatalogPrice:useCatalogPrice,requiredByDate:requiredByDate]"/>
+    </actions><default-response url="." parameter-map="[orderId:orderId]"/><error-response url="." parameter-map="[orderId:orderId]"/></transition>
 
     <transition name="deleteItem"><actions><service-call name="zenith.purchase.OperationsServices.delete#PurchaseOrderLine" in-map="[orderId:orderId,orderItemSeqId:orderItemSeqId]"/></actions><default-response url="."/><error-response url="."/></transition>
     
@@ -52,6 +69,14 @@
         <entity-find-one entity-name="mantle.party.PartyDetail" value-field="vendor">
             <field-map field-name="partyId" from="orderPart?.vendorPartyId"/>
         </entity-find-one>
+
+        <if condition="modCanWrite &amp;&amp; order.statusId == 'OrderOpen'">
+            <set field="poPath" from="(sri.renderMode in ['qvt','vuet'] || ec.web.request.requestURI.startsWith('/qapps/') ? '/qapps' : '/apps') + '/zenith/Purchase/EditPurchaseOrder'"/>
+            <entity-find entity-name="mantle.product.Product" list="poProducts">
+                <econdition field-name="ownerPartyId" from="orderPart?.customerPartyId ?: '__NO_ORGANIZATION__'"/>
+                <select-field field-name="productId,productName,pseudoId"/><order-by field-name="productName"/>
+            </entity-find>
+        </if>
 
         <set field="statusColorMap" from="[
             'OrderOpen': 'info',
@@ -149,33 +174,7 @@
                     <section name="POAddItem_write"><condition><expression>modCanWrite &amp;&amp; order?.statusId == 'OrderOpen'</expression></condition><widgets>
                         <container style="po-entry-panel">
                             <label text="Add a product" type="h4" style="po-entry-title"/>
-                            <form-single name="AddItemForm" transition="addItem">
-                                <field name="orderId"><default-field><hidden/></default-field></field>
-                                <field name="productId"><default-field title="Product">
-                                    <drop-down allow-empty="true">
-                                        <entity-options key="${productId}" text="${productName ?: productId}${pseudoId ? ' · ' + pseudoId : ''}">
-                                            <entity-find entity-name="mantle.product.Product"><econdition field-name="ownerPartyId" from="orderPart?.customerPartyId ?: '__NO_ORGANIZATION__'"/><order-by field-name="productName"/></entity-find>
-                                        </entity-options>
-                                    </drop-down>
-                                </default-field></field>
-                                <field name="quantity"><default-field title="Quantity"><text-line default-value="1" size="8"/></default-field></field>
-                                <field name="unitAmount"><default-field title="Unit price${poCurrencyLabel ? ' (' + poCurrencyLabel + ')' : ''}"><text-line size="15"/></default-field></field>
-                                <field name="itemDescription"><default-field title="Custom description"><text-line size="45"/></default-field></field>
-                                <field name="requiredByDate"><default-field title="Expected date"><date-time type="date"/></default-field></field>
-                                <field name="submitButton"><default-field title="Add to order"><submit/></default-field></field>
-                                <field-layout>
-                                    <field-ref name="orderId"/>
-                                    <field-group title="" style="po-entry-fields">
-                                        <field-ref name="productId"/><field-ref name="quantity"/><field-ref name="unitAmount"/>
-                                    </field-group>
-                                    <field-accordion active="false">
-                                        <field-group title="Custom description or expected date" style="po-entry-extra">
-                                            <field-ref name="itemDescription"/><field-ref name="requiredByDate"/>
-                                        </field-group>
-                                    </field-accordion>
-                                    <field-ref name="submitButton"/>
-                                </field-layout>
-                            </form-single>
+                            <render-mode><text type="html,qvt,vuet" location="component://zenith-erp-purchase/template/purchase/PurchaseOrderLine.html.ftl" template="true" encode="false"/></render-mode>
                         </container>
                     </widgets></section>
                     <container style="row justify-between items-center q-mb-md border-bottom q-pb-sm">

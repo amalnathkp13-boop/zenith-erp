@@ -49,7 +49,7 @@ async function add(id,actualQuantity,params={}) {
  const rows=JSON.parse(sql(`select coalesce(json_agg(t),'[]') from (select adjustment_item_seq_id from stock_adjustment_item where stock_adjustment_id=${quote(id)} order by adjustment_item_seq_id) t`));
  return rows.at(-1)?.adjustment_item_seq_id;
 }
-const approve=id=>writer.post('StockAdjustments','approveAdjustment',{stockAdjustmentId:id});
+const approve=(id,reason={shortageReasonCode:'CountDiscrepancy'})=>writer.post('StockAdjustments','approveAdjustment',{stockAdjustmentId:id,...reason});
 const apply=id=>writer.post('EditStockAdjustment','applyAdjustment',{stockAdjustmentId:id});
 const reopen=id=>writer.post('EditStockAdjustment','reopenAdjustment',{stockAdjustmentId:id});
 const remove=(id,seq)=>writer.post('EditStockAdjustment','deleteItem',{stockAdjustmentId:id,adjustmentItemSeqId:seq});
@@ -67,7 +67,19 @@ try {
  check('System count sums inventory assets only at the selected warehouse',()=>{assert.equal(Number(line(first,seq).system_quantity),15);assert.equal(Number(line(first,seq).difference_quantity),-7.5);});
  await add(first,'4');check('Duplicate ordinary product count rejected',()=>assert.equal(count('stock_adjustment_item',`stock_adjustment_id=${quote(first)}`),1));
  await apply(first);check('Approval is required before stock posting',()=>assert.equal(balance('SAFIX_P','SAFIX_A'),15));
- await writer.request('/qapps/zenith/Inventory/EditStockAdjustment/approveAdjustment',{stockAdjustmentId:first});
+ for (const reason of [{}, {shortageReasonCode:'Unrecognized'}, {shortageReasonCode:'Other',shortageReasonNote:'   '}]) {
+  await approve(first,reason);
+  assert.equal(adjustment(first).status_id,'AdjPending');
+ }
+ check('Negative difference requires an allowed reason and an explanation for Others',()=>assert.equal(balance('SAFIX_P','SAFIX_A'),15));
+ await writer.request('/qapps/zenith/Inventory/EditStockAdjustment/approveAdjustment',{
+  stockAdjustmentId:first,shortageReasonCode:'Other',shortageReasonNote:'  Missing units after recount  '
+ });
+ check('Approval stores the chosen reason and trimmed explanation',()=>{
+  const approved=adjustment(first);
+  assert.equal(approved.shortage_reason_code,'Other');
+  assert.equal(approved.shortage_reason_note,'Missing units after recount');
+ });
  await remove(first,seq);await add(first,'9');
  check('Approved counts cannot be edited or deleted',()=>{assert.equal(adjustment(first).status_id,'AdjApproved');assert.equal(count('stock_adjustment_item',`stock_adjustment_id=${quote(first)}`),1);assert.equal(Number(line(first,seq).actual_quantity),7.5);});
  await Promise.all([apply(first),apply(first)]);
@@ -94,7 +106,7 @@ try {
  check('Omitted unreserved serial is written off with audited identity',()=>{assert.equal(balance('SAFIX_SERIAL','SAFIX_A'),2);assert.equal(balance('SAFIX_SERIAL','SAFIX_A','available_to_promise_total'),1);assert.equal(row('product_serial_number',"serial_number_id='SAFIX_SN2'").status_id,'SnScrapped');assert.equal(row('product_serial_number',"serial_number_id='SAFIX_SN3'").status_id,'SnReserved');assert.equal(count('serial_number_history',`reference_id=${quote(serial)}`),1);});
  const restock=await create();await add(restock,'3',{productId:'SAFIX_SERIAL',countedSerialNumbers:'SAFIX-SN-1\nSAFIX-SN-3\nSAFIX-SN-4'});await approve(restock);await apply(restock);
  check('Only identified registered returned serials are restocked',()=>{assert.equal(balance('SAFIX_SERIAL','SAFIX_A'),3);assert.equal(row('product_serial_number',"serial_number_id='SAFIX_SN4'").status_id,'SnInStock');});
- const newstock=await create({adjustmentType:'Opening'});await add(newstock,'2.25',{productId:'SAFIX_NEW'});await approve(newstock);await apply(newstock);
+ const newstock=await create({adjustmentType:'Opening'});await add(newstock,'2.25',{productId:'SAFIX_NEW'});await approve(newstock,{});await apply(newstock);
  check('Opening count creates a usable inventory asset and posts once',()=>{assert.equal(balance('SAFIX_NEW','SAFIX_A'),2.25);assert.equal(balance('SAFIX_NEW','SAFIX_A','available_to_promise_total'),2.25);assert.equal(row('asset',"product_id='SAFIX_NEW'").status_id,'AstAvailable');});
  const atomic=await create();await add(atomic,'11');await add(atomic,'4',{productId:'SAFIX_BATCH',assetId:'SAFIX_BATCH1'});await approve(atomic);
  sql("update asset set quantity_on_hand_total=6,available_to_promise_total=6 where asset_id='SAFIX_BATCH1'");await apply(atomic);

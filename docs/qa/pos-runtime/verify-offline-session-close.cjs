@@ -125,4 +125,5 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
   check('failed recovery rolls back its temporary session and cart changes',q("SELECT status_id,expected_cash FROM pos_session WHERE session_id='"+retired.sessionId+"'")[0]?.status_id==='PsClosed'&&Number(q("SELECT count(*) AS n FROM pos_transaction WHERE session_id='"+retired.sessionId+"' AND status_id='PtCompleted'")[0].n)===4&&Number(q("SELECT count(*) AS n FROM pos_transaction WHERE session_id='"+retired.sessionId+"' AND status_id='PtCreated'")[0].n)===0);
   await invoke('close',{sessionId:newer.sessionId,closingCash:'0'});
  } finally { await context.setOffline(false); await context.close(); }
+ await require('./verify-deferred-close-reopen.cjs')({a,base,check,q,invoke,post,out});
 };
