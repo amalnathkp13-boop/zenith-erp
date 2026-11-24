@@ -1,3 +1,8 @@
+/* Page typography stays inside the work area; navigation uses the shared ERP theme. */
+#stockAdjustments,#stockAdjustmentDetail {font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif;color:var(--text-primary);}
+body.zq-nav:has(#stockAdjustments) .q-page-container {padding-bottom:54px!important;}
+body.zq-nav:has(#stockAdjustmentDetail) .q-page-container {padding-bottom:54px!important;}
+
 /* Scoped Stock Adjustments reference tokens and responsive presentation. */
 body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)),body:has(#stockAdjustmentDetail) {
  --primary:#7C3AED;--primary-dark:#6D28D9;--primary-light:#F5F3FF;--bg:#F8F9FC;--white:#FFFFFF;--border:#E5E7EB;
@@ -126,8 +131,3 @@ body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) .container-dialog 
 body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) .modal-backdrop {z-index:4900!important;}
 body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) .container-dialog .modal-dialog {width:calc(100% - 24px)!important;max-width:760px;margin:12px auto!important;}
 body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) .container-dialog .modal-content {max-height:calc(100vh - 24px);overflow-y:auto;}
-
-/* Page typography stays inside the work area; navigation uses the shared ERP theme. */
-#stockAdjustments,#stockAdjustmentDetail {font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif;color:var(--text-primary);}
-body.zq-nav:has(#stockAdjustments) .q-page-container {padding-bottom:54px!important;}
-body.zq-nav:has(#stockAdjustmentDetail) .q-page-container {padding-bottom:54px!important;}
