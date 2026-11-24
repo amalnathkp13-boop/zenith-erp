@@ -339,5 +339,22 @@
         dialog.showModal();
     }
 
-    window.PosTillDialogs = {cashMarkup, updateCash, digitalMarkup, openReceiptChoice, splitMarkup, updateSplit, bindSplit, creditMarkup, openClose, showHandoff};
+    function showIdleClose(leave) {
+        if (document.getElementById('pos-idle-closed')) return;
+        const dialog = document.createElement('dialog');
+        dialog.id = 'pos-idle-closed';
+        dialog.setAttribute('aria-labelledby', 'pos-idle-closed-title');
+        dialog.style.cssText = 'max-width:min(460px,90vw);padding:24px;border:1px solid #ddd;border-radius:14px;background:#fff;color:#18182c';
+        dialog.innerHTML = '<h2 id="pos-idle-closed-title">Session closed automatically</h2>'
+            + '<p>This billing session ended after one hour without cashier activity. Unpaid bills have been kept. The drawer cash can be reviewed in Sessions.</p>'
+            + '<button type="button" class="btn btn-primary">Open billing</button>';
+        dialog.querySelector('button').addEventListener('click', leave);
+        dialog.addEventListener('cancel', event => event.preventDefault());
+        dialog.addEventListener('keydown', event => event.stopPropagation());
+        dialog.addEventListener('keyup', event => event.stopPropagation());
+        (document.fullscreenElement || document.body).append(dialog);
+        dialog.showModal();
+    }
+
+    window.PosTillDialogs = {cashMarkup, updateCash, digitalMarkup, openReceiptChoice, splitMarkup, updateSplit, bindSplit, creditMarkup, openClose, showHandoff, showIdleClose};
 })();

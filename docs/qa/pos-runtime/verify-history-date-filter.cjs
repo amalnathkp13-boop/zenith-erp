@@ -15,6 +15,7 @@ module.exports=async({a,base,check,invoke,post,out})=>{
   const bill=original.bills.find(x=>x.txId===tx.transactionId);
   check('Disposable history contains its issued bill',!!bill,original);
   const parts=bill.date.split(' ')[0].split('/');
+  const displayDate=parts.join('-');
   const date=parts.reverse().join('-');
   const filters={historyFromDate:date,historyToDate:date};
   check('Date range includes both ends of the local day',(await query(filters)).bills.some(x=>x.txId===tx.transactionId));
@@ -39,25 +40,32 @@ module.exports=async({a,base,check,invoke,post,out})=>{
   await page.locator('#pos-history-btn').click();
   await page.locator('#hist-filter').click();
   const panel=page.locator('#hist-filter-form');
-  await panel.getByLabel('To Date').evaluate(input=>{input.value='544545-04-05';input.dispatchEvent(new Event('input',{bubbles:true}));});
-  await panel.getByLabel('From Date').fill(date);
-  await panel.getByRole('button',{name:'Apply Filter'}).click();
+  const fromDate=panel.getByRole('textbox',{name:'From Date',exact:true});
+  const toDate=panel.getByRole('textbox',{name:'To Date',exact:true});
+  const fromCalendar=panel.getByLabel('Pick from date',{exact:true});
+  const toCalendar=panel.getByLabel('Pick to date',{exact:true});
+  const today=await toCalendar.getAttribute('max');
+  await toDate.fill('05-04-9999');
+  await fromDate.pressSequentially(displayDate);
+  await panel.getByRole('button',{name:'Apply',exact:true}).click();
   check('History displays an inline message for an invalid year',await panel.getByRole('alert').isVisible());
-  await panel.getByLabel('To Date').fill(date);
-  check('Selecting the dates links the calendar bounds',await panel.getByLabel('From Date').getAttribute('max')===date&&
-   await panel.getByLabel('To Date').getAttribute('min')===date);
-  await panel.getByRole('button',{name:'Apply Filter'}).click();
+  await toCalendar.fill(date);
+  check('Selecting equal dates keeps both calendars open to every historical year',
+   await fromCalendar.getAttribute('max')===today&&await toCalendar.getAttribute('max')===today&&
+   await fromCalendar.getAttribute('min')==='0001-01-01'&&await toCalendar.getAttribute('min')==='0001-01-01');
+  await panel.getByRole('button',{name:'Apply',exact:true}).click();
   const row=page.locator('.hist-bill-row[data-tx-id="'+tx.transactionId+'"]');
   await row.waitFor();
   await page.locator('#hist-filter').click(); await page.locator('#hist-filter').click();
-  check('Toggling the filter panel keeps applied dates',await panel.getByLabel('From Date').inputValue()===date);
+  check('Toggling the filter panel keeps applied dates',await fromDate.inputValue()===displayDate&&
+   await toDate.inputValue()===displayDate);
   if(out) await page.screenshot({path:path.join(out,'history-date-filter.png')});
   await row.getByRole('button',{name:'Reprint'}).click();
   await page.waitForFunction(id=>window.qaHistoryPrint.includes(id),tx.transactionId);
   check('Filtered Reprint still targets the selected saved bill',true);
   await panel.getByRole('button',{name:'Reset'}).click();
   await row.waitFor();
-  check('Reset clears filter values and returns to default results',await panel.getByLabel('From Date').inputValue()==='');
+  check('Reset clears filter values and returns to default results',await fromDate.inputValue()==='');
  } finally {
   await page.close();
   await invoke('close',{sessionId:session.sessionId,closingCash:'100'});

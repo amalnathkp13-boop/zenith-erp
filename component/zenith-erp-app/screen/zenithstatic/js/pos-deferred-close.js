@@ -1,7 +1,7 @@
 /* Durable POS offline queues and close requests for the signed-in organization and cashier. */
 (function () {
     if (window.PosDeferredClose) return;
-    var running, sessionWork = new Map();
+    var running, retryTimer, retryDelay = 5000, sessionWork = new Map();
     function identity() {
         var el = document.getElementById('pos-sync-context');
         return el && el.dataset.organization && el.dataset.user ?
@@ -174,6 +174,7 @@
             assertIdentity(who);
             await write(function (tx) { tx.objectStore('state').put({key:key(sessionId), value:request}); });
             notify(request);
+            return request;
         }
         var work = (navigator.locks ? navigator.locks.request(lockName, sync) : sync())
             .finally(function () { sessionWork.delete(lockName); });
@@ -184,21 +185,32 @@
         var who = identity();
         if (!who || !navigator.onLine) return;
         var rows = await read('state', IDBKeyRange.bound('session-close:', 'session-close:\uffff'));
-        var closingSessions = new Set();
+        var closingSessions = new Set(), needsRetry = false;
         for (var row of rows) {
             var request = row.value;
             if (!row.key.startsWith('session-close:') || !request || request.syncedAt ||
                 request.organizationPartyId !== who.organization || request.userId !== who.user) continue;
             closingSessions.add(request.sessionId);
-            await syncSession(who, request.sessionId);
+            var pendingClose = await syncSession(who, request.sessionId);
+            if (pendingClose && !pendingClose.syncedAt) needsRetry = true;
         }
         await flushOpenSales(who, closingSessions);
+        if (needsRetry) {
+            if (!retryTimer) {
+                retryTimer = setTimeout(function () { retryTimer = null; flush(); }, retryDelay);
+                retryDelay = Math.min(retryDelay * 2, 60000);
+            }
+        } else {
+            clearTimeout(retryTimer);
+            retryTimer = null;
+            retryDelay = 5000;
+        }
     }
     function flush() {
         var who = identity();
         if (!who || !navigator.onLine) return Promise.resolve();
         if (running) return running;
-        var work = navigator.locks ? navigator.locks.request('zenith-pos-close:' + who.organization + ':' + who.user, {ifAvailable:true}, function (lock) { if (lock) return process(); }) : process();
+        var work = navigator.locks ? navigator.locks.request('zenith-pos-close:' + who.organization + ':' + who.user, process) : process();
         running = work.catch(function () {}).finally(function () { running = null; });
         return running;
     }

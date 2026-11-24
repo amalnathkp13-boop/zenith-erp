@@ -4,6 +4,14 @@
         default-menu-title="Sources &amp; Campaigns" default-menu-index="6">
     <parameter name="trackingCampaignId"/><parameter name="destinationUrl"/>
     <parameter name="utmContent"/><parameter name="utmTerm"/>
+    <transition name="searchTrackingCampaigns" read-only="true">
+        <parameter name="term"/>
+        <actions>
+            <set field="crmPickerKind" value="campaign"/>
+            <script location="component://zenith-erp-crm/script/RecordPicker.groovy"/>
+        </actions>
+        <default-response type="none"/>
+    </transition>
     <transition name="createSource">
         <service-call name="zenith.crm.CrmServices.create#LeadSource"/>
         <default-response url="."/><error-response url="."/>
@@ -16,10 +24,10 @@
 
     <actions>
         <set field="activeOrg" from="(crmOrganization.activeOrgId ?: '_NA_') ?: '__NO_ORGANIZATION__'"/>
-        <entity-find entity-name="zenith.erp.crm.LeadSource" list="allSources">
+        <entity-find entity-name="zenith.erp.crm.LeadSource" list="sources">
+            <econdition field-name="organizationPartyId" from="activeOrg" or-null="true"/>
             <econdition field-name="isActive" value="Y"/><order-by field-name="description"/>
         </entity-find>
-        <set field="sources" from="allSources.findAll { !it.organizationPartyId || it.organizationPartyId == activeOrg }"/>
         <entity-find entity-name="zenith.erp.crm.CrmCampaign" list="campaigns">
             <search-form-inputs default-order-by="-startDate,campaignName" skip-fields="organizationPartyId"/>
             <econdition field-name="organizationPartyId" from="activeOrg"/>
@@ -32,7 +40,7 @@
                     .condition('campaignId', trackingCampaignId).condition('organizationPartyId', activeOrg).one()
                 try {
                     def uri = new java.net.URI(destinationUrl.trim())
-                    if (!campaign || !(uri.scheme?.toLowerCase(java.util.Locale.ROOT) in ['http','https']) || !uri.host)
+                    if (!campaign || campaign.organizationPartyId != activeOrg || !(uri.scheme?.toLowerCase(java.util.Locale.ROOT) in ['http','https']) || !uri.host)
                         throw new IllegalArgumentException('Select a campaign and an HTTP or HTTPS destination.')
                     def values = [utm_source:campaign.leadSourceId.toLowerCase(java.util.Locale.ROOT),
                         utm_medium:(campaign.medium ?: 'referral').toLowerCase(java.util.Locale.ROOT),
@@ -43,10 +51,13 @@
                     def encoded = values.collect { key, value ->
                         java.net.URLEncoder.encode(key, 'UTF-8') + '=' + java.net.URLEncoder.encode(value.toString(), 'UTF-8')
                     }.join('&')
-                    def base = destinationUrl.trim().split('#', 2)[0]
-                    def fragment = destinationUrl.trim().contains('#') ? '#' + destinationUrl.trim().split('#', 2)[1] : ''
-                    def separator = base.endsWith('?') || base.endsWith('&') ? '' : (uri.rawQuery ? '&' : '?')
-                    trackingUrl = base + separator + encoded + fragment
+                    def base = destinationUrl.trim().split('[?#]', 2)[0]
+                    def retained = (uri.rawQuery ?: '').tokenize('&').findAll { pair ->
+                        def key = java.net.URLDecoder.decode(pair.split('=', 2)[0], 'UTF-8')
+                        !values.containsKey(key)
+                    }
+                    def fragment = uri.rawFragment == null ? '' : '#' + uri.rawFragment
+                    trackingUrl = base + '?' + (retained + encoded).join('&') + fragment
                 } catch (Exception ignored) {
                     trackingError = 'Select a campaign and enter a valid HTTP or HTTPS destination URL.'
                 }
@@ -83,7 +94,7 @@
         <container-box><box-header title="Tracking link builder"/><box-body>
             <label text="Add UTM tags to a destination URL. Existing query parameters and fragments stay intact." type="p"/>
             <form-single name="TrackingLinkForm" transition="." type="find">
-                <field name="trackingCampaignId"><default-field title="Campaign"><drop-down allow-empty="true"><list-options list="campaigns" key="${campaignId}" text="${campaignName}"/></drop-down></default-field></field>
+                <field name="trackingCampaignId"><default-field title="Campaign"><drop-down allow-empty="true"><dynamic-options transition="searchTrackingCampaigns" server-search="true" min-length="1"/></drop-down></default-field></field>
                 <field name="destinationUrl"><default-field title="Destination URL"><text-line size="45"/></default-field></field>
                 <field name="utmContent"><default-field title="UTM content (optional)"><text-line size="24"/></default-field></field>
                 <field name="utmTerm"><default-field title="UTM term (optional)"><text-line size="24"/></default-field></field>

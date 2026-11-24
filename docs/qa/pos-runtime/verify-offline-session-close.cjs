@@ -73,20 +73,14 @@ module.exports = async function ({a, base, check, q, invoke, post, out}) {
   await page.waitForFunction(()=>window.PosDeferredClose);
   check('background reconciliation is available outside billing',await page.locator('#cartInlineAddForm').count()===0);
   outage=false;
-  // The navigation/online worker may still own its cross-tab lock; retry until the observable result.
-  async function flushUntil(done) {
-   const deadline=Date.now()+15000;
-   do {
-    await page.evaluate(()=>window.PosDeferredClose.flush());
-    if(await done())return;
-    await page.waitForTimeout(100);
-   }while(Date.now()<deadline);
-   throw Error('Deferred close did not finish its expected retry');
+  for (let attempt=0;attempt<3&&closeRequests===0;attempt++) await page.evaluate(()=>window.PosDeferredClose.flush());
+  check('lost close response retains the durable request',closeRequests===1&&(await stored()).state.some(r=>r.key==='session-close:'+session.sessionId&&!r.value.syncedAt),{closeRequests});
+  let after;
+  for (let attempt=0;attempt<12;attempt++) {
+   await page.waitForTimeout(1000);
+   after=await stored();
+   if (after.queue.length===0&&after.state.find(r=>r.key==='session-close:'+session.sessionId)?.value.syncedAt) break;
   }
-  await flushUntil(()=>closeRequests>0);
-  check('lost close response retains the durable request',(await stored()).state.some(r=>r.key==='session-close:'+session.sessionId&&!r.value.syncedAt));
-  await flushUntil(async()=>(await stored()).state.find(r=>r.key==='session-close:'+session.sessionId)?.value.syncedAt);
-  const after=await stored();
   check('reconnection acknowledges bills before completing the deferred close',after.queue.length===0&&after.state.find(r=>r.key==='session-close:'+session.sessionId)?.value.syncedAt,after);
   const drawer=q("SELECT status_id,closing_cash,expected_cash,cash_difference FROM pos_session WHERE session_id='"+session.sessionId+"'")[0];
   check('server close reconciles the exact cash after importing offline bills',drawer?.status_id==='PsClosed'&&Number(drawer.closing_cash)===336&&Number(drawer.expected_cash)===336&&Number(drawer.cash_difference)===0,drawer);

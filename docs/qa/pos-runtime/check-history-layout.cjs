@@ -17,6 +17,7 @@ const bills = Array.from({length: 20}, (_, index) => ({
         await page.route(terminal + '/ajaxCart', route => route.fulfill({json: {success: true, total: 29, bills}}));
         await page.goto(terminal);
         await page.addStyleTag({path: path.join(assets, 'css/zenith-theme-v4.css')});
+        await page.addStyleTag({path: path.join(assets, 'css/pos-bill-history.css')});
         await page.addScriptTag({path: path.join(assets, 'js/pos-terminal.js')});
         await page.locator('#pos-history-btn').click();
         const history = page.getByRole('dialog', {name: 'Bill history'});
@@ -40,17 +41,50 @@ const bills = Array.from({length: 20}, (_, index) => ({
                 `${viewport} keeps search and Filter above the results with one scrollbar: ${JSON.stringify(geometry)}`);
         }
 
+        async function assertFilterLayout(viewport) {
+            const geometry = await form.evaluate(form => {
+                const fields = [...form.querySelectorAll('input[name], input[type="date"], input[type="time"]')]
+                    .map(input => input.getBoundingClientRect());
+                const scroller = form.closest('#hist-scroll');
+                const left = scroller.getBoundingClientRect().left;
+                const right = left + scroller.clientWidth;
+                const reset = form.querySelector('#hist-filter-reset').getBoundingClientRect();
+                const apply = form.querySelector('[type="submit"]').getBoundingClientRect();
+                return {
+                    fields: form.querySelectorAll('input[name]').length,
+                    leftInset: Math.min(...fields.map(rect => rect.left)) - left,
+                    rightInset: right - Math.max(...fields.map(rect => rect.right)),
+                    buttonInset: right - apply.right,
+                    buttonGap: apply.left - reset.right,
+                    buttonTopDifference: Math.abs(reset.top - apply.top),
+                    actionClearance: Math.min(reset.top, apply.top) - Math.max(...fields.map(rect => rect.bottom)),
+                    buttonHeight: Math.min(reset.height, apply.height)
+                };
+            });
+            assert.equal(geometry.fields, 4, `${viewport} shows both date and time ranges`);
+            assert.ok(Math.min(geometry.leftInset, geometry.rightInset, geometry.buttonInset) >= 10,
+                `${viewport} keeps fields and actions inside the panel gutters: ${JSON.stringify(geometry)}`);
+            assert.ok(geometry.buttonGap >= 4 && geometry.buttonTopDifference <= 1 &&
+                geometry.actionClearance >= 4 && geometry.buttonHeight >= 32,
+                `${viewport} keeps Reset and Apply aligned, separated and easy to select: ${JSON.stringify(geometry)}`);
+        }
+
         await assertControlsFit('Desktop');
         await history.getByRole('button', {name: 'Next'}).scrollIntoViewIfNeeded();
         await filter.click();
-        await form.getByLabel('From Date').fill('2026-11-04');
-        await form.getByLabel('To Date').fill('2026-11-04');
-        await form.getByRole('button', {name: 'Apply Filter'}).click();
+        assert.equal(await filter.getAttribute('aria-expanded'), 'true');
+        assert.equal(await history.locator('#hist-scroll').evaluate(area => area.scrollTop), 0,
+            'Opening the filters from the end of the list reveals the form');
+        await form.getByRole('textbox', {name: 'From Date', exact: true}).fill('04-11-2026');
+        await form.getByRole('textbox', {name: 'To Date', exact: true}).fill('04-11-2026');
+        await form.getByRole('button', {name: 'Apply', exact: true}).click();
         await row.waitFor();
         await assertControlsFit('Expanded desktop filters');
+        await assertFilterLayout('Desktop');
 
         await page.setViewportSize({width: 390, height: 460});
         await assertControlsFit('Short mobile');
+        await assertFilterLayout('Short mobile');
         await form.getByRole('button', {name: 'Reset'}).click();
         await row.getByRole('button', {name: 'Reprint'}).scrollIntoViewIfNeeded();
         const search = history.getByRole('searchbox', {name: 'Search bills'});

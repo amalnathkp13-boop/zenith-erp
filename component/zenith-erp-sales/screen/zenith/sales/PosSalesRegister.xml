@@ -13,6 +13,7 @@
 
     <actions>
         <set field="activeOrg" from="_salesOrgId"/>
+        <service-call name="zenith.base.ShopServices.get#ActiveShopScope" out-map="salesShopScope"/>
 
         <!-- Read POS records under disableAuthz (the ZTF tenant find-filter on PosTransaction/PosPayment
              otherwise returns nothing when rendered from outside the POS module) and enforce org isolation
@@ -22,63 +23,76 @@
              (falls back to the last payment time / update stamp for bills finalized before this was tracked). -->
         <script><![CDATA[
             salesList = []
+            def shop = salesShopScope.activeShopId
+            if (!activeOrg || shop == '__NONE__' || (salesShopScope.shopAccessRestricted && !shop)) return
             boolean __d = ec.artifactExecution.disableAuthz()
             try {
-                def ef = ec.entity.find("zenith.erp.pos.PosTransaction")
+                def ef = ec.entity.find(shop ? "zenith.erp.pos.PosTransactionView" : "zenith.erp.pos.PosTransaction")
                     .condition("statusId", "PtCompleted").condition("transactionType", "Sale")
-                ef.condition("organizationPartyId", activeOrg ?: "__NO_SALES_ORGANIZATION__")
+                ef.condition("organizationPartyId", activeOrg)
+                if (shop) ef.condition("facilityId", shop).condition("ztfSessionOrg", activeOrg).condition("ztfTerminalOrg", activeOrg)
+                ef.selectFields(["transactionId", "transactionNumber", "linkedInvoiceId", "customerName", "payableAmount",
+                        "grandTotal", "roundOff", "entryDate", "completedDate", "lastUpdatedStamp", "isCredit"])
                 def bn = ec.web.parameters.transactionNumber?.trim()
                 if (bn) ef.condition("transactionNumber", "like", "%" + bn + "%")
                 def dFrom = ec.web.parameters.entryDate_from?.trim()
                 def dThru = ec.web.parameters.entryDate_thru?.trim()
+                def zone = ec.user.timeZone.toZoneId()
                 try {
-                    if (dFrom) ef.condition("entryDate", ">=", ec.l10n.parseTimestamp(dFrom + " 00:00:00", "yyyy-MM-dd HH:mm:ss"))
-                    if (dThru) ef.condition("entryDate", "<=", ec.l10n.parseTimestamp(dThru + " 23:59:59", "yyyy-MM-dd HH:mm:ss"))
-                } catch (Exception e) { /* ignore unparseable date filter */ }
-                def txnList = ef.orderBy("-entryDate").limit(500).list()
-            for (def txn : txnList) {
-                def pays = ec.entity.find("zenith.erp.pos.PosPayment")
-                    .condition("transactionId", txn.transactionId).orderBy("paymentDate").list()
-                def payMethods, paySummary, closed = txn.completedDate
-                if (pays) {
-                    payMethods = pays.collect { it.paymentMethod ?: 'Other' }.unique().join(', ')
-                    paySummary = pays.collect { (it.paymentMethod ?: 'Other') + ' ₹' + zinr.inr(ec.l10n.format(it.amount ?: 0, '#,##,##0.00')) }.join('  +  ')
-                    if (!closed) { def pd = pays.collect { it.paymentDate }.findAll { it }; if (pd) closed = pd.max() }
-                } else if (txn.isCredit == 'Y') {
-                    payMethods = 'Credit'
-                    paySummary = 'Credit (unpaid)'
-                } else {
-                    payMethods = ''
-                    paySummary = ''
+                    if (dFrom) ef.condition("entryDate", ">=", java.sql.Timestamp.from(java.time.LocalDate.parse(dFrom).atStartOfDay(zone).toInstant()))
+                    if (dThru) ef.condition("entryDate", "<", java.sql.Timestamp.from(java.time.LocalDate.parse(dThru).plusDays(1).atStartOfDay(zone).toInstant()))
+                } catch (java.time.format.DateTimeParseException ignored) {
+                    ec.message.addMessage("Enter a valid sale date (YYYY-MM-DD).")
+                    return
                 }
-                if (!closed) closed = txn.lastUpdatedStamp
-                // payment-pill colour (mockup): Cash=green, UPI=violet, Credit=red, Card=blue, mixed=violet
-                def payColor = 'grey'
-                def _pm = (payMethods ?: '').toUpperCase()
-                if (txn.isCredit == 'Y' || _pm == 'CREDIT') payColor = 'danger'
-                else if (_pm.contains('UPI')) payColor = 'primary'
-                else if (_pm.contains('CASH')) payColor = 'success'
-                else if (_pm.contains('CARD')) payColor = 'info'
-                else if (_pm) payColor = 'primary'
-                salesList.add([
-                    transactionId: txn.transactionId,
-                    linkedInvoiceId: txn.linkedInvoiceId,
-                    billNo: txn.transactionNumber ?: txn.transactionId,
-                    customerDisplay: txn.customerName ?: 'Walk-in',
-                    amount: txn.payableAmount ?: txn.grandTotal ?: 0,
-                    saleStarted: txn.entryDate,
-                    saleClosed: closed,
-                    payMethods: payMethods,
-                    paySummary: paySummary,
-                    payColor: payColor,
-                    isCredit: txn.isCredit
-                ])
-            }
+                def txnList = ef.orderBy(["-entryDate", "transactionId"]).limit(500).list()
+                def paymentsByTransaction = txnList ? ec.entity.find("zenith.erp.pos.PosPayment")
+                        .condition("transactionId", org.moqui.entity.EntityCondition.IN, txnList*.transactionId)
+                        .selectFields(["transactionId", "paymentMethod", "amount", "paymentDate", "paymentId"])
+                        .orderBy(["paymentDate", "paymentId"]).list().groupBy { it.transactionId } : [:]
+                for (def txn : txnList) {
+                    def pays = paymentsByTransaction[txn.transactionId]
+                    def payMethods, paySummary, closed = txn.completedDate
+                    if (pays) {
+                        payMethods = pays.collect { it.paymentMethod ?: 'Other' }.unique().join(', ')
+                        paySummary = pays.collect { (it.paymentMethod ?: 'Other') + ' ₹' + zinr.inr(ec.l10n.format(it.amount ?: 0, '#,##,##0.00')) }.join('  +  ')
+                        if (!closed) { def pd = pays.collect { it.paymentDate }.findAll { it }; if (pd) closed = pd.max() }
+                    } else if (txn.isCredit == 'Y') {
+                        payMethods = 'Credit'
+                        paySummary = 'Credit (unpaid)'
+                    } else {
+                        payMethods = ''
+                        paySummary = ''
+                    }
+                    if (!closed) closed = txn.lastUpdatedStamp
+                    // payment-pill colour (mockup): Cash=green, UPI=violet, Credit=red, Card=blue, mixed=violet
+                    def payColor = 'grey'
+                    def _pm = (payMethods ?: '').toUpperCase()
+                    if (txn.isCredit == 'Y' || _pm == 'CREDIT') payColor = 'danger'
+                    else if (_pm.contains('UPI')) payColor = 'primary'
+                    else if (_pm.contains('CASH')) payColor = 'success'
+                    else if (_pm.contains('CARD')) payColor = 'info'
+                    else if (_pm) payColor = 'primary'
+                    salesList.add([
+                        transactionId: txn.transactionId,
+                        linkedInvoiceId: txn.linkedInvoiceId,
+                        billNo: txn.transactionNumber ?: txn.transactionId,
+                        customerDisplay: txn.customerName ?: 'Walk-in',
+                        amount: txn.payableAmount != null ? txn.payableAmount : (txn.grandTotal ?: 0) + (txn.roundOff ?: 0),
+                        saleStarted: txn.entryDate,
+                        saleClosed: closed,
+                        payMethods: payMethods,
+                        paySummary: paySummary,
+                        payColor: payColor,
+                        isCredit: txn.isCredit
+                    ])
+                }
             } finally { if (!__d) ec.artifactExecution.enableAuthz() }
         ]]></script>
     </actions>
 
     <widgets>
+        <section name="PosSalesSearch" condition="sri.getRenderMode() != 'csv'"><widgets>
         <!-- Moqui <submit> ignores style= (renders bare btn-primary), which ZE-BTN-OUTLINE would outline.
              The mockup wants the Apply CTA SOLID -> force it via id (button-only, so the Clear <a> sharing
              the field id stays outline). /apps-only (#content); /qapps uses the theme CSS id rule. -->
@@ -89,7 +103,7 @@
         <container style="zsec-hdr row items-center justify-between q-mb-lg">
             <container>
                 <label text="POS Sales Register" type="h4" style="text-primary text-weight-bold q-my-none"/>
-                <label text="Every bill completed at a POS counter, with how it was paid (Cash / UPI / Card, including split tenders). Sale start &amp; close times are in the CSV export." type="p" style="text-grey-7 q-mt-sm q-mb-none"/>
+                <label text="Up to 500 matching bills from POS counters, newest first, with how it was paid (Cash / UPI / Card, including split tenders). Sale start &amp; close times are in the CSV export." type="p" style="text-grey-7 q-mt-sm q-mb-none"/>
             </container>
             <section name="NewPosOrderBtn_write">
                 <condition><expression>modCanWrite</expression></condition>
@@ -107,7 +121,7 @@
             </container>
             <form-single name="SearchPosSalesForm" transition="findPosSales">
                 <field name="transactionNumber"><default-field title="Bill No."><text-line size="18"/></default-field></field>
-                <field name="entryDate"><default-field title="Sale Date"><date-find/></default-field></field>
+                <field name="entryDate"><default-field title="Sale Date"><date-find type="date"/></default-field></field>
                 <field name="submitButton"><default-field title="">
                     <submit text="Apply" icon="filter_alt" style="q-btn q-btn--flat bg-primary text-white text-weight-medium q-px-md border-radius-sm"/>
                     <link url="." text="Clear" style="q-btn q-btn--flat text-grey-8 q-ml-sm"/>
@@ -119,6 +133,7 @@
             </form-single>
         </container>
 
+        </widgets></section>
         <container style="zenith-card bg-white shadow-2 border-radius-lg q-pa-none">
             <form-list name="PosSalesList" list="salesList" show-csv-button="true" show-xlsx-button="true" show-page-size="true">
                 <field name="billNo">

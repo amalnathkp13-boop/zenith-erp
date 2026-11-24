@@ -79,12 +79,12 @@
         <actions>
             <service-call name="zenith.pos.KotServices.get#BillingSession" in-map="[sessionId:sessionId,includeHandoffNotice:true]" out-map="_billing"/>
             <if condition="_billing.sessionClosed">
-                <script>ec.web.sendJsonResponse([success:true,open:false,handoffUserId:_billing.handoffUserId])</script><return/>
+                <script>ec.web.sendJsonResponse([success:true,open:false,handoffUserId:_billing.handoffUserId,closeReason:_billing.closeReason])</script><return/>
             </if>
             <if condition="ec.message.hasError() || !_billing.terminal"><return/></if>
-            <service-call name="zenith.pos.PosServices.touch#PosSessionActivity" in-map="[sessionId:sessionId]" out-map="_touch"/>
+            <service-call name="zenith.pos.PosServices.touch#PosSessionActivity" in-map="[sessionId:sessionId,recordActivity:ec.web.parameters.activity == 'Y']" out-map="_touch"/>
             <service-call name="zenith.pos.KotServices.get#KitchenDisplayPolicy" in-map="[facilityId:_billing.terminal.facilityId]" out-map="_display"/>
-            <script>ec.web.sendJsonResponse([success:!ec.message.hasError(),open:_touch.open,displayEnabled:_display.enabled,handoffUserId:_touch.handoffUserId])</script>
+            <script>ec.web.sendJsonResponse([success:!ec.message.hasError(),open:_touch.open,displayEnabled:_display.enabled,handoffUserId:_touch.handoffUserId,closeReason:_touch.closeReason,idleCloseAfterMs:_touch.idleCloseAfterMs])</script>
         </actions>
         <default-response type="none"/>
     </transition>
