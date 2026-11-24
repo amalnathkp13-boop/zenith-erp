@@ -43,7 +43,7 @@
         <set field="_qno" from="ec.context.quoteNoSearch ? '%' + ec.context.quoteNoSearch.toString().trim() + '%' : null"/>
 
         <entity-find entity-name="mantle.order.OrderHeaderAndPart" list="quoteList">
-            <search-form-inputs skip-fields="organizationPartyId,fromPartyId,vendorPartyId,ownerPartyId" default-order-by="-entryDate"/>
+            <search-form-inputs skip-fields="organizationPartyId,fromPartyId,vendorPartyId,ownerPartyId" default-order-by="-entryDate,orderId,orderPartSeqId"/>
 <!-- ZE-SALES-014 f/u (cross-tenant CSV leak): source the active org DIRECTLY, not via the parent-set
                  activeOrgId var, which is empty in the CSV/standalone render -> ignore-if-empty then skipped the
                  filter and the CSV dumped every tenant's quotations (incl. MARUTHI). -->

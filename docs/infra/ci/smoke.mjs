@@ -341,14 +341,26 @@ try {
     }, campaignName);
     if (posted !== 200) throw new Error(`campaign create returned HTTP ${posted}`);
     await page.goto(`${BASE}/apps/zenith/Crm/SourcesCampaigns`, { waitUntil: 'networkidle2', timeout: 60000 });
-    const campaignId = await page.evaluate(name => {
-      const options = [...document.querySelectorAll('select[name="trackingCampaignId"] option')];
-      return options.find(option => option.textContent.trim() === name)?.value;
-    }, campaignName);
-    if (!campaignId) throw new Error('new campaign is absent from the tracking-link builder');
+    await page.click('#select2-TrackingLinkForm_trackingCampaignId-container');
+    const search = await page.waitForSelector('.select2-container--open .select2-search__field', { visible: true });
+    const [response] = await Promise.all([
+      page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/searchTrackingCampaigns') &&
+        new URLSearchParams(r.request().postData()).get('term') === campaignName),
+      search.type(campaignName),
+    ]);
+    if (!response.ok()) throw new Error(`campaign lookup returned HTTP ${response.status()}`);
+    const match = (await response.json()).find(row => row.label === campaignName);
+    if (!match?.value) throw new Error('new campaign is absent from the tracking-link builder');
+    const option = await page.waitForFunction(name => [...document.querySelectorAll('.select2-results__option')]
+      .find(row => row.textContent.trim() === name), {}, campaignName);
+    await option.asElement().click();
+    const campaignId = await page.$eval('#TrackingLinkForm', form => new FormData(form).get('trackingCampaignId'));
+    if (campaignId !== String(match.value)) throw new Error('tracking form did not select the new campaign ID');
     const destination = 'https://example.test/signup?existing=a%26b#section';
-    const query = new URLSearchParams({ trackingCampaignId: campaignId, destinationUrl: destination, utmContent: 'autumn offer' });
-    await page.goto(`${BASE}/apps/zenith/Crm/SourcesCampaigns?${query}`, { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.type('#TrackingLinkForm_destinationUrl', destination);
+    await page.type('#TrackingLinkForm_utmContent', 'autumn offer');
+    await page.click('#TrackingLinkForm button[type="submit"]');
+    await page.waitForSelector('.zcrm-tracking-url', { visible: true });
     const tracked = await page.$eval('.zcrm-tracking-url', element => element.textContent.trim());
     const url = new URL(tracked);
     if (url.hash !== '#section' || url.searchParams.get('existing') !== 'a&b' ||

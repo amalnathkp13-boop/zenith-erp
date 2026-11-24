@@ -3621,6 +3621,9 @@
 
 
     <widgets>
+        <render-mode><text type="html,qvt" template="true"><![CDATA[
+            <link rel="stylesheet" href="/zenithstatic/css/pos-bill-history.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/pos-bill-history.css').getLastModified()?c}"/>
+        ]]></text></render-mode>
 
 
 

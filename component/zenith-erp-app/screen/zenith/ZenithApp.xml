@@ -362,7 +362,7 @@
             html_stylesheets.add('/zenithstatic/css/edit-customer-group.css?v=1')
             html_stylesheets.add('/zenithstatic/css/contacts-reference.css?v=1')
             html_stylesheets.add('/zenithstatic/css/crm-experience.css?v=7')
-            html_stylesheets.add('/zenithstatic/css/sales-dashboard-reference.css?v=1')
+            html_stylesheets.add('/zenithstatic/css/sales-dashboard-reference.css?v=2')
             html_stylesheets.add('/zenithstatic/css/sales-invoice-detail.css?v=1')
             html_stylesheets.add('/zenithstatic/css/pricing-price-lists.css?v=1')
             html_stylesheets.add('/zenithstatic/css/pos-credit-history.css?v=1')
@@ -391,7 +391,7 @@
             html_stylesheets.add('/zenithstatic/css/inventory-responsive.css?v=2')
             html_stylesheets.add('https://fonts.googleapis.com/icon?family=Material+Icons')
             if (footer_scripts == null) footer_scripts = []
-            footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=14')
+            footer_scripts.add('/zenithstatic/js/saas-menu-filter.js?v=15')
             footer_scripts.add('/zenithstatic/js/qapps-nav.js?v=59')
             footer_scripts.add('/zenithstatic/js/profile-menu.js?v=1')
             footer_scripts.add('/zenithstatic/js/pos-deferred-close.js?v=' + ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/js/pos-deferred-close.js').getLastModified())
@@ -1395,7 +1395,7 @@
             <link rel="stylesheet" href="/zenithstatic/css/shops-reference.css?v=2"/>
             <link rel="stylesheet" href="/zenithstatic/css/contacts-dashboard.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/edit-customer-group.css?v=1"/>
-            <link rel="stylesheet" href="/zenithstatic/css/sales-dashboard-reference.css?v=1"/>
+            <link rel="stylesheet" href="/zenithstatic/css/sales-dashboard-reference.css?v=2"/>
             <link rel="stylesheet" href="/zenithstatic/css/sales-invoice-detail.css?v=1"/>
             <link rel="stylesheet" href="/zenithstatic/css/crm-experience.css?v=7"/>
             <link rel="stylesheet" href="/zenithstatic/css/pricing-price-lists.css?v=1"/>

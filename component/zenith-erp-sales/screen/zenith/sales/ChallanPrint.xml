@@ -24,6 +24,7 @@
                 <econdition field-name="challanId"/>
                 <order-by field-name="challanItemSeqId"/>
             </entity-find>
+            <script location="component://zenith-erp-sales/script/SalesChallanGoods.groovy"/>
         </if>
 
         <entity-find-one entity-name="mantle.party.PartyDetail" value-field="fromParty">

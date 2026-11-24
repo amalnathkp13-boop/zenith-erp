@@ -260,6 +260,11 @@
                 <return error="true" message="This invoice has been issued and its line items can no longer be changed. Raise a credit or debit note to correct it."/>
             </if>
             <service-call name="delete#mantle.account.invoice.InvoiceItem" in-map="context"/>
+            <entity-delete-by-condition entity-name="zenith.erp.tax.TaxLineDetail">
+                <econdition field-name="referenceType" value="InvoiceItem"/>
+                <econdition field-name="referenceId" from="invoiceId"/>
+                <econdition field-name="referenceSeqId" from="invoiceItemSeqId"/>
+            </entity-delete-by-condition>
         <script>
             ec.service.sync().name("zenith.sales.SalesLineServices.refresh#DraftInvoiceTaxes").parameters([invoiceId:invoiceId]).call()
             </script>
