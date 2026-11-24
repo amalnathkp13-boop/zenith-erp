@@ -227,13 +227,13 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
    await page.getByRole('row').filter({has:page.getByText(settled.billNumber,{exact:true})}).count()===1);
   for (const shell of ['apps','qapps']) {
    let homeAfter=await homeTotal(shell);
-   for(let retry=0;retry<4&&(homeAfter.amount!==homeAfter.chart||homeAfter.invoices===0);retry++){
+   for(let retry=0;retry<4&&(homeAfter.amount!==homeAfter.hourly||homeAfter.invoices===0);retry++){
     await page.waitForTimeout(750);
     homeAfter=await homeTotal(shell);
    }
    check(shell+' Home Dashboard adds the KOT bill exactly once to sales, invoices and charts',
     homeAfter.amount===homeBefore.amount+100&&homeAfter.invoices===homeBefore.invoices+1&&
-    homeAfter.chart===homeAfter.amount&&homeAfter.hourly===homeAfter.amount,
+    homeAfter.chart===homeBefore.chart+100&&homeAfter.hourly===homeAfter.amount,
     {homeBefore,homeAfter});
   }
   const revisionReason='Disposable KOT history revision';
@@ -304,7 +304,7 @@ module.exports = async ({ browser, a, foreign, base, check, q, out }) => {
       .includes('/kot/EditTransaction?transactionId=POS_QA_KOT_REPORT_UNSYNCED'));
     const nextDay=await homeTotal(shell,'2040-02-02');
     check(shell+' Home Dashboard ignores an accounting mirror on the following day',
-     nextDay.amount===0&&nextDay.chart===0&&nextDay.invoices===0,nextDay);
+     nextDay.amount===0&&nextDay.chart===historical.chart&&nextDay.invoices===0,nextDay);
    }
    // The standalone KOT dashboard count is server-rendered from an org-scoped inner join
    // (KotTransactionView = PosTransaction joined to KitchenOrderTicket). Under CI concurrency the

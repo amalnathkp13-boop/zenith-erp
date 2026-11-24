@@ -1,5 +1,9 @@
 # Main dashboard header verification
 
+For a single selected day, Weekly plots the seven local calendar days ending on that date, including zero-sale days. The KPI cards retain their selected-day totals and Today Hourly retains its 24 current-day buckets. Explicit multi-day ranges continue to use their selected period.
+
+Run `check-weekly-sales.groovy` from the repository root using `groovy.ui.GroovyMain` with Moqui's `groovy` and `groovy-json` jars on the Java classpath. It executes the actual dashboard chart actions with synthetic sales and no database. It covers seven buckets, totals, empty days, inclusive/exclusive midnight boundaries, historical year/leap-day boundaries, DST, hourly independence, and preservation of custom/monthly ranges.
+
 The main screen is `component/zenith-erp-app/screen/zenith/Dashboard.xml`. Its page-specific styles and lifecycle are in `screen/zenithstatic/css/main-dashboard.css` and `screen/zenithstatic/js/main-dashboard.js`. `ZenithApp.xml` supplies the Bootstrap shell and asset versions; `qapps-nav.js` supplies the Quasar navigation.
 
 The dashboard header and date controls follow the supplied ZetaERP HTML mockup and two screenshots. The header spans the page above the sidebar. The date strip has Customize, a formatted date or date range, next-range navigation, and four preset tabs. It opens on the current week and has no All time option. Clicking Today, This Week, This Month or This Year applies that preset's dates and displays them in the date control. Applied ranges that exactly match a day, calendar week, month or year select the corresponding preset. A one-day range for today displays one date and highlights Today; Customize retains the selected range.

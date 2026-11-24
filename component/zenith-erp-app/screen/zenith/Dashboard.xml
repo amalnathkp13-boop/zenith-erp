@@ -410,6 +410,13 @@
             def _chartStart = dayStart ?: new java.sql.Timestamp(_wkCal.timeInMillis)
             def _chartEnd = dayEndExcl
             if (_chartEnd == null) { def c=(java.util.Calendar)_wkCal.clone(); c.add(java.util.Calendar.DAY_OF_MONTH,7); _chartEnd=new java.sql.Timestamp(c.timeInMillis) }
+            // A single-day KPI filter must not collapse the Weekly tab into one point.
+            boolean _singleChartDay = dayStart != null && dashDate == dashDateTo
+            if (_singleChartDay) {
+                def c=java.util.Calendar.getInstance(ec.user.timeZone); c.setTime(_chartStart)
+                c.add(java.util.Calendar.DAY_OF_MONTH,-6)
+                _chartStart=new java.sql.Timestamp(c.timeInMillis)
+            }
             boolean _monthly = (_chartEnd.time-_chartStart.time)>62L*86400000L
             boolean _yearly = (_chartEnd.time-_chartStart.time)>400L*31*86400000L
             def _bucketField = _yearly ? java.util.Calendar.YEAR : (_monthly ? java.util.Calendar.MONTH : java.util.Calendar.DAY_OF_MONTH)
@@ -428,7 +435,7 @@
             }
             baWeekLabelsJson = groovy.json.JsonOutput.toJson(_labels); baWeekDataJson = groovy.json.JsonOutput.toJson(_values)
             baWeekTotal = _total; baWeekTotalFmt = homeMoney(_total)
-            baWeekLabel = dayStart ? acRangeLabel : 'This week'
+            baWeekLabel = _singleChartDay ? (_sdf.format(_chartStart) + ' to ' + dashDateTo) : (dayStart ? acRangeLabel : 'This week')
             def _today = ec.l10n.parseTimestamp(_todayStr+' 00:00:00', 'yyyy-MM-dd HH:mm:ss')
             def _tomorrowCal=java.util.Calendar.getInstance(ec.user.timeZone); _tomorrowCal.setTime(_today); _tomorrowCal.add(java.util.Calendar.DAY_OF_MONTH,1)
             def _tomorrow=new java.sql.Timestamp(_tomorrowCal.timeInMillis)
