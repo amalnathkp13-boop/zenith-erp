@@ -1,9 +1,14 @@
+/* Page typography stays inside the work area; navigation uses the shared ERP theme. */
+#stockAdjustments,#stockAdjustmentDetail {font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif;color:var(--text-primary);}
+body.zq-nav:has(#stockAdjustments) .q-page-container {padding-bottom:54px!important;}
+body.zq-nav:has(#stockAdjustmentDetail) .q-page-container {padding-bottom:54px!important;}
+
 /* Scoped Stock Adjustments reference tokens and responsive presentation. */
 body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)),body:has(#stockAdjustmentDetail) {
  --primary:#7C3AED;--primary-dark:#6D28D9;--primary-light:#F5F3FF;--bg:#F8F9FC;--white:#FFFFFF;--border:#E5E7EB;
  --text-primary:#111827;--text-secondary:#6B7280;--text-muted:#9CA3AF;--green:#10B981;--green-bg:#ECFDF5;--green-text:#059669;
  --red:#EF4444;--red-bg:#FEF2F2;--red-text:#DC2626;--orange:#F59E0B;--orange-bg:#FFFBEB;--orange-text:#D97706;--blue:#3B82F6;--blue-bg:#EFF6FF;
- --radius:12px;--radius-sm:8px;--sidebar-width:220px;font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif;color:var(--text-primary);
+ --radius:12px;--radius-sm:8px;--sidebar-width:224px;
 }
 #stockAdjustments {padding:58px 32px 32px;min-width:0;font-size:12.5px;line-height:1.5;}
 body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) .inv-module-shortcuts {display:none!important;}
@@ -61,18 +66,6 @@ body.zq-nav:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) .q-page {pa
 #stockAdjustments .form-order-by a {color:var(--blue)!important;font-size:9px!important;}
 #stockAdjustments .sa-empty {padding:28px;color:var(--text-secondary);text-align:center;}
 #stockAdjustments :is(a,button,select,.sa-table-scroll):focus-visible,#stockAdjustmentDetail :is(a,button,input,textarea,select):focus-visible {outline:2px solid var(--primary)!important;outline-offset:3px;}
-/* Only this page adjusts the shared shell; account identity and destinations remain native. */
-body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) :is(#zq-sidebar,#z-sidebar) {font-family:Inter,sans-serif;border-color:var(--border);}
-body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) :is(.zqs-brand,.zs-brand) {font-size:26px!important;color:var(--text-primary)!important;padding:16px 18px!important;gap:12px!important;}
-body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) :is(.zqs-brand,.zs-brand) img {width:36px!important;height:36px!important;flex-basis:36px!important;}
-body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) :is(.zqs-cat,.zs-cat) {color:var(--text-secondary)!important;margin:20px 10px 12px!important;font-size:11px!important;letter-spacing:0!important;}
-body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) :is(.zqs-link,.zs-link) {height:44px;font-size:13px!important;color:var(--text-primary)!important;font-weight:500!important;margin-bottom:0!important;}
-body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) :is(.zqs-link,.zs-link).on {background:var(--primary-light)!important;color:var(--primary)!important;font-weight:600!important;}
-body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) :is(#zq-subnav,#z-subnav) {height:50px;border-color:var(--border);padding:0 8px;scrollbar-width:none;}
-body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) :is(.zqsub-title,.zsub-title) {display:inline-flex!important;align-items:center;height:100%;color:var(--primary)!important;background:var(--white)!important;border:0!important;border-bottom:2px solid var(--primary)!important;margin:0!important;padding:0 18px!important;font-size:11.5px!important;}
-body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) :is(.zqsub-tab,.zsub-tab) {padding:13px 18px!important;font-size:11.5px!important;font-weight:500!important;color:var(--text-primary)!important;}
-body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) :is(.zqsub-tab,.zsub-tab).on {background:var(--white)!important;color:var(--primary)!important;font-weight:600!important;border-radius:0!important;border-bottom:2px solid var(--primary)!important;}
-body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) :is(#zq-ownerview,#z-ownerview) {background:var(--white)!important;border-color:var(--border)!important;color:var(--primary)!important;}
 body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) #content>.inner,body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) #content>.inner>.container-fluid {padding:0!important;}
 body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) #footer {display:flex!important;justify-content:space-between;align-items:center;background:var(--white)!important;border-color:var(--border)!important;padding:14px 32px!important;gap:16px;}
 body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) #footer>div {flex:none!important;width:auto!important;text-align:left!important;padding:0!important;}
@@ -91,34 +84,9 @@ body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) #ai-copilot-contai
 @media(min-width:901px) {
  body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) #footer {left:var(--sidebar-width)!important;width:calc(100% - var(--sidebar-width))!important;}
  body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)).zq-side-collapsed #footer,body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)).z-side-collapsed #footer {left:0!important;width:100%;}
- body.zq-nav:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) .q-page-container {margin:0!important;padding-top:122px!important;padding-bottom:54px!important;}
- body.zq-nav:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)):not(.zq-side-collapsed) .q-page-container {padding-left:var(--sidebar-width)!important;}
- body.zq-nav:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)):not(.zq-side-collapsed) :is(.q-header,#zq-subnav) {left:var(--sidebar-width)!important;}
- body.zq-nav:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)):not(.zq-side-collapsed) #zq-sidebar {width:var(--sidebar-width);}
- body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) #zq-subnav {top:72px!important;}
- body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) .q-header .q-toolbar {min-height:72px!important;}
- body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)):not(.z-side-collapsed) #z-sidebar {width:var(--sidebar-width);}
- body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)):not(.z-side-collapsed) :is(#top,#content,#z-subnav) {margin-left:var(--sidebar-width)!important;}
- body.zq-nav:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) #top {margin-left:0!important;}
- body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) :is(#zq-sidebar,#z-sidebar) {bottom:54px;}
- body:not(.zq-nav):has(#stockAdjustments) #top,body:not(.zq-nav):has(#stockAdjustments) #top .navbar {height:72px!important;min-height:72px!important;padding:0!important;box-sizing:border-box!important;}
- body:not(.zq-nav):has(#stockAdjustments) #z-subnav {width:calc(100% - var(--sidebar-width))!important;}
 }
 @media(max-width:1100px) {#stockAdjustments .sa-page-head {align-items:flex-start;flex-wrap:wrap;}#stockAdjustments .sa-head-actions {margin-left:auto;}}
 @media(max-width:900px) {
- body.zq-nav:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) .q-page-container {margin:0!important;padding:178px 0 54px!important;}
- body.zq-nav:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) :is(.q-header,#zq-subnav) {left:0!important;}
- body.zq-nav:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) .q-header .q-toolbar {display:grid!important;grid-template-columns:32px minmax(0,1fr) auto;grid-template-rows:32px 36px 32px;gap:6px;padding:8px!important;height:128px;min-height:128px;}
- body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) #zq-topextra {display:contents;}
- body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) .q-header .q-toolbar>button:first-child {grid-column:1;grid-row:1;}
- body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) .q-header .q-toolbar>button:not(:first-child) {grid-column:3;grid-row:1;max-width:96px;}
- body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) .q-header .q-toolbar>.q-space {display:none;}
- body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) #zq-ownerview {grid-column:2;grid-row:1;margin:0;min-width:0;max-width:100%;width:fit-content;font-size:11px!important;}
- body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) #zq-ownerview .zqov-org {min-width:0;overflow:hidden;text-overflow:ellipsis;}
- body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) #zq-search {grid-column:1/-1;grid-row:2;min-width:0;margin:0;}
- body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) #zq-search .zqsr-box {width:100%;max-width:none;}
- body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) #zq-toolbtns {grid-column:1/-1;grid-row:3;justify-content:flex-end;flex-wrap:wrap;margin:0;}
- body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) #zq-subnav {top:128px!important;}
  #stockAdjustments {padding:24px 14px;}
  #stockAdjustments .sa-card {padding:0 12px 16px;}
  #stockAdjustments .sa-pagination {gap:12px;}
@@ -151,7 +119,6 @@ body:has(#stockAdjustments) #stockAdjustments .sa-head-actions #NewAdjDialog-but
 #stockAdjustments .sa-new .fa {display:none;}
 @media(max-width:900px) {
  body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) #footer {left:0!important;width:100%!important;}
- body:is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) .zqs-collapse {display:none!important;}
  body:not(.zq-nav):is(:has(#stockAdjustments),:has(#stockAdjustmentDetail)) #content {padding-bottom:54px;}
 }
 

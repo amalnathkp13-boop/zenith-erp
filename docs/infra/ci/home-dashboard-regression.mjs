@@ -19,6 +19,7 @@ const anonymous = await fetch(base + route, { redirect: 'manual' });
 assert([302, 303].includes(anonymous.status), 'Anonymous users are redirected');
 assert.match(anonymous.headers.get('location'), /Login/);
 const all = await page();
+assert.equal(all.config.weekly.cats.length, 7, 'Weekly keeps seven days when the dashboard defaults to Today');
 const spa = await page('?showSettings=1', '.qvt');
 assert.equal(spa.config.saveUrl, '/apps/zenith/Dashboard/saveDashOrder', 'SPA render suffix is removed from transition URLs');
 for (const query of ['?dashDate=invalid', '?dashDate=2026-02-30', '?dashDate=2026-10-07%22%3E%3Cscript%3E']) {
@@ -28,7 +29,8 @@ const reversed = await page('?dashDate=2026-10-07&dashDateTo=2026-10-01');
 assert.equal(reversed.config.weekly.cats.length, 7);
 assert.equal(reversed.config.weekly.sub, '2026-10-01 to 2026-10-07');
 const endOnly = await page('?dashDateTo=2026-10-07');
-assert.equal(endOnly.config.weekly.cats.length, 1);
+assert.equal(endOnly.config.weekly.cats.length, 7);
+assert.equal(endOnly.config.weekly.sub, '2026-10-01 to 2026-10-07');
 const long = await page('?dashDate=2025-01-31&dashDateTo=2025-05-31');
 assert.deepEqual(long.config.weekly.cats, ['Jan 25', 'Feb 25', 'Mar 25', 'Apr 25', 'May 25']);
 const century = await page('?dashDate=1900-01-01&dashDateTo=2026-10-07');
