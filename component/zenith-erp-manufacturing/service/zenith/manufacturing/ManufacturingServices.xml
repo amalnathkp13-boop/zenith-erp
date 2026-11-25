@@ -205,13 +205,17 @@
                     in-map="[workOrderId:workOrderId, operationSeqId:op.operationSeqId, statusId:'OpCompleted']"/>
             </iterate>
 
-            <!-- Create finished goods asset -->
+            <!-- Receive finished goods through the shared stock service, like every other stock-in path. A raw
+                 create#Asset wrote on-hand with no AssetDetail ledger row and no owner: the lot was invisible in the
+                 org-scoped stock views, and Mantle's ledger recompute on the next movement wiped its quantity. -->
             <if condition="completedQuantity &gt; 0 &amp;&amp; wo.facilityId">
-                <service-call name="create#mantle.product.asset.Asset"
-                    in-map="[productId:wo.productId, facilityId:wo.facilityId,
-                             statusId:'AstAvailable', assetTypeEnumId:'AstTpInventory',
-                             quantityOnHandTotal:completedQuantity, availableToPromiseTotal:completedQuantity,
-                             receivedDate:ec.user.nowTimestamp]"/>
+                <entity-find-one entity-name="mantle.facility.Facility" value-field="woFac">
+                    <field-map field-name="facilityId" from="wo.facilityId"/>
+                </entity-find-one>
+                <service-call name="zenith.inventory.InventoryStockServices.adjust#AssetOnHand"
+                    in-map="[organizationPartyId:(woFac?.ownerPartyId ?: ec.user.getPreference('ACTIVE_ORGANIZATION')),
+                             productId:wo.productId, facilityId:wo.facilityId, quantityDiff:completedQuantity,
+                             reason:('Work order ' + (wo.workOrderNumber ?: workOrderId) + ' completed')]"/>
             </if>
         </actions>
     </service>
