@@ -313,9 +313,16 @@
                     if (invAdjProduct && invAdjQty != BigDecimal.ZERO) {
                         def _pT = ec.entity.find("mantle.product.Product").condition("productId", invAdjProduct).one()
                         if (_pT?.inventoryTracked == 'Y') {
+                            // Post the delta to the bill's own shop (session -> terminal -> facility), the same
+                            // location checkout and invoice sync issued the sale from; else it hit the first lot found.
+                            def _sessE = txnFinal.sessionId ? ec.entity.find("zenith.erp.pos.PosSession").condition("sessionId", txnFinal.sessionId).one() : null
+                            def _termE = _sessE?.terminalId ? ec.entity.find("zenith.erp.pos.PosTerminal").condition("terminalId", _sessE.terminalId).one() : null
+                            // Same org guard as invoice sync: never take a location from another org's session/terminal.
+                            if (_sessE?.organizationPartyId != txnFinal.organizationPartyId || _termE?.organizationPartyId != txnFinal.organizationPartyId) _termE = null
                             try {
                                 ec.service.sync().name("zenith.inventory.InventoryStockServices.adjust#AssetOnHand").parameters([
                                     organizationPartyId: txnFinal.organizationPartyId, productId: invAdjProduct,
+                                    facilityId: _termE?.facilityId,
                                     quantityDiff: invAdjQty, reason: ('Bill edit ' + (txnFinal.transactionNumber ?: txId))]).call()
                             } catch (Throwable e) { throw new IllegalStateException('Bill-edit stock adjustment failed; no changes were saved.', e) }
                         }

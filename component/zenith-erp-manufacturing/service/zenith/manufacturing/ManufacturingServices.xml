@@ -190,6 +190,24 @@
             <if condition="wo.statusId != 'WoInProgress'">
                 <return error="true" message="Work order must be In Progress to complete"/></if>
 
+            <!-- The finished goods are owned by the ACTING org, never adopted from the facility: the work-order facility
+                 picker is not org-scoped, so trusting Facility.ownerPartyId could post this output into another tenant's
+                 stock. Block a facility or product that belongs to a different org before anything is written. -->
+            <if condition="completedQuantity &gt; 0 &amp;&amp; wo.facilityId">
+                <entity-find-one entity-name="mantle.facility.Facility" value-field="woFac">
+                    <field-map field-name="facilityId" from="wo.facilityId"/>
+                </entity-find-one>
+                <entity-find-one entity-name="mantle.product.Product" value-field="woProd">
+                    <field-map field-name="productId" from="wo.productId"/>
+                </entity-find-one>
+                <set field="woOrg" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
+                <if condition="!woOrg || woOrg == '_NA_'"><set field="woOrg" from="woProd?.ownerPartyId"/></if>
+                <if condition="!woOrg">
+                    <return error="true" message="Select your company before completing this work order."/></if>
+                <if condition="(woFac?.ownerPartyId &amp;&amp; woFac.ownerPartyId != woOrg) || (woProd?.ownerPartyId &amp;&amp; woProd.ownerPartyId != woOrg)">
+                    <return error="true" message="This work order's store or product belongs to another company. Choose one of your own stores."/></if>
+            </if>
+
             <service-call name="update#zenith.erp.manufacturing.WorkOrder"
                 in-map="[workOrderId:workOrderId, statusId:'WoCompleted',
                          completedQuantity:completedQuantity, wastageQuantity:wastageQuantity,
@@ -205,13 +223,14 @@
                     in-map="[workOrderId:workOrderId, operationSeqId:op.operationSeqId, statusId:'OpCompleted']"/>
             </iterate>
 
-            <!-- Create finished goods asset -->
+            <!-- Receive finished goods through the shared stock service, like every other stock-in path. A raw
+                 create#Asset wrote on-hand with no AssetDetail ledger row and no owner: the lot was invisible in the
+                 org-scoped stock views, and Mantle's ledger recompute on the next movement wiped its quantity. -->
             <if condition="completedQuantity &gt; 0 &amp;&amp; wo.facilityId">
-                <service-call name="create#mantle.product.asset.Asset"
-                    in-map="[productId:wo.productId, facilityId:wo.facilityId,
-                             statusId:'AstAvailable', assetTypeEnumId:'AstTpInventory',
-                             quantityOnHandTotal:completedQuantity, availableToPromiseTotal:completedQuantity,
-                             receivedDate:ec.user.nowTimestamp]"/>
+                <service-call name="zenith.inventory.InventoryStockServices.adjust#AssetOnHand"
+                    in-map="[organizationPartyId:woOrg,
+                             productId:wo.productId, facilityId:wo.facilityId, quantityDiff:completedQuantity,
+                             reason:('Work order ' + (wo.workOrderNumber ?: workOrderId) + ' completed')]"/>
             </if>
         </actions>
     </service>
