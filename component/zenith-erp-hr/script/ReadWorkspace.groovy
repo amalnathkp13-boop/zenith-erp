@@ -68,7 +68,8 @@ def employees = roster.collect { e ->
      color:avatarColors[Math.floorMod(e.employeeId.hashCode(),avatarColors.size())],email:e.workEmail != null ? e.workEmail : emailValues[email?.contactMechId] ?: '',
      phone:e.workPhone != null ? e.workPhone : phoneValues[phone?.contactMechId] ?: '',emergency:e.emergencyContactName ?: '',
      leavingDate:(e.relievingDate ?: e.lastWorkingDate)?.toString() ?: '',
-     documents:(documents[e.employeeId] ?: []).collect { [name:it.documentName ?: '',size:it.fileSize ?: 0,added:it.uploadDate?.toInstant()?.atZone(zone)?.toLocalDate()?.toString() ?: ''] }]
+     documents:(documents[e.employeeId] ?: []).collect { [id:it.documentId,name:it.documentName ?: '',size:it.fileSize ?: 0,
+         added:it.uploadDate?.toInstant()?.atZone(zone)?.toLocalDate()?.toString() ?: '',available:!!it.contentBase64] }]
 }
 def leaveRows = scoped('zenith.erp.hr.LeaveApplication','employeeId',empIds,'-leaveApplicationId')
 def leaveNames = [CL:'Casual leave',SL:'Sick leave',LWP:'Unpaid leave',EL:'Earned leave']

@@ -866,6 +866,17 @@ input[type='file']::file-selector-button {
 .document-row .cell-secondary {
   margin-left: auto;
 }
+.document-row .document-link {
+  margin-left: auto;
+  color: var(--primary);
+  font-weight: 650;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.document-row .document-link:hover,
+.document-row .document-link:focus-visible {
+  text-decoration: underline;
+}
 .check-label {
   display: flex;
   align-items: center;

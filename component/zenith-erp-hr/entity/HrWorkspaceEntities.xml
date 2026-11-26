@@ -17,6 +17,8 @@
     </extend-entity>
     <extend-entity entity-name="EmployeeDocument" package="zenith.erp.hr">
         <field name="fileSize" type="number-integer"/>
+        <field name="fileMimeType" type="text-short"/>
+        <field name="contentBase64" type="text-very-long"/>
     </extend-entity>
     <extend-entity entity-name="AttendanceRecord" package="zenith.erp.attendance">
         <field name="hrEmployeeId" type="id"/>

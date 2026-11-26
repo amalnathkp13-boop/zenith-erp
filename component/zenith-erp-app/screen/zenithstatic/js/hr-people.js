@@ -189,7 +189,7 @@ export function installPeople(HR, view) {
       leavingDate: '',
       documents: [],
     };
-    let attached = [...(e.documents || [])];
+    let uploads = [];
     const departments = HR.state.settings.departments;
     const departmentField = departments.length
       ? select('department', departments, e.department, 'required')
@@ -225,7 +225,7 @@ export function installPeople(HR, view) {
         ? `${existing.id} · Keep employee details up to date.`
         : 'Create a profile and add this person to your team.',
       wide: true,
-      body: `<form id="modal-form">${errorBox}<div class="form-grid">${field('Full name *', input('name', e.name, 'required maxlength="80" autocomplete="name" placeholder="e.g. Ananya Rao"'))}${field('Work email *', input('email', e.email, 'type="email" required maxlength="160" autocomplete="email" placeholder="name@example.com"'))}${field('Phone', input('phone', e.phone, 'type="tel" maxlength="24" autocomplete="tel" placeholder="+91 98765 43210"'))}${field('Joining date *', input('joined', e.joined, 'type="date" required'))}${field('Department *', departmentField)}${field('Designation *', input('designation', e.designation, 'required maxlength="80" list="employee-designations" placeholder="e.g. Software Engineer"') + `<datalist id="employee-designations">${(HR.state.settings.designations || []).map((d) => `<option value="${E(d)}"></option>`).join('')}</datalist>`)}${field('Reporting manager', managerField)}${field('Employment type', select('type', ['Full-time', 'Part-time', 'Contract'], e.type))}${field('Status', select('status', ['Active', 'On probation', 'Inactive'], e.status))}<div id="employee-leaving-field" ${e.status === 'Inactive' ? '' : 'hidden'}>${field('Leaving date *', input('leavingDate', e.leavingDate || HR.today, 'type="date"'))}</div>${field('Salary type *', `<select name="salaryType" required><option value="monthly" ${e.salaryType !== 'daily' ? 'selected' : ''}>Monthly agreed salary</option><option value="daily" ${e.salaryType === 'daily' ? 'selected' : ''}>Per day salary</option></select>`)}<label class="field salary-amount-field"><span id="employee-salary-label">${e.salaryType === 'daily' ? 'Daily' : 'Monthly'} salary amount (₹) *</span>${input('salary', e.salary, 'type="number" required min="0" max="10000000" step="0.01"')}<small class="field-hint" id="employee-salary-unit">₹ / ${e.salaryType === 'daily' ? 'day' : 'month'}</small></label>${field('Emergency contact', input('emergency', e.emergency, 'maxlength="120" placeholder="Name and phone number"'))}${field('Documents', '<input type="file" id="employee-documents" multiple accept=".pdf,.png,.jpg,.jpeg,.doc,.docx">', 'Document names are recorded; file contents are not uploaded.')}<div class="span-2" id="employee-doc-list">${attached.map((d) => `<span class="pill">${E(typeof d === 'string' ? d : d.name)}</span>`).join(' ')}</div></div></form>`,
+      body: `<form id="modal-form">${errorBox}<div class="form-grid">${field('Full name *', input('name', e.name, 'required maxlength="80" autocomplete="name" placeholder="e.g. Ananya Rao"'))}${field('Work email *', input('email', e.email, 'type="email" required maxlength="160" autocomplete="email" placeholder="name@example.com"'))}${field('Phone', input('phone', e.phone, 'type="tel" maxlength="24" autocomplete="tel" placeholder="+91 98765 43210"'))}${field('Joining date *', input('joined', e.joined, 'type="date" required'))}${field('Department *', departmentField)}${field('Designation *', input('designation', e.designation, 'required maxlength="80" list="employee-designations" placeholder="e.g. Software Engineer"') + `<datalist id="employee-designations">${(HR.state.settings.designations || []).map((d) => `<option value="${E(d)}"></option>`).join('')}</datalist>`)}${field('Reporting manager', managerField)}${field('Employment type', select('type', ['Full-time', 'Part-time', 'Contract'], e.type))}${field('Status', select('status', ['Active', 'On probation', 'Inactive'], e.status))}<div id="employee-leaving-field" ${e.status === 'Inactive' ? '' : 'hidden'}>${field('Leaving date *', input('leavingDate', e.leavingDate || HR.today, 'type="date"'))}</div>${field('Salary type *', `<select name="salaryType" required><option value="monthly" ${e.salaryType !== 'daily' ? 'selected' : ''}>Monthly agreed salary</option><option value="daily" ${e.salaryType === 'daily' ? 'selected' : ''}>Per day salary</option></select>`)}<label class="field salary-amount-field"><span id="employee-salary-label">${e.salaryType === 'daily' ? 'Daily' : 'Monthly'} salary amount (₹) *</span>${input('salary', e.salary, 'type="number" required min="0" max="10000000" step="0.01"')}<small class="field-hint" id="employee-salary-unit">₹ / ${e.salaryType === 'daily' ? 'day' : 'month'}</small></label>${field('Emergency contact', input('emergency', e.emergency, 'maxlength="120" placeholder="Name and phone number"'))}${field('Documents', '<input type="file" id="employee-documents" multiple accept=".pdf,.png,.jpg,.jpeg,.doc,.docx">', 'Files up to 5 MB are stored after saving. Reupload the same file name to restore an older name-only record.')}<div class="span-2" id="employee-doc-list">${(e.documents || []).map((d) => `<span class="pill">${E(typeof d === 'string' ? d : d.name)}${d.available ? '' : ' · upload again to view'}</span>`).join(' ')}</div></div></form>`,
       footer: formFooter(existing ? 'Save changes' : 'Add employee'),
       onMount(dialog) {
         cancelBinding(dialog);
@@ -247,13 +247,10 @@ export function installPeople(HR, view) {
         employeeFormElement.elements.salaryType.addEventListener('change', syncSalaryType);
         syncSalaryType();
         $('#employee-documents', dialog).addEventListener('change', (ev) => {
-          attached = [
-            ...(e.documents || []),
-            ...[...ev.target.files].map((f) => ({ name: f.name, size: f.size, added: HR.today })),
-          ];
-          $('#employee-doc-list', dialog).innerHTML = attached
-            .map((d) => `<span class="pill">${E(typeof d === 'string' ? d : d.name)}</span>`)
-            .join(' ');
+          uploads = [...ev.target.files];
+          $('#employee-doc-list', dialog).innerHTML = [...(e.documents || []).map((d) =>
+            `<span class="pill">${E(d.name)}${d.available ? '' : ' · upload again to view'}</span>`),
+          ...uploads.map((f) => `<span class="pill">${E(f.name)} · ready to upload</span>`)].join(' ');
         });
         $('#modal-form', dialog).addEventListener('submit', async (ev) => {
           ev.preventDefault();
@@ -275,10 +272,12 @@ export function installPeople(HR, view) {
             return message(dialog, 'An employee with this email already exists.');
           if (!Number.isFinite(f.salary) || f.salary < 0)
             return message(dialog, 'Enter a valid non-negative salary.');
+          if (uploads.some((file) => !/\.(pdf|png|jpe?g|docx?)$/i.test(file.name) || file.size < 1 || file.size > 5000000))
+            return message(dialog, 'Choose PDF, PNG, JPG, DOC or DOCX files up to 5 MB each.');
           const updated = {
             ...e,
             ...f,
-            documents: attached,
+            documents: e.documents || [],
             id: existing?.id || nextEmployeeId(),
             color: e.color || 'purple',
           };
@@ -287,8 +286,14 @@ export function installPeople(HR, view) {
           else HR.state.employees.push(updated);
           if (!(await HR.save(`${existing ? 'Updated' : 'Added'} employee ${updated.name}`))) return;
           HR.closeModal();
-          HR.render();
-          HR.toast(existing ? 'Employee details updated.' : 'Employee added to the directory.');
+          let failed = 0;
+          for (const file of uploads) {
+            try { await HR.uploadDocument(updated.id, file); }
+            catch (error) { failed++; HR.toast(`${file.name}: ${error.message}`); }
+          }
+          if (uploads.length) await HR.reload();
+          else HR.render();
+          if (!failed) HR.toast(existing ? 'Employee details updated.' : 'Employee added to the directory.');
         });
       },
     });
@@ -310,7 +315,7 @@ export function installPeople(HR, view) {
         )
         .join(
           '',
-        )}</div><h3 class="section-label">Documents</h3>${e.documents?.length ? `<div class="stack">${e.documents.map((d) => `<div class="document-row">${HR.icon('file')}<span>${E(typeof d === 'string' ? d : d.name)}</span><span class="cell-secondary">Document record</span></div>`).join('')}</div>` : '<p class="muted">No document records added.</p>'}`,
+        )}</div><h3 class="section-label">Documents</h3>${e.documents?.length ? `<div class="stack">${e.documents.map((d) => `<div class="document-row">${HR.icon('file')}<span>${E(typeof d === 'string' ? d : d.name)}</span>${d.available && d.id ? `<a class="document-link" href="${E(HR.documentUrl(d.id))}" target="_blank" rel="noopener" aria-label="View ${E(d.name)}">View document</a>` : '<span class="cell-secondary">File unavailable · upload again in Edit employee</span>'}</div>`).join('')}</div>` : '<p class="muted">No document records added.</p>'}`,
       footer: `<button class="btn btn-secondary" data-cancel>Close</button><button class="btn btn-primary" id="profile-edit">${HR.icon('edit')} Edit employee</button>`,
       onMount(dialog) {
         cancelBinding(dialog);

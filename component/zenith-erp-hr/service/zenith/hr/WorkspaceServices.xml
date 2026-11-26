@@ -91,4 +91,55 @@
             ]]></script>
         </actions>
     </service>
+    <service verb="store" noun="EmployeeDocument" authenticate="true">
+        <in-parameters><parameter name="employeeCode" required="true"/><parameter name="documentFile" type="Object" required="true"/></in-parameters>
+        <out-parameters><parameter name="success" type="Boolean"/><parameter name="error"/><parameter name="documentId"/></out-parameters>
+        <actions>
+            <service-call name="zenith.hr.WorkspaceServices.get#WorkspaceAccess" out-map="permission"/>
+            <if condition="!permission.allowed"><set field="success" from="false"/><set field="error" value="HR management access is required."/><return/></if>
+            <script><![CDATA[
+                success = false
+                def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
+                def workspace = ec.resource.script('component://zenith-erp-hr/script/ReadWorkspace.groovy', null,
+                    [org:org,lockRows:false,includePayroll:permission.includePayroll])
+                def employee = workspace.employees[employeeCode]
+                if (!employee || employee.organizationPartyId != org) { error = 'Employee not found in this organization.'; return }
+                def file = documentFile
+                if (!file?.metaClass?.respondsTo(file,'getInputStream') || !file.metaClass.respondsTo(file,'getSize')) {
+                    error = 'Choose a document to upload.'; return
+                }
+                long size = file.getSize()
+                if (size < 1 || size > 5_000_000) { error = 'Documents must be between 1 byte and 5 MB.'; return }
+                def nameParts = (file.getName() ?: '').replace('\\','/').tokenize('/')
+                def rawName = nameParts ? nameParts.last() : ''
+                if (!rawName || rawName.length() > 255 || rawName ==~ /.*[\x00-\x1f\x7f].*/) {
+                    error = 'Choose a valid document name.'; return
+                }
+                def extension = rawName.tokenize('.').last().toLowerCase(java.util.Locale.ROOT)
+                def mime = [pdf:'application/pdf',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',
+                    doc:'application/msword',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'][extension]
+                if (!mime) { error = 'Choose a PDF, PNG, JPG, DOC, or DOCX file.'; return }
+                byte[] bytes = file.getInputStream().withCloseable { it.readAllBytes() }
+                if (bytes.length != size) { error = 'The document upload was incomplete.'; return }
+                def hex = (0..<Math.min(bytes.length,8)).collect { String.format('%02X',bytes[it] & 255) }.join('')
+                if (!((extension == 'pdf' && hex.startsWith('255044462D')) ||
+                      (extension == 'png' && hex.startsWith('89504E470D0A1A0A')) ||
+                      (extension in ['jpg','jpeg'] && hex.startsWith('FFD8FF')) ||
+                      (extension == 'doc' && hex.startsWith('D0CF11E0A1B11AE1')) ||
+                      (extension == 'docx' && hex.startsWith('504B0304')))) {
+                    error = 'The file contents do not match its document type.'; return
+                }
+                def existing = ec.entity.find('zenith.erp.hr.EmployeeDocument').condition('employeeId',employee.employeeId)
+                    .condition('documentName',rawName).disableAuthz().orderBy('documentId').list().find { !it.contentBase64 }
+                def row = existing ?: ec.entity.makeValue('zenith.erp.hr.EmployeeDocument')
+                    .set('employeeId',employee.employeeId).set('documentName',rawName).setSequencedIdPrimary()
+                row.fileSize = bytes.length
+                row.fileMimeType = mime
+                row.contentBase64 = java.util.Base64.encoder.encodeToString(bytes)
+                row.uploadDate = ec.user.nowTimestamp
+                if (existing) row.update() else row.create()
+                documentId = row.documentId; success = true
+            ]]></script>
+        </actions>
+    </service>
 </services>

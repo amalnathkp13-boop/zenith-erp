@@ -80,6 +80,23 @@ export async function openWorkspace(host) {
       page.querySelector('button').onclick = load;
     }
   }
+  H.reload = load;
+  H.documentUrl = (id) => `${host.dataset.document}?documentId=${encodeURIComponent(id)}`;
+  H.uploadDocument = async (employeeCode, file) => {
+    const body = new FormData();
+    body.append('employeeCode', employeeCode);
+    body.append('documentFile', file);
+    body.append('moquiSessionToken', host.dataset.token);
+    const response = await fetch(host.dataset.upload, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json', moquiSessionToken: host.dataset.token },
+      body,
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) throw new Error(result.error || `Unable to upload ${file.name}.`);
+    return result.documentId;
+  };
   let busy = false;
   H.save = async (message) => {
     if (busy) return false;

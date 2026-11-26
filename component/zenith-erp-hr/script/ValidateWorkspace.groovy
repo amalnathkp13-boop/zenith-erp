@@ -63,7 +63,8 @@ next.employees.each { e ->
     require(!e.manager || before?.manager == e.manager || (manager ? manager.id != e.id && manager.status != 'Inactive' :
         next.employees.count { it.id != e.id && it.name == e.manager && it.status != 'Inactive' } == 1),
         'Choose a manager with an unambiguous active employee record.')
-    def sameDoc = { a,b -> a.name == b.name && a.added == b.added && a.size == b.size }
+    def sameDoc = { a,b -> a.id ? a.id == b.id && a.name == b.name && a.added == b.added && a.size == b.size && a.available == b.available :
+        a.name == b.name && a.added == b.added && a.size == b.size }
     require(e.documents instanceof List && e.documents.every { doc -> doc instanceof Map && goodText(doc.name,255) && doc.size instanceof Number && doc.size >= 0 &&
         doc.size <= Integer.MAX_VALUE && (validDate(doc.added) || before?.documents?.any { sameDoc(it,doc) }) },'Check the document details.')
     def remaining = new ArrayList(e.documents)
@@ -72,6 +73,7 @@ next.employees.each { e ->
         require(i >= 0, 'Existing document records cannot be removed.')
         remaining.remove(i)
     }
+    require(remaining.isEmpty(), 'Upload new documents through the employee form.')
 }
 (oldCfg.departments - cfg.departments).each { d -> require(!next.employees.any { it.department == d },'This department is still assigned to an employee.') }
 (oldCfg.designations - cfg.designations).each { d -> require(!next.employees.any { it.designation == d },'This designation is still assigned to an employee.') }
