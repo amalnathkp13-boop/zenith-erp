@@ -340,9 +340,11 @@
                 <field name="del">
                   <!-- ZE-INV-010: Remove line is a write action — hidden for view-only users -->
                   <conditional-field name="delWrite" condition="invCanWrite" title="">
-                    <!-- stock-transfer-edit §8: Action = inline red trash icon (link-type="anchor" makes it an inline
-                         <a>, not a filled button; a bare <link> defaults to a btn). -->
-                    <link url="deleteItem" text="Remove" icon="fa fa-trash-o" link-type="anchor" parameter-map="[stockTransferId:stockTransferId, transferItemSeqId:transferItemSeqId]" condition="rowIsDraft" style="text-danger text-weight-bold text-decoration-none"/>
+                    <!-- INV-TRD-009: no link-type="anchor" here. An anchor is a GET that /qapps routes as a
+                         subscreen ("…/EditStockTransfer/deleteItem"), so the delete transition never ran. The
+                         default link posts to the transition, like Remove on EditInvoice / EditCreditNote. -->
+                    <link url="deleteItem" text="Remove" icon="fa fa-trash-o" parameter-map="[stockTransferId:stockTransferId, transferItemSeqId:transferItemSeqId]" condition="rowIsDraft"
+                          confirmation="Remove this product from the draft transfer?" style="q-btn--flat text-danger text-weight-bold"/>
                   </conditional-field>
                   <default-field title=""><label text="" type="span"/></default-field>
                 </field>

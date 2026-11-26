@@ -116,3 +116,10 @@
     .zqc-create-card { padding-inline: 14px; }
     :is(#CreateQuoteForm, #CreateQuoteForm > fieldset) > .row:not(:last-child) { grid-template-columns: minmax(0, 1fr); }
 }
+/* QA (Vimal Raj): a long customer name + id ran under the clear (×) icon. Let the value
+   shrink and end in "…" so the icon keeps its own space and the field stays one line tall. */
+#CreateQuoteForm .q-select .q-field__control-container,
+#CreateQuoteForm .q-select .q-field__native { min-width: 0; }
+#CreateQuoteForm .q-select .q-field__native { flex-wrap: nowrap; overflow: hidden; }
+#CreateQuoteForm .q-select .q-field__native > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#CreateQuoteForm .q-select .q-field__append { flex-shrink: 0; }

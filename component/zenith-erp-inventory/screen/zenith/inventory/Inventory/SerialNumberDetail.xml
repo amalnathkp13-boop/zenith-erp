@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- INV-ENV-005: read-only detail page for one tracked serial, so each serial has its own direct, refreshable
+     URL (…/Inventory/SerialNumberDetail?serialNumberId=…). Loading it never changes stock or status. -->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
+        default-menu-title="Serial Number" default-menu-include="false">
+
+    <parameter name="serialNumberId" required="true"/>
+
+    <transition name="back"><default-response url="../SerialNumbers"/></transition>
+
+    <actions>
+        <service-call name="zenith.inventory.SerialTrackingServices.get#SerialScope" out-map="snScope"/>
+        <!-- IDOR guard: same org filter as the Serial Numbers list. Another tenant's id (or an unknown one)
+             finds nothing and gets the same "not found" message, so nothing leaks. -->
+        <entity-find entity-name="zenith.erp.inventory.ProductSerialNumberView" list="_snList" limit="1">
+            <econdition field-name="serialNumberId"/>
+            <econdition field-name="ownerPartyId" from="snScope.organizationPartyId"/>
+            <econditions combine="or">
+                <econdition field-name="facilityId" operator="is-null"/>
+                <econdition field-name="facilityOwnerPartyId" from="snScope.organizationPartyId"/>
+            </econditions>
+        </entity-find>
+        <set field="sn" from="_snList ? _snList[0] : null"/>
+        <if condition="sn">
+            <entity-find-one entity-name="zenith.erp.inventory.ProductSerialNumber" value-field="snRec"/>
+            <entity-find-one entity-name="moqui.basic.StatusItem" value-field="snStatus"><field-map field-name="statusId" from="sn.statusId"/></entity-find-one>
+            <if condition="snRec?.supplierPartyId"><entity-find-one entity-name="mantle.party.PartyDetail" value-field="snSupplier"><field-map field-name="partyId" from="snRec.supplierPartyId"/></entity-find-one></if>
+            <if condition="sn.customerPartyId"><entity-find-one entity-name="mantle.party.PartyDetail" value-field="snCustomer"><field-map field-name="partyId" from="sn.customerPartyId"/></entity-find-one></if>
+            <entity-find entity-name="zenith.erp.inventory.SerialNumberHistory" list="historyList">
+                <econdition field-name="serialNumberId"/>
+                <order-by field-name="-eventDate"/><order-by field-name="-lastUpdatedStamp"/><order-by field-name="-historyId"/>
+            </entity-find>
+            <script><![CDATA[
+                def pName = { p -> p ? (p.organizationName ?: ((p.firstName ?: '') + ' ' + (p.lastName ?: '')).trim()) : '' }
+                def d = { v -> v ? ec.l10n.format(v, 'dd-MMM-yyyy') : '—' }
+                snFields = [
+                    [label:'Product', value:(sn.pseudoId ?: sn.productId) + ': ' + (sn.productName ?: '')],
+                    [label:'Status', value:snStatus?.description ?: sn.statusId],
+                    [label:'Location', value:sn.facilityName ?: '—'],
+                    [label:'Batch', value:sn.batchNumber ?: '—'],
+                    [label:'Received', value:d(sn.receivedDate)],
+                    [label:'Sold', value:d(sn.soldDate)],
+                    [label:'Warranty expiry', value:d(sn.warrantyExpiryDate)],
+                    [label:'Supplier', value:pName(snSupplier) ?: '—'],
+                    [label:'Customer', value:pName(snCustomer) ?: '—'],
+                    [label:'Notes', value:snRec?.notes ?: '—'],
+                ]
+            ]]></script>
+        </if>
+    </actions>
+
+    <widgets>
+        <container style="q-pa-md">
+            <link url="back" text="Serial Numbers" icon="fa fa-arrow-left" style="q-mb-md"/>
+            <section name="SerialFound">
+                <condition><expression>sn</expression></condition>
+                <widgets>
+                    <label text="Serial # ${sn.serialNumber}" type="h4" style="text-weight-bold q-mt-none"/>
+                    <form-list name="SerialFields" list="snFields" skip-form="true">
+                        <field name="label"><default-field title="Field"><display style="text-weight-bold"/></default-field></field>
+                        <field name="value"><default-field title="Value"><display/></default-field></field>
+                    </form-list>
+                    <label text="History" type="h5" style="text-weight-bold q-mt-lg"/>
+                    <form-list name="SerialHistory" list="historyList" skip-form="true">
+                        <field name="eventDate"><default-field title="When"><display text="${eventDate ? ec.l10n.format(eventDate, 'dd-MMM-yyyy HH:mm') : '—'}"/></default-field></field>
+                        <field name="eventType"><default-field title="Event"><display text="${eventType ?: '—'}"/></default-field></field>
+                        <field name="toStatusId"><default-field title="Status"><display-entity entity-name="moqui.basic.StatusItem" key-field-name="statusId" text="${description}"/></default-field></field>
+                        <field name="notes"><default-field title="Notes"><display text="${notes ?: ''}"/></default-field></field>
+                    </form-list>
+                </widgets>
+                <fail-widgets>
+                    <label text="Serial number not found." type="h5"/>
+                    <label text="It may have been removed, or it belongs to a business you are not signed in to." type="p" style="text-grey-7"/>
+                </fail-widgets>
+            </section>
+        </container>
+    </widgets>
+</screen>
