@@ -78,7 +78,7 @@
                         <field name="wastedQuantity"><default-field title="Wasted">
                             <text-line size="6" default-value="0"/></default-field></field>
                         <field name="submitButton">
-                            <conditional-field name="mat_save_write" condition="modCanWrite" title="Save"><submit/></conditional-field>
+                            <conditional-field name="mat_save_write" condition="modCanWrite &amp;&amp; (wo?.statusId in ['WoReleased','WoInProgress','WoCompleted'])" title="Save"><submit/></conditional-field>
                             <default-field title=""><label text="" type="span"/></default-field>
                         </field>
                     </form-list>

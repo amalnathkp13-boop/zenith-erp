@@ -223,11 +223,83 @@
             <parameter name="actualQuantity" type="BigDecimal" required="true"/>
             <parameter name="wastedQuantity" type="BigDecimal" default-value="0"/>
         </in-parameters>
-        <actions>
-            <service-call name="update#zenith.erp.manufacturing.WorkOrderMaterial"
-                in-map="[workOrderId:workOrderId, materialSeqId:materialSeqId,
-                         actualQuantity:actualQuantity, wastedQuantity:wastedQuantity]"/>
-        </actions>
+        <actions><script><![CDATA[
+            // Raw materials leave stock: used (actual) + wasted (owner's rule). The form re-saves running TOTALS, so only
+            // the change since the last save moves stock. Stock-tracked materials only (same rule as POS), at the work
+            // order's facility, owned by the acting org. A work order with no facility only records the quantities.
+            def fmt = { v -> ((v ?: 0) as BigDecimal).stripTrailingZeros().toPlainString() }
+            def newActual = (actualQuantity ?: 0) as BigDecimal
+            def newWasted = (wastedQuantity ?: 0) as BigDecimal
+            if (newActual < 0 || newWasted < 0) { ec.message.addError("Used and wasted quantities can't be negative."); return }
+
+            // Access first, on every save (not only stock-moving ones): write permission + the work order's org.
+            boolean isAdmin = ec.user.isInGroup('ADMIN')
+            if (ec.service.sync().name('zenith.base.SecurityServices.check#ModuleWriteAccess')
+                    .parameters([moduleId:'manufacturing']).disableAuthz().call()?.canWrite != true) {
+                ec.message.addError("You don't have permission to change manufacturing records."); return
+            }
+            def wo = ec.entity.find('zenith.erp.manufacturing.WorkOrder').condition('workOrderId', workOrderId).disableAuthz().one()
+            if (wo == null) { ec.message.addError('Work order not found.'); return }
+            def woProd = ec.entity.find('mantle.product.Product').condition('productId', wo.productId).disableAuthz().one()
+            def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
+            if (!org || org == '_NA_') {
+                // No active company: only ADMIN may act, on behalf of the work order's own org.
+                if (!isAdmin) { ec.message.addError('Select your company before recording material use.'); return }
+                org = woProd?.ownerPartyId
+            } else if (!isAdmin && woProd?.ownerPartyId != org) {
+                // Work orders are org-scoped by their product's owner (as the WorkOrders list is).
+                ec.message.addError('Work order not found.'); return
+            }
+            if (!(wo.statusId in ['WoReleased', 'WoInProgress', 'WoCompleted'])) {
+                ec.message.addError('Release the work order before recording material use.'); return
+            }
+
+            // for-update: two fast Save clicks can't both read the old totals and move the same delta twice
+            def wom = ec.entity.find('zenith.erp.manufacturing.WorkOrderMaterial').condition('workOrderId', workOrderId)
+                .condition('materialSeqId', materialSeqId).forUpdate(true).one()
+            if (wom == null) { ec.message.addError('Material line not found.'); return }
+            def delta = (newActual + newWasted) - (((wom.actualQuantity ?: 0) as BigDecimal) + ((wom.wastedQuantity ?: 0) as BigDecimal))
+            def issued = (wom.issuedQuantity ?: 0) as BigDecimal
+
+            // Lock the material Product row like POS issue does (material line -> Product -> Asset; no deadlock with POS).
+            def matProd = wom.productId ? ec.entity.find('mantle.product.Product').condition('productId', wom.productId).forUpdate(true).one() : null
+            BigDecimal move = BigDecimal.ZERO   // > 0 takes stock out, < 0 puts it back
+            if (wo.facilityId && matProd?.inventoryTracked == 'Y' && delta != 0) {
+                def woFac = ec.entity.find('mantle.facility.Facility').condition('facilityId', wo.facilityId).disableAuthz().one()
+                // Fail closed: the store and the material must both belong to the acting org.
+                if (!org || woFac == null || woFac.ownerPartyId != org || (matProd.ownerPartyId && matProd.ownerPartyId != org)) {
+                    ec.message.addError("This work order's store or material belongs to another company."); return
+                }
+                if (delta > 0) {
+                    move = delta
+                    // Honour the store's existing over-issue policy (as POS checkout does): block a shortfall unless allowed.
+                    if (woFac.assetAllowIssueOverQoh != 'Y') {
+                        def onHand = ec.entity.find('mantle.product.asset.Asset').condition('ownerPartyId', org)
+                            .condition('productId', wom.productId).condition('facilityId', wo.facilityId)
+                            .condition('assetTypeEnumId', 'AstTpInventory').list()
+                            .sum { (it.quantityOnHandTotal ?: 0) as BigDecimal } ?: BigDecimal.ZERO
+                        if (move > onHand) {
+                            ec.message.addError('Only ' + fmt(onHand) + ' of ' + (matProd.productName ?: wom.productId) + ' in stock at ' +
+                                (woFac.facilityName ?: wo.facilityId) + ', short by ' + fmt(move - onHand) + '. Receive or transfer stock first.')
+                            return
+                        }
+                    }
+                } else {
+                    // A downward correction returns at most what this line actually issued, so lines saved before stock
+                    // issuing existed (issuedQuantity null) can never create phantom stock.
+                    move = -((-delta).min(issued))
+                }
+            }
+
+            ec.service.sync().name('update#zenith.erp.manufacturing.WorkOrderMaterial').parameters([
+                workOrderId:workOrderId, materialSeqId:materialSeqId, actualQuantity:newActual, wastedQuantity:newWasted,
+                issuedQuantity:(move != 0 ? issued + move : wom.issuedQuantity)]).call()
+            if (move != 0) {
+                ec.service.sync().name('zenith.inventory.InventoryStockServices.adjust#AssetOnHand').parameters([
+                    organizationPartyId:org, productId:wom.productId, facilityId:wo.facilityId, quantityDiff:(-move),
+                    reason:('Work order ' + (wo.workOrderNumber ?: workOrderId) + ' material ' + (move > 0 ? 'used' : 'returned'))]).call()
+            }
+        ]]></script></actions>
     </service>
 
     <!-- ========== Job Work (GST Compliant) ========== -->

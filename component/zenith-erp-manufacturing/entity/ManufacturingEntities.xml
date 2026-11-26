@@ -106,6 +106,9 @@
         <field name="plannedQuantity" type="number-decimal"/>
         <field name="actualQuantity" type="number-decimal"/>
         <field name="wastedQuantity" type="number-decimal"/>
+        <field name="issuedQuantity" type="number-decimal"><description>Net quantity actually taken out of stock for this
+            line by record#MaterialConsumption. Null on lines saved before stock issuing existed, so a later downward
+            correction can never return stock that was never issued.</description></field>
         <field name="uomId" type="id"/>
         <relationship type="one" related="zenith.erp.manufacturing.WorkOrder"/>
         <relationship type="one" related="mantle.product.Product"/>
