@@ -22,7 +22,9 @@
             <econdition field-name="ownerPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
             <order-by field-name="productName"/>
         </entity-find>
+        <!-- Only the active company's stores: the store is where this work order's raw materials are issued from. -->
         <entity-find entity-name="mantle.facility.Facility" list="facilityList">
+            <econdition field-name="ownerPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION') ?: '__NO_ORGANIZATION__'"/>
             <order-by field-name="facilityName"/>
         </entity-find>
     </actions>

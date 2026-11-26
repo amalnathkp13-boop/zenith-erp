@@ -5,16 +5,31 @@
 
     <parameter name="workOrderId" required="true"/>
 
+    <!-- Every action checks write access and that this work order belongs to the active company (IDOR guard):
+         a forged workOrderId from another company is refused as "Work order not found". -->
     <transition name="releaseWo">
-        <service-call name="zenith.manufacturing.ManufacturingServices.release#WorkOrder"/>
+        <actions>
+            <service-call name="zenith.manufacturing.ManufacturingServices.assert#WorkOrderAccess" in-map="[workOrderId:workOrderId]"/>
+            <service-call name="zenith.manufacturing.ManufacturingServices.release#WorkOrder" in-map="[workOrderId:workOrderId]"/>
+        </actions>
         <default-response url="."/>
     </transition>
     <transition name="startWo">
-        <service-call name="zenith.manufacturing.ManufacturingServices.start#WorkOrder"/>
+        <actions>
+            <service-call name="zenith.manufacturing.ManufacturingServices.assert#WorkOrderAccess" in-map="[workOrderId:workOrderId]"/>
+            <service-call name="zenith.manufacturing.ManufacturingServices.start#WorkOrder" in-map="[workOrderId:workOrderId]"/>
+        </actions>
         <default-response url="."/>
     </transition>
     <transition name="completeWo">
-        <service-call name="zenith.manufacturing.ManufacturingServices.complete#WorkOrder"/>
+        <actions>
+            <service-call name="zenith.manufacturing.ManufacturingServices.assert#WorkOrderAccess" in-map="[workOrderId:workOrderId]"/>
+            <service-call name="zenith.manufacturing.ManufacturingServices.complete#WorkOrder" in-map="[workOrderId:workOrderId, completedQuantity:completedQuantity, wastageQuantity:wastageQuantity]"/>
+        </actions>
+        <default-response url="."/>
+    </transition>
+    <transition name="cancelWo">
+        <service-call name="zenith.manufacturing.ManufacturingServices.cancel#WorkOrder" in-map="[workOrderId:workOrderId]"/>
         <default-response url="."/>
     </transition>
     <transition name="recordMaterial">
@@ -22,11 +37,21 @@
         <default-response url="."/>
     </transition>
     <transition name="updateOperation">
-        <service-call name="update#zenith.erp.manufacturing.WorkOrderOperation"/>
+        <actions>
+            <service-call name="zenith.manufacturing.ManufacturingServices.assert#WorkOrderAccess" in-map="[workOrderId:workOrderId]"/>
+            <if condition="!(statusId in ['OpPending','OpInProgress','OpCompleted'])"><return error="true" message="Choose a valid operation status."/></if>
+            <!-- Only the two fields the form edits; the PK pins the row to THIS work order. -->
+            <service-call name="update#zenith.erp.manufacturing.WorkOrderOperation"
+                          in-map="[workOrderId:workOrderId, operationSeqId:operationSeqId, actualMinutes:actualMinutes, statusId:statusId]"/>
+        </actions>
         <default-response url="."/>
     </transition>
 
     <actions>
+        <!-- Read guard: another company's (or an unknown) work order shows "not found" instead of its details. -->
+        <!-- A denied guard stops these actions here (Moqui returns after a service-call error), so wo, materials and
+             operations are never loaded and the page shows "Work order not found." -->
+        <service-call name="zenith.manufacturing.ManufacturingServices.assert#WorkOrderAccess" in-map="[workOrderId:workOrderId, requireWrite:false]"/>
         <entity-find-one entity-name="zenith.erp.manufacturing.WorkOrder" value-field="wo"/>
         <entity-find-one entity-name="mantle.product.Product" value-field="product">
             <field-map field-name="productId" from="wo.productId"/></entity-find-one>
@@ -41,6 +66,7 @@
     </actions>
 
     <widgets>
+      <section name="WoFound" condition="wo != null"><widgets>
         <label text="${wo.workOrderNumber} — ${product.productName}" type="h4"/>
         <label text="Status: ${wo.statusId} | Qty: ${wo.quantity} | Done: ${wo.completedQuantity ?: 0} | Waste: ${wo.wastageQuantity ?: 0} | Priority: ${wo.priority}" type="div" style="text-muted"/>
 
@@ -49,6 +75,9 @@
                   condition="wo.statusId == 'WoDraft' &amp;&amp; modCanWrite" confirmation="Release this work order for production?"/>
             <link url="startWo" text="Start Production" parameter-map="[workOrderId:workOrderId]"
                   condition="wo.statusId == 'WoReleased' &amp;&amp; modCanWrite" confirmation="Start production?"/>
+            <link url="cancelWo" text="Cancel Work Order" parameter-map="[workOrderId:workOrderId]"
+                  condition="(wo.statusId in ['WoDraft','WoReleased']) &amp;&amp; modCanWrite"
+                  confirmation="Cancel this work order? Material recorded as used goes back to stock; wasted material does not."/>
         </box-toolbar><box-body>
             <section name="CompleteSection" condition="wo.statusId == 'WoInProgress' &amp;&amp; modCanWrite">
                 <widgets>
@@ -109,5 +138,8 @@
                 </box-body></container-box>
             </row-col>
         </container-row>
+      </widgets><fail-widgets>
+        <label text="Work order not found." type="h5"/>
+      </fail-widgets></section>
     </widgets>
 </screen>
