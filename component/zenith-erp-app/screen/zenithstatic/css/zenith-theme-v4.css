@@ -1540,6 +1540,12 @@ body.zq-nav .zenith-card > .row.items-center.justify-between > .q-pa-sm { displa
   }
   body.zq-nav form.q-form .q-field:has(.q-field__label) .q-field__control-container { padding-top:0 !important; }
   body.body--dark.zq-nav form.q-form .q-field:has(.q-field__label) .q-field__label { color:#C4C8D8 !important; }
+  /* Date fields (m-date-time) carry a calendar icon in .q-field__prepend BEFORE the label's positioned parent
+     (.q-field__control-container), so left:-152px landed ~30px inside the box: the label overlapped the border and
+     icon (Register Serial dates, Quotations Date From/Thru, every date field). Shift by the prepend's width:
+     24px icon + 6px dense padding (12px when not dense). */
+  body.zq-nav form.q-form .q-field:has(.q-field__label):has(.q-field__prepend) .q-field__label { left:-188px !important; }
+  body.zq-nav form.q-form .q-field--dense:has(.q-field__label):has(.q-field__prepend) .q-field__label { left:-182px !important; }
 }
 /* ZE-DASH-ARRANGE: professional card arrangement across ALL dashboards.
    EQUAL-HEIGHT — make grid rows that contain dashboard cards flex, so every card in a row stretches to the tallest,
