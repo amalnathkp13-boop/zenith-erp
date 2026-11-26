@@ -126,7 +126,7 @@
                         </drop-down>
                         <!-- ZE-INV-IV-090: only products with "Track by serial number?" = Yes appear here. If this
                              list is empty, turn that on for a product first (Inventory Ã¢â€ â€™ Products Ã¢â€ â€™ Edit). -->
-                        <label text="Only serial-tracked products appear here. Registration records the serial identity; receive stock through Receiving." style="text-grey-6 text-caption" type="p"/>
+                        <label text="Only serial-tracked products appear here. Registration records the serial identity; receive stock through Receiving." style="text-grey-6 text-caption sn-help" type="p"/>
                     </default-field></field>
                     <field name="newSerialNumber"><default-field title="Serial Number"><text-line size="25"/></default-field></field>
                     <field name="facilityId"><default-field title="Location">
@@ -173,7 +173,8 @@
                        header-dialog="true" select-columns="true" saved-finds="true" show-csv-button="false" show-xlsx-button="false"
                        show-all-button="false">
                 <field name="serialNumber"><header-field title="Serial #" show-order-by="true"><text-find size="15" hide-options="true"/></header-field>
-                    <default-field title="Serial #"><display style="sn-serial"/></default-field></field>
+                    <!-- INV-ENV-005: each serial opens its own detail page (direct, refreshable URL). -->
+                    <default-field title="Serial #"><link url="../SerialNumberDetail" text="${serialNumber}" link-type="anchor" parameter-map="[serialNumberId:serialNumberId]" style="sn-serial"/></default-field></field>
                 <field name="productId"><header-field title="Product" show-order-by="true"/>
                     <default-field title="Product"><display text="${pseudoId}: ${productName}"/></default-field></field>
                 <field name="statusId"><header-field title="Status" show-order-by="true">

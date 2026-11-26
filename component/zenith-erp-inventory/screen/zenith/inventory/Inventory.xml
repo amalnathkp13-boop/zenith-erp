@@ -24,6 +24,7 @@
         <subscreens-item name="FindReceipt" location="component://zenith-erp-inventory/screen/zenith/inventory/FindReceipt.xml"/>
         <subscreens-item name="ReceiveInventory" location="component://zenith-erp-inventory/screen/zenith/inventory/ReceiveInventory.xml" menu-include="false"/>
         <subscreens-item name="SerialNumbers" location="component://zenith-erp-inventory/screen/zenith/inventory/Inventory/SerialNumbers.xml" menu-title="Serial Numbers"/>
+        <subscreens-item name="SerialNumberDetail" location="component://zenith-erp-inventory/screen/zenith/inventory/Inventory/SerialNumberDetail.xml" menu-include="false"/>
         <subscreens-item name="DemandForecast" location="component://zenith-erp-inventory/screen/zenith/inventory/Inventory/DemandForecast.xml" menu-title="Demand Forecast"/>
         <subscreens-item name="StockLevels" location="component://zenith-erp-inventory/screen/zenith/inventory/Inventory/StockLevels.xml" menu-title="Stock Levels"/>
         <subscreens-item name="StockTransfers" location="component://zenith-erp-inventory/screen/zenith/inventory/Inventory/StockTransfers.xml" menu-title="Stock Transfers"/>

@@ -184,6 +184,14 @@
                 </field>
             </form-list>
             </widgets></section>
+            <!-- QA (Vimal Raj): a search with no matches left only a bare header strip
+                 above blank space. Say so, and offer the reset. -->
+            <section name="QuoteEmptyState" condition="!isCsv &amp;&amp; !quoteList"><widgets>
+                <container style="text-center q-pa-lg">
+                    <label text="No quotations found." type="p" style="text-grey-8 text-weight-medium q-mb-sm"/>
+                    <link url="findQuotation" text="Clear filters" style="q-btn--flat text-primary"/>
+                </container>
+            </widgets></section>
         </container>
 
         <!-- CSV uses plain display fields on the already filtered/scoped list. HTML

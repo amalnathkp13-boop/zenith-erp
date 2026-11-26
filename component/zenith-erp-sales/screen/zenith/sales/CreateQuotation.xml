@@ -108,7 +108,7 @@
 
     <widgets>
         <render-mode><text type="html,qvt"><![CDATA[
-            <img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" onload="if(!document.getElementById('zqc-create-css')){var l=document.createElement('link');l.id='zqc-create-css';l.rel='stylesheet';l.href='/zenithstatic/css/quote-create.css?v=6';document.head.appendChild(l);}if(!document.getElementById('zqc-create-js')){var s=document.createElement('script');s.id='zqc-create-js';s.src='/zenithstatic/js/quote-create.js?v=3';document.head.appendChild(s);}"/>
+            <img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" onload="if(!document.getElementById('zqc-create-css')){var l=document.createElement('link');l.id='zqc-create-css';l.rel='stylesheet';l.href='/zenithstatic/css/quote-create.css?v=7';document.head.appendChild(l);}if(!document.getElementById('zqc-create-js')){var s=document.createElement('script');s.id='zqc-create-js';s.src='/zenithstatic/js/quote-create.js?v=3';document.head.appendChild(s);}"/>
         ]]></text></render-mode>
         <container style="zqc-create-card">
             <container style="zqc-create-header">
