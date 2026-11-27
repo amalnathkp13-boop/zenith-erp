@@ -59,7 +59,8 @@ next.employees.each { e ->
     require(e.status != 'Inactive' || (validDate(e.leavingDate) && e.leavingDate >= e.joined),'Check the leaving date.')
     require(e.salaryType in ['monthly','daily'] && amount(e.salary),'Enter a valid agreed salary.')
     // Preserve unchanged legacy contact details when another HR operation updates an employee.
-    require(before && before.phone == e.phone || goodText(e.phone,24),'Enter a phone number (up to 24 characters).')
+    require(before && before.phone == e.phone || e.phone instanceof String && e.phone ==~ /[0-9]{10}/,
+        'Enter exactly 10 digits for the mobile number.')
     require(!e.emergency || goodText(e.emergency,250),'Check the emergency contact.')
     def manager = updated.employees[e.manager]
     require(!e.manager || before?.manager == e.manager || (manager ? manager.id != e.id && manager.status != 'Inactive' :
