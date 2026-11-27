@@ -10,6 +10,10 @@
 
     <parameter name="orderId" required="true"/>
 
+    <transition name="productPrice" read-only="true"><actions>
+        <service-call name="zenith.sales.ProductEntryServices.get#ProductPrice" in-map="[orderId:orderId,productId:productId,quantity:quantity]" out-map="price"/>
+        <script>ec.web.response.setHeader('Cache-Control','no-store'); ec.web.sendJsonResponse(price)</script>
+    </actions><default-response type="none"/></transition>
     <transition name="findOrder"><default-response url="../FindOrder"/></transition>
     <transition name="updateStatus">
         <actions>

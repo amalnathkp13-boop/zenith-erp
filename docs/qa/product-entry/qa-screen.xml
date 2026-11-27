@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd" default-menu-include="false">
+<transition name="seed"><actions><script><![CDATA[
+if(!ec.user.isInGroup('ADMIN') || System.getProperty('sales.qa.disposable')!='true'){ec.web.response.setStatus(403);return}
+def create={String entity,Map values -> if(!ec.entity.find(entity).condition(values.findAll {k,v -> k in ec.entity.getEntityDefinition(entity).getPkFieldNames()}).one())ec.entity.makeValue(entity).setAll(values).create()}
+create('mantle.order.OrderHeader',[orderId:'SALES_QA_PO',orderName:'Synthetic QA purchase order',statusId:'OrderOpen',currencyUomId:'INR',documentType:'PURCHASE_ORDER',entryDate:ec.user.nowTimestamp])
+create('mantle.order.OrderPart',[orderId:'SALES_QA_PO',orderPartSeqId:'01',customerPartyId:'SALES_QA_A',vendorPartyId:'SALES_QA_CUST_A'])
+create('mantle.account.invoice.Invoice',[invoiceId:'SALES_QA_BILL',fromPartyId:'SALES_QA_CUST_A',toPartyId:'SALES_QA_A',statusId:'InvoiceInProcess',invoiceTypeEnumId:'InvoicePurchase',currencyUomId:'INR',invoiceDate:ec.user.nowTimestamp])
+create('mantle.facility.Facility',[facilityId:'SALES_QA_DEST',ownerPartyId:'SALES_QA_A',facilityTypeEnumId:'FcTpRetailStore',facilityName:'Synthetic QA destination'])
+create('zenith.erp.inventory.StockTransfer',[stockTransferId:'SALES_QA_TRANSFER',organizationPartyId:'SALES_QA_A',fromFacilityId:'SALES_QA_FAC_A',toFacilityId:'SALES_QA_DEST',statusId:'StxDraft',transferDate:ec.user.nowTimestamp,ewayBillChoice:'N'])
+create('zenith.erp.inventory.StockAdjustment',[stockAdjustmentId:'SALES_QA_ADJUST',organizationPartyId:'SALES_QA_A',facilityId:'SALES_QA_FAC_A',statusId:'AdjPending',adjustmentDate:ec.user.nowTimestamp,adjustmentType:'PhysicalCount'])
+create('zenith.erp.manufacturing.BillOfMaterial',[bomId:'SALES_QA_BOM',productId:'SALES_QA_PROD_A',bomName:'Synthetic QA assembly',outputQuantity:1,isActive:'Y',isDefault:'N'])
+ec.web.sendJsonResponse([seeded:true])
+]]></script></actions><default-response type="none"/></transition>
+<transition name="inspect" read-only="true"><actions><script><![CDATA[
+if(ec.user.username!='sales.qa'||System.getProperty('sales.qa.disposable')!='true'){ec.web.response.setStatus(403);return}
+def targets=[order:['mantle.order.OrderItem','orderId','SALES_QA_ORDER'],quote:['mantle.order.OrderItem','orderId','SALES_QA_QUOTE'],invoice:['mantle.account.invoice.InvoiceItem','invoiceId','SALES_QA_INV'],credit:['mantle.account.invoice.InvoiceItem','invoiceId','SALES_QA_CN'],po:['mantle.order.OrderItem','orderId','SALES_QA_PO']]
+def t=targets[kind];if(!t){ec.web.response.setStatus(400);return}
+def rows=ec.entity.find(t[0]).condition(t[1],t[2]).orderBy(t[0].contains('Invoice')?'invoiceItemSeqId':'orderItemSeqId').list()
+def last=rows?rows.last():null
+ec.web.sendJsonResponse([count:rows.size(),last:last?:[:]])
+]]></script></actions><default-response type="none"/></transition><widgets/>
+</screen>

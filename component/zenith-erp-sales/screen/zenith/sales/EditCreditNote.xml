@@ -10,6 +10,10 @@
 
     <parameter name="invoiceId" required="true"/>
 
+    <transition name="productPrice" read-only="true"><actions>
+        <service-call name="zenith.sales.ProductEntryServices.get#ProductPrice" in-map="[invoiceId:invoiceId,productId:productId,quantity:quantity]" out-map="price"/>
+        <script>ec.web.response.setHeader('Cache-Control','no-store'); ec.web.sendJsonResponse(price)</script>
+    </actions><default-response type="none"/></transition>
     <transition name="findCreditNote"><default-response url="../FindCreditNote"/></transition>
     
     <transition name="updateInvoice">

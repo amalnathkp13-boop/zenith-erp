@@ -4,6 +4,9 @@
     <moqui.basic.Enumeration enumId="InvoiceSalesReturn" enumTypeId="InvoiceType" description="Sales Return / Credit Note" sequenceNum="22"/>
     <moqui.basic.Enumeration enumId="InvoiceSalesDebit" enumTypeId="InvoiceType" description="Sales Debit Note" sequenceNum="23"/>
 
+    <!-- Delivery-triggered payment terms carry no assumed calendar due date. -->
+    <mantle.account.invoice.SettlementTerm settlementTermId="DueNextDelivery" termTypeEnumId="TtFinancial" description="Due next delivery"/>
+
     <!-- Sales statuses and enums must be in an entity-facade data file. -->
 
     <moqui.basic.StatusType statusTypeId="DeliverySchedule" description="Delivery Schedule"/>

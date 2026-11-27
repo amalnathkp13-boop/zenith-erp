@@ -159,7 +159,9 @@
                         <form-single name="AddPartForm" transition="addPart">
                             <field name="workOrderId"><default-field><hidden/></default-field></field>
                             <field name="partName"><default-field title="Part Name"><text-line size="25"/></default-field></field>
-                            <field name="productId"><default-field title="Product ID (optional)"><text-line size="15"/></default-field></field>
+                            <field name="productId"><default-field title="Product (optional)"><drop-down allow-empty="true">
+                                <entity-options key="${productId}" text="${productName}"><entity-find entity-name="mantle.product.Product"><econdition field-name="ownerPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION') ?: '__NO_ORGANIZATION__'"/><order-by field-name="productName"/></entity-find></entity-options>
+                            </drop-down></default-field></field>
                             <field name="quantityRequired"><default-field title="Qty Required"><text-line size="6"/></default-field></field>
                             <field name="quantityUsed"><default-field title="Qty Used"><text-line size="6"/></default-field></field>
                             <field name="unitCost"><default-field title="Unit Cost (${currSymbol})"><text-line size="10"/></default-field></field>
