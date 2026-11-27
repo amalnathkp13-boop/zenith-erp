@@ -348,7 +348,7 @@
             html_stylesheets.add('/zenithstatic/css/zenith-theme-v4.css?v=313')
             html_stylesheets.add('/zenithstatic/css/users-access.css?v=2')
             html_stylesheets.add('/zenithstatic/css/sidebar-manager.css?v=3')
-            html_stylesheets.add('/zenithstatic/css/subnav-manager.css?v=4')
+            html_stylesheets.add('/zenithstatic/css/subnav-manager.css?v=5')
             html_stylesheets.add('/zenithstatic/css/my-subscription-reference.css?v=1')
             html_stylesheets.add('/zenithstatic/css/saas-admin.css?v=4')
             html_stylesheets.add('/zenithstatic/css/product-catalog.css?v=3')
