@@ -63,7 +63,7 @@ body:has(#stockLevels) .inv-module-shortcuts {display:none!important;}
 #stockLevels .sl-table-scroll {overflow-x:auto;border:1px solid var(--border);border-radius:6px;min-width:0;}
 #stockLevels .sl-empty {padding:24px 12px;color:var(--text-secondary);text-align:center;}
 #stockLevels .sl-enhanced .form-list-nav-row {display:none!important;}
-#stockLevels #StockLevelForm_table {margin:0!important;border:0!important;width:100%!important;min-width:1110px;table-layout:fixed;border-collapse:collapse;box-shadow:none!important;}
+#stockLevels #StockLevelForm_table {margin:0!important;border:0!important;width:100%!important;min-width:1296px;table-layout:fixed;border-collapse:collapse;box-shadow:none!important;}
 #stockLevels #StockLevelForm_table .thead>:is(tr,.tr):not(:last-child),#stockLevels #StockLevelForm_table>thead>tr:not(:last-child) {display:none!important;}
 #stockLevels .sl-stock-card .q-table__container {border:0!important;box-shadow:none!important;margin:0!important;}
 #stockLevels .sl-stock-card .q-card__actions>button {display:none;}
@@ -79,9 +79,14 @@ body.zq-nav:has(#stockLevels) .q-page {padding:0!important;min-height:calc(100vh
 #stockLevels #StockLevelForm_table :is(.th,th):nth-child(6) {width:125px;}
 #stockLevels #StockLevelForm_table :is(.th,th):nth-child(7) {width:90px;}
 #stockLevels #StockLevelForm_table :is(.th,th):nth-child(8) {width:115px;}
-#stockLevels #StockLevelForm_table :is(.th,th):nth-child(9) {width:100px;}
-#stockLevels #StockLevelForm_table :is(.th,th):nth-child(10) {width:40px;}
+#stockLevels #StockLevelForm_table :is(.th,th):nth-child(9) {width:220px;}
+#stockLevels #StockLevelForm_table :is(.th,th):nth-child(10) {width:56px;}
 #stockLevels #StockLevelForm_table :is(.td,td):nth-child(n+5):not(:last-child),#stockLevels #StockLevelForm_table :is(.th,th):nth-child(n+5):not(:last-child) {text-align:center;white-space:nowrap;}
+/* The date and Recent badge share a column; the row menu has its own reserved space. */
+#stockLevels #StockLevelForm_table :is(.td,td):nth-child(9) .form-group {display:flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;}
+#stockLevels #StockLevelForm_table :is(.td,td):nth-child(9) .form-group>span {flex-shrink:0;}
+#stockLevels #StockLevelForm_table :is(.td,td):nth-child(9) .zenith-badge {margin-left:0!important;}
+#stockLevels #StockLevelForm_table :is(.td,td):last-child .sl-row-menu {width:24px;margin-inline:auto;}
 #stockLevels #StockLevelForm_table :is(.td,td):first-child a {color:var(--primary)!important;font-weight:600!important;text-decoration:none;}
 #stockLevels #StockLevelForm_table .text-success {color:var(--green-text)!important;}
 #stockLevels #StockLevelForm_table .text-danger {color:var(--red-text)!important;}
