@@ -3,6 +3,9 @@
         xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
         require-authentication="true" default-menu-title="ZetaERP">
 
+    <macro-template type="html" location="component://zenith-erp-app/template/screen-macro/ProductEntry.html.ftl"/>
+    <macro-template type="qvt" location="component://zenith-erp-app/template/screen-macro/ProductEntry.qvt.ftl"/>
+
     <always-actions>
         <set field="html_title" value="ZetaERP"/>
         <script><![CDATA[
@@ -736,6 +739,9 @@
     </subscreens>
 
     <widgets>
+        <render-mode><text type="html,qvt"><![CDATA[
+            <img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEAAAICTAEAOw==" onload="if(!document.getElementById('zpe-css')){var l=document.createElement('link');l.id='zpe-css';l.rel='stylesheet';l.href='/zenithstatic/css/product-entry.css?v=1';document.head.appendChild(l);}if(!document.getElementById('zpe-js')){var s=document.createElement('script');s.id='zpe-js';s.src='/zenithstatic/js/product-entry.js?v=1';document.head.appendChild(s);}"/>
+        ]]></text></render-mode>
         <!-- ZE-AUTH-002: the RBAC/plan menu-filter config MUST reach the /qapps (Quasar) shell too, so the
              client filter can hide privileged menu items on first paint instead of after a slow XHR (which
              caused admin/cashier menus to flash Super-Admin items). A plain type="html" block renders only

@@ -31,11 +31,17 @@
         <error-response url="."/>
     </transition>
 
+    <transition name="productPrice" read-only="true"><actions>
+        <service-call name="zenith.sales.ProductEntryServices.get#ProductPrice" in-map="[orderId:orderId,productId:productId,quantity:quantity]" out-map="quote"/>
+        <script>ec.web.response.setHeader('Cache-Control','no-store'); ec.web.sendJsonResponse(quote)</script>
+    </actions><default-response type="none"/></transition>
+
     <transition name="addItem">
         <!-- ZE-SALES-0306 f/u: this was a BARE <script> under <transition>, which executes but its writes do
              NOT commit (Moqui gotcha; same defect fixed earlier on EditInvoice) — so quote line items silently
              never persisted. Wrap in <actions> so create#OrderItem commits. -->
         <actions>
+            <if condition="ec.web.request.method != 'POST' || !ec.web.parameters.moquiSessionToken || ec.web.parameters.moquiSessionToken != ec.web.sessionToken"><return error="true" message="Reload the quotation and use Add item."/></if>
             <!-- ZE-SB-013 (Tier 2): the line-item product must belong to this org. -->
             <if condition="ec.web.parameters.productId">
                 <service-call name="zenith.sales.SalesAccessServices.assert#RecordOrgAccess" out-map="_pa"
@@ -44,6 +50,10 @@
             </if>
             <service-call name="zenith.sales.SalesLineServices.assert#EditableOrderLines" in-map="[orderId:orderId]"/>
         <script>
+            if (productId &amp;&amp; !itemDescription?.trim()) {
+                def selectedProduct = ec.entity.find('mantle.product.Product').condition('productId',productId).one()
+                itemDescription = selectedProduct?.productName ?: productId
+            }
             // Get addresses to determine IGST vs CGST/SGST
             def orderPart = ec.entity.find("mantle.order.OrderPart").condition("orderId", orderId).one()
             def orderHeader = ec.entity.find("mantle.order.OrderHeader").condition("orderId", orderId).forUpdate(true).one()
@@ -272,6 +282,7 @@
             <field-map field-name="partyId" from="orderPart?.vendorPartyId"/>
         </entity-find-one>
 
+        <set field="quoteEditable" from="modCanWrite &amp;&amp; !(order.statusId in ['OrderCancelled','OrderRejected','OrderCompleted'])"/>
         <!-- Terms Data Lookups -->
         <entity-find entity-name="moqui.basic.Enumeration" list="tradeTermList">
             <econdition field-name="enumTypeId" value="TradeTerm"/>
@@ -369,7 +380,7 @@
                         <container style="zqr-items-header">
                             <label text="Quote items &amp; estimated GST" type="h2" style="zqr-section-title"/>
                             <section name="quoteItemActions_write">
-                                <condition><expression>modCanWrite</expression></condition>
+                                <condition><expression>quoteEditable</expression></condition>
                                 <widgets>
                                     <container style="zqr-actions">
                                         <link url="convertToOrder" text="Convert to sales order" icon="fa fa-shopping-cart"/>

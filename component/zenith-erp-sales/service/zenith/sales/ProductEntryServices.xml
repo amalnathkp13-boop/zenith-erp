@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
+    <service verb="get" noun="ProductPrice" authenticate="true">
+        <in-parameters>
+            <parameter name="orderId"/><parameter name="invoiceId"/>
+            <parameter name="productId" required="true"/><parameter name="quantity" type="BigDecimal" required="true"/>
+        </in-parameters>
+        <out-parameters><parameter name="unitAmount" type="BigDecimal"/><parameter name="description"/><parameter name="taxCode"/><parameter name="taxRate" type="BigDecimal"/><parameter name="currency"/></out-parameters>
+        <actions>
+            <if condition="(orderId &amp;&amp; invoiceId) || (!orderId &amp;&amp; !invoiceId) || quantity &lt;= 0"><return error="true" message="Choose a sales document, product and positive quantity."/></if>
+            <if condition="orderId">
+                <service-call name="zenith.sales.SalesAccessServices.assert#RecordOrgAccess" out-map="access"
+                        in-map="[entityName:'mantle.order.OrderPart',idField:'orderId',idValue:orderId,orgField:'vendorPartyId']"/>
+                <if condition="!access.allowed"><return error="true" message="Document not found for your account."/></if>
+                <entity-find entity-name="mantle.order.OrderPart" list="parts" limit="1"><econdition field-name="orderId"/><order-by field-name="orderPartSeqId"/></entity-find>
+                <set field="part" from="parts ? parts.first() : null"/>
+                <entity-find-one entity-name="mantle.order.OrderHeader" value-field="header"><field-map field-name="orderId"/></entity-find-one>
+                <set field="sellerId" from="part?.vendorPartyId"/><set field="customerId" from="part?.customerPartyId"/><set field="currency" from="header?.currencyUomId"/>
+                <else>
+                    <service-call name="zenith.sales.SalesAccessServices.assert#RecordOrgAccess" out-map="access"
+                            in-map="[entityName:'mantle.account.invoice.Invoice',idField:'invoiceId',idValue:invoiceId,orgField:'fromPartyId']"/>
+                    <if condition="!access.allowed"><return error="true" message="Document not found for your account."/></if>
+                    <entity-find-one entity-name="mantle.account.invoice.Invoice" value-field="invoice"><field-map field-name="invoiceId"/></entity-find-one>
+                    <set field="sellerId" from="invoice?.fromPartyId"/><set field="customerId" from="invoice?.toPartyId"/><set field="currency" from="invoice?.currencyUomId"/>
+                </else>
+            </if>
+            <entity-find entity-name="mantle.product.Product" list="ownedProduct" limit="1">
+                <econdition field-name="productId"/><econdition field-name="ownerPartyId" from="sellerId ?: '__NO_ORGANIZATION__'"/>
+            </entity-find>
+            <if condition="!ownedProduct"><return error="true" message="Choose a product from this document's organization."/></if>
+            <service-call name="zenith.pricing.PricingServices.calculate#Price"
+                    in-map="[productId:productId,quantity:quantity,organizationPartyId:sellerId,customerPartyId:customerId,currencyUomId:currency]" out-map="price"/>
+            <set field="product" from="ownedProduct[0]"/>
+            <set field="unitAmount" from="price.priceSource == 'ProductListPrice' &amp;&amp; product.mrpAmount == null ? null : price.unitPrice"/>
+            <set field="description" from="product.productName ?: product.productId"/>
+            <set field="taxCode" from="product.hsnCode ?: product.sacCode ?: ''"/>
+            <if condition="product.gstSlabId">
+                <entity-find-one entity-name="zenith.erp.india.IndiaGstSlab" value-field="slab"><field-map field-name="gstSlabId" from="product.gstSlabId"/></entity-find-one>
+                <set field="taxRate" from="slab?.gstRate"/>
+            </if>
+        </actions>
+    </service>
+</services>
