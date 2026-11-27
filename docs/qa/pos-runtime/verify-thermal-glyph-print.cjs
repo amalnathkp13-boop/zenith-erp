@@ -59,6 +59,7 @@ const names = [tamil, 'తెలుగు బియ్యం', 'മലയാള�
           }));
           return {
             rows, printer: config.printer, configuredWidth: config.options.size.width,
+            configuredHeight: config.options.size.height, pageHeight: payload.options.pageHeight,
             pageWidth: payload.options.pageWidth, paperWidth: doc.querySelector('[data-paper-width]')?.dataset.paperWidth,
             format: [payload.type, payload.format, payload.flavor]
           };
@@ -67,13 +68,49 @@ const names = [tamil, 'తెలుగు బియ్యం', 'മലയാള�
         const label = receipt + ' ' + width + 'mm';
         assert.equal(actual.printer, 'Synthetic printer', label);
         assert.deepEqual([actual.configuredWidth, actual.pageWidth, actual.paperWidth], [width, width, String(width)], label);
+        assert.ok(actual.configuredHeight > 0, label + ' sets a positive paper length');
+        assert.equal(actual.pageHeight, actual.configuredHeight, label + ' uses the same page length for HTML');
         assert.deepEqual(actual.format, ['pixel', 'html', 'plain'], label);
         assert.deepEqual(actual.rows, names.map((name, index) => index < 3
           ? { names: name.split(/( )/), pngs: [true, true] }
           : { names: [name], pngs: [] }), label + ' preserves shaped Indic words and their original spacing');
       }
     }
-    console.log('PASS QZ POS and KOT thermal receipts at 58mm and 80mm preserve Tamil, Telugu, Malayalam and English.');
+    const lengths = await page.evaluate(async () => {
+      const store = { name: 'Thermal QA', receiptWidth: '80mm' };
+      const printLength = async (count, edited = false) => {
+        const items = Array.from({ length: count }, (_, index) => ({
+          name: 'Long synthetic product name ' + (index + 1), qty: 0.5,
+          uom: 'Nos', rate: 100, total: 50
+        }));
+        const html = window.PosReceiptLayout.render({
+          store, items, bill: { number: 'QA-ONLY' },
+          summary: { subtotal: count * 50, total: count * 50 }
+        }, false, edited);
+        await window.PosQzPrint.printHtml('Synthetic printer', html);
+        const job = window.printJobs.pop();
+        const printed = new DOMParser().parseFromString(job.documents[0].data, 'text/html');
+        return {
+          height: job.config.options.size.height,
+          pageHeight: job.documents[0].options.pageHeight,
+          hasLastItem: printed.querySelector('.items tbody tr:last-child .item-name')?.textContent ===
+            'Long synthetic product name ' + count,
+          hasTotal: printed.querySelector('.tot tr')?.textContent.includes((count * 50).toFixed(2)),
+          hasFooter: printed.querySelector('.rcpt')?.textContent.includes('Thank You !!'),
+          hasRevisionNotice: printed.querySelector('.notice')?.textContent.includes('EDITED / REVISED BILL') === true
+        };
+      };
+      return [await printLength(4), await printLength(50), await printLength(50, true)];
+    });
+    assert.ok(lengths[1].height > lengths[0].height, '50-item receipt receives a longer paper size');
+    assert.equal(lengths[1].pageHeight, lengths[1].height, 'long HTML render height matches its paper size');
+    assert.ok(lengths[1].hasLastItem && lengths[1].hasTotal && lengths[1].hasFooter,
+      'long receipt sent to QZ includes its final item, total and footer');
+    assert.ok(lengths[2].hasRevisionNotice && lengths[2].hasLastItem &&
+      lengths[2].hasTotal && lengths[2].hasFooter, 'revised long receipt includes its totals and notice');
+    assert.ok(lengths[2].height > lengths[1].height,
+      'revised receipt gets additional paper length for its edit notice');
+    console.log('PASS QZ POS and KOT thermal receipts at 58mm and 80mm preserve Indic glyphs and size long bills through the total and footer.');
   } finally {
     await browser.close();
   }

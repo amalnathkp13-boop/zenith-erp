@@ -100,15 +100,38 @@
     return changed ? '<!doctype html>' + receipt.documentElement.outerHTML : html;
   }
 
+  async function receiptHeightMm(html, width) {
+    // A width-only paper size can leave a roll printer at its driver's default page
+    // length (often A4). Measure the actual receipt after Indic words become images.
+    const frame=document.createElement('iframe');
+    frame.style.cssText='position:fixed;left:-10000px;top:0;width:'+width+'mm;height:1px;border:0;visibility:hidden';
+    document.body.appendChild(frame);
+    try {
+      const loaded=new Promise(resolve=>{frame.onload=resolve;});
+      const doc=frame.contentDocument;
+      doc.open();doc.write(html);doc.close();
+      await Promise.race([loaded,new Promise(resolve=>setTimeout(resolve,1000))]);
+      if(doc.fonts)await Promise.race([doc.fonts.ready,new Promise(resolve=>setTimeout(resolve,1000))]);
+      await Promise.race([Promise.all(Array.from(doc.images, image=>image.decode().catch(()=>{}))),
+        new Promise(resolve=>setTimeout(resolve,1000))]);
+      const content=doc.querySelector('.rcpt')||doc.body;
+      const pixels=Math.max(content.scrollHeight,content.getBoundingClientRect().height);
+      if(!Number.isFinite(pixels)||pixels<=0)throw Error('Receipt height could not be measured.');
+      return Math.ceil(pixels*25.4/96)+10; // leave room for the cutter and driver bottom margin
+    } finally { frame.remove(); }
+  }
+
   async function printHtml(printer,html) {
     const client=await connect();
     const width=/data-paper-width="58"/.test(html)?58:80;
+    const shaped=shapeIndicItemNames(html);
+    const height=await receiptHeightMm(shaped,width);
     const config=client.configs.create(printer,{
-      size:{width},units:'mm',colorType:'grayscale',
+      size:{width,height},units:'mm',colorType:'grayscale',
       margins:{top:0,right:0,bottom:0,left:0},scaleContent:false
     });
-    await client.print(config,[{type:'pixel',format:'html',flavor:'plain',data:shapeIndicItemNames(html),
-      options:{pageWidth:width,pageHeight:null}}]);
+    await client.print(config,[{type:'pixel',format:'html',flavor:'plain',data:shaped,
+      options:{pageWidth:width,pageHeight:height}}]);
   }
   window.PosQzPrint={connect,printHtml};
 })();
