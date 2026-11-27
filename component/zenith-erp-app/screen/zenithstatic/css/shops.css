@@ -12,15 +12,30 @@ body:is(.dev,.test).zq-nav:not(.body--dark):has(.zc-shops-page) #top { backgroun
 .zc-shops-page .st-tgl.on { background: #7C3AED; }
 .zc-shops-page .st-tgl.on::before { margin-left: 16px; }
 .zc-shops-page .st-hrow input { min-width: 0; width: 100%; }
-@media (max-width: 600px) {
-    .zc-shops-page #ns-modal { max-width: 100%; }
+.zc-shops-page #ns-dialog {
+    width: min(520px, calc(100% - 24px));
+    max-height: calc(100dvh - 24px);
+    margin: auto;
+    padding: 0;
+    overflow: auto;
+    border: 1px solid #E5E7EB;
+    border-radius: 12px;
+    background: #fff;
+    color: #111827;
+    box-shadow: 0 20px 50px rgba(17,24,39,.22);
+}
+.zc-shops-page #ns-dialog::backdrop { background: rgba(17,24,39,.45); }
+.zc-shops-page #ns-modal { margin: 0; }
+@media (max-width: 480px) {
     .zc-shops-page #ns-modal > div { padding: 16px !important; }
-    .zc-shops-page #ns-modal > div > div { flex-wrap: wrap; gap: 8px !important; }
+    .zc-shops-page #ns-modal > div > div:has(> label) { flex-wrap: wrap; gap: 5px !important; margin-bottom: 10px !important; }
+    .zc-shops-page #ns-modal label + span { display: none !important; }
+    .zc-shops-page #ns-modal label ~ :is(input, select) { height: 42px !important; padding-inline: 12px !important; }
     .zc-shops-page #ns-modal label { width: 100% !important; text-align: left !important; }
-    .zc-shops-page #ns-modal input, .zc-shops-page #ns-modal select { flex-basis: calc(100% - 48px) !important; }
+}
+@media (max-width: 600px) {
     .zc-shops-page .st-hrow, .zc-shops-page .st-hours-heading { grid-template-columns: 1fr 1fr 44px !important; }
     .zc-shops-page .st-hrow > div:first-child, .zc-shops-page .st-hours-heading > div:first-child { grid-column: 1 / -1; }
     .zc-shops-page > div { padding-left: 12px !important; padding-right: 12px !important; }
     .zc-shops-page #panel-details > div > div { min-width: 0; }
-    .zc-shops-page #ns-overlay { padding: 16px 8px !important; }
 }

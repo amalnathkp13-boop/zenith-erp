@@ -333,7 +333,7 @@
             </div>
         </div>
 
-        <img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" onload="if(window.zcShopsInit){window.zcShopsInit()}else{var s=document.createElement('script');s.src='/zenithstatic/js/shops.js?v=6';document.head.appendChild(s)}"/>
+        <img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" onload="if(window.zcShopsInit){window.zcShopsInit()}else{var s=document.createElement('script');s.src='/zenithstatic/js/shops.js?v=7';document.head.appendChild(s)}"/>
         ]]></text></render-mode>
             </container>
     </widgets>

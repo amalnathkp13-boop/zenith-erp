@@ -24,7 +24,7 @@
 
         if (!document.getElementById('zc-shops-css')) {
             var css = document.createElement('link');
-            css.id = 'zc-shops-css'; css.rel = 'stylesheet'; css.href = '/zenithstatic/css/shops.css?v=5';
+            css.id = 'zc-shops-css'; css.rel = 'stylesheet'; css.href = '/zenithstatic/css/shops.css?v=6';
             document.head.appendChild(css);
         }
         var value = function (id) { var e = root.querySelector('#' + id); return e ? e.value : ''; };
@@ -103,17 +103,6 @@
             });
             root.querySelectorAll('#panel-details input, #panel-details select, #panel-details textarea, #panel-hours input, #panel-hours button').forEach(function (input) { input.disabled = true; });
         }
-        var dialog = root.querySelector('#ns-overlay');
-        if (dialog) root.addEventListener('keydown', function (event) {
-            if (dialog.style.display === 'none') return;
-            if (event.key === 'Escape') { dialog.style.display = 'none'; return; }
-            if (event.key === 'Tab') {
-                var fields = Array.from(dialog.querySelectorAll('button,input:not([type=hidden]),select')).filter(function (e) { return !e.disabled; });
-                var first = fields[0], last = fields[fields.length - 1];
-                if (event.shiftKey && document.activeElement === first) { last.focus(); event.preventDefault(); }
-                else if (!event.shiftKey && document.activeElement === last) { first.focus(); event.preventDefault(); }
-            }
-        });
     };
     window.zcShopsInit();
 })();
