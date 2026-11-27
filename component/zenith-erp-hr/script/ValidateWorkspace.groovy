@@ -50,14 +50,16 @@ next.employees.each { e ->
         require(!duplicate || (before?.email == e.email && original.employees[duplicate]?.email?.equalsIgnoreCase(e.email)),'An employee with this email already exists.')
     }
     if (e == before) return
-    require((before && before.name == e.name || goodText(e.name,80)) &&
-        (before && before.email == e.email || goodText(e.email,160) && e.email ==~ /[^\s@]+@[^\s@]+\.[^\s@]+/),'Enter a name and valid work email.')
+    require(before && before.name == e.name || goodText(e.name,80),'Enter an employee name.')
+    require(before && before.email == e.email || e.email == null || e.email == '' ||
+        goodText(e.email,160) && e.email ==~ /[^\s@]+@[^\s@]+\.[^\s@]+/,'Enter a valid work email or leave it blank.')
     require((before && before.department == e.department || goodText(e.department,80) && cfg.departments.contains(e.department)) &&
         (before && before.designation == e.designation || goodText(e.designation,80)),'Choose a department and designation.')
     require((before && before.joined == e.joined || validDate(e.joined)) && e.status in ['Active','On probation','Inactive'] && e.type in ['Full-time','Part-time','Contract'],'Check the employment dates, status and type.')
     require(e.status != 'Inactive' || (validDate(e.leavingDate) && e.leavingDate >= e.joined),'Check the leaving date.')
     require(e.salaryType in ['monthly','daily'] && amount(e.salary),'Enter a valid agreed salary.')
-    require(!e.phone || goodText(e.phone,24),'Check the phone number.')
+    // Preserve unchanged legacy contact details when another HR operation updates an employee.
+    require(before && before.phone == e.phone || goodText(e.phone,24),'Enter a phone number (up to 24 characters).')
     require(!e.emergency || goodText(e.emergency,250),'Check the emergency contact.')
     def manager = updated.employees[e.manager]
     require(!e.manager || before?.manager == e.manager || (manager ? manager.id != e.id && manager.status != 'Inactive' :
