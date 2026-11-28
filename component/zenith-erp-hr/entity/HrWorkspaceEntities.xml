@@ -7,6 +7,7 @@
         <field name="workPhone" type="text-short"/>
         <field name="agreedSalaryType" type="text-short"/>
         <field name="agreedSalary" type="currency-amount"/>
+        <field name="workShopId" type="id"/>
     </extend-entity>
     <extend-entity entity-name="Designation" package="zenith.erp.hr">
         <field name="organizationPartyId" type="id"/>
@@ -42,6 +43,31 @@
         <field name="deduction" type="currency-amount"/>
         <field name="recordStatus" type="text-short"/>
         <field name="paid" type="text-indicator"/>
+        <relationship type="one" related="zenith.erp.hr.Employee"/>
+    </entity>
+    <entity entity-name="EmployeeBankAccount" package="zenith.erp.hr">
+        <field name="employeeId" type="id" is-pk="true"/>
+        <field name="holderName" type="text-medium" encrypt="true"/>
+        <field name="accountNumber" type="text-medium" encrypt="true"/>
+        <field name="ifsc" type="text-short"/>
+        <field name="accountVersion" type="text-short"/>
+        <field name="updatedByUserId" type="id"/>
+        <relationship type="one" related="zenith.erp.hr.Employee"/>
+    </entity>
+    <entity entity-name="SalaryPayout" package="zenith.erp.hr">
+        <field name="payoutId" type="id" is-pk="true"/>
+        <field name="employeeId" type="id"/>
+        <field name="salaryMonth" type="text-short"/>
+        <field name="amount" type="currency-amount"/>
+        <field name="providerAccount" type="text-medium"/>
+        <field name="providerPayoutId" type="text-medium"/>
+        <field name="providerStatus" type="text-short"/>
+        <field name="bankReference" type="text-medium"/>
+        <field name="requestJson" type="text-long" encrypt="true"/>
+        <field name="testMode" type="text-indicator"/>
+        <field name="requestedByUserId" type="id"/>
+        <field name="requestedAt" type="date-time"/>
+        <index name="ZHR_PAYOUT_PERIOD"><index-field name="employeeId"/><index-field name="salaryMonth"/></index>
         <relationship type="one" related="zenith.erp.hr.Employee"/>
     </entity>
 </entities>

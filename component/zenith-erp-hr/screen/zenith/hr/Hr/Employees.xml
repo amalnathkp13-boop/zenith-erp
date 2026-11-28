@@ -12,8 +12,10 @@
     </transition>
 
     <actions>
+        <service-call name="zenith.base.ShopServices.get#ActiveShopScope" out-map="hrShop"/>
         <entity-find entity-name="zenith.erp.hr.EmployeeListView" list="empList">
             <econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/>
+            <econdition field-name="workShopId" from="hrShop.activeShopId" ignore-if-empty="true"/>
             <search-form-inputs default-order-by="employeeCode"/>
         </entity-find>
         <service-call name="zenith.base.SecurityServices.get#ActiveOrgList" out-map="context"/>

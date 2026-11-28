@@ -11,9 +11,11 @@
     <actions>
         <!-- Org-isolation: LeaveApplication has no org column; scope via the active org's employees -->
         <set field="activeOrg" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
+        <service-call name="zenith.base.ShopServices.get#ActiveShopScope" out-map="hrShop"/>
         <if condition="activeOrg">
             <entity-find entity-name="zenith.erp.hr.Employee" list="orgEmpList">
                 <econdition field-name="organizationPartyId" from="activeOrg"/>
+                <econdition field-name="workShopId" from="hrShop.activeShopId" ignore-if-empty="true"/>
                 <select-field field-name="employeeId"/>
             </entity-find>
             <set field="orgEmpIds" from="orgEmpList ? orgEmpList.collect{ it.employeeId } : ['__NONE__']"/>

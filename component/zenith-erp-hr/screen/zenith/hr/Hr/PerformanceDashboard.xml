@@ -11,9 +11,11 @@
     <actions>
         <!-- Org-isolation: OkrObjective has no org column; scope via the active org's employees -->
         <set field="activeOrg" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
+        <service-call name="zenith.base.ShopServices.get#ActiveShopScope" out-map="hrShop"/>
         <if condition="activeOrg">
             <entity-find entity-name="zenith.erp.hr.Employee" list="orgEmpList">
                 <econdition field-name="organizationPartyId" from="activeOrg"/>
+                <econdition field-name="workShopId" from="hrShop.activeShopId" ignore-if-empty="true"/>
                 <select-field field-name="employeeId"/>
             </entity-find>
             <set field="orgEmpIds" from="orgEmpList ? orgEmpList.collect{ it.employeeId } : ['__NONE__']"/>
@@ -38,14 +40,14 @@
                     <field name="employeeId"><default-field title="Target Employee">
                         <drop-down>
                             <entity-options key="${employeeId}" text="${employeeCode} - ${((firstName?:'') + ' ' + (lastName?:'')).trim()}">
-                                <entity-find entity-name="zenith.erp.hr.EmployeeListView"><econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/></entity-find>
+                                <entity-find entity-name="zenith.erp.hr.EmployeeListView"><econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/><econdition field-name="workShopId" from="hrShop.activeShopId" ignore-if-empty="true"/></entity-find>
                             </entity-options>
                         </drop-down>
                     </default-field></field>
                     <field name="managerEmployeeId"><default-field title="Direct Manager">
                         <drop-down>
                             <entity-options key="${employeeId}" text="${employeeCode} - ${((firstName?:'') + ' ' + (lastName?:'')).trim()}">
-                                <entity-find entity-name="zenith.erp.hr.EmployeeListView"><econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/></entity-find>
+                                <entity-find entity-name="zenith.erp.hr.EmployeeListView"><econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/><econdition field-name="workShopId" from="hrShop.activeShopId" ignore-if-empty="true"/></entity-find>
                             </entity-options>
                         </drop-down>
                     </default-field></field>
@@ -71,7 +73,7 @@
                         <drop-down allow-multiple="true">
                             <entity-options key="${employeeId}" text="${employeeCode} - ${((firstName?:'') + ' ' + (lastName?:'')).trim()} (${departmentName})">
                                 <!-- Moqui handles dynamic UI filtering via dependent drops, we use a broad view here -->
-                                <entity-find entity-name="zenith.erp.hr.EmployeeListView"><econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/></entity-find>
+                                <entity-find entity-name="zenith.erp.hr.EmployeeListView"><econdition field-name="organizationPartyId" from="ec.user.getPreference('ACTIVE_ORGANIZATION')" ignore-if-empty="true"/><econdition field-name="workShopId" from="hrShop.activeShopId" ignore-if-empty="true"/></entity-find>
                             </entity-options>
                         </drop-down>
                     </default-field></field>

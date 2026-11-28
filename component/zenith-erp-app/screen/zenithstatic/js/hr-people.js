@@ -162,14 +162,6 @@ export function installPeople(HR, view) {
     );
     bindPaging();
   };
-  function nextEmployeeId() {
-    let last = 0;
-    for (const employee of HR.state.employees) {
-      const match = /^ZE-(\d{1,12})$/.exec(employee.id);
-      if (match) last = Math.max(last, Number(match[1]));
-    }
-    return 'ZE-' + String(last + 1).padStart(3, '0');
-  }
   function employeeForm(id) {
     const existing = id ? HR.employee(id) : null;
     if (id && !existing) return;
@@ -178,7 +170,7 @@ export function installPeople(HR, view) {
       email: '',
       phone: '',
       joined: HR.today,
-      department: HR.state.settings.departments[0],
+      department: '',
       designation: '',
       manager: '',
       type: 'Full-time',
@@ -191,9 +183,18 @@ export function installPeople(HR, view) {
     };
     let uploads = [];
     const departments = HR.state.settings.departments;
+    const shopId = existing ? existing.shopId : HR.state.shopId || (HR.state.shops.length === 1 ? HR.state.shops[0].id : '');
+    const shops = [...HR.state.shops];
+    if (shopId && !shops.some((shop) => shop.id === shopId)) shops.push({ id: shopId, name: HR.shopLabel(e) });
+    const shopOptions = shops.map((shop) =>
+      '<option value="' + E(shop.id) + '"' + (shop.id === shopId ? ' selected' : '') + '>' + E(shop.name) + '</option>').join('');
+    const shopField = HR.state.shopId
+      ? field('Shop', '<input readonly value="' + E(HR.state.shopName) + '">')
+      : HR.state.shops.length ? field('Shop', '<select name="shopId"' + (existing ? '' : ' required') + '>' +
+          '<option value="">Unassigned</option>' + shopOptions + '</select>') : '';
     const departmentField = departments.length
-      ? select('department', departments, e.department, 'required')
-      : input('department', '', 'required maxlength="80" placeholder="e.g. Operations"');
+      ? select('department', departments, e.department, '', 'No department')
+      : input('department', e.department, 'maxlength="80" placeholder="e.g. Operations"');
     const managers = HR.activeEmployees().filter((person) => person.id !== id);
     const currentManager = HR.employee(e.manager) || managers.find((person) => person.name === e.manager);
     if (currentManager && !managers.includes(currentManager)) managers.push(currentManager);
@@ -225,7 +226,7 @@ export function installPeople(HR, view) {
         ? `${existing.id} · Keep employee details up to date.`
         : 'Create a profile and add this person to your team.',
       wide: true,
-      body: `<form id="modal-form">${errorBox}<div class="form-grid">${field('Full name *', input('name', e.name, 'required maxlength="80" autocomplete="name" placeholder="e.g. Ananya Rao"'))}${field('Work email (optional)', input('email', e.email, 'type="email" maxlength="160" autocomplete="email" placeholder="name@example.com"'))}${field('Phone *', input('phone', e.phone, 'type="tel" required inputmode="numeric" minlength="10" maxlength="10" pattern="[0-9]{10}" autocomplete="tel-national" placeholder="9876543210" title="Enter exactly 10 digits, without spaces or country code."'))}${field('Joining date *', input('joined', e.joined, 'type="date" required'))}${field('Department *', departmentField)}${field('Designation *', input('designation', e.designation, 'required maxlength="80" list="employee-designations" placeholder="e.g. Software Engineer"') + `<datalist id="employee-designations">${(HR.state.settings.designations || []).map((d) => `<option value="${E(d)}"></option>`).join('')}</datalist>`)}${field('Reporting manager', managerField)}${field('Employment type', select('type', ['Full-time', 'Part-time', 'Contract'], e.type))}${field('Status', select('status', ['Active', 'On probation', 'Inactive'], e.status))}<div id="employee-leaving-field" ${e.status === 'Inactive' ? '' : 'hidden'}>${field('Leaving date *', input('leavingDate', e.leavingDate || HR.today, 'type="date"'))}</div>${field('Salary type *', `<select name="salaryType" required><option value="monthly" ${e.salaryType !== 'daily' ? 'selected' : ''}>Monthly agreed salary</option><option value="daily" ${e.salaryType === 'daily' ? 'selected' : ''}>Per day salary</option></select>`)}<label class="field salary-amount-field"><span id="employee-salary-label">${e.salaryType === 'daily' ? 'Daily' : 'Monthly'} salary amount (₹) *</span>${input('salary', e.salary, 'type="number" required min="0" max="10000000" step="0.01"')}<small class="field-hint" id="employee-salary-unit">₹ / ${e.salaryType === 'daily' ? 'day' : 'month'}</small></label>${field('Emergency contact', input('emergency', e.emergency, 'maxlength="120" placeholder="Name and phone number"'))}${field('Documents', '<input type="file" id="employee-documents" multiple accept=".pdf,.png,.jpg,.jpeg,.doc,.docx">', 'Files up to 5 MB are stored after saving. Reupload the same file name to restore an older name-only record.')}<div class="span-2" id="employee-doc-list">${(e.documents || []).map((d) => `<span class="pill">${E(typeof d === 'string' ? d : d.name)}${d.available ? '' : ' · upload again to view'}</span>`).join(' ')}</div></div></form>`,
+      body: `<form id="modal-form">${errorBox}<div class="form-grid">${field('Full name *', input('name', e.name, 'required maxlength="80" autocomplete="name" placeholder="e.g. Ananya Rao"'))}${field('Work email (optional)', input('email', e.email, 'type="email" maxlength="160" autocomplete="email" placeholder="name@example.com"'))}${field('Phone *', input('phone', e.phone, 'type="tel" required inputmode="numeric" minlength="10" maxlength="10" pattern="[0-9]{10}" autocomplete="tel-national" placeholder="9876543210" title="Enter exactly 10 digits, without spaces or country code."'))}${field('Joining date *', input('joined', e.joined, 'type="date" required'))}${field('Department (optional)', departmentField)}${field('Designation *', input('designation', e.designation, 'required maxlength="80" list="employee-designations" placeholder="e.g. Software Engineer"') + `<datalist id="employee-designations">${(HR.state.settings.designations || []).map((d) => `<option value="${E(d)}"></option>`).join('')}</datalist>`)}${shopField}${field('Reporting manager', managerField)}${field('Employment type', select('type', ['Full-time', 'Part-time', 'Contract'], e.type))}${field('Status', select('status', ['Active', 'On probation', 'Inactive'], e.status))}<div id="employee-leaving-field" ${e.status === 'Inactive' ? '' : 'hidden'}>${field('Leaving date *', input('leavingDate', e.leavingDate || HR.today, 'type="date"'))}</div>${field('Salary type *', `<select name="salaryType" required><option value="monthly" ${e.salaryType !== 'daily' ? 'selected' : ''}>Monthly agreed salary</option><option value="daily" ${e.salaryType === 'daily' ? 'selected' : ''}>Per day salary</option></select>`)}<label class="field salary-amount-field"><span id="employee-salary-label">${e.salaryType === 'daily' ? 'Daily' : 'Monthly'} salary amount (₹) *</span>${input('salary', e.salary, 'type="number" required min="0" max="10000000" step="0.01"')}<small class="field-hint" id="employee-salary-unit">₹ / ${e.salaryType === 'daily' ? 'day' : 'month'}</small></label>${field('Emergency contact', input('emergency', e.emergency, 'maxlength="120" placeholder="Name and phone number"'))}${field('Documents', '<input type="file" id="employee-documents" multiple accept=".pdf,.png,.jpg,.jpeg,.doc,.docx">', 'Files up to 5 MB are stored after saving. Reupload the same file name to restore an older name-only record.')}<div class="span-2" id="employee-doc-list">${(e.documents || []).map((d) => `<span class="pill">${E(typeof d === 'string' ? d : d.name)}${d.available ? '' : ' · upload again to view'}</span>`).join(' ')}</div></div></form>`,
       footer: formFooter(existing ? 'Save changes' : 'Add employee'),
       onMount(dialog) {
         cancelBinding(dialog);
@@ -263,7 +264,6 @@ export function installPeople(HR, view) {
           if (!/^[0-9]{10}$/.test(f.phone)) return message(dialog, 'Enter exactly 10 digits for the mobile number.');
           f.designation = f.designation.trim();
           f.department = f.department.trim();
-          if (!f.department) return message(dialog, 'Enter a department.');
           f.salary = Number(f.salary || 0);
           f.salaryType = f.salaryType === 'daily' ? 'daily' : 'monthly';
           if (!f.name || !f.designation) return message(dialog, 'Enter a name and designation.');
@@ -280,10 +280,11 @@ export function installPeople(HR, view) {
             ...e,
             ...f,
             documents: e.documents || [],
-            id: existing?.id || nextEmployeeId(),
+            id: existing?.id || HR.state.nextEmployeeId,
+            shopId: f.shopId ?? existing?.shopId ?? shopId,
             color: e.color || 'purple',
           };
-          if (!departments.length) departments.push(f.department);
+          if (!departments.length && f.department) departments.push(f.department);
           if (existing) Object.assign(existing, updated);
           else HR.state.employees.push(updated);
           if (!(await HR.save(`${existing ? 'Updated' : 'Added'} employee ${updated.name}`))) return;
@@ -305,11 +306,15 @@ export function installPeople(HR, view) {
     if (!e) return;
     const item = (label, val) =>
       `<div class="detail-item"><span>${label}</span><strong>${E(val || 'Not added')}</strong></div>`;
+    const account = HR.state.payments.accounts[e.id];
+    const bankDetails = HR.state.payments.canPay ? `<h3 class="section-label">Payroll bank account</h3>
+      <div class="document-row"><span>${account ? `Account ending ${E(account.ending)} · ${E(account.ifsc)}` : 'No bank account saved'}</span>
+      <button class="btn btn-secondary btn-sm" id="profile-bank">${account ? 'Update bank details' : 'Add bank details'}</button></div>` : '';
     HR.openModal({
       title: 'Employee profile',
-      subtitle: `${e.id} · ${e.department}`,
+      subtitle: [e.id, e.department].filter(Boolean).join(' · '),
       wide: true,
-      body: `<div class="profile-overview"><div class="person-cell">${HR.avatar(e)}<div><h2>${E(e.name)}</h2><p class="muted">${E(e.designation)}</p></div></div>${HR.badge(e.status)}</div><div class="detail-grid">${item('Work email', e.email)}${item('Phone', e.phone)}${item('Department', e.department)}${item('Reporting manager', HR.employee(e.manager)?.name || e.manager)}${item('Joined', HR.date(e.joined))}${item('Employment type', e.type)}${e.status === 'Inactive' ? item('Leaving date', e.leavingDate ? HR.date(e.leavingDate) : 'Not recorded') : ''}${item('Salary type', e.salaryType === 'daily' ? 'Per day salary' : 'Monthly agreed salary')}${item('Agreed salary', HR.money(e.salary) + (e.salaryType === 'daily' ? ' / day' : ' / month'))}${item('Emergency contact', e.emergency)}</div><h3 class="section-label">Leave balance</h3><div class="balance-grid">${HR.state.settings.leaveTypes
+      body: `<div class="profile-overview"><div class="person-cell">${HR.avatar(e)}<div><h2>${E(e.name)}</h2><p class="muted">${E(e.designation)}</p></div></div>${HR.badge(e.status)}</div><div class="detail-grid">${item('Work email', e.email)}${item('Phone', e.phone)}${item('Department', e.department)}${item('Shop', HR.shopLabel(e))}${item('Reporting manager', HR.employee(e.manager)?.name || e.manager)}${item('Joined', HR.date(e.joined))}${item('Employment type', e.type)}${e.status === 'Inactive' ? item('Leaving date', e.leavingDate ? HR.date(e.leavingDate) : 'Not recorded') : ''}${item('Salary type', e.salaryType === 'daily' ? 'Per day salary' : 'Monthly agreed salary')}${item('Agreed salary', HR.money(e.salary) + (e.salaryType === 'daily' ? ' / day' : ' / month'))}${item('Emergency contact', e.emergency)}</div>${bankDetails}<h3 class="section-label">Leave balance</h3><div class="balance-grid">${HR.state.settings.leaveTypes
         .filter((t) => t.name !== 'Unpaid leave')
         .map(
           (t) =>
@@ -321,6 +326,7 @@ export function installPeople(HR, view) {
       footer: `<button class="btn btn-secondary" data-cancel>Close</button><button class="btn btn-primary" id="profile-edit">${HR.icon('edit')} Edit employee</button>`,
       onMount(dialog) {
         cancelBinding(dialog);
+        $('#profile-bank', dialog)?.addEventListener('click', () => HR.editBankDetails(e.id, () => profile(e.id)));
         $('#profile-edit', dialog).addEventListener('click', () => {
           HR.closeModal();
           employeeForm(e.id);

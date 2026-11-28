@@ -9,8 +9,9 @@
         <actions>
             <!-- Org-isolation: re-check ownership by PK before update (prevent cross-tenant IDOR edit) -->
             <set field="activeOrg" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
+            <service-call name="zenith.base.ShopServices.get#ActiveShopScope" out-map="hrShop"/>
             <entity-find-one entity-name="zenith.erp.hr.Employee" value-field="curEmp"/>
-            <if condition="curEmp == null || (activeOrg &amp;&amp; curEmp.organizationPartyId != activeOrg &amp;&amp; !ec.user.isInGroup('ADMIN'))">
+            <if condition="curEmp == null || (activeOrg &amp;&amp; curEmp.organizationPartyId != activeOrg) || (hrShop.activeShopId &amp;&amp; curEmp.workShopId != hrShop.activeShopId)">
                 <return error="true" message="Employee not found for your account."/>
             </if>
             <service-call name="update#zenith.erp.hr.Employee" in-map="context"/>
@@ -36,9 +37,10 @@
 
     <actions>
         <set field="activeOrg" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
+        <service-call name="zenith.base.ShopServices.get#ActiveShopScope" out-map="hrShop"/>
         <entity-find-one entity-name="zenith.erp.hr.Employee" value-field="emp"/>
         <!-- Org-isolation: block IDOR read of another tenant's employee (PAN/Aadhaar/UAN/bank/CTC) -->
-        <if condition="emp == null || (activeOrg &amp;&amp; emp.organizationPartyId != activeOrg &amp;&amp; !ec.user.isInGroup('ADMIN'))">
+        <if condition="emp == null || (activeOrg &amp;&amp; emp.organizationPartyId != activeOrg) || (hrShop.activeShopId &amp;&amp; emp.workShopId != hrShop.activeShopId)">
             <!-- Wipe the loaded record and stop before any sensitive field can render -->
             <set field="emp" from="[:]"/>
             <set field="person" from="[:]"/>

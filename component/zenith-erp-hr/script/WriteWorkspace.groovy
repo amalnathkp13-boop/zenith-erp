@@ -80,6 +80,7 @@ next.employees.each { e ->
     if (old?.leavingDate != e.leavingDate) entity.relievingDate = e.leavingDate ? Date.valueOf(e.leavingDate) : null
     if (old?.email != e.email) entity.workEmail = e.email
     if (old?.phone != e.phone) entity.workPhone = e.phone ?: ''
+    if (old?.shopId != e.shopId) entity.workShopId = e.shopId ?: null
     if (old?.emergency != e.emergency) entity.emergencyContactName = e.emergency ?: null
     if (!old || old.salaryType != e.salaryType || old.salary != e.salary) {
         entity.agreedSalary = e.salary; entity.agreedSalaryType = e.salaryType
@@ -154,15 +155,15 @@ next.salaries.each { p ->
 }
 
 def at = ec.user.nowTimestamp.toInstant().toString()
-def recordedAt = new LinkedHashMap(previous.recordedAt)
+def recordedAt = new LinkedHashMap(current.allRecordedAt)
 ['employees':'employees','attendance':'attendance','leaves':'leave','salaries':'payroll','settings':'settings'].each { name,area ->
     if (previous[name] != next[name]) {
         recordedAt[area] = at
         if (area == 'leave') recordedAt.attendance = at
     }
 }
-def entry = [message:description,time:at,userId:ec.user.userId]
+def entry = [message:description,time:at,userId:ec.user.userId,shopId:previous.shopId]
 def stored = current.config ?: ef.makeValue('zenith.erp.hr.WorkspaceSettings').set('organizationPartyId',org)
 stored.setAll([settingsJson:JsonOutput.toJson(cfg),recordedAtJson:JsonOutput.toJson(recordedAt),
-    auditJson:JsonOutput.toJson(([entry]+previous.audit).take(100))])
+    auditJson:JsonOutput.toJson(([entry]+current.allAudit).take(100))])
 if (current.config) stored.update() else stored.create()
