@@ -49,7 +49,10 @@
             // NOTE: wrap in a plain ArrayList — a Moqui EntityList overrides findAll/count with methods that
             // CAST the closure result to Boolean (so a truthy-Date closure throws ClassCastException). A plain
             // ArrayList uses GDK semantics (Groovy truthiness), which is what these closures rely on.
-            def emps = new ArrayList(orgId ? ef.find("zenith.erp.hr.Employee").condition("organizationPartyId", orgId).list() : [])
+            def shop = ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').disableAuthz().call().activeShopId
+            def roster = orgId ? ef.find("zenith.erp.hr.Employee").condition("organizationPartyId", orgId) : null
+            if (shop) roster?.condition('workShopId',shop)
+            def emps = new ArrayList(roster ? roster.list() : [])
             headcount = emps.size()
             def _activeSet = ['EmpActive','EmpProbation','EmpNoticeperiod'] as Set
             activeCount = emps.count { _activeSet.contains(it.statusId) }

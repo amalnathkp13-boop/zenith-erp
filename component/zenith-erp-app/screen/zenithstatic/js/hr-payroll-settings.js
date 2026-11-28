@@ -23,6 +23,27 @@ export function installSalaryAndSettings(H, view) {
   function currentMonth() {
     return H.ui.payMonth || H.month;
   }
+  const failedStatuses = ['failed', 'rejected', 'cancelled', 'reversed'];
+  const payoutFor = (row) => H.state.payments.payouts[row.id];
+  const canStartPayout = (row) => {
+    const payout = payoutFor(row);
+    return !row.paid && (!payout || failedStatuses.includes(payout.status) ||
+      (payout.test && payout.status === 'processed' && H.state.payments.mode === 'live'));
+  };
+  function paymentActions(row) {
+    if (!H.state.payments.canPay || row.managedByPayroll) return '';
+    const payout = payoutFor(row);
+    const id = esc(row.id);
+    const transfer = canStartPayout(row) && net(row) >= 1
+      ? `<button class="btn btn-primary btn-sm" data-salary-transfer="${id}">${H.state.payments.mode === 'test' ? 'Test transfer' : 'Transfer'}</button>` : '';
+    const check = payout && !failedStatuses.includes(payout.status)
+      ? `<button class="btn btn-secondary btn-sm" data-payout-check="${id}">Check status</button>` : '';
+    const manual = !row.paid && (canStartPayout(row) || (payout?.test && payout.status === 'processed'))
+      ? `<button class="icon-btn" data-salary-paid="${id}" aria-label="Record an external payment" title="Record an external payment">${H.icon('check', 17)}</button>` : '';
+    return transfer + check + manual;
+  }
+  const payoutLabel = (payout) => !payout ? '' : (payout.test ? 'Test transfer: ' : 'Bank transfer: ') +
+    (payout.status === 'submitted' ? 'Awaiting confirmation' : payout.status.replace(/^./, (letter) => letter.toUpperCase()));
   function monthRows() {
     return H.state.salaries.filter((row) => row.month === currentMonth());
   }
@@ -83,6 +104,8 @@ export function installSalaryAndSettings(H, view) {
             H.money(net(row)) +
             '</strong></td><td>' +
             H.badge(row.paid ? 'Paid' : row.status === 'Finalized' ? 'Unpaid' : 'Draft') +
+            (payoutFor(row) ? '<div class="cell-secondary">' + esc(payoutLabel(payoutFor(row))) +
+              (payoutFor(row).reference ? '<br>Ref. ' + esc(payoutFor(row).reference) : '') + '</div>' : '') +
             '</td><td><div class="row-actions">' +
             (row.status === 'Draft'
               ? '<button ' +
@@ -97,15 +120,7 @@ export function installSalaryAndSettings(H, view) {
                 '" title="View payslip">' +
                 H.icon('file', 16) +
                 'Payslip</button>' +
-                (!row.paid && !row.managedByPayroll
-                  ? '<button class="icon-btn" data-salary-paid="' +
-                    esc(row.id) +
-                    '" aria-label="Mark salary paid for ' +
-                    esc(employee.name) +
-                    '" title="Mark paid">' +
-                    H.icon('check', 17) +
-                    '</button>'
-                  : '')) +
+                paymentActions(row)) +
             '</div></td></tr>'
           );
         })
@@ -191,6 +206,12 @@ export function installSalaryAndSettings(H, view) {
     );
     $$('[data-salary-paid]').forEach((button) =>
       button.addEventListener('click', () => markPaid(button.dataset.salaryPaid)),
+    );
+    $$('[data-salary-transfer]').forEach((button) =>
+      button.addEventListener('click', () => transfer(button.dataset.salaryTransfer)),
+    );
+    $$('[data-payout-check]').forEach((button) =>
+      button.addEventListener('click', () => refreshTransfer(button, button.dataset.payoutCheck)),
     );
   }
   function refreshSalaryTable() {
@@ -465,6 +486,86 @@ export function installSalaryAndSettings(H, view) {
       },
     });
   }
+  H.editBankDetails = (employeeCode, onSaved) => {
+    const account = H.state.payments.accounts[employeeCode];
+    H.openModal({
+      title: account ? 'Update payroll bank account' : 'Add payroll bank account',
+      subtitle: H.employee(employeeCode).name,
+      body: `<form id="bank-details"><div class="form-grid">
+        ${field('Account holder name', '<input name="holderName" required maxlength="80">')}
+        ${field('IFSC', '<input name="ifsc" required maxlength="11" pattern="[A-Za-z]{4}0[A-Za-z0-9]{6}" value="' + esc(account?.ifsc) + '">')}
+        ${field('Account number', '<input name="accountNumber" required inputmode="numeric" pattern="[0-9]{6,30}" maxlength="30" autocomplete="off">')}
+        ${field('Confirm account number', '<input name="confirmAccount" required inputmode="numeric" pattern="[0-9]{6,30}" maxlength="30" autocomplete="off">')}
+        </div><p id="bank-error" class="text-danger" role="alert" hidden></p></form>`,
+      footer: cancelButton + '<button type="submit" form="bank-details" class="btn btn-primary">Save bank details</button>',
+      onMount: (dialog) => {
+        $('#bank-details', dialog).onsubmit = async (event) => {
+          event.preventDefault();
+          const button = event.submitter;
+          const error = $('#bank-error', dialog);
+          button.disabled = true;
+          error.hidden = true;
+          try {
+            await H.salaryPayment({ ...Object.fromEntries(new FormData(event.target)),
+              employeeCode, action: 'bank', accountVersion: account?.version });
+            H.closeModal();
+            await H.reload();
+            H.toast('Payroll bank details saved.');
+            onSaved?.();
+          } catch (err) {
+            error.textContent = err.message;
+            error.hidden = false;
+          } finally {
+            button.disabled = false;
+          }
+        };
+      },
+    });
+  };
+
+  async function saveTransfer(button, row, fields) {
+    button.disabled = true;
+    try {
+      const result = await H.salaryPayment({ employeeCode: row.employeeId, salaryMonth: row.month, ...fields });
+      H.closeModal();
+      await H.reload();
+      const payout = payoutFor(row);
+      H.toast(result.warning || payoutLabel(payout) || 'Transfer status updated.');
+    } catch (error) {
+      H.toast(error.message);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function refreshTransfer(button, id) {
+    const row = H.state.salaries.find((item) => item.id === id);
+    if (row && payoutFor(row)) saveTransfer(button, row, { action: 'refresh', payoutId: payoutFor(row).id });
+  }
+
+  function transfer(id) {
+    const row = H.state.salaries.find((item) => item.id === id);
+    if (!row || !canStartPayout(row)) return;
+    const mode = H.state.payments.mode;
+    if (!mode) return H.toast('The organization has no payout connection configured.');
+    const account = H.state.payments.accounts[row.employeeId];
+    if (!account) return H.editBankDetails(row.employeeId, () => transfer(id));
+    H.openModal({
+      title: mode === 'test' ? 'Confirm test transfer' : 'Confirm salary transfer',
+      subtitle: H.employee(row.employeeId).name + ' · ' + monthLabel(row.month),
+      body: `<div class="detail-grid">
+        <div class="detail-item"><span>Net payable</span><strong>${H.money(net(row))}</strong></div>
+        <div class="detail-item"><span>Destination</span><strong>Account ending ${esc(account.ending)} · ${esc(account.ifsc)}</strong></div>
+        </div>${mode === 'test' ? '<p class="muted">Test transfers do not move money or mark salaries as paid.</p>' : ''}`,
+      footer: cancelButton + '<button class="btn btn-primary" id="confirm-transfer">' +
+        (mode === 'test' ? 'Send test transfer' : 'Send bank transfer') + '</button>',
+      onMount: (dialog) => {
+        $('#confirm-transfer', dialog).onclick = (event) => saveTransfer(event.currentTarget, row,
+          { action: 'start', accountVersion: account.version, paymentMode: mode });
+      },
+    });
+  }
+
   function markPaid(id) {
     const row = H.state.salaries.find((item) => item.id === id);
     if (!row || row.managedByPayroll || row.status !== 'Finalized' || row.paid) return;
@@ -569,6 +670,8 @@ export function installSalaryAndSettings(H, view) {
     ['access', 'Access & history', 'shield'],
   ];
   H.renderers.settings = function () {
+    if (H.state.shopId) return '<div class="page-heading"><div class="page-title-text"><h1>HR Settings</h1></div></div>' +
+      '<div class="notice notice-info">Switch to All Shops to manage organization settings.</div>';
     const current = H.ui.settingsTab || 'organization';
     return (
       '<div class="page-heading"><div class="page-title-text"><div class="eyebrow">WORKSPACE PREFERENCES</div><h1>HR Settings</h1><p class="muted">Set up your organization, leave policies, and working calendar.</p></div><div class="page-actions"><span class="pill">' +
@@ -602,6 +705,7 @@ export function installSalaryAndSettings(H, view) {
     );
   };
   H.afterRender.settings = function () {
+    if (H.state.shopId) return;
     $$('[data-setting-tab]').forEach((button) =>
       button.addEventListener('click', () => {
         H.ui.settingsTab = button.dataset.settingTab;

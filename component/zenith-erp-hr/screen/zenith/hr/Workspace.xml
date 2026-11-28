@@ -18,6 +18,59 @@
         ]]></script></actions>
         <default-response type="none"/>
     </transition>
+    <transition name="uploadDocument" method="post" require-session-token="true">
+        <actions><script><![CDATA[
+            ec.web.response.setHeader('Cache-Control', 'private, no-store')
+            def result = ec.service.sync().name('zenith.hr.WorkspaceServices.store#EmployeeDocument')
+                .parameters([employeeCode:employeeCode,documentFile:ec.web.parameters.documentFile,scopeKey:scopeKey]).call()
+            ec.web.sendJsonResponse(result)
+        ]]></script></actions>
+        <default-response type="none"/>
+    </transition>
+    <transition name="salaryPayment" method="post" require-session-token="true" begin-transaction="false">
+        <actions><script><![CDATA[
+            ec.web.response.setHeader('Cache-Control', 'private, no-store')
+            def input = ec.web.parameters.subMap(['action','scopeKey','employeeCode','holderName','accountNumber',
+                'confirmAccount','ifsc','accountVersion','salaryMonth','paymentMode','payoutId'])
+            def service = 'zenith.hr.WorkspaceServices.apply#SalaryPayment'
+            def result = ec.service.sync().name(service).parameters(input).call()?.result
+            if (input.action == 'start' && result?.success) {
+                def dispatch = input.subMap(['scopeKey','employeeCode','salaryMonth'])
+                dispatch.putAll([action:'refresh',payoutId:result.payoutId])
+                result = ec.service.sync().name(service).parameters(dispatch).call()?.result
+            }
+            ec.web.sendJsonResponse(result ?: [success:false,error:'Unable to update the salary payment.'])
+        ]]></script></actions>
+        <default-response type="none"/>
+    </transition>
+    <transition name="viewDocument" method="get" read-only="true" begin-transaction="false">
+        <actions><script><![CDATA[
+            def response = ec.web.response
+            response.setHeader('Cache-Control', 'private, no-store')
+            response.setHeader('X-Content-Type-Options', 'nosniff')
+            def access = ec.service.sync().name('zenith.hr.WorkspaceServices.get#WorkspaceAccess').call()
+            def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
+            def row = documentId && access.allowed ? ec.entity.find('zenith.erp.hr.EmployeeDocument')
+                .condition('documentId',documentId).disableAuthz().one() : null
+            def employee = row ? ec.entity.find('zenith.erp.hr.Employee').condition('employeeId',row.employeeId)
+                .condition('organizationPartyId',org).disableAuthz().one() : null
+            def shop = access.shopScope?.activeShopId
+            if (!employee || !row.contentBase64 || (shop && employee.workShopId != shop)) {
+                response.setStatus(404); response.setContentType('text/plain; charset=UTF-8')
+                response.writer.write('Document unavailable.'); return
+            }
+            def mime = row.fileMimeType
+            def types = ['application/pdf':'pdf','image/png':'png','image/jpeg':'jpg',
+                'application/msword':'doc','application/vnd.openxmlformats-officedocument.wordprocessingml.document':'docx']
+            if (!types[mime]) { response.setStatus(404); return }
+            response.setContentType(mime)
+            response.setHeader('Content-Disposition', (mime in ['application/pdf','image/png','image/jpeg'] ? 'inline' : 'attachment') +
+                '; filename="employee-document-' + row.documentId.replaceAll(/[^A-Za-z0-9_-]/,'') + '.' + types[mime] + '"')
+            response.outputStream.write(java.util.Base64.decoder.decode(row.contentBase64))
+            response.outputStream.flush()
+        ]]></script></actions>
+        <default-response type="none"/>
+    </transition>
     <actions><script><![CDATA[
         ec.web.response.setHeader('Cache-Control', 'private, no-store')
         if (!ec.service.sync().name('zenith.hr.WorkspaceServices.get#WorkspaceAccess').call().allowed) {

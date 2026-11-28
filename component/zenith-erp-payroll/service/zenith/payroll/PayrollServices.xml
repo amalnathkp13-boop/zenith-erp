@@ -42,6 +42,12 @@
             <if condition="activeOrg &amp;&amp; run.organizationPartyId &amp;&amp; run.organizationPartyId != activeOrg">
                 <return error="true" message="Not authorized: payroll run belongs to another organization"/></if>
 
+            <!-- Coordinate with HR salary finalization and payout for the same employee and period. -->
+            <script><![CDATA[
+                if (activeOrg) ec.entity.find('mantle.party.Organization').condition('partyId',activeOrg).disableAuthz().forUpdate(true).one()
+                hrSalaryMonth = String.format('%04d-%02d',run.periodYear as int,run.periodMonth as int)
+            ]]></script>
+
             <!-- Scope payroll to active org's employees only -->
             <entity-find entity-name="zenith.erp.hr.Employee" list="employees">
                 <econdition field-name="organizationPartyId" from="activeOrg" ignore-if-empty="true"/>
@@ -51,6 +57,9 @@
             </entity-find>
 
             <iterate list="employees" entry="emp">
+                <if condition="ec.entity.isEntityDefined('zenith.erp.hr.SalaryRegister') &amp;&amp; ec.entity.find('zenith.erp.hr.SalaryRegister').condition('employeeId',emp.employeeId).condition('salaryMonth',hrSalaryMonth).condition('recordStatus','Finalized').disableAuthz().count() &gt; 0">
+                    <continue/>
+                </if>
                 <entity-find entity-name="zenith.erp.payroll.Payslip" list="existingList">
                     <econdition field-name="payrollRunId"/>
                     <econdition field-name="employeeId" from="emp.employeeId"/>
@@ -181,6 +190,15 @@
         <actions>
             <entity-find-one entity-name="zenith.erp.hr.Employee" value-field="emp"/>
             <if condition="!emp"><return error="true" message="Employee not found"/></if>
+            <set field="employeeOrg" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
+            <if condition="!employeeOrg || emp.organizationPartyId != employeeOrg"><return error="true" message="Employee not found in the active organization"/></if>
+            <script><![CDATA[
+                ec.entity.find('mantle.party.Organization').condition('partyId',employeeOrg).disableAuthz().forUpdate(true).one()
+                hrSalaryMonth = String.format('%04d-%02d',periodYear as int,periodMonth as int)
+            ]]></script>
+            <if condition="ec.entity.isEntityDefined('zenith.erp.hr.SalaryRegister') &amp;&amp; ec.entity.find('zenith.erp.hr.SalaryRegister').condition('employeeId',employeeId).condition('salaryMonth',hrSalaryMonth).condition('recordStatus','Finalized').disableAuthz().count() &gt; 0">
+                <return error="true" message="This employee already has a finalized HR salary for the period"/>
+            </if>
             <if condition="!emp.ctcAnnual"><return error="true" message="CTC not configured for ${employeeId}"/></if>
 
             <!-- Fetch salary structure (employee's or default) -->

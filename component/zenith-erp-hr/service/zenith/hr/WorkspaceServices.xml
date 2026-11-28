@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
     <service verb="get" noun="WorkspaceAccess" authenticate="true" transaction="ignore">
-        <out-parameters><parameter name="allowed" type="Boolean"/><parameter name="includePayroll" type="Boolean"/></out-parameters>
+        <out-parameters>
+            <parameter name="allowed" type="Boolean"/><parameter name="includePayroll" type="Boolean"/>
+            <parameter name="canPay" type="Boolean"/><parameter name="shopScope" type="Map"/><parameter name="scopeKey"/>
+        </out-parameters>
         <actions><script><![CDATA[
-            allowed = false; includePayroll = false
+            allowed = false; includePayroll = false; canPay = false
             if (!ec.user.userId) return
             def administrator = ec.user.isInGroup('ADMIN') || ec.user.isInGroup('ZENITH_ADMIN')
             boolean payrollGrant = administrator
@@ -21,7 +24,7 @@
                 def screens = scope.selections?.hr ?: []
                 if (!grants.containsAll(['hr','payroll']) &&
                         !['Dashboard','Directory','Attendance','Leave','Salary','Reports','Settings'].every { screens.contains('/Hr/' + it) }) return
-                payrollGrant = grants.contains('payroll') || scope.legacyModules?.contains('payroll') ||
+                payrollGrant = grants.contains('payroll') ||
                         (scope.selections?.payroll ?: []).contains('/payroll/PayrollRuns')
             }
             def scopeOrg = ec.service.sync().name('zenith.base.RoleAccessServices.get#RoleOrganization').disableAuthz().call().organizationPartyId
@@ -39,7 +42,10 @@
                     payrollInPlan = plan.contains('all') || plan.contains('payroll')
                 }
             }
+            shopScope = ec.service.sync().name('zenith.base.ShopServices.get#ActiveShopScope').disableAuthz().call()
+            scopeKey = scopeOrg + ':' + (shopScope.activeShopId ?: '')
             allowed = true; includePayroll = payrollInPlan && payrollGrant
+            canPay = includePayroll
         ]]></script></actions>
     </service>
     <service verb="load" noun="Workspace" authenticate="true">
@@ -52,7 +58,7 @@
             <if condition="!permission.allowed"><set field="success" from="false"/><set field="error" value="Select an organization with HR management access."/><return/></if>
             <script><![CDATA[
                 def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
-                def loaded = ec.resource.script('component://zenith-erp-hr/script/ReadWorkspace.groovy', null, [org:org,lockRows:false,includePayroll:permission.includePayroll])
+                def loaded = ec.resource.script('component://zenith-erp-hr/script/ReadWorkspace.groovy', null, [org:org,lockRows:false,permission:permission])
                 state = loaded.state; revision = loaded.revision; today = loaded.today; success = true
             ]]></script>
         </actions>
@@ -73,7 +79,7 @@
                 if (!ec.entity.find('mantle.party.Organization').condition('partyId',org).disableAuthz().forUpdate(true).one()) {
                     error = 'Organization not found.'; return
                 }
-                def current = ec.resource.script('component://zenith-erp-hr/script/ReadWorkspace.groovy', null, [org:org,lockRows:true,includePayroll:permission.includePayroll])
+                def current = ec.resource.script('component://zenith-erp-hr/script/ReadWorkspace.groovy', null, [org:org,lockRows:true,permission:permission])
                 if (revision != current.revision) {
                     conflict = true; error = 'HR records changed. Reload the workspace and try your edit again.'; return
                 }
@@ -82,12 +88,82 @@
                 catch (groovy.json.JsonException ignored) { error = 'Invalid HR records.'; return }
                 try {
                     ec.resource.script('component://zenith-erp-hr/script/ValidateWorkspace.groovy',null,
-                        [next:data,previous:current.state,today:current.today,payrollPeriods:current.payrollPeriods])
+                        [next:data,previous:current.state,today:current.today,payrollPeriods:current.payrollPeriods,
+                         reservedCodes:current.reservedCodes,activeShop:permission.shopScope.activeShopId,
+                         canPay:permission.canPay])
                 } catch (IllegalArgumentException invalid) { error = invalid.message; return }
                 ec.resource.script('component://zenith-erp-hr/script/WriteWorkspace.groovy', null,
                     [org:org,next:data,current:current,description:(message ?: 'Updated HR records.').take(250)])
-                def loaded = ec.resource.script('component://zenith-erp-hr/script/ReadWorkspace.groovy', null, [org:org,lockRows:false,includePayroll:permission.includePayroll])
+                def loaded = ec.resource.script('component://zenith-erp-hr/script/ReadWorkspace.groovy', null, [org:org,lockRows:false,permission:permission])
                 state = loaded.state; revision = loaded.revision; today = loaded.today; success = true
+            ]]></script>
+        </actions>
+    </service>
+    <service verb="apply" noun="SalaryPayment" authenticate="true" transaction="force-new">
+        <in-parameters>
+            <parameter name="action" required="true"/><parameter name="scopeKey" required="true"/><parameter name="employeeCode" required="true"/>
+            <parameter name="holderName"/><parameter name="accountNumber"/><parameter name="confirmAccount"/><parameter name="ifsc"/>
+            <parameter name="accountVersion"/><parameter name="salaryMonth"/><parameter name="paymentMode"/><parameter name="payoutId"/>
+        </in-parameters>
+        <out-parameters><parameter name="result" type="Map"/></out-parameters>
+        <actions><script><![CDATA[
+            def input = [action:action,scopeKey:scopeKey,employeeCode:employeeCode,holderName:holderName,accountNumber:accountNumber,
+                confirmAccount:confirmAccount,ifsc:ifsc,accountVersion:accountVersion,salaryMonth:salaryMonth,paymentMode:paymentMode,payoutId:payoutId]
+            result = ec.resource.script('component://zenith-erp-hr/script/SalaryPayment.groovy',null,[input:input])
+        ]]></script></actions>
+    </service>
+    <service verb="store" noun="EmployeeDocument" authenticate="true">
+        <in-parameters><parameter name="employeeCode" required="true"/><parameter name="documentFile" type="Object" required="true"/><parameter name="scopeKey" required="true"/></in-parameters>
+        <out-parameters><parameter name="success" type="Boolean"/><parameter name="error"/><parameter name="documentId"/></out-parameters>
+        <actions>
+            <service-call name="zenith.hr.WorkspaceServices.get#WorkspaceAccess" out-map="permission"/>
+            <if condition="!permission.allowed"><set field="success" from="false"/><set field="error" value="HR management access is required."/><return/></if>
+            <script><![CDATA[
+                success = false
+                if (scopeKey != permission.scopeKey) { error = 'The selected shop changed. Reload HR.'; return }
+                def org = ec.user.getPreference('ACTIVE_ORGANIZATION')
+                if (!ec.entity.find('mantle.party.Organization').condition('partyId',org).disableAuthz().forUpdate(true).one()) {
+                    error = 'Organization not found.'; return
+                }
+                def workspace = ec.resource.script('component://zenith-erp-hr/script/ReadWorkspace.groovy', null,
+                    [org:org,lockRows:false,permission:permission])
+                def employee = workspace.employees[employeeCode]
+                if (!employee || employee.organizationPartyId != org) { error = 'Employee not found in this organization.'; return }
+                def file = documentFile
+                if (!file?.metaClass?.respondsTo(file,'getInputStream') || !file.metaClass.respondsTo(file,'getSize')) {
+                    error = 'Choose a document to upload.'; return
+                }
+                long size = file.getSize()
+                if (size < 1 || size > 5_000_000) { error = 'Documents must be between 1 byte and 5 MB.'; return }
+                def nameParts = (file.getName() ?: '').replace('\\','/').tokenize('/')
+                def rawName = nameParts ? nameParts.last() : ''
+                if (!rawName || rawName.length() > 255 || rawName ==~ /.*[\x00-\x1f\x7f].*/) {
+                    error = 'Choose a valid document name.'; return
+                }
+                def extension = rawName.tokenize('.').last().toLowerCase(java.util.Locale.ROOT)
+                def mime = [pdf:'application/pdf',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',
+                    doc:'application/msword',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'][extension]
+                if (!mime) { error = 'Choose a PDF, PNG, JPG, DOC, or DOCX file.'; return }
+                byte[] bytes = file.getInputStream().withCloseable { it.readAllBytes() }
+                if (bytes.length != size) { error = 'The document upload was incomplete.'; return }
+                def hex = (0..<Math.min(bytes.length,8)).collect { String.format('%02X',bytes[it] & 255) }.join('')
+                if (!((extension == 'pdf' && hex.startsWith('255044462D')) ||
+                      (extension == 'png' && hex.startsWith('89504E470D0A1A0A')) ||
+                      (extension in ['jpg','jpeg'] && hex.startsWith('FFD8FF')) ||
+                      (extension == 'doc' && hex.startsWith('D0CF11E0A1B11AE1')) ||
+                      (extension == 'docx' && hex.startsWith('504B0304')))) {
+                    error = 'The file contents do not match its document type.'; return
+                }
+                def existing = ec.entity.find('zenith.erp.hr.EmployeeDocument').condition('employeeId',employee.employeeId)
+                    .condition('documentName',rawName).disableAuthz().orderBy('documentId').list().find { !it.contentBase64 }
+                def row = existing ?: ec.entity.makeValue('zenith.erp.hr.EmployeeDocument')
+                    .set('employeeId',employee.employeeId).set('documentName',rawName).setSequencedIdPrimary()
+                row.fileSize = bytes.length
+                row.fileMimeType = mime
+                row.contentBase64 = java.util.Base64.encoder.encodeToString(bytes)
+                row.uploadDate = ec.user.nowTimestamp
+                if (existing) row.update() else row.create()
+                documentId = row.documentId; success = true
             ]]></script>
         </actions>
     </service>

@@ -49,10 +49,14 @@
         </in-parameters>
         <actions>
             <!-- ZE-SB-013 (Tier 5): the subject, the manager-reviewer, and every peer must all be employees of YOUR org. -->
+            <service-call name="zenith.base.ShopServices.get#ActiveShopScope" out-map="hrShop"/>
             <iterate list="([employeeId, managerEmployeeId] + (peerEmployeeIds ?: []))" entry="_eid">
                 <if condition="_eid">
                     <service-call name="zenith.base.SecurityServices.assert#EmployeeOrgAccess" out-map="_ea" in-map="[employeeId:_eid]"/>
                     <if condition="!_ea.allowed"><return error="true" message="All reviewers must be employees of your organization."/></if>
+                    <if condition="hrShop.activeShopId &amp;&amp; !ec.entity.find('zenith.erp.hr.Employee').condition('employeeId',_eid).condition('workShopId',hrShop.activeShopId).disableAuthz().one()">
+                        <return error="true" message="Choose employees from the selected shop."/>
+                    </if>
                 </if>
             </iterate>
             <!-- 1. Manager Review Task -->

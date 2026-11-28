@@ -6,6 +6,9 @@
 <div id="zc-hr-workspace" data-page="${hrPage?html}"
      data-read="${sri.buildUrl('readWorkspace').url?html}"
      data-save="${sri.buildUrl('saveWorkspace').url?html}"
+     data-upload="${sri.buildUrl('uploadDocument').url?html}"
+     data-document="${sri.buildUrl('viewDocument').url?html}"
+     data-payment="${sri.buildUrl('salaryPayment').url?html}"
      data-token="${(ec.web.sessionToken!'')?html}"
      data-css="/zenithstatic/css/hr-workspace.css?v=${ec.resource.getLocationReference('component://zenith-erp-app/screen/zenithstatic/css/hr-workspace.css').getLastModified()?c}">
     <span role="status">Loading HR workspace…</span>

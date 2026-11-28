@@ -80,6 +80,37 @@ export async function openWorkspace(host) {
       page.querySelector('button').onclick = load;
     }
   }
+  H.reload = load;
+  H.shopLabel = (employee) => H.state.shops.find((shop) => shop.id === employee.shopId)?.name ||
+    (employee.shopId ? H.state.shopName || employee.shopId : 'Unassigned');
+  H.salaryPayment = async (input) => {
+    const response = await fetch(host.dataset.payment, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', moquiSessionToken: host.dataset.token },
+      body: JSON.stringify({ ...input, scopeKey: H.state.scopeKey, moquiSessionToken: host.dataset.token }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) throw new Error(result.error || 'Unable to update the salary payment.');
+    return result;
+  };
+  H.documentUrl = (id) => `${host.dataset.document}?documentId=${encodeURIComponent(id)}`;
+  H.uploadDocument = async (employeeCode, file) => {
+    const body = new FormData();
+    body.append('employeeCode', employeeCode);
+    body.append('scopeKey', H.state.scopeKey);
+    body.append('documentFile', file);
+    body.append('moquiSessionToken', host.dataset.token);
+    const response = await fetch(host.dataset.upload, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json', moquiSessionToken: host.dataset.token },
+      body,
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) throw new Error(result.error || `Unable to upload ${file.name}.`);
+    return result.documentId;
+  };
   let busy = false;
   H.save = async (message) => {
     if (busy) return false;

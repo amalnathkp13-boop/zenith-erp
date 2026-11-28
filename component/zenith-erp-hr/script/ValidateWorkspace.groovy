@@ -27,6 +27,12 @@ for (section in ['employees','attendance','leaves','salaries']) {
 }
 def cfg = next.settings
 def oldCfg = previous.settings
+if (activeShop) {
+    require(activeShop != '__NONE__','No shops are available to this login.')
+    require((cfg - [departments:cfg.departments]) == (oldCfg - [departments:oldCfg.departments]) &&
+        (cfg.departments == oldCfg.departments || (!oldCfg.departments && cfg.departments instanceof List && cfg.departments.size() == 1)),
+        'Switch to All Shops to change organization settings.')
+}
 def uniqueNames = { list, max ->
     list instanceof List && list.every { goodText(it,max) } && list.collect { it.toLowerCase(Locale.ROOT) }.unique().size() == list.size()
 }
@@ -44,26 +50,37 @@ require(cfg.leaveTypes instanceof List && cfg.leaveTypes.every { it instanceof M
 def emails = [:]
 next.employees.each { e ->
     def before = original.employees[e.id]
+    if (!before) require(!reservedCodes.contains(e.id),'This employee ID is already in use.')
     if (e.email) {
         require(e.email instanceof String,'Invalid employee email.')
         def duplicate = emails.put(e.email.toLowerCase(Locale.ROOT),e.id)
         require(!duplicate || (before?.email == e.email && original.employees[duplicate]?.email?.equalsIgnoreCase(e.email)),'An employee with this email already exists.')
     }
     if (e == before) return
-    require((before && before.name == e.name || goodText(e.name,80)) &&
-        (before && before.email == e.email || goodText(e.email,160) && e.email ==~ /[^\s@]+@[^\s@]+\.[^\s@]+/),'Enter a name and valid work email.')
-    require((before && before.department == e.department || goodText(e.department,80) && cfg.departments.contains(e.department)) &&
-        (before && before.designation == e.designation || goodText(e.designation,80)),'Choose a department and designation.')
+    if (!before || (before.shopId ?: '') != (e.shopId ?: '')) {
+        require((activeShop ? e.shopId == activeShop : !e.shopId || previous.shops*.id.contains(e.shopId)) &&
+            (!e.shopId || previous.shops*.id.contains(e.shopId)) &&
+            (before || !previous.shops || e.shopId), 'Choose an active shop for this employee.')
+    }
+    require(before && before.name == e.name || goodText(e.name,80),'Enter an employee name.')
+    require(before && before.email == e.email || e.email == null || e.email == '' ||
+        goodText(e.email,160) && e.email ==~ /[^\s@]+@[^\s@]+\.[^\s@]+/,'Enter a valid work email or leave it blank.')
+    require(e.department == null || e.department == '' || (before && before.department == e.department) ||
+        (goodText(e.department,80) && cfg.departments.contains(e.department)),'Choose a configured department or leave it blank.')
+    require((before && before.designation == e.designation) || goodText(e.designation,80),'Enter a designation.')
     require((before && before.joined == e.joined || validDate(e.joined)) && e.status in ['Active','On probation','Inactive'] && e.type in ['Full-time','Part-time','Contract'],'Check the employment dates, status and type.')
     require(e.status != 'Inactive' || (validDate(e.leavingDate) && e.leavingDate >= e.joined),'Check the leaving date.')
     require(e.salaryType in ['monthly','daily'] && amount(e.salary),'Enter a valid agreed salary.')
-    require(!e.phone || goodText(e.phone,24),'Check the phone number.')
+    // Preserve unchanged legacy contact details when another HR operation updates an employee.
+    require(before && before.phone == e.phone || e.phone instanceof String && e.phone ==~ /[0-9]{10}/,
+        'Enter exactly 10 digits for the mobile number.')
     require(!e.emergency || goodText(e.emergency,250),'Check the emergency contact.')
     def manager = updated.employees[e.manager]
     require(!e.manager || before?.manager == e.manager || (manager ? manager.id != e.id && manager.status != 'Inactive' :
         next.employees.count { it.id != e.id && it.name == e.manager && it.status != 'Inactive' } == 1),
         'Choose a manager with an unambiguous active employee record.')
-    def sameDoc = { a,b -> a.name == b.name && a.added == b.added && a.size == b.size }
+    def sameDoc = { a,b -> a.id ? a.id == b.id && a.name == b.name && a.added == b.added && a.size == b.size && a.available == b.available :
+        a.name == b.name && a.added == b.added && a.size == b.size }
     require(e.documents instanceof List && e.documents.every { doc -> doc instanceof Map && goodText(doc.name,255) && doc.size instanceof Number && doc.size >= 0 &&
         doc.size <= Integer.MAX_VALUE && (validDate(doc.added) || before?.documents?.any { sameDoc(it,doc) }) },'Check the document details.')
     def remaining = new ArrayList(e.documents)
@@ -72,6 +89,7 @@ next.employees.each { e ->
         require(i >= 0, 'Existing document records cannot be removed.')
         remaining.remove(i)
     }
+    require(remaining.isEmpty(), 'Upload new documents through the employee form.')
 }
 (oldCfg.departments - cfg.departments).each { d -> require(!next.employees.any { it.department == d },'This department is still assigned to an employee.') }
 (oldCfg.designations - cfg.designations).each { d -> require(!next.employees.any { it.designation == d },'This designation is still assigned to an employee.') }
@@ -152,6 +170,11 @@ next.salaries.each { p ->
     require(p.status in ['Draft','Finalized'] && p.paid instanceof Boolean && (!p.paid || p.status == 'Finalized'),'Only finalized salaries can be marked paid.')
     require(old || (!p.paid && p.status == 'Draft'),'Create the salary draft first.')
     require(!p.paid || old?.status == 'Finalized','Finalize the salary before marking it paid.')
+    if (p.paid) {
+        def payout = previous.payments.payouts[p.id]
+        require(canPay && (!payout || (payout.test && payout.status == 'processed') ||
+            payout.status in ['failed','rejected','cancelled','reversed']), 'Resolve the bank transfer before recording a manual payment.')
+    }
     if (old?.status == 'Finalized') require(p.paid && (p - [paid:p.paid]) == (old - [paid:old.paid]),'Finalized salaries cannot be changed.')
     require([p.basic,p.allowance,p.deduction].every { amount(it) } && p.deduction <= p.basic + p.allowance,'Deductions cannot exceed earnings.')
     require(p.salaryType in ['daily','monthly'],'Choose a valid salary basis.')

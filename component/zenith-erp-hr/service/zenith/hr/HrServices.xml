@@ -42,6 +42,8 @@
                  org and may pass it explicitly. -->
             <set field="activeOrg" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
             <if condition="activeOrg"><set field="organizationPartyId" from="activeOrg"/></if>
+            <service-call name="zenith.base.ShopServices.get#ActiveShopScope" out-map="hrShop"/>
+            <if condition="hrShop.activeShopId == '__NONE__'"><return error="true" message="No shops are available to this login."/></if>
 
             <!-- ZE-SB-013 (Tier 5): a submitted reporting-manager must be one of THIS org's employees. -->
             <if condition="reportingToEmployeeId">
@@ -97,7 +99,7 @@
             <set field="sickLeave" from="12" type="BigDecimal"/>
 
             <service-call name="create#zenith.erp.hr.Employee" out-map="empOut"
-                          in-map="[partyId:partyId, organizationPartyId:organizationPartyId,
+                          in-map="[partyId:partyId, organizationPartyId:organizationPartyId, workShopId:hrShop.activeShopId,
                                    employeeCode:employeeCode, joiningDate:joiningDate,
                                    statusId:initialStatus, employmentType:employmentType,
                                    probationMonths:probationMonths, noticePeriodDays:noticePeriodDays,
@@ -124,7 +126,8 @@
             <entity-find-one entity-name="zenith.erp.hr.Employee" value-field="emp"/>
             <!-- ZE-SB-013 (Tier 5): only confirm an employee of your own org. -->
             <service-call name="zenith.base.SecurityServices.assert#EmployeeOrgAccess" out-map="_ea" in-map="[employeeId:employeeId]"/>
-            <if condition="!_ea.allowed"><return error="true" message="Employee not found for your account."/></if>
+            <service-call name="zenith.base.ShopServices.get#ActiveShopScope" out-map="hrShop"/>
+            <if condition="!_ea.allowed || (hrShop.activeShopId &amp;&amp; emp?.workShopId != hrShop.activeShopId)"><return error="true" message="Employee not found for your account."/></if>
             <if condition="emp.statusId != 'EmpProbation'">
                 <return error="true" message="Employee must be on probation to confirm"/></if>
             <service-call name="update#zenith.erp.hr.Employee"
@@ -142,7 +145,8 @@
             <entity-find-one entity-name="zenith.erp.hr.Employee" value-field="emp"/>
             <!-- ZE-SB-013 (Tier 5): only resign an employee of your own org. -->
             <service-call name="zenith.base.SecurityServices.assert#EmployeeOrgAccess" out-map="_ea" in-map="[employeeId:employeeId]"/>
-            <if condition="!_ea.allowed"><return error="true" message="Employee not found for your account."/></if>
+            <service-call name="zenith.base.ShopServices.get#ActiveShopScope" out-map="hrShop"/>
+            <if condition="!_ea.allowed || (hrShop.activeShopId &amp;&amp; emp?.workShopId != hrShop.activeShopId)"><return error="true" message="Employee not found for your account."/></if>
             <!-- Calculate last working date based on notice period -->
             <set field="lwdCal" from="java.util.Calendar.getInstance()"/>
             <script>lwdCal.setTime(resignationDate instanceof java.util.Date ? resignationDate : java.sql.Date.valueOf(resignationDate.toString()))</script>
@@ -189,7 +193,8 @@
             <entity-find-one entity-name="zenith.erp.hr.Employee" value-field="emp"/>
             <!-- Org-isolation: block applying leave against another tenant's employee (IDOR by employeeId) -->
             <set field="activeOrg" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
-            <if condition="emp == null || (activeOrg &amp;&amp; emp.organizationPartyId != activeOrg &amp;&amp; !ec.user.isInGroup('ADMIN'))">
+            <service-call name="zenith.base.ShopServices.get#ActiveShopScope" out-map="hrShop"/>
+            <if condition="emp == null || (activeOrg &amp;&amp; emp.organizationPartyId != activeOrg &amp;&amp; !ec.user.isInGroup('ADMIN')) || (hrShop.activeShopId &amp;&amp; emp.workShopId != hrShop.activeShopId &amp;&amp; emp.partyId != ec.user.userAccount?.partyId)">
                 <return error="true" message="Employee not found for your account."/>
             </if>
             <set field="balanceField" from="leaveType == 'EL' ? 'earnedLeaveBalance' : leaveType == 'CL' ? 'casualLeaveBalance' : leaveType == 'SL' ? 'sickLeaveBalance' : null"/>
@@ -221,7 +226,8 @@
                 <field-map field-name="employeeId" from="lv.employeeId"/></entity-find-one>
             <!-- Org-isolation: block approving leave for another tenant's employee (IDOR by leaveApplicationId) -->
             <set field="activeOrg" from="ec.user.getPreference('ACTIVE_ORGANIZATION')"/>
-            <if condition="emp == null || (activeOrg &amp;&amp; emp.organizationPartyId != activeOrg &amp;&amp; !ec.user.isInGroup('ADMIN'))">
+            <service-call name="zenith.base.ShopServices.get#ActiveShopScope" out-map="hrShop"/>
+            <if condition="emp == null || (activeOrg &amp;&amp; emp.organizationPartyId != activeOrg &amp;&amp; !ec.user.isInGroup('ADMIN')) || (hrShop.activeShopId &amp;&amp; emp.workShopId != hrShop.activeShopId)">
                 <return error="true" message="Leave not found for your account."/>
             </if>
             <!-- ZE-SB-013 (Tier 5): a submitted approver must be one of THIS org's employees. -->
